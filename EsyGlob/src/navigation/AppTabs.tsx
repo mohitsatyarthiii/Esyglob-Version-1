@@ -1,0 +1,143 @@
+import React from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BottomTabBarProps, createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AccountScreen from '../screens/AccountScreen';
+import CategoriesScreen from '../screens/CategoriesScreen';
+import HomeScreen from '../screens/HomeScreen';
+import MessagesScreen from '../screens/MessagesScreen';
+import RFQScreen from '../screens/RFQScreen';
+import { colors, radii, shadow, spacing } from '../theme';
+
+export type RootTabParamList = {
+  Home: undefined;
+  Categories: undefined;
+  Messages: undefined;
+  RFQ: undefined;
+  Account: undefined;
+};
+
+const Tab = createBottomTabNavigator<RootTabParamList>();
+
+const tabMeta: Record<keyof RootTabParamList, { icon: string; activeIcon: string; label: string }> = {
+  Home: { icon: 'home-outline', activeIcon: 'home', label: 'Home' },
+  Categories: { icon: 'view-grid-outline', activeIcon: 'view-grid', label: 'Categories' },
+  Messages: { icon: 'message-text-outline', activeIcon: 'message-text', label: 'Messenger' },
+  RFQ: { icon: 'cart-outline', activeIcon: 'cart', label: 'RFQ' },
+  Account: { icon: 'account-outline', activeIcon: 'account', label: 'My EsyGlob' },
+};
+
+function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={[styles.tabShell, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      {state.routes.map((route, index) => {
+        const isFocused = state.index === index;
+        const options = descriptors[route.key].options;
+        const meta = tabMeta[route.name as keyof RootTabParamList];
+
+        const onPress = () => {
+          const event = navigation.emit({
+            type: 'tabPress',
+            target: route.key,
+            canPreventDefault: true,
+          });
+
+          if (!isFocused && !event.defaultPrevented) {
+            navigation.navigate(route.name);
+          }
+        };
+
+        return (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={isFocused ? { selected: true } : {}}
+            accessibilityLabel={options.tabBarAccessibilityLabel}
+            key={route.key}
+            onPress={onPress}
+            style={({ pressed }) => [styles.tabItem, pressed && styles.tabPressed]}>
+            <View style={[styles.iconBubble, isFocused && styles.activeBubble]}>
+              <Icon
+                name={isFocused ? meta.activeIcon : meta.icon}
+                size={24}
+                color={isFocused ? '#fff' : colors.ink}
+              />
+            </View>
+            <Text numberOfLines={1} style={[styles.tabLabel, isFocused && styles.activeLabel]}>
+              {meta.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function renderTabBar(props: BottomTabBarProps) {
+  return <CustomTabBar {...props} />;
+}
+
+function AppTabs() {
+  return (
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={{ headerShown: false, lazy: true }}
+      tabBar={renderTabBar}>
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Categories" component={CategoriesScreen} />
+      <Tab.Screen name="Messages" component={MessagesScreen} />
+      <Tab.Screen name="RFQ" component={RFQScreen} />
+      <Tab.Screen name="Account" component={AccountScreen} />
+    </Tab.Navigator>
+  );
+}
+
+const styles = StyleSheet.create({
+  tabShell: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderTopColor: colors.faint,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    left: 0,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    position: 'absolute',
+    right: 0,
+    ...shadow,
+  },
+  tabItem: {
+    alignItems: 'center',
+    flex: 1,
+    minHeight: 58,
+  },
+  tabPressed: {
+    opacity: 0.72,
+  },
+  iconBubble: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 46,
+  },
+  activeBubble: {
+    backgroundColor: colors.primary,
+  },
+  tabLabel: {
+    color: colors.ink,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  activeLabel: {
+    color: colors.primaryDark,
+    fontWeight: '900',
+  },
+});
+
+export default AppTabs;

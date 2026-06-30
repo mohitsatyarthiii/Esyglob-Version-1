@@ -1,0 +1,7 @@
+export function success<T>(data: T, message?: string) {
+  return {
+    success: true,
+    ...(message ? { message } : {}),
+    data,
+  };
+}

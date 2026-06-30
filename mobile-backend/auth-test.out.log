@@ -1,0 +1,30 @@
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +33ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseModule dependencies initialized[39m[38;5;3m +68ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +12ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mJwtModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:40 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseCoreModule dependencies initialized[39m[38;5;3m +890ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMongooseModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mMarketplaceModule dependencies initialized[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/auth}:[39m[38;5;3m +9ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/login, POST} route[39m[38;5;3m +7ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/signup, POST} route[39m[38;5;3m +100ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/me, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/logout, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/forgot-password, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/reset-password, POST} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/auth/verify-email, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mMarketplaceController {/api}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/categories, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/products/:productId, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/search, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/home, GET} route[39m[38;5;3m +2ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/categories/:categoryIdOrSlug, GET} route[39m[38;5;3m +8ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/rfqs, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/chats, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/notifications, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 13704  - [39m30/06/2026, 7:31:41 pm [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +5ms[39m

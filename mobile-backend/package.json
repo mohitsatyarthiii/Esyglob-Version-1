@@ -1,0 +1,35 @@
+{
+  "name": "esyglob-mobile-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.9",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.9",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/mongoose": "^11.0.4",
+    "@nestjs/platform-express": "^11.1.9",
+    "bcryptjs": "^3.0.3",
+    "express": "^5.2.1",
+    "mongoose": "^8.20.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.14",
+    "@types/node": "^24.10.2",
+    "eslint": "^9.39.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  }
+}
