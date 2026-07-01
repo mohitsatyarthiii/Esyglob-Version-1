@@ -1,0 +1,1127 @@
+[31m[Nest] 25936  - [39m01/07/2026, 4:51:21 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mError: Rfq validation failed: description: Path `description` is required.
+    at ValidationError.inspect [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongoose[24m\lib\error\validation.js:52:26[90m)[39m
+[90m    at formatValue (node:internal/util/inspect:877:19)[39m
+[90m    at inspect (node:internal/util/inspect:404:10)[39m
+    at ConsoleLogger.stringifyMessage [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\console-logger.service.js:229:47[90m)[39m
+    at ConsoleLogger.formatMessage [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\console-logger.service.js:210:29[90m)[39m
+    at [90mF:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\console-logger.service.js:153:43
+    at Array.forEach (<anonymous>)
+    at ConsoleLogger.printMessages [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\console-logger.service.js:139:18[90m)[39m
+    at ConsoleLogger.error [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\console-logger.service.js:65:14[90m)[39m
+    at Logger.error [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4m@nestjs[24m\common\services\logger.service.js:51:29[90m)[39m {
+  errors: {
+    description: ValidatorError: Path `description` is required.
+        at validate [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongoose[24m\lib\schemaType.js:1440:13[90m)[39m
+        at SchemaType.doValidate [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongoose[24m\lib\schemaType.js:1424:7[90m)[39m
+        at [90mF:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongoose[24m\lib\document.js:3140:18
+    [90m    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)[39m {
+      properties: {
+        validator: [36m[Function (anonymous)][39m,
+        message: [32m'Path `description` is required.'[39m,
+        type: [32m'required'[39m,
+        path: [32m'description'[39m,
+        fullPath: [90mundefined[39m,
+        value: [32m''[39m,
+        length: [33m0[39m
+      },
+      kind: [32m'required'[39m,
+      path: [32m'description'[39m,
+      value: [32m''[39m,
+      reason: [90mundefined[39m,
+      [[32mSymbol(mongoose#validatorError)[39m]: [33mtrue[39m
+    }
+  },
+  _message: [32m'Rfq validation failed'[39m
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:45:48 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172595900[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172595918[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172595920[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:45:55 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172604589[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172604590[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172604589[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:46:07 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172616109[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172616108[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172616108[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:46:13 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172622116[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172622117[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172622118[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:46:16 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172625054[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172625056[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172625057[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}
+[31m[Nest] 25936  - [39m01/07/2026, 6:46:24 pm [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39mMongoServerSelectionError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    at Topology.selectServer [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\sdam\topology.ts:635:30[90m)[39m
+[90m    at runNextTicks (node:internal/process/task_queues:65:5)[39m
+[90m    at listOnTimeout (node:internal/timers:549:9)[39m
+[90m    at process.processTimers (node:internal/timers:523:7)[39m
+    at async tryOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:202:16[90m)[39m
+    at async executeOperation [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\operations\execute_operation.ts:119:12[90m)[39m
+    at async AggregationCursor._initialize [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\aggregation_cursor.ts:92:22[90m)[39m
+    at async AggregationCursor.cursorInit [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:949:21[90m)[39m
+    at async AggregationCursor.fetchBatch [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:987:7[90m)[39m
+    at async AggregationCursor.next [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cursor\abstract_cursor.ts:608:9[90m)[39m {
+  errorLabelSet: Set(0) {},
+  reason: TopologyDescription {
+    type: [32m'ReplicaSetNoPrimary'[39m,
+    servers: Map(3) {
+      [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172633566[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172633532[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-02.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-02.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      },
+      [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m => ServerDescription {
+        address: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net:27017'[39m,
+        type: [32m'Unknown'[39m,
+        hosts: [],
+        passives: [],
+        arbiters: [],
+        tags: {},
+        minWireVersion: [33m0[39m,
+        maxWireVersion: [33m0[39m,
+        roundTripTime: [33m-1[39m,
+        minRoundTripTime: [33m0[39m,
+        lastUpdateTime: [33m172633569[39m,
+        lastWriteDate: [33m0[39m,
+        error: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+            at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+        [90m    at Object.onceWrapper (node:events:634:26)[39m
+        [90m    at TLSSocket.emit (node:events:519:28)[39m
+        [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+        [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+        [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+          errorLabelSet: Set(1) {
+            [32m'ResetPool'[39m
+          },
+          beforeHandshake: [33mfalse[39m,
+          [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-00.7dkg629.mongodb.net
+          [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+            errno: [33m-3008[39m,
+            code: [32m'ENOTFOUND'[39m,
+            syscall: [32m'getaddrinfo'[39m,
+            hostname: [32m'ac-1ue9adg-shard-00-00.7dkg629.mongodb.net'[39m
+          }
+        },
+        topologyVersion: [1mnull[22m,
+        setName: [1mnull[22m,
+        setVersion: [1mnull[22m,
+        electionId: [1mnull[22m,
+        logicalSessionTimeoutMinutes: [1mnull[22m,
+        maxMessageSizeBytes: [1mnull[22m,
+        maxWriteBatchSize: [1mnull[22m,
+        maxBsonObjectSize: [1mnull[22m,
+        primary: [1mnull[22m,
+        me: [1mnull[22m,
+        [32m'$clusterTime'[39m: [1mnull[22m,
+        iscryptd: [33mfalse[39m
+      }
+    },
+    stale: [33mfalse[39m,
+    compatible: [33mtrue[39m,
+    heartbeatFrequencyMS: [33m10000[39m,
+    localThresholdMS: [33m15[39m,
+    setName: [32m'atlas-fp6uwt-shard-0'[39m,
+    maxElectionId: new ObjectId([32m'7fffffff0000000000000248'[39m),
+    maxSetVersion: [33m168[39m,
+    commonWireVersion: [33m0[39m,
+    logicalSessionTimeoutMinutes: [1mnull[22m
+  },
+  code: [90mundefined[39m,
+  [cause]: MongoNetworkError: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+      at TLSSocket.<anonymous> [90m(F:\Desktop\esyglob-app\mobile-backend\[39mnode_modules\[4mmongodb[24m\src\cmap\connect.ts:395:16[90m)[39m
+  [90m    at Object.onceWrapper (node:events:634:26)[39m
+  [90m    at TLSSocket.emit (node:events:519:28)[39m
+  [90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+  [90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+  [90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m {
+    errorLabelSet: Set(1) {
+      [32m'ResetPool'[39m
+    },
+    beforeHandshake: [33mfalse[39m,
+    [cause]: Error: getaddrinfo ENOTFOUND ac-1ue9adg-shard-00-01.7dkg629.mongodb.net
+    [90m    at GetAddrInfoReqWrap.onlookupall [as oncomplete] (node:dns:122:26)[39m {
+      errno: [33m-3008[39m,
+      code: [32m'ENOTFOUND'[39m,
+      syscall: [32m'getaddrinfo'[39m,
+      hostname: [32m'ac-1ue9adg-shard-00-01.7dkg629.mongodb.net'[39m
+    }
+  }
+}

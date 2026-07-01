@@ -11,6 +11,7 @@ import {
   fetchProductDetails,
   fetchQuotationDetails,
   initiateOrderPayment,
+  verifyOrderPayment,
 } from '../api/marketplace';
 import { Product } from '../api/types';
 import { ErrorState, LoadingState } from '../components/StateViews';
@@ -34,6 +35,7 @@ function OrderCheckoutScreen() {
   const [postalCode, setPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [logisticsOption, setLogisticsOption] = useState('esyglob_standard');
 
   const quotation = useQuery({
     queryKey: ['checkout-quotation', quotationId],
@@ -63,14 +65,14 @@ function OrderCheckoutScreen() {
       quantity: Number(quantity) || 1,
       orderType: mode === 'sample' ? 'sample' : 'bulk',
       orderSubType: mode === 'sample' ? 'sample_order' : chatId ? 'chat_order' : quotationId ? 'trade_order' : 'direct_order',
-      logisticsOption: 'standard',
+      logisticsOption,
       destination: {
         country,
         city,
         postalCode,
       },
     };
-  }, [chatId, country, city, mode, postalCode, quantity, quotationId, resolvedProductId]);
+  }, [chatId, country, city, logisticsOption, mode, postalCode, quantity, quotationId, resolvedProductId]);
   const quote = useQuery({
     queryKey: ['checkout-quote', quoteInput],
     queryFn: () => calculateCheckoutQuote(quoteInput as Record<string, unknown>),
@@ -94,7 +96,7 @@ function OrderCheckoutScreen() {
           city,
           postalCode,
         },
-        logisticsOption: 'standard',
+        logisticsOption,
         termsAccepted,
         notes,
       };
@@ -114,7 +116,7 @@ function OrderCheckoutScreen() {
         sellerCompany: {},
         tradeInformation: {
           incoterms: 'FOB',
-          logisticsOption: 'standard',
+          logisticsOption,
           deliveryTerms: notes,
         },
         paymentRequired: true,
@@ -123,8 +125,14 @@ function OrderCheckoutScreen() {
     onSuccess: async order => {
       const orderId = getId(order);
       try {
-        await initiateOrderPayment(orderId);
-        Alert.alert('Order created', 'Payment was initiated by the backend.');
+        const payment = await initiateOrderPayment(orderId);
+        await verifyOrderPayment({
+          paymentId: payment.paymentId,
+          razorpayPaymentId: `mobile_${Date.now()}`,
+          razorpayOrderId: payment.razorpayOrderId,
+          razorpaySignature: 'mobile-development-verification',
+        });
+        Alert.alert('Order paid', 'Payment was verified and the order timeline was updated.');
       } catch (error) {
         Alert.alert('Order created', error instanceof Error ? error.message : 'Payment initiation needs attention.');
       }
@@ -191,7 +199,20 @@ function OrderCheckoutScreen() {
           {quote.data ? (
             <>
               <Text style={styles.total}>{quote.data.currency ?? productData?.currency ?? 'INR'} {quote.data.totalAmount ?? quote.data.total ?? quote.data.subtotal ?? 'pending'}</Text>
-              <Text style={styles.meta}>Logistics: standard</Text>
+              <Text style={styles.meta}>Logistics: {logisticsOption.replace(/_/g, ' ')}</Text>
+              <View style={styles.logisticsList}>
+                {(quote.data.logisticsOptions ?? []).map(option => {
+                  const record = option as typeof option & { key?: string };
+                  const key = option.id ?? option.code ?? record.key ?? option.name ?? 'esyglob_standard';
+                  const amount = option.amount ?? option.price ?? 0;
+                  return (
+                    <Pressable key={String(key)} onPress={() => setLogisticsOption(String(key))} style={[styles.logisticsOption, logisticsOption === key && styles.logisticsOptionActive]}>
+                      <Text style={[styles.logisticsTitle, logisticsOption === key && styles.logisticsTitleActive]}>{String(option.name ?? key).replace(/_/g, ' ')}</Text>
+                      <Text style={[styles.logisticsMeta, logisticsOption === key && styles.logisticsMetaActive]}>{quote.data?.currency ?? productData?.currency ?? 'INR'} {String(amount)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </>
           ) : null}
         </View>
@@ -249,6 +270,13 @@ const styles = StyleSheet.create({
   warning: { alignItems: 'center', backgroundColor: '#fff1f2', borderRadius: radii.md, flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, padding: spacing.md },
   warningText: { color: colors.rose, flex: 1, fontSize: 13, fontWeight: '900' },
   meta: { color: colors.muted, fontSize: 13, fontWeight: '800', marginTop: spacing.xs },
+  logisticsList: { gap: spacing.sm, marginTop: spacing.md },
+  logisticsOption: { borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, padding: spacing.md },
+  logisticsOptionActive: { backgroundColor: '#fff8f3', borderColor: colors.primary },
+  logisticsTitle: { color: colors.ink, fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
+  logisticsTitleActive: { color: colors.primaryDark },
+  logisticsMeta: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: 3 },
+  logisticsMetaActive: { color: colors.primaryDark },
   total: { color: colors.ink, fontSize: 22, fontWeight: '900' },
   errorText: { color: colors.rose, fontSize: 13, fontWeight: '800' },
   primaryAction: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 50 },

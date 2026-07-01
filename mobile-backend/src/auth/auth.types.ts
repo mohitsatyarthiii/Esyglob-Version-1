@@ -13,6 +13,9 @@ export type SerializedUser = {
   name?: string;
   fullName?: string;
   phone?: string;
+  profileImage?: string;
+  avatar?: string;
+  image?: string;
   roles: UserRole[];
   activeRole: UserRole;
   sellerId?: string;

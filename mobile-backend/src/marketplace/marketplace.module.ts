@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from '../auth/auth.module';
 import { Seller, SellerSchema } from '../sellers/seller.schema';
+import { SellerVerification, SellerVerificationSchema } from '../sellers/seller-verification.schema';
+import { User, UserSchema } from '../users/user.schema';
 import {
   Category,
   CategorySchema,
@@ -11,6 +13,10 @@ import {
   MessageSchema,
   Notification,
   NotificationSchema,
+  Order,
+  OrderSchema,
+  Payment,
+  PaymentSchema,
   Product,
   ProductSchema,
   Quotation,
@@ -35,7 +41,11 @@ import { MarketplaceService } from './marketplace.service';
       { name: Chat.name, schema: ChatSchema },
       { name: Message.name, schema: MessageSchema },
       { name: Notification.name, schema: NotificationSchema },
+      { name: Order.name, schema: OrderSchema },
+      { name: Payment.name, schema: PaymentSchema },
       { name: Seller.name, schema: SellerSchema },
+      { name: SellerVerification.name, schema: SellerVerificationSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [MarketplaceController],

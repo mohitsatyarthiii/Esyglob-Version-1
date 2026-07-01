@@ -8,6 +8,7 @@ import {
   NotificationItem,
   Order,
   PaymentInitiation,
+  Product,
   Quotation,
   QuotationListResponse,
   RFQ,
@@ -50,6 +51,91 @@ export async function fetchSellers(params: {
 export async function fetchSellerDetails(sellerId: string): Promise<SellerDetails> {
   const payload = await apiRequest(`/api/sellers/${sellerId}`);
   return unwrapData<SellerDetails>(payload);
+}
+
+export async function fetchSellerOnboarding(): Promise<{ seller?: SellerSummary; verification?: Record<string, unknown>; completion?: Record<string, unknown>; draftAvailable?: boolean }> {
+  const payload = await apiRequest('/api/seller/onboarding');
+  return unwrapData(payload);
+}
+
+export async function saveSellerOnboarding(input: Record<string, unknown>, draft = true) {
+  const payload = await apiRequest('/api/seller/onboarding', {
+    method: draft ? 'PATCH' : 'POST',
+    body: input,
+  });
+  return unwrapData(payload);
+}
+
+export async function fetchFactoryProfile(): Promise<{ seller?: SellerSummary; factoryProfile?: Record<string, unknown> | null }> {
+  const payload = await apiRequest('/api/seller/factory');
+  return unwrapData(payload);
+}
+
+export async function saveFactoryProfile(input: Record<string, unknown>) {
+  const payload = await apiRequest('/api/seller/factory', {
+    method: 'POST',
+    body: input,
+  });
+  return unwrapData(payload);
+}
+
+export async function uploadSellerDocument(documentType: string, file: { uri: string; name: string; type: string }) {
+  const form = new FormData();
+  form.append('documentType', documentType);
+  form.append('file', file as unknown as Blob);
+  const payload = await apiRequest('/api/seller/verification/documents', {
+    method: 'POST',
+    body: form,
+  });
+  return unwrapData(payload);
+}
+
+export async function uploadFiles(folder: string, files: Array<{ uri: string; name: string; type: string }>): Promise<{ uploads?: UploadAttachment[] }> {
+  const form = new FormData();
+  form.append('folder', folder);
+  files.forEach(file => form.append('files', file as unknown as Blob));
+  const payload = await apiRequest('/api/uploads', {
+    method: 'POST',
+    body: form,
+  });
+  return unwrapData(payload);
+}
+
+export async function fetchSellerProducts(params: { q?: string; status?: string; page?: number; limit?: number } = {}) {
+  const payload = await apiRequest('/api/seller/products', { query: { ...params, limit: params.limit ?? 30 } });
+  const data = unwrapData<{ products?: Product[]; pagination?: unknown }>(payload);
+
+  return {
+    products: data?.products ?? normalizeList<Product>(payload, ['products']),
+    pagination: data?.pagination,
+  };
+}
+
+export async function fetchSellerProductDetails(productId: string): Promise<Product> {
+  const payload = await apiRequest(`/api/seller/products/${productId}`);
+  const data = unwrapData<{ product?: Product } | Product>(payload);
+  const product = data && typeof data === 'object' && 'product' in data ? data.product : data;
+
+  if (!product) {
+    throw new Error('Seller product details were not returned by the backend.');
+  }
+
+  return product as Product;
+}
+
+export async function createSellerProduct(input: Record<string, unknown>): Promise<{ product?: Product; visibilityNotice?: string }> {
+  const payload = await apiRequest('/api/products', { method: 'POST', body: input });
+  return unwrapData(payload);
+}
+
+export async function updateSellerProduct(productId: string, input: Record<string, unknown>): Promise<{ product?: Product; visibilityNotice?: string }> {
+  const payload = await apiRequest(`/api/products/${productId}`, { method: 'PATCH', body: input });
+  return unwrapData(payload);
+}
+
+export async function deleteSellerProduct(productId: string) {
+  const payload = await apiRequest(`/api/products/${productId}`, { method: 'DELETE' });
+  return unwrapData(payload);
 }
 
 export async function fetchQuotations(params: { rfqId?: string; status?: string; page?: number; limit?: number } = {}): Promise<QuotationListResponse> {
@@ -125,6 +211,21 @@ export async function createProductEnquiry(input: EnquiryInput) {
   return data;
 }
 
+export async function createRFQ(input: Record<string, unknown>): Promise<RFQ> {
+  const payload = await apiRequest('/api/rfqs', {
+    method: 'POST',
+    body: input,
+  });
+  const data = unwrapData<{ rfq?: RFQ } | RFQ>(payload);
+  const rfq = data && typeof data === 'object' && 'rfq' in data ? data.rfq : data;
+
+  if (!rfq) {
+    throw new Error('RFQ was not returned by the backend.');
+  }
+
+  return rfq as RFQ;
+}
+
 export async function fetchChats(role?: string | null) {
   const payload = await apiRequest('/api/chats', { query: { role: role ?? undefined, limit: 80 } });
   return normalizeList<Chat>(payload, ['chats', 'conversations', 'items']);
@@ -135,10 +236,10 @@ export async function fetchChatDetails(chatId: string, options: { markRead?: boo
   return unwrapData<ChatDetails>(payload);
 }
 
-export async function sendChatMessage(chatId: string, content: string): Promise<MessageItem> {
+export async function sendChatMessage(chatId: string, content: string | Record<string, unknown>): Promise<MessageItem> {
   const payload = await apiRequest(`/api/chats/${chatId}`, {
     method: 'POST',
-    body: { content },
+    body: typeof content === 'string' ? { content } : content,
   });
   const data = unwrapData<{ message?: MessageItem } | MessageItem>(payload);
   const message = data && typeof data === 'object' && 'message' in data ? data.message : data;
@@ -148,6 +249,30 @@ export async function sendChatMessage(chatId: string, content: string): Promise<
   }
 
   return message as MessageItem;
+}
+
+export type UploadAttachment = {
+  id?: string;
+  url?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+export async function uploadChatAttachment(file: { uri: string; name: string; type: string }): Promise<UploadAttachment> {
+  const form = new FormData();
+  form.append('file', file as unknown as Blob);
+  const payload = await apiRequest('/api/uploads/chat', {
+    method: 'POST',
+    body: form,
+  });
+  const data = unwrapData<{ attachment?: UploadAttachment }>(payload);
+
+  if (!data?.attachment) {
+    throw new Error('Upload attachment was not returned by the backend.');
+  }
+
+  return data.attachment;
 }
 
 export async function enableChatOrder(chatId: string, productId: string) {
@@ -162,6 +287,21 @@ export async function enableChatOrder(chatId: string, productId: string) {
   }
 
   return data;
+}
+
+export async function createQuotation(input: Record<string, unknown>): Promise<Quotation> {
+  const payload = await apiRequest('/api/quotations', {
+    method: 'POST',
+    body: input,
+  });
+  const data = unwrapData<{ quotation?: Quotation } | Quotation>(payload);
+  const quotation = data && typeof data === 'object' && 'quotation' in data ? data.quotation : data;
+
+  if (!quotation) {
+    throw new Error('Quotation was not returned by the backend.');
+  }
+
+  return quotation as Quotation;
 }
 
 export async function calculateCheckoutQuote(input: Record<string, unknown>): Promise<CheckoutQuote> {
@@ -223,12 +363,25 @@ export async function updateOrderStatus(orderId: string, input: Record<string, u
   return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;
 }
 
+export async function fetchOrders(params: { type?: 'buyer' | 'seller'; status?: string; orderType?: string; q?: string } = {}) {
+  const payload = await apiRequest('/api/orders', { query: { ...params, limit: 80 } });
+  return normalizeList<Order>(payload, ['orders', 'items', 'results']);
+}
+
 export async function initiateOrderPayment(orderId: string): Promise<PaymentInitiation> {
   const payload = await apiRequest('/api/payments/initiate', {
     method: 'POST',
     body: { orderId },
   });
   return unwrapData<PaymentInitiation>(payload);
+}
+
+export async function verifyOrderPayment(input: Record<string, unknown>): Promise<{ paymentRecord?: unknown; order?: Order; success?: boolean }> {
+  const payload = await apiRequest('/api/payments/verify-order', {
+    method: 'POST',
+    body: input,
+  });
+  return unwrapData<{ paymentRecord?: unknown; payment?: unknown; order?: Order; success?: boolean }>(payload);
 }
 
 export async function acceptQuotation(quotationId: string, input: Record<string, unknown> = {}): Promise<Quotation> {

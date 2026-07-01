@@ -23,11 +23,11 @@ export function normalizeImageUrl(value?: string | null, options: ImageOptions =
     return null;
   }
 
-  if (absolute.includes('res.cloudinary.com') && absolute.includes('/image/upload/') && !absolute.includes('/f_auto,')) {
+  if (absolute.includes('res.cloudinary.com') && absolute.includes('/image/upload/') && !absolute.includes('/q_auto')) {
     const width = options.width ?? 500;
     const height = options.height;
     const crop = options.fit === 'contain' ? 'c_fit' : 'c_fill';
-    const transform = `f_auto,q_auto:eco,w_${width}${height ? `,h_${height}` : ''},${crop}`;
+    const transform = `q_auto:eco,w_${width}${height ? `,h_${height}` : ''},${crop}`;
     return absolute.replace('/image/upload/', `/image/upload/${transform}/`);
   }
 

@@ -8,7 +8,10 @@ import CategoriesScreen from '../screens/CategoriesScreen';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import RFQScreen from '../screens/RFQScreen';
+import { useAuth } from '../auth/AuthContext';
+import RemoteImage from '../components/RemoteImage';
 import { colors, radii, shadow, spacing } from '../theme';
+import { firstImage } from '../utils/images';
 
 export type RootTabParamList = {
   Home: undefined;
@@ -30,6 +33,9 @@ const tabMeta: Record<keyof RootTabParamList, { icon: string; activeIcon: string
 
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { status, user } = useAuth();
+  const accountImage = status === 'authenticated' ? firstImage(user?.profileImage, user?.avatar, user?.image) : null;
+  const accountInitial = (user?.name ?? user?.fullName ?? user?.email ?? 'E').slice(0, 1).toUpperCase();
 
   return (
     <View style={[styles.tabShell, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
@@ -58,13 +64,25 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             key={route.key}
             onPress={onPress}
             style={({ pressed }) => [styles.tabItem, pressed && styles.tabPressed]}>
-            <View style={[styles.iconBubble, isFocused && styles.activeBubble]}>
-              <Icon
-                name={isFocused ? meta.activeIcon : meta.icon}
-                size={24}
-                color={isFocused ? '#fff' : colors.ink}
-              />
-            </View>
+            {route.name === 'Account' && accountImage ? (
+              <View style={[styles.accountBubble, isFocused && styles.accountBubbleActive]}>
+                <RemoteImage
+                  uri={accountImage}
+                  width={72}
+                  height={72}
+                  style={styles.accountAvatar}
+                  fallback={<Text style={[styles.accountInitial, isFocused && styles.accountInitialActive]}>{accountInitial}</Text>}
+                />
+              </View>
+            ) : (
+              <View style={[styles.iconBubble, isFocused && styles.activeBubble]}>
+                <Icon
+                  name={isFocused ? meta.activeIcon : meta.icon}
+                  size={24}
+                  color={isFocused ? '#fff' : colors.ink}
+                />
+              </View>
+            )}
             <Text numberOfLines={1} style={[styles.tabLabel, isFocused && styles.activeLabel]}>
               {meta.label}
             </Text>
@@ -127,6 +145,29 @@ const styles = StyleSheet.create({
   },
   activeBubble: {
     backgroundColor: colors.primary,
+  },
+  accountBubble: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 38,
+    justifyContent: 'center',
+    width: 46,
+  },
+  accountBubbleActive: {
+    backgroundColor: colors.primary,
+  },
+  accountAvatar: {
+    borderRadius: radii.pill,
+    height: 32,
+    width: 32,
+  },
+  accountInitial: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  accountInitialActive: {
+    color: '#fff',
   },
   tabLabel: {
     color: colors.ink,

@@ -14,6 +14,11 @@ import SearchScreen from './src/screens/SearchScreen';
 import SellerDetailsScreen from './src/screens/SellerDetailsScreen';
 import OrderCheckoutScreen from './src/screens/OrderCheckoutScreen';
 import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
+import OrdersScreen from './src/screens/OrdersScreen';
+import SellerFactoryScreen from './src/screens/SellerFactoryScreen';
+import SellerOnboardingScreen from './src/screens/SellerOnboardingScreen';
+import SellerProductFormScreen from './src/screens/SellerProductFormScreen';
+import SellerProductsScreen from './src/screens/SellerProductsScreen';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -24,7 +29,12 @@ export type RootStackParamList = {
   RFQDetails: { rfqId: string };
   QuotationDetails: { quotationId: string };
   OrderCheckout: { mode: 'sample' | 'trade'; productId?: string; chatId?: string; quotationId?: string };
+  Orders: undefined;
   OrderDetails: { orderId: string };
+  SellerOnboarding: undefined;
+  SellerFactory: undefined;
+  SellerProducts: undefined;
+  SellerProductForm: { productId?: string } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -60,7 +70,12 @@ function App() {
               <Stack.Screen name="RFQDetails" component={RFQDetailsScreen} />
               <Stack.Screen name="QuotationDetails" component={QuotationDetailsScreen} />
               <Stack.Screen name="OrderCheckout" component={OrderCheckoutScreen} />
+              <Stack.Screen name="Orders" component={OrdersScreen} />
               <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+              <Stack.Screen name="SellerOnboarding" component={SellerOnboardingScreen} />
+              <Stack.Screen name="SellerFactory" component={SellerFactoryScreen} />
+              <Stack.Screen name="SellerProducts" component={SellerProductsScreen} />
+              <Stack.Screen name="SellerProductForm" component={SellerProductFormScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>

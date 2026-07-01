@@ -33,6 +33,15 @@ export class User {
   @Prop()
   avatarUrl?: string;
 
+  @Prop()
+  profileImage?: string;
+
+  @Prop()
+  avatar?: string;
+
+  @Prop()
+  image?: string;
+
   @Prop({ trim: true })
   phone?: string;
 

@@ -5,8 +5,10 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { fetchChats, fetchNotifications, fetchRFQs } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
+import RemoteImage from '../components/RemoteImage';
 import { LoadingState } from '../components/StateViews';
 import { colors, radii, spacing, type } from '../theme';
+import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
 
 type AuthMode = 'login' | 'signup';
@@ -123,18 +125,40 @@ function AccountScreen() {
 
   const dashboardItems = role === 'seller' ? sellerItems : buyerItems;
   const unread = notifications.data?.filter(item => !item.isRead).length ?? 0;
+  const displayName = user?.name ?? user?.fullName ?? user?.email ?? 'EsyGlob account';
+  const profileImage = firstImage(user?.profileImage, user?.avatar, user?.image);
   const openDashboardItem = (label: string) => {
     if (label === 'Messages') {
       navigation.navigate('Messages');
       return;
     }
 
-    if (label === 'RFQs' || label === 'Quotations' || label === 'Orders') {
+    if (label === 'Orders') {
+      navigation.navigate('Orders');
+      return;
+    }
+
+    if (label === 'RFQs' || label === 'Quotations') {
       navigation.navigate('RFQ');
       return;
     }
 
-    if (label === 'Products' || label === 'Wishlist') {
+    if (label === 'Seller Dashboard' || label === 'Verification') {
+      navigation.navigate('SellerOnboarding');
+      return;
+    }
+
+    if (label === 'Factory Profile') {
+      navigation.navigate('SellerFactory');
+      return;
+    }
+
+    if (label === 'Products') {
+      navigation.navigate('SellerProducts');
+      return;
+    }
+
+    if (label === 'Wishlist') {
       navigation.navigate('ProductListing');
       return;
     }
@@ -150,11 +174,15 @@ function AccountScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(user?.name ?? user?.email ?? 'E').slice(0, 1).toUpperCase()}</Text>
-        </View>
+        <RemoteImage
+          uri={profileImage}
+          width={124}
+          height={124}
+          style={styles.avatar}
+          fallback={<Text style={styles.avatarText}>{displayName.slice(0, 1).toUpperCase()}</Text>}
+        />
         <View style={styles.identity}>
-          <Text style={styles.title}>{user?.name ?? user?.fullName ?? 'EsyGlob account'}</Text>
+          <Text style={styles.title}>{displayName}</Text>
           <Text style={styles.email}>{user?.email}</Text>
         </View>
       </View>

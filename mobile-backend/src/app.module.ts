@@ -11,6 +11,12 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         uri: config.getOrThrow<string>('MONGODB_URI'),
+        lazyConnection: true,
+        retryAttempts: 0,
+        serverSelectionTimeoutMS: 5000,
+        connectTimeoutMS: 5000,
+        socketTimeoutMS: 20000,
+        bufferCommands: false,
       }),
     }),
     AuthModule,

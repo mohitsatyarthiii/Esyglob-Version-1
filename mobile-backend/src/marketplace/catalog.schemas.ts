@@ -9,6 +9,8 @@ export type QuotationDocument = HydratedDocument<Quotation>;
 export type ChatDocument = HydratedDocument<Chat>;
 export type MessageDocument = HydratedDocument<Message>;
 export type NotificationDocument = HydratedDocument<Notification>;
+export type OrderDocument = HydratedDocument<Order>;
+export type PaymentDocument = HydratedDocument<Payment>;
 
 @Schema({ timestamps: true, collection: 'categories' })
 export class Category {
@@ -238,6 +240,9 @@ export class Chat {
   @Prop({ type: Types.ObjectId, ref: 'Rfq' })
   rfqId?: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'Quotation' })
+  quotationId?: Types.ObjectId;
+
   @Prop({ default: 'general' })
   chatType!: string;
 
@@ -255,6 +260,9 @@ export class Chat {
 
   @Prop({ type: Number, default: 0 })
   sellerUnreadCount!: number;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  orderEligibility!: Array<Record<string, unknown>>;
 }
 
 @Schema({ timestamps: true, collection: 'messages', strict: false })
@@ -294,6 +302,85 @@ export class Notification {
   isRead!: boolean;
 }
 
+@Schema({ timestamps: true, collection: 'orders', strict: false })
+export class Order {
+  _id!: Types.ObjectId;
+
+  @Prop({ required: true, unique: true, index: true })
+  orderNumber!: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  buyerId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Seller', required: true, index: true })
+  sellerId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  sellerUserId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Product', required: true, index: true })
+  productId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Rfq', index: true })
+  rfqId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Quotation', index: true })
+  quotationId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Chat', index: true })
+  chatId?: Types.ObjectId;
+
+  @Prop({ default: 'bulk', index: true })
+  orderType!: string;
+
+  @Prop({ default: 'trade_order', index: true })
+  orderSubType!: string;
+
+  @Prop({ default: 'pending_payment', index: true })
+  status!: string;
+
+  @Prop({ default: 'pending', index: true })
+  paymentStatus!: string;
+
+  @Prop({ type: Number, default: 1 })
+  quantity!: number;
+
+  @Prop({ default: 'INR' })
+  currency!: string;
+
+  @Prop({ type: Number, default: 0 })
+  totalAmount!: number;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  products!: Array<Record<string, unknown>>;
+
+  @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
+  timeline!: Array<Record<string, unknown>>;
+}
+
+@Schema({ timestamps: true, collection: 'payments', strict: false })
+export class Payment {
+  _id!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Order', required: true, index: true })
+  orderId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  buyerId!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'Seller', required: true, index: true })
+  sellerId!: Types.ObjectId;
+
+  @Prop({ type: Number, required: true })
+  amount!: number;
+
+  @Prop({ default: 'INR' })
+  currency!: string;
+
+  @Prop({ default: 'pending', index: true })
+  status!: string;
+}
+
 export const CategorySchema = SchemaFactory.createForClass(Category);
 export const SubcategorySchema = SchemaFactory.createForClass(Subcategory);
 export const ProductSchema = SchemaFactory.createForClass(Product);
@@ -302,6 +389,8 @@ export const QuotationSchema = SchemaFactory.createForClass(Quotation);
 export const ChatSchema = SchemaFactory.createForClass(Chat);
 export const MessageSchema = SchemaFactory.createForClass(Message);
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
+export const OrderSchema = SchemaFactory.createForClass(Order);
+export const PaymentSchema = SchemaFactory.createForClass(Payment);
 
 CategorySchema.index({ isActive: 1, 'metadata.sortOrder': 1, name: 1 });
 CategorySchema.index({ name: 'text', slug: 'text', description: 'text', 'metadata.keywords': 'text' });
@@ -316,3 +405,6 @@ QuotationSchema.index({ rfqId: 1, status: 1, createdAt: -1 });
 ChatSchema.index({ buyerId: 1, sellerId: 1, updatedAt: -1 });
 MessageSchema.index({ chatId: 1, createdAt: -1 });
 NotificationSchema.index({ userId: 1, createdAt: -1 });
+OrderSchema.index({ buyerId: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ sellerId: 1, status: 1, createdAt: -1 });
+PaymentSchema.index({ orderId: 1, status: 1 });

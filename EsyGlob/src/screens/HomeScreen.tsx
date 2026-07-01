@@ -24,6 +24,7 @@ import SectionHeader from '../components/SectionHeader';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, shadow, spacing, type } from '../theme';
 import { getId, getProductLocation, getStableKey, isVerifiedProduct } from '../utils/format';
+import { firstImage } from '../utils/images';
 
 type HomeTab = 'AI' | 'Products' | 'Manufacturers' | 'Worldwide';
 
@@ -317,22 +318,45 @@ function SellerCard({ seller, compact }: { seller: SellerSummary; compact?: bool
   const previewImages = seller.factoryImages?.filter(Boolean).slice(0, 3) ?? [];
   const businessType = seller.businessType ?? seller.companyType ?? seller.supplierType;
   const intro = seller.companyIntroduction ?? seller.description;
+  const sellerImage = getSellerImage(seller);
+  const sellerId = seller._id ?? seller.id ?? title;
 
   return (
     <Pressable
-      onPress={() => navigation.navigate('SellerDetails', { sellerId: seller._id ?? seller.id ?? title, sellerName: title })}
+      onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
       style={[styles.sellerCard, compact && styles.sellerCompact]}>
-      <View style={styles.sellerHeroRow}>
-        <View style={styles.sellerLogo}>
-          <Text style={styles.sellerLogoText}>{title.slice(0, 1).toUpperCase()}</Text>
+      <View style={styles.sellerTopLine}>
+        <View style={styles.sellerBadges}>
+          {verified ? (
+            <View style={styles.verifiedBadge}>
+              <Icon name="check-decagram" size={13} color="#fff" />
+              <Text style={styles.verifiedBadgeText}>Verified Supplier</Text>
+            </View>
+          ) : null}
+          {seller.factoryVerified ? (
+            <View style={styles.factoryBadge}>
+              <Icon name="factory" size={13} color={colors.secondary} />
+              <Text style={styles.factoryBadgeText}>Factory checked</Text>
+            </View>
+          ) : null}
         </View>
+        <Text numberOfLines={1} style={styles.sellerCountry}>{location}</Text>
+      </View>
+      <View style={styles.sellerHeroRow}>
+        <RemoteImage
+          uri={sellerImage}
+          width={108}
+          height={108}
+          style={styles.sellerLogo}
+          fallback={<Text style={styles.sellerLogoText}>{title.slice(0, 1).toUpperCase()}</Text>}
+        />
         <View style={styles.sellerBody}>
           <View style={styles.sellerTitleRow}>
             <Text numberOfLines={1} style={styles.sellerTitle}>{title}</Text>
-            {verified ? <Icon name="check-decagram" size={18} color={colors.green} /> : null}
-            {seller.factoryVerified ? <Icon name="factory" size={18} color={colors.secondary} /> : null}
           </View>
-          <Text style={styles.sellerMeta}>{[businessType, location].filter(Boolean).join(' • ')}</Text>
+          <Text numberOfLines={1} style={styles.sellerMeta}>
+            {[businessType, seller.responseTime].filter(Boolean).join(' | ') || 'B2B manufacturer and supplier'}
+          </Text>
           {intro ? <Text numberOfLines={2} style={styles.sellerIntro}>{intro}</Text> : null}
         </View>
       </View>
@@ -355,7 +379,40 @@ function SellerCard({ seller, compact }: { seller: SellerSummary; compact?: bool
           {categories.map(category => <Text key={category} numberOfLines={1} style={styles.categoryTag}>{category}</Text>)}
         </View>
       ) : null}
+      <View style={styles.sellerActions}>
+        <Pressable onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })} style={styles.storeButton}>
+          <Icon name="storefront-outline" size={16} color={colors.primaryDark} />
+          <Text style={styles.storeButtonText}>View store</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.navigate('Messages')} style={styles.contactButton}>
+          <Icon name="message-text-outline" size={16} color="#fff" />
+          <Text style={styles.contactButtonText}>Contact</Text>
+        </Pressable>
+      </View>
     </Pressable>
+  );
+}
+
+function getSellerImage(seller: SellerSummary) {
+  const record = seller as SellerSummary & {
+    profileImage?: string;
+    avatar?: string;
+    image?: string;
+    coverImage?: string;
+    bannerImage?: string;
+    images?: string[];
+  };
+
+  return firstImage(
+    seller.logo,
+    seller.companyLogo,
+    record.profileImage,
+    record.avatar,
+    record.image,
+    record.coverImage,
+    record.bannerImage,
+    seller.factoryImages,
+    record.images,
   );
 }
 
@@ -548,8 +605,10 @@ const styles = StyleSheet.create({
   },
   sellerCard: {
     backgroundColor: colors.card,
+    borderColor: '#edf0f5',
     borderRadius: radii.md,
-    marginBottom: spacing.md,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
     padding: spacing.md,
     ...shadow,
   },
@@ -558,12 +617,63 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.lg,
     shadowOpacity: 0,
   },
+  sellerTopLine: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+  },
+  sellerBadges: {
+    flexDirection: 'row',
+    flexShrink: 1,
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  verifiedBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.green,
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  verifiedBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  factoryBadge: {
+    alignItems: 'center',
+    backgroundColor: '#e9fbfb',
+    borderRadius: radii.pill,
+    flexDirection: 'row',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  factoryBadgeText: {
+    color: colors.secondary,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  sellerCountry: {
+    color: colors.muted,
+    flexShrink: 1,
+    fontSize: 11,
+    fontWeight: '800',
+    marginLeft: spacing.sm,
+    textAlign: 'right',
+  },
   sellerLogo: {
     alignItems: 'center',
     backgroundColor: '#fff2eb',
-    borderRadius: radii.md,
+    borderColor: '#ffe0d0',
+    borderRadius: radii.sm,
+    borderWidth: 1,
     height: 54,
     justifyContent: 'center',
+    overflow: 'hidden',
     width: 54,
   },
   sellerLogoText: {
@@ -587,7 +697,7 @@ const styles = StyleSheet.create({
   sellerTitle: {
     color: colors.ink,
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
   },
   sellerMeta: {
@@ -606,7 +716,7 @@ const styles = StyleSheet.create({
   factoryStrip: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
   },
   factoryImage: {
     backgroundColor: colors.cardMuted,
@@ -641,14 +751,54 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   categoryTag: {
-    backgroundColor: colors.cardMuted,
+    backgroundColor: '#f7f8fb',
+    borderColor: '#eceff4',
     borderRadius: radii.pill,
+    borderWidth: 1,
     color: colors.ink,
     fontSize: 11,
     fontWeight: '800',
     maxWidth: 150,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+  },
+  sellerActions: {
+    borderTopColor: colors.faint,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
+  storeButton: {
+    alignItems: 'center',
+    backgroundColor: '#fff8f3',
+    borderRadius: radii.pill,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 40,
+  },
+  storeButtonText: {
+    color: colors.primaryDark,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  contactButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    justifyContent: 'center',
+    minHeight: 40,
+  },
+  contactButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
   },
   countryCard: {
     backgroundColor: colors.card,
