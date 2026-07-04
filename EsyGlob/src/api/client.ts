@@ -23,7 +23,7 @@ type RequestOptions = {
   query?: Record<string, string | number | boolean | undefined | null>;
 };
 
-function buildUrl(path: string, query?: RequestOptions['query']) {
+export function buildApiUrl(path: string, query?: RequestOptions['query']) {
   const url = new URL(path.startsWith('http') ? path : `${config.apiBaseUrl}${path}`);
 
   Object.entries(query ?? {}).forEach(([key, value]) => {
@@ -75,27 +75,14 @@ async function parseResponse(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const sessionCookie = appStorage.getString(SESSION_KEY);
-  const accessToken = appStorage.getString(ACCESS_TOKEN_KEY);
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    ...options.headers,
-  };
+  const headers = getApiHeaders(options.headers);
 
   if (!isFormData && options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
 
-  if (sessionCookie) {
-    headers.Cookie = sessionCookie;
-  }
-
-  if (accessToken && !headers.Authorization) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
-  const response = await fetch(buildUrl(path, options.query), {
+  const response = await fetch(buildApiUrl(path, options.query), {
     method: options.method ?? 'GET',
     headers,
     credentials: 'include',
@@ -120,6 +107,25 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   return payload as T;
+}
+
+export function getApiHeaders(extra?: Record<string, string>) {
+  const sessionCookie = appStorage.getString(SESSION_KEY);
+  const accessToken = appStorage.getString(ACCESS_TOKEN_KEY);
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...extra,
+  };
+
+  if (sessionCookie) {
+    headers.Cookie = sessionCookie;
+  }
+
+  if (accessToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  return headers;
 }
 
 export function clearSessionCookie() {

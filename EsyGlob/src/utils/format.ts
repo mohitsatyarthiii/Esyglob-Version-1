@@ -40,6 +40,14 @@ export function formatProductPrice(product: Product) {
   return String(price);
 }
 
+export function formatCurrency(value: number, currency = 'INR') {
+  if (!Number.isFinite(value)) {
+    return `${currency} 0`;
+  }
+
+  return `${currency} ${value.toLocaleString()}`;
+}
+
 export function formatMoq(product: Product) {
   const moq = product.moq ?? product.minimumOrderQuantity;
 

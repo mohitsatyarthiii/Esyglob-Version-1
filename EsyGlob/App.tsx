@@ -6,11 +6,17 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './src/auth/AuthContext';
 import AppTabs from './src/navigation/AppTabs';
+import AIChatScreen from './src/screens/AIChatScreen';
 import ChatDetailsScreen from './src/screens/ChatDetailsScreen';
+import MarketInsightsScreen from './src/screens/MarketInsightsScreen';
+import AddressesScreen from './src/screens/AddressesScreen';
+import NotificationCenterScreen from './src/screens/NotificationCenterScreen';
 import ProductDetailsScreen from './src/screens/ProductDetailsScreen';
+import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
 import QuotationDetailsScreen from './src/screens/QuotationDetailsScreen';
 import RFQScreen from './src/screens/RFQScreen';
 import RFQDetailsScreen from './src/screens/RFQDetailsScreen';
+import SecurityScreen from './src/screens/SecurityScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import SellerDetailsScreen from './src/screens/SellerDetailsScreen';
 import OrderCheckoutScreen from './src/screens/OrderCheckoutScreen';
@@ -24,10 +30,18 @@ import ServiceBookingScreen from './src/screens/ServiceBookingScreen';
 import ServiceDetailsScreen from './src/screens/ServiceDetailsScreen';
 import BookedServiceDetailsScreen from './src/screens/BookedServiceDetailsScreen';
 import ShippingLogisticsScreen from './src/screens/ShippingLogisticsScreen';
+import WalletScreen from './src/screens/WalletScreen';
 import { ServiceRequest } from './src/api/services';
 
 export type RootStackParamList = {
   MainTabs: undefined;
+  AIChat: undefined;
+  MarketInsights: undefined;
+  Addresses: undefined;
+  Notifications: undefined;
+  ProfileSettings: undefined;
+  Security: undefined;
+  Wallet: undefined;
   ProductDetails: { productId: string };
   ProductListing: { category?: string; categoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
   SellerDetails: { sellerId: string; sellerName?: string };
@@ -74,6 +88,13 @@ function App() {
           <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen name="MainTabs" component={AppTabs} />
+              <Stack.Screen name="AIChat" component={AIChatScreen} />
+              <Stack.Screen name="MarketInsights" component={MarketInsightsScreen} />
+              <Stack.Screen name="Addresses" component={AddressesScreen} />
+              <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+              <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
+              <Stack.Screen name="Security" component={SecurityScreen} />
+              <Stack.Screen name="Wallet" component={WalletScreen} />
               <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
               <Stack.Screen name="ProductListing" component={SearchScreen} />
               <Stack.Screen name="SellerDetails" component={SellerDetailsScreen} />

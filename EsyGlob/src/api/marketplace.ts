@@ -71,9 +71,9 @@ export async function fetchFactoryProfile(): Promise<{ seller?: SellerSummary; f
   return unwrapData(payload);
 }
 
-export async function saveFactoryProfile(input: Record<string, unknown>) {
+export async function saveFactoryProfile(input: Record<string, unknown>, draft = false) {
   const payload = await apiRequest('/api/seller/factory', {
-    method: 'POST',
+    method: draft ? 'PATCH' : 'PUT',
     body: input,
   });
   return unwrapData(payload);
@@ -287,6 +287,22 @@ export async function enableChatOrder(chatId: string, productId: string) {
   }
 
   return data;
+}
+
+export async function patchChatAction(chatId: string, input: { action: string; value?: boolean; label?: string; productId?: string }) {
+  const payload = await apiRequest(`/api/chats/${chatId}`, {
+    method: 'PATCH',
+    body: input,
+  });
+  return unwrapData<{ chat?: Chat; message?: MessageItem }>(payload);
+}
+
+export async function createGroupChat(input: { groupName: string; memberIds: string[]; role?: string | null }) {
+  const payload = await apiRequest('/api/chats/groups', {
+    method: 'POST',
+    body: input,
+  });
+  return unwrapData<{ chat?: Chat; created?: boolean }>(payload);
 }
 
 export async function createQuotation(input: Record<string, unknown>): Promise<Quotation> {

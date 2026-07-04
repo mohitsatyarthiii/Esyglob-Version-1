@@ -1,5 +1,5 @@
-import React from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -16,11 +16,21 @@ import AuthScreen from './AuthScreen';
 function MessagesScreen() {
   const navigation = useNavigation<any>();
   const { activeRole, status, user } = useAuth();
+  const [query, setQuery] = useState('');
+  const [unreadOnly, setUnreadOnly] = useState(false);
   const chats = useQuery({
     queryKey: ['chats', activeRole],
     queryFn: () => fetchChats(activeRole),
     enabled: status === 'authenticated',
   });
+
+  const chatItems = useMemo(() => (chats.data ?? []).filter(item => {
+    const participant = resolveChatParticipant(item, user?.id ?? user?._id);
+    const product = typeof item.productId === 'object' ? item.productId as Product : undefined;
+    const unread = activeRole === 'seller' ? item.sellerUnreadCount : item.buyerUnreadCount;
+    const haystack = [participant.name, product?.name, product?.title, item.chatType, item.lastMessage].filter(Boolean).join(' ').toLowerCase();
+    return (!unreadOnly || Boolean(unread)) && (!query.trim() || haystack.includes(query.trim().toLowerCase()));
+  }), [activeRole, chats.data, query, unreadOnly, user]);
 
   if (status !== 'authenticated') {
     return <AuthScreen onClose={() => navigation.navigate('Home')} />;
@@ -33,7 +43,6 @@ function MessagesScreen() {
   if (chats.isError) {
     return <ErrorState message={(chats.error as Error).message} onRetry={() => chats.refetch()} />;
   }
-
   const unreadTotal = (chats.data ?? []).reduce((total, item) => {
     const unread = activeRole === 'seller' ? item.sellerUnreadCount : item.buyerUnreadCount;
     return total + (unread ?? 0);
@@ -43,8 +52,9 @@ function MessagesScreen() {
     <FlatList
       style={styles.screen}
       contentContainerStyle={styles.list}
-      data={chats.data ?? []}
+      data={chatItems}
       keyExtractor={item => getId(item)}
+      refreshControl={<RefreshControl refreshing={chats.isRefetching} onRefresh={() => chats.refetch()} />}
       ListHeaderComponent={
         <View style={styles.header}>
           <View style={styles.titleRow}>
@@ -61,16 +71,17 @@ function MessagesScreen() {
           <View style={styles.searchBox}>
             <Icon name="magnify" size={22} color={colors.muted} />
             <TextInput
-              editable={false}
+              value={query}
+              onChangeText={setQuery}
               placeholder="Search messages or suppliers"
               placeholderTextColor={colors.muted}
               style={styles.searchInput}
             />
           </View>
           <View style={styles.filterRow}>
-            <View style={styles.filterChip}>
+            <Pressable onPress={() => setUnreadOnly(value => !value)} style={[styles.filterChip, unreadOnly && styles.filterChipActive]}>
               <Text style={styles.filterText}>Unread</Text>
-            </View>
+            </Pressable>
             <View style={styles.filterChip}>
               <Text style={styles.filterText}>My label</Text>
               <Icon name="chevron-down" size={18} color={colors.ink} />
@@ -241,6 +252,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
+  },
+  filterChipActive: {
+    backgroundColor: '#fff8f3',
+    borderColor: colors.primary,
   },
   filterText: {
     color: colors.ink,

@@ -81,7 +81,7 @@ function SellerFactoryScreen() {
       const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: Math.max(1, 8 - form.images.length) });
       const files = (response.assets ?? []).filter(asset => asset.uri).map(asset => ({ uri: asset.uri as string, name: asset.fileName ?? `factory-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' }));
       if (!files.length) return;
-      const uploaded = await uploadFiles('factory', files);
+      const uploaded = await uploadFiles('factory-profiles', files);
       setForm({ ...form, images: [...form.images, ...((uploaded.uploads ?? []).map(item => item.url).filter(Boolean) as string[])] });
     } catch (error) {
       Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload factory images.');

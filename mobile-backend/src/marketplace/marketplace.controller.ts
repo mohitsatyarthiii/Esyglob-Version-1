@@ -115,11 +115,32 @@ export class MarketplaceController {
     return success(await this.marketplace.uploadSellerDocument(request.user.sub, documentType, file));
   }
 
+  @Get('seller/verification/documents/:documentId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller', 'admin')
+  async sellerDocument(@Req() request: AuthenticatedRequest, @Param('documentId') documentId: string) {
+    return success(await this.marketplace.sellerDocument(request.user.sub, documentId));
+  }
+
   @Get('seller/factory')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('seller')
   async factoryProfile(@Req() request: AuthenticatedRequest) {
     return success(await this.marketplace.factoryProfile(request.user.sub));
+  }
+
+  @Patch('seller/factory')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller')
+  async patchFactoryProfile(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.saveFactoryProfile(request.user.sub, { ...body, verificationStatus: body.verificationStatus ?? 'draft' }));
+  }
+
+  @Put('seller/factory')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller')
+  async submitFactoryProfile(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.saveFactoryProfile(request.user.sub, { ...body, verificationStatus: 'pending_review' }));
   }
 
   @Post('seller/factory')
@@ -262,7 +283,7 @@ export class MarketplaceController {
 
   @Post('uploads')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles('seller')
+  @Roles('buyer', 'seller')
   @UseInterceptors(AnyFilesInterceptor())
   async uploadFiles(@Req() request: AuthenticatedRequest, @Body('folder') folder: string, @UploadedFiles() files: any[]) {
     return success(await this.marketplace.uploadFiles(request.user.sub, folder, files));
@@ -371,5 +392,124 @@ export class MarketplaceController {
     @Query() query: Record<string, string | number | boolean | undefined>,
   ) {
     return success(await this.marketplace.listNotifications(request.user.sub, query));
+  }
+
+  @Patch('notifications')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async markNotifications(@Req() request: AuthenticatedRequest) {
+    return success(await this.marketplace.markNotifications(request.user.sub));
+  }
+
+  @Delete('notifications')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async deleteNotifications(@Req() request: AuthenticatedRequest, @Query('scope') scope?: string) {
+    return success(await this.marketplace.deleteNotifications(request.user.sub, scope));
+  }
+
+  @Patch('notifications/:notificationId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async markNotification(@Req() request: AuthenticatedRequest, @Param('notificationId') notificationId: string) {
+    return success(await this.marketplace.markNotifications(request.user.sub, notificationId));
+  }
+
+  @Delete('notifications/:notificationId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async deleteNotification(@Req() request: AuthenticatedRequest, @Param('notificationId') notificationId: string) {
+    return success(await this.marketplace.deleteNotifications(request.user.sub, undefined, notificationId));
+  }
+
+  @Get('settings/profile')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async profileSettings(@Req() request: AuthenticatedRequest) {
+    return success(await this.marketplace.profileSettings(request.user.sub));
+  }
+
+  @Patch('settings/profile')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async updateProfileSettings(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.updateProfileSettings(request.user.sub, body));
+  }
+
+  @Patch('settings/security/password')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async changePassword(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.changePassword(request.user.sub, body));
+  }
+
+  @Get('wallet')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async wallet(@Req() request: AuthenticatedRequest, @Query('role') role?: string) {
+    return success(await this.marketplace.wallet(request.user.sub, role));
+  }
+
+  @Get('wallet/payment-methods')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async paymentMethods(@Req() request: AuthenticatedRequest, @Query('role') role?: string) {
+    return success(await this.marketplace.paymentMethods(request.user.sub, role));
+  }
+
+  @Post('wallet/payment-methods')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async addPaymentMethod(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.addPaymentMethod(request.user.sub, body));
+  }
+
+  @Get('wallet/withdrawals')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller')
+  async withdrawals(@Req() request: AuthenticatedRequest) {
+    return success(await this.marketplace.withdrawals(request.user.sub));
+  }
+
+  @Post('wallet/withdrawals')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller')
+  async requestWithdrawal(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.requestWithdrawal(request.user.sub, body));
+  }
+
+  @Get('addresses')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async addresses(@Req() request: AuthenticatedRequest) {
+    return success(await this.marketplace.addresses(request.user.sub));
+  }
+
+  @Post('addresses')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async createAddress(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.createAddress(request.user.sub, body));
+  }
+
+  @Put('addresses/:addressId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async updateAddress(@Req() request: AuthenticatedRequest, @Param('addressId') addressId: string, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.updateAddress(request.user.sub, addressId, body));
+  }
+
+  @Patch('addresses/:addressId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async setDefaultAddress(@Req() request: AuthenticatedRequest, @Param('addressId') addressId: string) {
+    return success(await this.marketplace.setDefaultAddress(request.user.sub, addressId));
+  }
+
+  @Delete('addresses/:addressId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async deleteAddress(@Req() request: AuthenticatedRequest, @Param('addressId') addressId: string) {
+    return success(await this.marketplace.deleteAddress(request.user.sub, addressId));
   }
 }

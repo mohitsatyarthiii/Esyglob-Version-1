@@ -15,6 +15,8 @@ type AuthMode = 'login' | 'signup';
 
 const buyerItems = [
   ['account-outline', 'Profile'],
+  ['robot-outline', 'AI Assistant'],
+  ['chart-line', 'Market Insights'],
   ['briefcase-outline', 'Services'],
   ['truck-fast-outline', 'Shipping & Logistics'],
   ['clipboard-list-outline', 'Orders'],
@@ -22,12 +24,16 @@ const buyerItems = [
   ['bullseye-arrow', 'RFQs'],
   ['wallet-outline', 'Wallet'],
   ['bell-outline', 'Notifications'],
+  ['map-marker-outline', 'My Addresses'],
   ['cog-outline', 'Settings'],
+  ['shield-lock-outline', 'Security & Privacy'],
   ['lifebuoy', 'Support'],
 ];
 
 const sellerItems = [
   ['view-dashboard-outline', 'Seller Dashboard'],
+  ['robot-outline', 'AI Assistant'],
+  ['chart-line', 'Market Insights'],
   ['briefcase-outline', 'Services'],
   ['truck-fast-outline', 'Shipping & Logistics'],
   ['package-variant-closed', 'Products'],
@@ -41,6 +47,7 @@ const sellerItems = [
   ['message-text-outline', 'Messages'],
   ['bell-outline', 'Notifications'],
   ['cog-outline', 'Settings'],
+  ['shield-lock-outline', 'Security & Privacy'],
 ];
 
 function AccountScreen() {
@@ -137,6 +144,26 @@ function AccountScreen() {
       return;
     }
 
+    if (label === 'Profile' || label === 'Settings') {
+      navigation.navigate('ProfileSettings');
+      return;
+    }
+
+    if (label === 'Security & Privacy') {
+      navigation.navigate('Security');
+      return;
+    }
+
+    if (label === 'Wallet') {
+      navigation.navigate('Wallet');
+      return;
+    }
+
+    if (label === 'My Addresses') {
+      navigation.navigate('Addresses');
+      return;
+    }
+
     if (label === 'Orders') {
       navigation.navigate('Orders');
       return;
@@ -144,6 +171,16 @@ function AccountScreen() {
 
     if (label === 'Services') {
       navigation.navigate('Services');
+      return;
+    }
+
+    if (label === 'AI Assistant') {
+      navigation.navigate('AIChat');
+      return;
+    }
+
+    if (label === 'Market Insights' || label === 'Analytics') {
+      navigation.navigate('MarketInsights');
       return;
     }
 
@@ -178,7 +215,7 @@ function AccountScreen() {
     }
 
     if (label === 'Notifications') {
-      navigation.navigate('Messages');
+      navigation.navigate('Notifications');
       return;
     }
 

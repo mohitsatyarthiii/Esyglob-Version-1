@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthModule } from './auth/auth.module';
+import { AIModule } from './ai/ai.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 
 @Module({
@@ -19,6 +20,7 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
         family: 4,
       }),
     }),
+    AIModule,
     AuthModule,
     MarketplaceModule,
   ],

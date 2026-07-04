@@ -8,6 +8,7 @@ import { extname, join } from 'path';
 import { Seller } from '../sellers/seller.schema';
 import { SellerVerification } from '../sellers/seller-verification.schema';
 import { User } from '../users/user.schema';
+import { PasswordService } from '../auth/password.service';
 import { Category, Chat, Message, Notification, Order, Payment, Product, Quotation, Rfq, Subcategory } from './catalog.schemas';
 
 const PRODUCT_VISIBLE_STATUSES = ['published', 'active'];
@@ -33,6 +34,7 @@ export class MarketplaceService {
     @InjectModel(Seller.name) private readonly sellers: Model<Seller>,
     @InjectModel(SellerVerification.name) private readonly sellerVerifications: Model<SellerVerification>,
     @InjectModel(User.name) private readonly users: Model<User>,
+    private readonly passwords: PasswordService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -354,7 +356,9 @@ export class MarketplaceService {
     const verification = await this.ensureSellerVerification(seller);
     const saved = await this.saveUploadFile(file, 'verification');
     const document = {
+      _id: new Types.ObjectId(),
       ...saved,
+      type: documentType,
       documentType,
       status: 'pending',
       uploadedAt: new Date(),
@@ -370,6 +374,29 @@ export class MarketplaceService {
     await this.sellers.updateOne({ _id: seller._id }, { $set: { verificationStatus: 'document_submitted' } });
 
     return { success: true, document };
+  }
+
+  async sellerDocument(userId: string, documentId: string) {
+    const documentObjectId = this.requireObjectId(documentId, 'Document id');
+    const user = await this.users.findById(userId).lean();
+    const seller = user?.roles?.includes('seller') ? await this.ensureSellerProfile(userId) : null;
+    const filter: Record<string, unknown> = { 'documents._id': documentObjectId };
+
+    if (!user?.roles?.includes('admin')) {
+      if (!seller) {
+        throw new ForbiddenException('Seller access required.');
+      }
+      filter.sellerId = seller._id;
+    }
+
+    const verification = await this.sellerVerifications.findOne(filter).lean();
+    const document = (verification?.documents ?? []).find((item: any) => item._id?.toString() === documentObjectId.toString());
+
+    if (!document) {
+      throw new NotFoundException('Verification document not found.');
+    }
+
+    return { document };
   }
 
   async factoryProfile(userId: string) {
@@ -410,8 +437,8 @@ export class MarketplaceService {
   }
 
   async uploadFiles(userId: string, folder: string, files: any[]) {
-    await this.ensureSellerProfile(userId);
-    const safeFolder = ['products', 'verification', 'factory', 'chat'].includes(folder) ? folder : 'general';
+    void userId;
+    const safeFolder = ['products', 'verification', 'factory', 'profile-photos', 'factory-profiles', 'chat'].includes(folder) ? folder : 'general';
     if (!files?.length) {
       throw new BadRequestException('At least one file is required.');
     }
@@ -1468,6 +1495,357 @@ export class MarketplaceService {
     return { payment };
   }
 
+  async profileSettings(userId: string) {
+    const user = await this.users.findById(userId).lean();
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const seller = user.roles?.includes('seller') ? await this.sellers.findOne({ userId: user._id }).lean() as Record<string, any> | null : null;
+    const metadata = (user.metadata ?? {}) as Record<string, unknown>;
+    const sellerAddress = (seller?.address ?? {}) as Record<string, unknown>;
+
+    return {
+      profile: {
+        fullName: user.fullName ?? [user.firstName, user.lastName].filter(Boolean).join(' '),
+        companyName: seller?.companyName ?? seller?.businessName ?? metadata.companyName,
+        email: user.email,
+        phone: user.phone ?? seller?.businessPhone,
+        avatarUrl: user.avatarUrl ?? user.profileImage ?? user.avatar ?? user.image ?? seller?.companyLogo ?? seller?.logoUrl,
+        country: sellerAddress.country ?? metadata.country,
+        city: sellerAddress.city ?? metadata.city,
+        address: sellerAddress.street ?? metadata.address,
+        businessType: seller?.companyType ?? metadata.businessType,
+        companyDescription: seller?.companyDescription ?? metadata.companyDescription,
+        roles: user.roles,
+        primaryRole: user.primaryRole,
+      },
+    };
+  }
+
+  async updateProfileSettings(userId: string, body: Record<string, unknown>) {
+    const user = await this.users.findById(userId);
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const fullName = this.clean(body.fullName);
+    const email = this.clean(body.email)?.toLowerCase();
+    const phone = this.clean(body.phone);
+    const avatarUrl = this.clean(body.avatarUrl);
+    const companyName = this.clean(body.companyName);
+    const country = this.clean(body.country);
+    const city = this.clean(body.city);
+    const address = this.clean(body.address);
+    const businessType = this.clean(body.businessType);
+    const companyDescription = this.clean(body.companyDescription);
+
+    if (!fullName || fullName.length < 2 || fullName.length > 120) {
+      throw new BadRequestException('Name must be between 2 and 120 characters.');
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 180) {
+      throw new BadRequestException('Email is invalid.');
+    }
+
+    const existing = await this.users.findOne({ email, _id: { $ne: user._id } }).lean();
+    if (existing) {
+      throw new ConflictException('Email is already used by another account.');
+    }
+
+    const [firstName, ...rest] = fullName.split(/\s+/);
+    user.email = email;
+    user.fullName = fullName;
+    user.firstName = firstName;
+    user.lastName = rest.join(' ') || undefined;
+    user.phone = phone;
+    if (avatarUrl) {
+      user.avatarUrl = avatarUrl;
+      user.profileImage = avatarUrl;
+      user.avatar = avatarUrl;
+      user.image = avatarUrl;
+    }
+    user.metadata = {
+      ...(user.metadata ?? {}),
+      companyName,
+      country,
+      city,
+      address,
+      businessType,
+      companyDescription,
+    };
+    await user.save();
+
+    if (user.roles.includes('seller')) {
+      await this.sellers.updateOne(
+        { userId: user._id },
+        {
+          $set: {
+            companyName,
+            businessName: companyName,
+            businessEmail: email,
+            businessPhone: phone,
+            companyType: businessType,
+            companyDescription,
+            ...(avatarUrl ? { companyLogo: avatarUrl, logoUrl: avatarUrl, logo: avatarUrl } : {}),
+            address: { street: address, city, country },
+          },
+          $setOnInsert: { userId: user._id, verificationStatus: 'pending', isVerified: false },
+        },
+        { upsert: true },
+      );
+    }
+
+    return {
+      success: true,
+      user: {
+        _id: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        avatarUrl: user.avatarUrl,
+      },
+    };
+  }
+
+  async changePassword(userId: string, body: Record<string, unknown>) {
+    const currentPassword = String(body.currentPassword ?? '');
+    const newPassword = String(body.newPassword ?? '');
+
+    if (!currentPassword) {
+      throw new BadRequestException('Current password is required.');
+    }
+
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      throw new BadRequestException('Password must be at least 8 characters.');
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('New password must be different from current password.');
+    }
+
+    const user = await this.users.findById(userId).select('+passwordHash +password +hashedPassword');
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    const stored = user.passwordHash ?? user.password ?? user.hashedPassword;
+    if (!this.passwords.verify(currentPassword, stored)) {
+      throw new ForbiddenException('Current password is incorrect.');
+    }
+
+    const passwordUpdatedAt = new Date();
+    user.passwordHash = this.passwords.hash(newPassword);
+    user.metadata = { ...(user.metadata ?? {}), passwordUpdatedAt };
+    await user.save();
+
+    return { success: true, message: 'Password updated successfully', passwordUpdatedAt };
+  }
+
+  async wallet(userId: string, roleInput?: QueryValue) {
+    const role = roleInput === 'seller' ? 'seller' : 'buyer';
+    const objectUserId = new Types.ObjectId(userId);
+    const walletResult = await this.connection.collection('wallets').findOneAndUpdate(
+      { userId: objectUserId, role },
+      { $setOnInsert: { userId: objectUserId, role, balance: 0, currency: 'INR', createdAt: new Date() }, $set: { updatedAt: new Date() } },
+      { upsert: true, returnDocument: 'after' },
+    ) as any;
+    const wallet = walletResult?.value ?? walletResult;
+    const [transactions, withdrawals, paymentMethods, payments, orders] = await Promise.all([
+      this.connection.collection('wallettransactions').find({ userId: objectUserId, role }).sort({ createdAt: -1 }).limit(100).toArray(),
+      this.connection.collection('withdrawalrequests').find({ userId: objectUserId }).sort({ createdAt: -1 }).limit(50).toArray(),
+      this.connection.collection('paymentmethods').find({ userId: objectUserId, role, deletedAt: { $exists: false } }).sort({ isDefault: -1, createdAt: -1 }).toArray(),
+      this.payments.find(role === 'seller' ? { sellerUserId: objectUserId } : { buyerId: objectUserId }).sort({ createdAt: -1 }).limit(75).lean(),
+      this.orders.find(role === 'seller' ? { sellerUserId: objectUserId } : { buyerId: objectUserId }).sort({ createdAt: -1 }).limit(75).lean(),
+    ]);
+    const balance = Number(wallet?.balance ?? 0);
+    const orderPaymentTotal = payments.reduce((sum, payment: any) => sum + Number(payment.amount ?? 0), 0);
+    const pendingSettlement = transactions
+      .filter((item: any) => item.status === 'pending')
+      .reduce((sum: number, item: any) => sum + Number(item.amount ?? 0), 0);
+
+    return {
+      wallet,
+      summary: {
+        balance,
+        escrowBalance: 0,
+        orderPaymentTotal,
+        subscriptionPaymentTotal: 0,
+        pendingSettlement,
+        withdrawableAmount: role === 'seller' ? Math.max(balance - pendingSettlement, 0) : 0,
+      },
+      transactions,
+      withdrawals,
+      paymentMethods,
+      payments,
+      orders,
+    };
+  }
+
+  async paymentMethods(userId: string, roleInput?: QueryValue) {
+    const role = roleInput === 'seller' ? 'seller' : 'buyer';
+    const methods = await this.connection
+      .collection('paymentmethods')
+      .find({ userId: new Types.ObjectId(userId), role, deletedAt: { $exists: false } })
+      .sort({ isDefault: -1, createdAt: -1 })
+      .toArray();
+
+    return { paymentMethods: methods };
+  }
+
+  async addPaymentMethod(userId: string, body: Record<string, unknown>) {
+    const role = body.role === 'seller' ? 'seller' : 'buyer';
+    const type = this.clean(body.type) ?? 'bank';
+    const label = this.clean(body.label) ?? this.clean(body.name) ?? 'Payment method';
+
+    if (!['bank', 'upi', 'card'].includes(type)) {
+      throw new BadRequestException('Payment method type is invalid.');
+    }
+
+    if (label.length < 2) {
+      throw new BadRequestException('Payment method label is required.');
+    }
+
+    const now = new Date();
+    const method = {
+      userId: new Types.ObjectId(userId),
+      role,
+      type,
+      label,
+      accountHolder: this.clean(body.accountHolder),
+      accountNumber: this.clean(body.accountNumber),
+      ifsc: this.clean(body.ifsc),
+      bankName: this.clean(body.bankName),
+      upiId: this.clean(body.upiId),
+      isDefault: Boolean(body.isDefault),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await this.connection.collection('paymentmethods').insertOne(method);
+    if (method.isDefault) {
+      await this.connection.collection('paymentmethods').updateMany(
+        { userId: method.userId, role, _id: { $ne: result.insertedId } },
+        { $set: { isDefault: false, updatedAt: now } },
+      );
+    }
+
+    return { success: true, paymentMethod: { ...method, _id: result.insertedId } };
+  }
+
+  async withdrawals(userId: string) {
+    const withdrawals = await this.connection
+      .collection('withdrawalrequests')
+      .find({ userId: new Types.ObjectId(userId) })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+
+    return { withdrawals };
+  }
+
+  async requestWithdrawal(userId: string, body: Record<string, unknown>) {
+    const userObjectId = new Types.ObjectId(userId);
+    const amount = Number(body.amount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Withdrawal amount is required.');
+    }
+
+    const walletData = await this.wallet(userId, 'seller');
+    if (amount > Number(walletData.summary.withdrawableAmount ?? 0)) {
+      throw new BadRequestException('Amount exceeds available balance.');
+    }
+
+    const now = new Date();
+    const withdrawal = {
+      userId: userObjectId,
+      role: 'seller',
+      amount,
+      currency: body.currency ?? 'INR',
+      paymentMethodId: this.optionalObjectId(body.paymentMethodId),
+      status: 'pending',
+      notes: this.clean(body.notes),
+      createdAt: now,
+      updatedAt: now,
+    };
+    const result = await this.connection.collection('withdrawalrequests').insertOne(withdrawal);
+
+    return { success: true, withdrawal: { ...withdrawal, _id: result.insertedId } };
+  }
+
+  async addresses(userId: string) {
+    const addresses = await this.connection
+      .collection('addresses')
+      .find({ userId: new Types.ObjectId(userId), deletedAt: { $exists: false } })
+      .sort({ isDefault: -1, createdAt: -1 })
+      .toArray();
+
+    return { addresses };
+  }
+
+  async createAddress(userId: string, body: Record<string, unknown>) {
+    const address = this.addressPayload(userId, body, true);
+    const result = await this.connection.collection('addresses').insertOne(address);
+    if (address.isDefault) {
+      await this.setDefaultAddress(userId, result.insertedId.toString());
+    }
+
+    return { success: true, address: { ...address, _id: result.insertedId } };
+  }
+
+  async updateAddress(userId: string, addressId: string, body: Record<string, unknown>) {
+    const objectId = this.requireObjectId(addressId, 'Address id');
+    const update = this.addressPayload(userId, body, false);
+    const result = await this.connection.collection('addresses').findOneAndUpdate(
+      { _id: objectId, userId: new Types.ObjectId(userId), deletedAt: { $exists: false } },
+      { $set: update },
+      { returnDocument: 'after' },
+    ) as any;
+    const address = result?.value ?? result;
+
+    if (!address) {
+      throw new NotFoundException('Address not found.');
+    }
+
+    if (update.isDefault) {
+      await this.setDefaultAddress(userId, addressId);
+    }
+
+    return { success: true, address };
+  }
+
+  async setDefaultAddress(userId: string, addressId: string) {
+    const objectId = this.requireObjectId(addressId, 'Address id');
+    const userObjectId = new Types.ObjectId(userId);
+    const existing = await this.connection.collection('addresses').findOne({ _id: objectId, userId: userObjectId, deletedAt: { $exists: false } });
+
+    if (!existing) {
+      throw new NotFoundException('Address not found.');
+    }
+
+    await this.connection.collection('addresses').updateMany({ userId: userObjectId }, { $set: { isDefault: false, updatedAt: new Date() } });
+    await this.connection.collection('addresses').updateOne({ _id: objectId }, { $set: { isDefault: true, updatedAt: new Date() } });
+
+    return { success: true, address: await this.connection.collection('addresses').findOne({ _id: objectId }) };
+  }
+
+  async deleteAddress(userId: string, addressId: string) {
+    const result = await this.connection.collection('addresses').findOneAndUpdate(
+      { _id: this.requireObjectId(addressId, 'Address id'), userId: new Types.ObjectId(userId), deletedAt: { $exists: false } },
+      { $set: { deletedAt: new Date(), isDefault: false } },
+      { returnDocument: 'after' },
+    ) as any;
+    const address = result?.value ?? result;
+
+    if (!address) {
+      throw new NotFoundException('Address not found.');
+    }
+
+    return { success: true };
+  }
+
   async listNotifications(userId: string, query: Record<string, QueryValue>) {
     const unreadOnly = String(query.unreadOnly ?? '').toLowerCase() === 'true';
     const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
@@ -1483,6 +1861,28 @@ export class MarketplaceService {
       .lean();
 
     return { notifications };
+  }
+
+  async markNotifications(userId: string, notificationId?: string) {
+    const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+    if (notificationId) {
+      filter._id = this.requireObjectId(notificationId, 'Notification id');
+    }
+
+    await this.notifications.updateMany(filter, { $set: { isRead: true } });
+    return { success: true };
+  }
+
+  async deleteNotifications(userId: string, scope?: QueryValue, notificationId?: string) {
+    const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+    if (notificationId) {
+      filter._id = this.requireObjectId(notificationId, 'Notification id');
+    } else if (scope !== 'all') {
+      filter.isRead = true;
+    }
+
+    await this.notifications.deleteMany(filter);
+    return { success: true };
   }
 
   async home(query: Record<string, QueryValue>) {
@@ -1850,6 +2250,39 @@ export class MarketplaceService {
     }
   }
 
+  private addressPayload(userId: string, body: Record<string, unknown>, requireCore: boolean) {
+    const fullName = this.clean(body.fullName ?? body.name);
+    const phone = this.clean(body.phone);
+    const line1 = this.clean(body.line1 ?? body.street ?? body.address);
+    const line2 = this.clean(body.line2);
+    const city = this.clean(body.city);
+    const state = this.clean(body.state);
+    const country = this.clean(body.country);
+    const pincode = this.clean(body.pincode ?? body.postalCode ?? body.zip);
+
+    if (requireCore && (!fullName || !phone || !line1 || !city || !state || !country || !pincode)) {
+      throw new BadRequestException('Complete address details are required.');
+    }
+
+    return {
+      userId: new Types.ObjectId(userId),
+      fullName,
+      phone,
+      line1,
+      line2,
+      street: line1,
+      city,
+      state,
+      country,
+      pincode,
+      postalCode: pincode,
+      addressType: this.clean(body.addressType) || 'shipping',
+      isDefault: Boolean(body.isDefault),
+      updatedAt: new Date(),
+      ...(requireCore ? { createdAt: new Date() } : {}),
+    };
+  }
+
   private extensionForMime(mimeType: string) {
     if (mimeType.includes('png')) return '.png';
     if (mimeType.includes('webp')) return '.webp';
@@ -2060,8 +2493,8 @@ export class MarketplaceService {
     }
   }
 
-  private clean(value: QueryValue) {
-    return typeof value === 'string' ? value.trim() : '';
+  private clean(value: unknown) {
+     return typeof value === 'string' ? value.trim() : '';
   }
 
   private regex(value: string) {
