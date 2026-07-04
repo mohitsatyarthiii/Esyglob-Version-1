@@ -46,7 +46,7 @@ const CategoriesScreen = () => {
     staleTime: 5 * 60_000,
   });
 
-  const categories = categoriesData ?? [];
+  const categories = useMemo(() => categoriesData ?? [], [categoriesData]);
 
   const selectedCategory = useMemo(() => {
     if (!categories.length) return null;

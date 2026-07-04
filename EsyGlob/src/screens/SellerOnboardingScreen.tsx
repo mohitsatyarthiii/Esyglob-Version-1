@@ -75,7 +75,7 @@ function SellerOnboardingScreen() {
       }
     }, 1200);
     return () => clearTimeout(timer);
-  }, [form]);
+  }, [form, onboarding.data?.seller, save]);
 
   if (onboarding.isLoading) return <LoadingState label="Loading seller setup" />;
   if (onboarding.isError) return <ErrorState message={(onboarding.error as Error).message} onRetry={() => onboarding.refetch()} />;
@@ -161,7 +161,7 @@ function StatusPanel({ status, completion, reason }: { status: string; completio
   return (
     <View style={styles.statusPanel}>
       <Icon name={status === 'approved' ? 'check-decagram' : 'shield-search'} size={28} color={status === 'approved' ? colors.green : colors.primary} />
-      <View style={{ flex: 1 }}>
+      <View style={styles.statusBody}>
         <Text style={styles.statusTitle}>Verification: {status.replace(/_/g, ' ')}</Text>
         <Text style={styles.statusMeta}>{completion?.completedFieldCount ?? 0}/{completion?.totalFieldCount ?? 9} required fields completed</Text>
         {reason ? <Text style={styles.reason}>{formatValue(reason)}</Text> : null}
@@ -189,6 +189,7 @@ const styles = StyleSheet.create({
   iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
   headerTitle: { color: colors.ink, flex: 1, fontSize: 19, fontWeight: '900', textAlign: 'center' },
   statusPanel: { alignItems: 'center', backgroundColor: '#fff8f3', borderRadius: radii.md, flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg, padding: spacing.lg },
+  statusBody: { flex: 1 },
   statusTitle: { color: colors.ink, fontSize: 16, fontWeight: '900', textTransform: 'capitalize' },
   statusMeta: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: 3 },
   reason: { color: colors.rose, fontSize: 12, fontWeight: '800', marginTop: spacing.xs },

@@ -12,7 +12,6 @@ import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, shadow, spacing } from '../theme';
-import { formatValue } from '../utils/display';
 import { getId } from '../utils/format';
 import { firstImage, normalizeImageUrl } from '../utils/images';
 

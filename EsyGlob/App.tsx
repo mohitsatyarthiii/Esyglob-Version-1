@@ -9,6 +9,7 @@ import AppTabs from './src/navigation/AppTabs';
 import ChatDetailsScreen from './src/screens/ChatDetailsScreen';
 import ProductDetailsScreen from './src/screens/ProductDetailsScreen';
 import QuotationDetailsScreen from './src/screens/QuotationDetailsScreen';
+import RFQScreen from './src/screens/RFQScreen';
 import RFQDetailsScreen from './src/screens/RFQDetailsScreen';
 import SearchScreen from './src/screens/SearchScreen';
 import SellerDetailsScreen from './src/screens/SellerDetailsScreen';
@@ -19,6 +20,11 @@ import SellerFactoryScreen from './src/screens/SellerFactoryScreen';
 import SellerOnboardingScreen from './src/screens/SellerOnboardingScreen';
 import SellerProductFormScreen from './src/screens/SellerProductFormScreen';
 import SellerProductsScreen from './src/screens/SellerProductsScreen';
+import ServiceBookingScreen from './src/screens/ServiceBookingScreen';
+import ServiceDetailsScreen from './src/screens/ServiceDetailsScreen';
+import BookedServiceDetailsScreen from './src/screens/BookedServiceDetailsScreen';
+import ShippingLogisticsScreen from './src/screens/ShippingLogisticsScreen';
+import { ServiceRequest } from './src/api/services';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -26,6 +32,7 @@ export type RootStackParamList = {
   ProductListing: { category?: string; categoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
   SellerDetails: { sellerId: string; sellerName?: string };
   ChatDetails: { chatId: string; title?: string };
+  RFQ: undefined;
   RFQDetails: { rfqId: string };
   QuotationDetails: { quotationId: string };
   OrderCheckout: { mode: 'sample' | 'trade'; productId?: string; chatId?: string; quotationId?: string };
@@ -35,6 +42,10 @@ export type RootStackParamList = {
   SellerFactory: undefined;
   SellerProducts: undefined;
   SellerProductForm: { productId?: string } | undefined;
+  ServiceDetails: { serviceKey: string };
+  ServiceBooking: { serviceKey: string };
+  BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
+  ShippingLogistics: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -67,6 +78,7 @@ function App() {
               <Stack.Screen name="ProductListing" component={SearchScreen} />
               <Stack.Screen name="SellerDetails" component={SellerDetailsScreen} />
               <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} />
+              <Stack.Screen name="RFQ" component={RFQScreen} />
               <Stack.Screen name="RFQDetails" component={RFQDetailsScreen} />
               <Stack.Screen name="QuotationDetails" component={QuotationDetailsScreen} />
               <Stack.Screen name="OrderCheckout" component={OrderCheckoutScreen} />
@@ -76,6 +88,10 @@ function App() {
               <Stack.Screen name="SellerFactory" component={SellerFactoryScreen} />
               <Stack.Screen name="SellerProducts" component={SellerProductsScreen} />
               <Stack.Screen name="SellerProductForm" component={SellerProductFormScreen} />
+              <Stack.Screen name="ServiceDetails" component={ServiceDetailsScreen} />
+              <Stack.Screen name="ServiceBooking" component={ServiceBookingScreen} />
+              <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
+              <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>

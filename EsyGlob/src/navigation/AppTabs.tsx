@@ -7,7 +7,7 @@ import AccountScreen from '../screens/AccountScreen';
 import CategoriesScreen from '../screens/CategoriesScreen';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
-import RFQScreen from '../screens/RFQScreen';
+import ServicesScreen from '../screens/ServicesScreen';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { colors, radii, shadow, spacing } from '../theme';
@@ -16,8 +16,8 @@ import { firstImage } from '../utils/images';
 export type RootTabParamList = {
   Home: undefined;
   Categories: undefined;
+  Services: undefined;
   Messages: undefined;
-  RFQ: undefined;
   Account: undefined;
 };
 
@@ -26,8 +26,8 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 const tabMeta: Record<keyof RootTabParamList, { icon: string; activeIcon: string; label: string }> = {
   Home: { icon: 'home-outline', activeIcon: 'home', label: 'Home' },
   Categories: { icon: 'view-grid-outline', activeIcon: 'view-grid', label: 'Categories' },
+  Services: { icon: 'briefcase-outline', activeIcon: 'briefcase', label: 'Services' },
   Messages: { icon: 'message-text-outline', activeIcon: 'message-text', label: 'Messenger' },
-  RFQ: { icon: 'cart-outline', activeIcon: 'cart', label: 'RFQ' },
   Account: { icon: 'account-outline', activeIcon: 'account', label: 'My EsyGlob' },
 };
 
@@ -105,8 +105,8 @@ function AppTabs() {
       tabBar={renderTabBar}>
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Categories" component={CategoriesScreen} />
+      <Tab.Screen name="Services" component={ServicesScreen} />
       <Tab.Screen name="Messages" component={MessagesScreen} />
-      <Tab.Screen name="RFQ" component={RFQScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
   );

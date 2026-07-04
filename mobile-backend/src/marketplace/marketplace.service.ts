@@ -346,6 +346,10 @@ export class MarketplaceService {
   }
 
   async uploadSellerDocument(userId: string, documentType: string, file: any) {
+    if (!documentType) {
+      throw new BadRequestException('Document type is required.');
+    }
+
     const seller = await this.ensureSellerProfile(userId);
     const verification = await this.ensureSellerVerification(seller);
     const saved = await this.saveUploadFile(file, 'verification');
@@ -408,6 +412,9 @@ export class MarketplaceService {
   async uploadFiles(userId: string, folder: string, files: any[]) {
     await this.ensureSellerProfile(userId);
     const safeFolder = ['products', 'verification', 'factory', 'chat'].includes(folder) ? folder : 'general';
+    if (!files?.length) {
+      throw new BadRequestException('At least one file is required.');
+    }
     const uploads = await Promise.all((files ?? []).map(file => this.saveUploadFile(file, safeFolder)));
 
     return { uploads };
@@ -1649,6 +1656,9 @@ export class MarketplaceService {
   private async saveUploadFile(file: any, folder: string) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Upload file is required.');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('Upload file must be 5MB or smaller.');
     }
 
     const targetDir = join(UPLOAD_ROOT, folder);

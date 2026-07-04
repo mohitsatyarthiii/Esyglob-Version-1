@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -77,11 +77,15 @@ function SellerFactoryScreen() {
   if (factory.isError) return <ErrorState message={(factory.error as Error).message} onRetry={() => factory.refetch()} />;
 
   const addImages = async () => {
-    const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: Math.max(1, 8 - form.images.length) });
-    const files = (response.assets ?? []).filter(asset => asset.uri).map(asset => ({ uri: asset.uri as string, name: asset.fileName ?? `factory-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' }));
-    if (!files.length) return;
-    const uploaded = await uploadFiles('factory', files);
-    setForm({ ...form, images: [...form.images, ...((uploaded.uploads ?? []).map(item => item.url).filter(Boolean) as string[])] });
+    try {
+      const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: Math.max(1, 8 - form.images.length) });
+      const files = (response.assets ?? []).filter(asset => asset.uri).map(asset => ({ uri: asset.uri as string, name: asset.fileName ?? `factory-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' }));
+      if (!files.length) return;
+      const uploaded = await uploadFiles('factory', files);
+      setForm({ ...form, images: [...form.images, ...((uploaded.uploads ?? []).map(item => item.url).filter(Boolean) as string[])] });
+    } catch (error) {
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload factory images.');
+    }
   };
 
   const toggleCapability = (capability: string) => {

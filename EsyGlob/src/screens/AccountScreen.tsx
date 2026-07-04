@@ -15,6 +15,8 @@ type AuthMode = 'login' | 'signup';
 
 const buyerItems = [
   ['account-outline', 'Profile'],
+  ['briefcase-outline', 'Services'],
+  ['truck-fast-outline', 'Shipping & Logistics'],
   ['clipboard-list-outline', 'Orders'],
   ['heart-outline', 'Wishlist'],
   ['bullseye-arrow', 'RFQs'],
@@ -26,6 +28,8 @@ const buyerItems = [
 
 const sellerItems = [
   ['view-dashboard-outline', 'Seller Dashboard'],
+  ['briefcase-outline', 'Services'],
+  ['truck-fast-outline', 'Shipping & Logistics'],
   ['package-variant-closed', 'Products'],
   ['clipboard-list-outline', 'Orders'],
   ['bullseye-arrow', 'RFQs'],
@@ -135,6 +139,16 @@ function AccountScreen() {
 
     if (label === 'Orders') {
       navigation.navigate('Orders');
+      return;
+    }
+
+    if (label === 'Services') {
+      navigation.navigate('Services');
+      return;
+    }
+
+    if (label === 'Shipping & Logistics') {
+      navigation.navigate('ShippingLogistics');
       return;
     }
 
