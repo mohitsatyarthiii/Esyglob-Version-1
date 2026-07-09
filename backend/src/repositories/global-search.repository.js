@@ -33,23 +33,21 @@ class GlobalSearchRepository {
     return [safe, ...terms].filter(Boolean).join('|');
   }
 
+  static textQuery(query) {
+    const terms = this.termsFromQuery(query);
+    return terms.length ? { $search: terms.join(' ') } : null;
+  }
+
   /**
    * Search products using aggregation
    */
-  static async searchProducts(regex, limit = 16) {
+  static async searchProducts(regex, limit = 16, textQuery = null) {
     return Product.aggregate([
       {
         $match: {
           status: { $in: ['active', 'published'] },
-          $or: [
-            { name: { $regex: regex, $options: 'i' } },
-            { category: { $regex: regex, $options: 'i' } },
-            { subcategory: { $regex: regex, $options: 'i' } },
-            { brand: { $regex: regex, $options: 'i' } },
-            { countryOfOrigin: { $regex: regex, $options: 'i' } },
-            { description: { $regex: regex, $options: 'i' } },
-            { tags: { $regex: regex, $options: 'i' } },
-          ],
+          isVerifiedSeller: true,
+          ...(textQuery ? { $text: textQuery } : { name: { $regex: regex, $options: 'i' } }),
         },
       },
       { $sort: { averageRating: -1, totalOrders: -1, createdAt: -1 } },
@@ -98,20 +96,11 @@ class GlobalSearchRepository {
   /**
    * Search suppliers
    */
-  static async searchSuppliers(regex, limit = 16) {
+  static async searchSuppliers(regex, limit = 16, textQuery = null) {
     return Seller.find({
       isActive: true,
       isSuspended: { $ne: true },
-      $or: [
-        { companyName: { $regex: regex, $options: 'i' } },
-        { companyDescription: { $regex: regex, $options: 'i' } },
-        { companyType: { $regex: regex, $options: 'i' } },
-        { productCategories: { $regex: regex, $options: 'i' } },
-        { exportMarkets: { $regex: regex, $options: 'i' } },
-        { 'address.country': { $regex: regex, $options: 'i' } },
-        { 'address.state': { $regex: regex, $options: 'i' } },
-        { 'address.city': { $regex: regex, $options: 'i' } },
-      ],
+      ...(textQuery ? { $text: textQuery } : { companyName: { $regex: regex, $options: 'i' } }),
     })
       .select('companyName companyType companyDescription address isVerified isTrustedSeller trustScore rating productCategories exportMarkets logo logoUrl companyLogo')
       .sort({ isTrustedSeller: -1, isVerified: -1, trustScore: -1, rating: -1 })
@@ -122,15 +111,10 @@ class GlobalSearchRepository {
   /**
    * Search categories
    */
-  static async searchCategories(regex, limit = 8) {
+  static async searchCategories(regex, limit = 8, textQuery = null) {
     return Category.find({
       isActive: true,
-      $or: [
-        { name: { $regex: regex, $options: 'i' } },
-        { slug: { $regex: regex, $options: 'i' } },
-        { description: { $regex: regex, $options: 'i' } },
-        { 'metadata.keywords': { $regex: regex, $options: 'i' } },
-      ],
+      ...(textQuery ? { $text: textQuery } : { name: { $regex: regex, $options: 'i' } }),
     })
       .select('name slug description image metadata')
       .sort({ 'metadata.isFeatured': -1, 'metadata.sortOrder': 1, name: 1 })

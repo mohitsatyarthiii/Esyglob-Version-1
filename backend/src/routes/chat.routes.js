@@ -12,6 +12,7 @@ router.post('/', authenticate, requireAuth, chatController.createChat);
 
 // POST /api/chat/group - Create group chat
 router.post('/group', authenticate, requireAuth, chatController.createGroupChat);
+router.post('/groups', authenticate, requireAuth, chatController.createGroupChat);
 
 // GET /api/chat/:chatId - Get messages
 router.get('/:chatId', authenticate, requireAuth, chatController.getChatMessages);

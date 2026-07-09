@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import * as rfqRepository from '../repositories/rfq.repository.js';
 import { findOrCreateConversation } from '../lib/chat-conversations.js';
+import Chat from '../models/Chat.js';
+import RFQ from '../models/RFQ.js';
 import {
   BUYER_STATUS_GROUPS,
   OPEN_RFQ_STATUSES,
@@ -525,7 +527,8 @@ export async function createProductEnquiry(session, body) {
   const [product, seller] = await Promise.all([
     Product.findById(productId)
       .populate('sellerId', 'userId companyName isActive isSuspended')
-      .lean(),
+      .lean()
+      .exec(),
     rfqRepository.findSellerByUserId(sellerUserId),
   ]);
 

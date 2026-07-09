@@ -326,7 +326,8 @@ class OrderService {
 
     // Authorization - only seller or admin
     const seller = await OrderRepository.findSellerByUserId(userId);
-    const isSeller = String(order.sellerId) === String(seller?._id);
+    const orderSellerId = String(order.sellerId?._id || order.sellerId || '');
+    const isSeller = orderSellerId === String(seller?._id || '');
     const isAdmin = roles?.includes('admin');
 
     if (!isSeller && !isAdmin) {

@@ -22,3 +22,21 @@ export async function getCategories(req, res, next) {
     return res.status(500).json({ error: 'Unable to fetch categories' });
   }
 }
+
+export async function getCategory(req, res, next) {
+  try {
+    const activeOnly = req.query.activeOnly !== 'false';
+    const payload = await categoryService.getCategory(req.params.categoryIdOrSlug, {
+      activeOnly,
+    });
+
+    res.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=600');
+    return res.json(payload);
+  } catch (error) {
+    if (error.statusCode === 404) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    console.error('Fetch category error:', error);
+    return res.status(500).json({ error: 'Unable to fetch category' });
+  }
+}

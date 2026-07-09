@@ -7,7 +7,7 @@ export function validate(schema) {
       if (error.name === 'ZodError') {
         return res.status(422).json({
           error: 'Please check your input details',
-          details: error.errors,
+          details: error.issues,
         });
       }
       next(error);

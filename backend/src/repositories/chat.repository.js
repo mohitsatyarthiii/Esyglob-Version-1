@@ -164,12 +164,12 @@ export async function findSellerForChat(userId) {
 }
 
 export async function findSellerByUserIdLean(userId) {
-  return Seller.findOne({ userId }).select('_id').lean().exec();
+  return Seller.findOne({ userId }).select('_id companyName').lean().exec();
 }
 
 export async function findProductById(id) {
   return Product.findById(id)
-    .select('name price minimumOrderQuantity category subcategory specifications description')
+    .select('sellerId name images price minimumOrderQuantity category subcategory specifications description')
     .lean()
     .exec();
 }

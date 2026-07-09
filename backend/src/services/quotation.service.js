@@ -835,6 +835,7 @@ export async function respondToQuotation(session, quotationId, body) {
         : null);
     const buyer = await quotationRepository.findUserById(rfq.buyerId);
     const sellerUser = await quotationRepository.findUserById(quotation.userId);
+    const sellerProfileId = quotation.sellerId?._id || quotation.sellerId;
     const quantity =
       quotation.suppliedQuantity ||
       rfq.quantity ||
@@ -852,8 +853,9 @@ export async function respondToQuotation(session, quotationId, body) {
       );
 
       tradeOrder = await quotationRepository.createOrder({
+        userId: rfq.buyerId,
         buyerId: rfq.buyerId,
-        sellerId: quotation.userId,
+        sellerId: sellerProfileId,
         productId: product?._id || rfq.productId || undefined,
         rfqId: rfq._id,
         quotationId: quotation._id,

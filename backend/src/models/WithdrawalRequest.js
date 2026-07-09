@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const withdrawalRequestSchema = new mongoose.Schema(
   {
@@ -29,8 +30,7 @@ withdrawalRequestSchema.index({ sellerId: 1, createdAt: -1 });
 
 withdrawalRequestSchema.pre('validate', async function setWithdrawalNumber(next) {
   if (this.withdrawalNumber) return next();
-  const count = await mongoose.model('WithdrawalRequest').countDocuments();
-  this.withdrawalNumber = `WDR${String(count + 1).padStart(8, '0')}`;
+  this.withdrawalNumber = `WDR${Date.now().toString(36).toUpperCase()}${crypto.randomInt(1000, 10000)}`;
   next();
 });
 

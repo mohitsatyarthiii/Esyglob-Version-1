@@ -20,7 +20,8 @@ class ProductService {
     // Parse pagination - strict limits
     const page = Math.max(1, parseInt(rawPage) || 1);
     const limit = Math.min(Math.max(1, parseInt(rawLimit) || 12), 60);
-    const sort = rawSort || 'createdAt';
+    const allowedSorts = new Set(['createdAt', 'price', 'averageRating', 'totalOrders', 'minimumOrderQuantity']);
+    const sort = allowedSorts.has(rawSort) ? rawSort : 'createdAt';
     const order = rawOrder === 'asc' ? 1 : -1;
 
     // Build filter - EXACT matches, no regex
@@ -34,12 +35,9 @@ class ProductService {
       filter.subcategory = subcategory;
     }
 
-    // Search - Use text index if search term exists
     if (search && search.trim()) {
       const searchTerm = search.trim().substring(0, 50);
-      filter.$or = [
-        { name: new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
-      ];
+      filter.$text = { $search: searchTerm };
     }
 
     // === SELLER DASHBOARD ===

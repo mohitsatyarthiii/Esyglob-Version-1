@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import * as chatRepository from '../repositories/chat.repository.js';
 import { findOrCreateConversation } from '../lib/chat-conversations.js';
+import Chat from '../models/Chat.js';
 import {
   isObjectId,
   normalizeObjectId,

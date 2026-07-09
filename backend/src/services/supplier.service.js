@@ -48,6 +48,16 @@ export async function getSellers(searchParams) {
   return payload;
 }
 
+export async function getSellerDetails(sellerId) {
+  const seller = await supplierRepository.findPublicSellerById(sellerId);
+  if (!seller) {
+    const error = new Error('Supplier not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  return { seller };
+}
+
 // ─── Factory Profile ───────────────────────────────────────
 export async function getFactoryProfile(user) {
   return supplierRepository.findSellerWithFactory(user.id);

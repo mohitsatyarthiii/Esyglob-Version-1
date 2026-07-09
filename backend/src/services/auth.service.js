@@ -7,7 +7,8 @@ import * as authRepository from '../repositories/auth.repository.js';
 
 export async function loginUser(email, password) {
   // Find user with password hash
-  const user = await authRepository.findUserByEmail(email, true);
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const user = await authRepository.findUserByEmail(normalizedEmail, true);
 
   // Verify password
   const isValidPassword = await verifyPassword(password, user?.passwordHash);
@@ -37,9 +38,10 @@ export async function loginUser(email, password) {
 
 export async function signupUser(userData) {
   const { firstName, lastName, email, password, role } = userData;
+  const normalizedEmail = String(email || '').trim().toLowerCase();
 
   // Check if email already exists
-  const emailExists = await authRepository.checkExistingEmail(email);
+  const emailExists = await authRepository.checkExistingEmail(normalizedEmail);
   if (emailExists) {
     const error = new Error('An account already exists with this email');
     error.statusCode = 409;
@@ -60,7 +62,7 @@ export async function signupUser(userData) {
 
   // Create user
   const user = await authRepository.createUser({
-    email,
+    email: normalizedEmail,
     passwordHash,
     firstName,
     lastName,

@@ -66,6 +66,7 @@ export function buildRegex(terms) {
 // Simple in-memory cache for public queries
 const cache = new Map();
 const CACHE_TTL = 30000; // 30 seconds
+const MAX_CACHE_ENTRIES = 250;
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -77,6 +78,9 @@ function getCached(key) {
 }
 
 function setCache(key, data) {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    cache.delete(cache.keys().next().value);
+  }
   cache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -149,6 +153,7 @@ async function getAISearchResultsUncached({
 
   const productQuery = {
     status: { $in: ['active', 'published'] },
+    isVerifiedSeller: true,
     ...(productOr.length ? { $or: productOr } : {}),
   };
   if (filters.lowMoq) productQuery.minimumOrderQuantity = { $lte: 100 };
@@ -178,23 +183,27 @@ async function getAISearchResultsUncached({
       .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
       .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
       .limit(productLimit)
-      .lean(),
+      .lean()
+      .exec(),
     Seller.find(sellerQuery)
       .select('companyName companyType companyDescription address isVerified trustScore rating productCategories exportMarkets userId')
       .populate('userId', 'fullName email')
       .sort({ isVerified: -1, trustScore: -1, rating: -1, createdAt: -1 })
       .limit(supplierLimit)
-      .lean(),
+      .lean()
+      .exec(),
     Category.find(categoryQuery)
       .select('name slug description image metadata')
       .sort({ 'metadata.isFeatured': -1, 'metadata.sortOrder': 1, name: 1 })
       .limit(categoryLimit)
-      .lean(),
+      .lean()
+      .exec(),
     RFQ.find(rfqQuery)
       .select('title description category subcategory quantity unit targetPrice currency deliveryCountry status quotationCount createdAt')
       .sort({ createdAt: -1 })
       .limit(rfqLimit)
-      .lean(),
+      .lean()
+      .exec(),
   ]);
 
   const products = rawProducts;
@@ -203,7 +212,7 @@ async function getAISearchResultsUncached({
   let orders = [];
 
   if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-    const seller = await Seller.findOne({ userId }).select('_id').lean();
+    const seller = await Seller.findOne({ userId }).select('_id').lean().exec();
     const buyerRfqIds = await RFQ.distinct('_id', { buyerId: userId });
 
     const orderQuery = {
@@ -229,14 +238,16 @@ async function getAISearchResultsUncached({
         .populate('productId', 'name')
         .sort({ updatedAt: -1 })
         .limit(20)
-        .lean(),
+        .lean()
+        .exec(),
       Order.find(orderQuery)
         .select('orderNumber buyerId sellerId productId products status orderType orderSubType quantity totalAmount totalPrice currency paymentStatus trackingNumber createdAt updatedAt')
         .populate('sellerId', 'companyName isVerified')
         .populate('productId', 'name')
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(orderLimit)
-        .lean(),
+        .lean()
+        .exec(),
     ]);
   }
 

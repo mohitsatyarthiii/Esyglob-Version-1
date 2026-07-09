@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import mongoose from 'mongoose';
 import { config } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
-import { authenticate } from './middlewares/auth.middleware.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -46,30 +46,49 @@ import warehouseRoutes from './routes/warehouse.routes.js';
 
 const app = express();
 
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (config.isProduction) {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
+
 // CORS configuration
 app.use(cors({
-  origin: config.corsOrigin,
+  origin(origin, callback) {
+    if (config.corsOrigin === true || !origin) return callback(null, true);
+    if (Array.isArray(config.corsOrigin) && config.corsOrigin.includes(origin)) return callback(null, true);
+    return callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  maxAge: 600,
 }));
 
 // Body parsing
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+app.use(express.json({ limit: config.jsonLimit }));
+app.use(express.urlencoded({ extended: true, limit: config.formLimit }));
 app.use(cookieParser());
 
 // ✅ FIX: Lightweight auth — sets req.user ONLY if token exists, NO DB query
 // authenticate should ONLY decode JWT, NOT query DB
-app.use(authenticate);
-
 // Health check (NO auth needed)
 app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    environment: config.nodeEnv,
-  });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+        status: 'ok',
+        mongodb: mongoose.connection.readyState,
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString()
+    });
 });
 
 // ============================================================

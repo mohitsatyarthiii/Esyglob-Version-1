@@ -9,7 +9,7 @@ import mongoose from 'mongoose';
 import Notification from '../models/Notification.js';
 import Seller from '../models/Seller.js';
 import Subscription from '../models/Subscription.js';
-import { getMonthsIncluded, getPlanDetails } from '../lib/subscription-pricing.js';
+import { getMonthsIncluded, getPlanDetails, getPlanPrice } from '../lib/subscription-pricing.js';
 
 // Initialize Razorpay
 let razorpay = null;
@@ -176,10 +176,14 @@ class PaymentService {
     }
 
     // Verify with Razorpay
+    let rzpPayment = null;
     try {
-      const rzpPayment = await razorpay.payments.fetch(razorpayPaymentId);
+      rzpPayment = await razorpay.payments.fetch(razorpayPaymentId);
       if (rzpPayment.status !== 'captured') {
         throw Object.assign(new Error('Payment not captured'), { statusCode: 400 });
+      }
+      if (rzpPayment.order_id !== razorpayOrderId) {
+        throw Object.assign(new Error('Payment order mismatch'), { statusCode: 400 });
       }
     } catch (error) {
       if (error.statusCode) throw error;
@@ -193,6 +197,12 @@ class PaymentService {
     }
     if (paymentRecord.userId.toString() !== userId) {
       throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+    }
+    if (paymentRecord.razorpayOrderId !== razorpayOrderId) {
+      throw Object.assign(new Error('Payment order mismatch'), { statusCode: 400 });
+    }
+    if (rzpPayment?.amount && Math.round(Number(paymentRecord.amount || 0) * 100) !== Number(rzpPayment.amount)) {
+      throw Object.assign(new Error('Payment amount mismatch'), { statusCode: 400 });
     }
 
     paymentRecord.razorpayPaymentId = razorpayPaymentId;
@@ -222,7 +232,7 @@ class PaymentService {
         { $or: [{ _id: order.sellerId }, { userId: order.sellerId }] },
         sellerUpdate,
         { new: true }
-      ).select('userId');
+      ).select('userId').exec();
 
       // Notify seller
       await Notification.create({
@@ -252,7 +262,7 @@ class PaymentService {
       throw Object.assign(new Error('Payment service is not configured'), { statusCode: 503 });
     }
 
-    const { razorpayPaymentId, razorpayOrderId, razorpaySignature, planType, duration = 'monthly', amount = 0 } = body;
+    const { razorpayPaymentId, razorpayOrderId, razorpaySignature, planType, duration = 'monthly' } = body;
 
     if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature || !planType) {
       throw Object.assign(new Error('Missing required payment fields'), { statusCode: 400 });
@@ -272,14 +282,21 @@ class PaymentService {
     // Check duplicate
     const existingPayment = await PaymentRepository.findByRazorpayPaymentId(razorpayPaymentId);
     if (existingPayment) {
+      if (String(existingPayment.userId) !== String(userId)) {
+        throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+      }
       return { success: true, message: 'Payment already verified', payment: existingPayment };
     }
 
     // Verify with Razorpay
+    let subscriptionRzpPayment = null;
     try {
-      const rzpPayment = await razorpay.payments.fetch(razorpayPaymentId);
-      if (rzpPayment.status !== 'captured') {
+      subscriptionRzpPayment = await razorpay.payments.fetch(razorpayPaymentId);
+      if (subscriptionRzpPayment.status !== 'captured') {
         throw Object.assign(new Error('Payment not captured'), { statusCode: 400 });
+      }
+      if (subscriptionRzpPayment.order_id !== razorpayOrderId) {
+        throw Object.assign(new Error('Payment order mismatch'), { statusCode: 400 });
       }
     } catch (error) {
       if (error.statusCode) throw error;
@@ -293,13 +310,18 @@ class PaymentService {
       throw Object.assign(new Error('Invalid subscription plan'), { statusCode: 400 });
     }
 
+    const expectedAmount = getPlanPrice(planType, duration);
+    if (Number(subscriptionRzpPayment?.amount || 0) !== Math.round(expectedAmount * 100)) {
+      throw Object.assign(new Error('Subscription amount mismatch'), { statusCode: 400 });
+    }
+
     const months = getMonthsIncluded(planType, duration);
     const startDate = new Date();
     const expiryDate = new Date(startDate);
     expiryDate.setMonth(expiryDate.getMonth() + months);
 
     // Find or create subscription
-    let subscription = await Subscription.findOne({ userId });
+    let subscription = await Subscription.findOne({ userId }).exec();
     if (!subscription) {
       subscription = new Subscription({
         userId,
@@ -327,6 +349,7 @@ class PaymentService {
     subscription.billingCycle = duration;
     subscription.isActive = true;
     subscription.autoRenew = true;
+    const amount = Number(subscriptionRzpPayment?.amount || 0) / 100;
     subscription.amountPaid = amount;
     await subscription.save();
 

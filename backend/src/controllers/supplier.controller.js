@@ -52,6 +52,30 @@ export async function getSellers(req, res, next) {
   }
 }
 
+export async function getSellerDetails(req, res) {
+  try {
+    const payload = await supplierService.getSellerDetails(req.params.sellerId);
+    res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    return res.json(payload);
+  } catch (error) {
+    if (error.statusCode === 404) {
+      return res.status(404).json({ error: error.message });
+    }
+    console.error('Fetch seller detail error:', error);
+    return res.status(500).json({ error: 'Unable to fetch supplier' });
+  }
+}
+
+export async function getMySupplierProfile(req, res) {
+  return getOnboarding(req, res);
+}
+
+export async function saveSupplierProfile(req, res) {
+  const factoryKeys = ['name', 'floorArea', 'productionLines', 'machinery', 'monthlyCapacity', 'annualCapacity', 'capabilities', 'qualityControl', 'images', 'videos'];
+  const looksLikeFactory = factoryKeys.some((key) => Object.prototype.hasOwnProperty.call(req.body || {}, key));
+  return looksLikeFactory ? saveFactoryDraft(req, res) : saveOnboardingDraft(req, res);
+}
+
 // ─── Factory Profile ───────────────────────────────────────
 export async function getFactoryProfile(req, res) {
   const user = req.user;
@@ -305,7 +329,7 @@ export async function uploadDocument(req, res, next) {
     );
 
     const document = verification.documents.at(-1);
-    document.url = `/api/seller/verification/documents/${document._id}`;
+    document.url = `/api/suppliers/verification/documents/${document._id}`;
     await verification.save();
 
     // Update seller status

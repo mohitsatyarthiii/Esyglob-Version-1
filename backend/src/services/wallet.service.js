@@ -135,7 +135,8 @@ class WalletService {
     const withdrawals = await WithdrawalRequest.find({ userId, walletId: wallet._id })
       .populate('paymentMethodId', 'type label maskedAccountNumber upiId bankName verificationStatus')
       .sort({ createdAt: -1 })
-      .lean();
+      .lean()
+      .exec();
 
     return { withdrawals };
   }

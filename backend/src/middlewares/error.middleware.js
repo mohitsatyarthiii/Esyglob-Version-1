@@ -2,7 +2,7 @@ import { config } from '../config/env.js';
 
 export function errorHandler(err, req, res, _next) {
   const statusCode = err.statusCode || 500;
-  const message = statusCode === 500 ? 'Unable to sign in' : err.message;
+  const message = statusCode === 500 ? 'Internal server error' : err.message;
 
   // Log error in development
   if (config.nodeEnv === 'development') {
@@ -15,6 +15,7 @@ export function errorHandler(err, req, res, _next) {
   if (err.name === 'ZodError') {
     return res.status(422).json({
       error: 'Please check your input details',
+      details: config.isProduction ? undefined : err.issues,
     });
   }
 
@@ -32,6 +33,6 @@ export function errorHandler(err, req, res, _next) {
 
 export function notFoundHandler(req, res) {
   return res.status(404).json({
-    error: `Route not found: ${req.method} ${req.originalUrl}`,
+    error: 'Route not found',
   });
 }

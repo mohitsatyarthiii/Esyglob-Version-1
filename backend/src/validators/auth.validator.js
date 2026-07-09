@@ -10,5 +10,9 @@ export const signupSchema = z.object({
   lastName: z.string().trim().optional().default(''),
   email: z.string().trim().email().toLowerCase(),
   password: z.string().min(8),
-  role: z.enum(['buyer', 'seller']).default('buyer'),
-});
+  role: z.enum(['buyer', 'seller']).optional(),
+  roles: z.array(z.enum(['buyer', 'seller'])).optional(),
+}).transform((data) => ({
+  ...data,
+  role: data.role || data.roles?.[0] || 'buyer',
+}));

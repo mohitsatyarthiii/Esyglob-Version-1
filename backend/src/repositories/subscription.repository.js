@@ -5,14 +5,14 @@ class SubscriptionRepository {
    * Find subscription by userId
    */
   static async findByUserId(userId) {
-    return Subscription.findOne({ userId });
+    return Subscription.findOne({ userId }).exec();
   }
 
   /**
    * Find or create subscription
    */
   static async findOrCreate(userId, userType = 'buyer') {
-    let subscription = await Subscription.findOne({ userId });
+    let subscription = await Subscription.findOne({ userId }).exec();
 
     if (!subscription) {
       subscription = new Subscription({
@@ -34,7 +34,7 @@ class SubscriptionRepository {
       { userId },
       { $set: data },
       { new: true, runValidators: true }
-    );
+    ).exec();
   }
 
   /**
@@ -45,7 +45,7 @@ class SubscriptionRepository {
       { userId },
       { $set: { autoRenew } },
       { new: true, runValidators: true }
-    );
+    ).exec();
   }
 
   /**

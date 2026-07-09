@@ -12,6 +12,7 @@ router.post('/', authenticate, requireAuth, rfqController.createRfq);
 
 // POST /api/rfqs/product-enquiry - Product enquiry RFQ
 router.post('/product-enquiry', authenticate, requireAuth, rfqController.createProductEnquiry);
+router.post('/enquiry', authenticate, requireAuth, rfqController.createProductEnquiry);
 
 // GET /api/rfqs/:rfqId - RFQ detail
 router.get('/:rfqId', rfqController.getRfqDetail);

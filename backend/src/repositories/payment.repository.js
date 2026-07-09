@@ -15,7 +15,7 @@ class PaymentRepository {
    */
   static async findById(paymentId) {
     if (!this.isValidId(paymentId)) return null;
-    return Payment.findById(paymentId);
+    return Payment.findById(paymentId).exec();
   }
 
   /**
@@ -23,7 +23,7 @@ class PaymentRepository {
    */
   static async findByIdLean(paymentId) {
     if (!this.isValidId(paymentId)) return null;
-    return Payment.findById(paymentId).lean();
+    return Payment.findById(paymentId).lean().exec();
   }
 
   /**
@@ -35,14 +35,14 @@ class PaymentRepository {
       userId,
       paymentFor: 'order',
       status: { $in: ['initiated', 'pending', 'processing'] },
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).exec();
   }
 
   /**
    * Find payment by Razorpay payment ID
    */
   static async findByRazorpayPaymentId(razorpayPaymentId) {
-    return Payment.findOne({ razorpayPaymentId });
+    return Payment.findOne({ razorpayPaymentId }).exec();
   }
 
   /**
@@ -64,7 +64,7 @@ class PaymentRepository {
    */
   static async findOrderById(orderId) {
     if (!this.isValidId(orderId)) return null;
-    return Order.findById(orderId);
+    return Order.findById(orderId).exec();
   }
 }
 

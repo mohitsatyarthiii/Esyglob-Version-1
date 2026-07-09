@@ -4,12 +4,12 @@ import { authenticate, requireAuth, requireRole } from '../middlewares/auth.midd
 
 const router = Router();
 
-// All routes require authentication
-router.use(authenticate);
-router.use(requireAuth);
-
 // GET - List reviews (public with optional auth)
 router.get('/', ReviewController.list);
+
+// Mutating routes require authentication
+router.use(authenticate);
+router.use(requireAuth);
 
 // POST - Create review (buyers only)
 router.post('/', requireRole('buyer'), ReviewController.create);

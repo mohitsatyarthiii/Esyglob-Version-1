@@ -1,12 +1,9 @@
 import { setSessionCookie, clearSessionCookie, getCurrentUser } from '../lib/session.js';
 import * as authService from '../services/auth.service.js';
-import { loginSchema, signupSchema } from '../validators/auth.validator.js';
 
 export async function login(req, res, next) {
   try {
-    const data = loginSchema.parse(req.body);
-
-    const result = await authService.loginUser(data.email, data.password);
+    const result = await authService.loginUser(req.body.email, req.body.password);
 
     // Set session cookie with user ID
     setSessionCookie(res, result.user.id);
@@ -34,9 +31,7 @@ export async function login(req, res, next) {
 
 export async function signup(req, res, next) {
   try {
-    const data = signupSchema.parse(req.body);
-
-    const result = await authService.signupUser(data);
+    const result = await authService.signupUser(req.body);
 
     // Set session cookie with new user ID
     setSessionCookie(res, result.user.id);

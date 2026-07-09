@@ -73,6 +73,20 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
   };
 }
 
+export async function findPublicSellerById(sellerId) {
+  if (!mongoose.Types.ObjectId.isValid(sellerId)) return null;
+
+  return Seller.findOne({
+    _id: sellerId,
+    isActive: true,
+    isSuspended: { $ne: true },
+  })
+    .select('userId companyName companyType companyDescription companyLogo logo logoUrl isVerified isTrustedSeller trustedSellerBadge verificationLevel rating reviewCount responseRate trustScore address yearEstablished totalProducts totalOrders certifications productCategories exportMarkets createdAt')
+    .populate('userId', 'fullName avatarUrl')
+    .lean()
+    .exec();
+}
+
 // ─── Factory Profile ───────────────────────────────────────
 export async function findSellerWithFactory(userId) {
   const [sellerFactory] = await Seller.aggregate([

@@ -6,7 +6,9 @@ class UploadController {
    */
   static async upload(req, res) {
     try {
-      const files = req.files || [];
+      const files = Array.isArray(req.files)
+        ? req.files
+        : Object.values(req.files || {}).flat();
       const folder = req.body?.folder || 'general';
 
       const result = await UploadService.uploadFiles(req.user._id, files, folder);

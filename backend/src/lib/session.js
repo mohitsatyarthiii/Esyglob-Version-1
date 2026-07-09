@@ -8,8 +8,8 @@ export function setSessionCookie(res, userId) {
 
   res.cookie(config.sessionCookie, token, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: config.nodeEnv === 'production',
+    sameSite: config.sessionSameSite,
+    secure: config.sessionSecure,
     maxAge: config.sessionMaxAge * 1000,
     path: '/',
   });
@@ -18,8 +18,8 @@ export function setSessionCookie(res, userId) {
 export function clearSessionCookie(res) {
   res.clearCookie(config.sessionCookie, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: config.nodeEnv === 'production',
+    sameSite: config.sessionSameSite,
+    secure: config.sessionSecure,
     path: '/',
   });
 }
@@ -51,7 +51,8 @@ export async function getCurrentUser(req) {
 
   const user = await User.findById(payload.sub)
     .select('-passwordHash -__v')
-    .lean();
+    .lean()
+    .exec();
 
   if (!user || !user.isActive || user.isBanned) return null;
 

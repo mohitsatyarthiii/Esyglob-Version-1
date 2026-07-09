@@ -1,4 +1,5 @@
 const rateLimitStore = new Map();
+const MAX_RATE_LIMIT_KEYS = 10000;
 
 /**
  * Simple in-memory rate limiter middleware
@@ -19,6 +20,9 @@ export function rateLimiter(options = {}) {
     }
 
     entry.count++;
+    if (rateLimitStore.size > MAX_RATE_LIMIT_KEYS) {
+      pruneRateLimitStore(now);
+    }
 
     // Set rate limit headers
     res.setHeader('X-RateLimit-Limit', max);
@@ -37,13 +41,24 @@ export function rateLimiter(options = {}) {
 }
 
 // Clean up old entries every 5 minutes
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
+  pruneRateLimitStore(now);
+}, 300000);
+cleanupTimer.unref?.();
+
+function pruneRateLimitStore(now = Date.now()) {
   for (const [key, entry] of rateLimitStore) {
-    if (now - entry.windowStart > 300000) { // 5 minutes
+    if (now - entry.windowStart > 300000) {
       rateLimitStore.delete(key);
     }
   }
-}, 300000);
+
+  while (rateLimitStore.size > MAX_RATE_LIMIT_KEYS) {
+    const oldestKey = rateLimitStore.keys().next().value;
+    if (!oldestKey) break;
+    rateLimitStore.delete(oldestKey);
+  }
+}
 
 export default rateLimiter;

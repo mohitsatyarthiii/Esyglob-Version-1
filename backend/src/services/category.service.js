@@ -137,3 +137,23 @@ export async function getCategories(options = {}) {
     loadCategoryPayload({ includeCounts, activeOnly })
   );
 }
+
+export async function getCategory(categoryIdOrSlug, options = {}) {
+  const { activeOnly = true } = options;
+  const cacheKey = `category:${String(categoryIdOrSlug || '').toLowerCase()}:${activeOnly}`;
+
+  return cached(cacheKey, 300000, async () => {
+    const category = await categoryRepository.findCategoryByIdOrSlug(
+      categoryIdOrSlug,
+      activeOnly
+    );
+
+    if (!category) {
+      const error = new Error('Category not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    return { category };
+  });
+}

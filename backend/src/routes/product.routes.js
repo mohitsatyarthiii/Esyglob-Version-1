@@ -15,10 +15,10 @@ const publicLimiter = rateLimit({
 // ===== PUBLIC ROUTES =====
 
 // GET /api/products - Public listing (optimized for speed)
-router.get('/', publicLimiter, ProductController.getProducts);
+router.get('/', publicLimiter, authenticate, ProductController.getProducts);
 
 // GET /api/products/:productId - Product detail
-router.get('/:productId', publicLimiter, ProductController.getProductDetail);
+router.get('/:productId', publicLimiter, authenticate, ProductController.getProductDetail);
 
 // ===== PROTECTED ROUTES (SELLER ONLY) =====
 

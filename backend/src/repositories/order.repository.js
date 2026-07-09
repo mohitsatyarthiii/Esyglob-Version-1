@@ -2,6 +2,12 @@ import Order from '../models/Order.js';
 import Seller from '../models/Seller.js';
 import Product from '../models/Product.js';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+
+function normalizeLimit(limit, fallback = 50, max = 100) {
+  const value = Number(limit);
+  return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), max) : fallback;
+}
 
 class OrderRepository {
   /**
@@ -27,7 +33,8 @@ class OrderRepository {
       .populate('productId', 'name images description price')
       .populate('rfqId')
       .populate('quotationId')
-      .populate('chatId');
+      .populate('chatId')
+      .exec();
   }
 
   /**
@@ -35,7 +42,7 @@ class OrderRepository {
    */
   static async findByIdLean(orderId) {
     if (!this.isValidId(orderId)) return null;
-    return Order.findById(orderId).lean();
+    return Order.findById(orderId).lean().exec();
   }
 
   /**
@@ -59,8 +66,9 @@ class OrderRepository {
       .populate('productId', 'name images price unit category')
       .populate('paymentId', 'paymentNumber status amount currency transactionId razorpayPaymentId createdAt paidAt')
       .sort({ createdAt: -1 })
-      .limit(Math.min(limit, 100))
-      .lean();
+      .limit(normalizeLimit(limit))
+      .lean()
+      .exec();
   }
 
   /**
@@ -82,15 +90,16 @@ class OrderRepository {
       .populate('productId', 'name images price unit category')
       .populate('paymentId', 'paymentNumber status amount currency transactionId razorpayPaymentId createdAt paidAt')
       .sort({ createdAt: -1 })
-      .limit(Math.min(limit, 100))
-      .lean();
+      .limit(normalizeLimit(limit))
+      .lean()
+      .exec();
   }
 
   /**
    * Find seller by userId
    */
   static async findSellerByUserId(userId) {
-    return Seller.findOne({ userId }).select('_id').lean();
+    return Seller.findOne({ userId }).select('_id').lean().exec();
   }
 
   /**
@@ -101,15 +110,17 @@ class OrderRepository {
 
     return Product.findById(productId)
       .populate('sellerId', 'userId companyName companyType isVerified isTrustedSeller trustedSellerBadge isActive isSuspended address businessEmail businessPhone gstNumber businessRegistrationNumber')
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
    * Generate order number
    */
   static async generateOrderNumber(prefix = 'ORD') {
-    const count = await Order.countDocuments();
-    return `${prefix}${String(count + 1).padStart(8, '0')}`;
+    const timePart = Date.now().toString(36).toUpperCase();
+    const randomPart = crypto.randomInt(1000, 10000);
+    return `${prefix}${timePart}${randomPart}`;
   }
 
   /**

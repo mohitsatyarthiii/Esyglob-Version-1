@@ -62,6 +62,7 @@ class PaymentController {
     } catch (error) {
       console.error('[Payment-VerifySub] Error:', error);
       if (error.statusCode === 400) return res.status(400).json({ error: error.message });
+      if (error.statusCode === 403) return res.status(403).json({ error: error.message });
       if (error.statusCode === 503) return res.status(503).json({ error: error.message });
       return res.status(500).json({ error: 'Payment verification failed' });
     }

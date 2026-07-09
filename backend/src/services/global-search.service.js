@@ -4,6 +4,7 @@ import { listServices } from '../lib/services-catalog.js';
 // Simple in-memory cache
 const searchCache = new Map();
 const CACHE_TTL = 20000; // 20 seconds
+const MAX_SEARCH_CACHE_ENTRIES = 250;
 
 class GlobalSearchService {
   /**
@@ -170,12 +171,13 @@ class GlobalSearchService {
 
     // Build regex
     const regex = GlobalSearchRepository.buildRegex(trimmed);
+    const textQuery = GlobalSearchRepository.textQuery(trimmed);
 
     // Execute all searches in parallel
     const [products, suppliers, categories, subcategories, rfqs] = await Promise.all([
-      GlobalSearchRepository.searchProducts(regex, limit),
-      GlobalSearchRepository.searchSuppliers(regex, limit),
-      GlobalSearchRepository.searchCategories(regex, limit),
+      GlobalSearchRepository.searchProducts(regex, limit, textQuery),
+      GlobalSearchRepository.searchSuppliers(regex, limit, textQuery),
+      GlobalSearchRepository.searchCategories(regex, limit, textQuery),
       GlobalSearchRepository.searchSubcategories(regex, limit),
       GlobalSearchRepository.searchRfqs(regex, limit),
     ]);
@@ -232,6 +234,9 @@ class GlobalSearchService {
     const data = { query: trimmed, results, ...grouped };
 
     // Cache result
+    if (searchCache.size >= MAX_SEARCH_CACHE_ENTRIES) {
+      searchCache.delete(searchCache.keys().next().value);
+    }
     searchCache.set(cacheKey, { data, timestamp: Date.now() });
 
     return data;

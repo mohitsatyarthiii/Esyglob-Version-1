@@ -2,8 +2,12 @@ import User from '../models/User.js';
 import Seller from '../models/Seller.js';
 import SellerVerification from '../models/SellerVerification.js';
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 export async function findUserByEmail(email, includePassword = false) {
-  const query = User.findOne({ email });
+  const query = User.findOne({ email: normalizeEmail(email) });
 
   if (includePassword) {
     query.select('+passwordHash');
@@ -17,7 +21,7 @@ export async function findUserById(userId) {
 }
 
 export async function checkExistingEmail(email) {
-  const user = await User.findOne({ email }).select('_id').lean().exec();
+  const user = await User.findOne({ email: normalizeEmail(email) }).select('_id').lean().exec();
   return !!user;
 }
 

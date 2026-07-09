@@ -88,8 +88,14 @@ export function createToken(userId) {
 
 export function verifyToken(token) {
   if (!token || !token.includes('.')) return null;
+  if (token.length > 4096) return null;
 
-  const [encodedPayload, signature] = token.split('.');
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+
+  const [encodedPayload, signature] = parts;
+  if (!encodedPayload || !signature) return null;
+
   const expectedSignature = sign(encodedPayload);
 
   if (!signature || signature.length !== expectedSignature.length) {

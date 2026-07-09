@@ -17,14 +17,14 @@ class WalletRepository {
       { userId, role },
       { $setOnInsert: { userId, role, sellerId, currency } },
       { upsert: true, new: true }
-    );
+    ).exec();
   }
 
   /**
    * Find seller by userId
    */
   static async findSellerByUserId(userId) {
-    return Seller.findOne({ userId }).lean();
+    return Seller.findOne({ userId }).lean().exec();
   }
 
   /**
@@ -35,7 +35,8 @@ class WalletRepository {
       .select('walletId userId sellerId role type direction amount currency status paymentId orderId withdrawalId description metadata createdAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -45,7 +46,8 @@ class WalletRepository {
     return PaymentMethod.find({ userId, role })
       .select('userId role type label isDefault holderName bankName ifsc maskedAccountNumber upiId cardBrand cardLast4 cardExpiryMonth cardExpiryYear verificationStatus verificationMessage createdAt updatedAt')
       .sort({ isDefault: -1, createdAt: -1 })
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -56,7 +58,8 @@ class WalletRepository {
       .select('userId walletId paymentMethodId amount currency status adminNotes rejectionReason reviewedAt paidAt createdAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -67,7 +70,7 @@ class WalletRepository {
       userId,
       walletId,
       status: { $in: ['pending', 'approved'] },
-    }).lean();
+    }).lean().exec();
     return withdrawals.reduce((sum, w) => sum + Number(w.amount || 0), 0);
   }
 
@@ -79,7 +82,8 @@ class WalletRepository {
       .select('userId buyerId sellerId orderId amount currency status releaseStatus createdAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -90,7 +94,8 @@ class WalletRepository {
       .select('userId orderId subscriptionId paymentFor amount currency status paymentMethod transactionId paymentNumber createdAt paidAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -101,7 +106,8 @@ class WalletRepository {
       .select('buyerId sellerId productId orderNumber orderType orderSubType status paymentStatus totalAmount totalPrice currency quantity createdAt updatedAt')
       .sort({ createdAt: -1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**
@@ -116,7 +122,7 @@ class WalletRepository {
       role,
       type: { $in: ['bank_account', 'upi'] },
       verificationStatus: 'verified',
-    });
+    }).exec();
   }
 
   /**
@@ -133,7 +139,7 @@ class WalletRepository {
     return PaymentMethod.updateMany(
       { userId, role },
       { $set: { isDefault: false } }
-    );
+    ).exec();
   }
 
   /**

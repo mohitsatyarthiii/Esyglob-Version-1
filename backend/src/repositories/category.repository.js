@@ -2,6 +2,7 @@ import Category from '../models/Category.js';
 import Subcategory from '../models/Subcategory.js';
 import Product from '../models/Product.js';
 import { MARKETPLACE_CATEGORIES, categoryImageSeed, slugifyCategory } from '../lib/marketplace-categories.js';
+import mongoose from 'mongoose';
 
 const EXPECTED_CATEGORY_SLUGS = MARKETPLACE_CATEGORIES.map((item) => item.slug);
 const CATEGORY_FIELDS = 'name slug description image icon metadata isActive createdAt updatedAt';
@@ -10,10 +11,9 @@ const SUBCATEGORY_FIELDS = 'categoryId name slug description image icon metadata
 // ─── Product Counts Aggregation ────────────────────────────
 export function productCountsPipeline() {
   return [
-    { $match: { status: { $in: ['active', 'published'] } } },
+    { $match: { status: { $in: ['active', 'published'] }, isVerifiedSeller: true } },
     {
       $project: {
-        sellerId: 1,
         categoryId: 1,
         category: 1,
         subcategoryId: 1,
@@ -21,25 +21,6 @@ export function productCountsPipeline() {
         sampleImage: { $arrayElemAt: ['$images', 0] },
       },
     },
-    {
-      $lookup: {
-        from: 'sellers',
-        let: { sellerId: '$sellerId' },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: ['$_id', '$$sellerId'] },
-              isVerified: true,
-              isActive: { $ne: false },
-              isSuspended: { $ne: true },
-            },
-          },
-          { $project: { _id: 1 } },
-        ],
-        as: 'seller',
-      },
-    },
-    { $match: { seller: { $ne: [] } } },
     {
       $group: {
         _id: {
@@ -119,6 +100,36 @@ export async function fetchSubcategories(activeOnly) {
     .sort({ 'metadata.sortOrder': 1, name: 1 })
     .lean()
     .exec();
+}
+
+export async function findCategoryByIdOrSlug(categoryIdOrSlug, activeOnly = true) {
+  const value = String(categoryIdOrSlug || '').trim();
+  if (!value) return null;
+
+  const filter = activeOnly ? { isActive: true } : {};
+  if (mongoose.Types.ObjectId.isValid(value)) {
+    filter._id = value;
+  } else {
+    filter.slug = value.toLowerCase();
+  }
+
+  const category = await Category.findOne(filter)
+    .select(CATEGORY_FIELDS)
+    .lean()
+    .exec();
+
+  if (!category) return null;
+
+  const subcategories = await Subcategory.find({
+    categoryId: category._id,
+    ...(activeOnly ? { isActive: true } : {}),
+  })
+    .select(SUBCATEGORY_FIELDS)
+    .sort({ 'metadata.sortOrder': 1, name: 1 })
+    .lean()
+    .exec();
+
+  return { ...category, subcategories };
 }
 
 export async function fetchProductCounts() {

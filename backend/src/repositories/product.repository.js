@@ -1,36 +1,34 @@
-// repositories/product.repository.js
-import Product from '../models/Product.js';
-import Seller from '../models/Seller.js';
-import Category from '../models/Category.js';
-import Subcategory from '../models/Subcategory.js';
-import ProductCategoryMapping from '../models/ProductCategoryMapping.js';
 import mongoose from 'mongoose';
+import Category from '../models/Category.js';
+import Product from '../models/Product.js';
+import ProductCategoryMapping from '../models/ProductCategoryMapping.js';
+import Seller from '../models/Seller.js';
+import Subcategory from '../models/Subcategory.js';
 
-// ✅ Bounded cache with TTL
 const MAX_CACHE_ENTRIES = 500;
-const LISTING_CACHE_TTL = 30000;  // 5 sec → 30 sec (test runs ke beech expire na ho)
-const COUNT_CACHE_TTL = 60000;   // 30 seconds for counts (counts change rarely)
+const LISTING_CACHE_TTL = 30000;
+const COUNT_CACHE_TTL = 60000;
 
 const cache = {
-  sellers: { data: null, time: 0 },
   listings: {},
-  counts: {}, // ← NEW: separate cache for counts
+  counts: {},
 };
+
+function clearProductCaches() {
+  cache.listings = {};
+  cache.counts = {};
+}
 
 class ProductRepository {
   static isValidId(id) {
     return mongoose.Types.ObjectId.isValid(id);
   }
 
-  /**
-   * Get total public products count — cached for 30 seconds
-   * Count rarely changes, no need to query every time
-   */
   static async getPublicProductCount(filter = {}) {
     const cacheKey = `count:${JSON.stringify(filter)}`;
     const cached = cache.counts[cacheKey];
-    
-    if (cached && (Date.now() - cached.time) < COUNT_CACHE_TTL) {
+
+    if (cached && Date.now() - cached.time < COUNT_CACHE_TTL) {
       return cached.data;
     }
 
@@ -38,12 +36,10 @@ class ProductRepository {
       status: { $in: ['active', 'published'] },
       isVerifiedSeller: true,
       ...filter,
-    });
+    }).exec();
 
-    // Store in cache
     cache.counts[cacheKey] = { data: count, time: Date.now() };
 
-    // Bounded cache cleanup
     if (Object.keys(cache.counts).length > 100) {
       cache.counts = {};
     }
@@ -51,52 +47,54 @@ class ProductRepository {
     return count;
   }
 
-  /**
-   * ✅ OPTIMIZED: Products + count fetched sequentially (NOT parallel)
-   * Parallel queries compete for connections and are SLOWER
-   */
   static async getPublicProducts(filter = {}, options = {}) {
     const { page = 1, limit = 12, sort = 'createdAt', order = -1 } = options;
     const skip = (page - 1) * limit;
-
-    // Cache key for listings
     const cacheKey = `listings:${page}:${limit}:${sort}:${order}:${JSON.stringify(filter)}`;
     const cached = cache.listings[cacheKey];
-    
-    if (cached && (Date.now() - cached.time) < LISTING_CACHE_TTL) {
+
+    if (cached && Date.now() - cached.time < LISTING_CACHE_TTL) {
       return cached.data;
     }
 
-    // Single collection query — no $in, no seller join
     const query = {
       status: { $in: ['active', 'published'] },
       isVerifiedSeller: true,
       ...filter,
     };
 
-    // ✅ SEQUENTIAL — NOT parallel (faster when connection pool is limited)
-    const products = await Product.find(query)
-  .select('name images price unit minimumOrderQuantity category subcategory averageRating sellerId')
-  .sort({ [sort]: order })
-  .skip(skip)
-  .limit(limit)
-  .lean()
-  .hint('idx_public_listing_subcat'); 
+    const listQuery = Product.find(query)
+      .select('name images price unit minimumOrderQuantity category subcategory averageRating sellerId')
+      .sort(filter.$text ? { score: { $meta: 'textScore' }, [sort]: order } : { [sort]: order })
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    // Get count — either from cache or fresh
-    const total = await this.getPublicProductCount(filter);
+    if (!filter.$text && sort === 'createdAt') {
+      listQuery.hint(filter.subcategory ? 'idx_public_listing_subcat' : 'idx_public_listing');
+    }
 
-    // Ultra-minimal response
-    const formatted = products.map(p => ({
-      _id: p._id,
-      name: p.name,
-      image: p.images?.[0] || null,
-      price: p.price,
-      unit: p.unit,
-      moq: p.minimumOrderQuantity,
-      category: p.category,
-      subcategory: p.subcategory,
-      rating: p.averageRating || 0,
+    const countKey = `count:${JSON.stringify(filter)}`;
+    const cachedCount = cache.counts[countKey];
+    const countPromise = cachedCount && Date.now() - cachedCount.time < COUNT_CACHE_TTL
+      ? Promise.resolve(cachedCount.data)
+      : this.getPublicProductCount(filter);
+
+    const [products, total] = await Promise.all([
+      listQuery.exec(),
+      countPromise,
+    ]);
+
+    const formatted = products.map((product) => ({
+      _id: product._id,
+      name: product.name,
+      image: product.images?.[0] || null,
+      price: product.price,
+      unit: product.unit,
+      moq: product.minimumOrderQuantity,
+      category: product.category,
+      subcategory: product.subcategory,
+      rating: product.averageRating || 0,
       verified: true,
     }));
 
@@ -106,7 +104,6 @@ class ProductRepository {
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
 
-    // Store in bounded cache
     if (Object.keys(cache.listings).length >= MAX_CACHE_ENTRIES) {
       cache.listings = {};
     }
@@ -115,9 +112,6 @@ class ProductRepository {
     return result;
   }
 
-  /**
-   * Categories aggregation — unchanged
-   */
   static async getProductCategories(filter = {}) {
     const categories = await Product.aggregate([
       {
@@ -142,48 +136,41 @@ class ProductRepository {
           count: 1,
         },
       },
-    ]);
+    ]).exec();
 
-    return categories.filter(c => c.name);
+    return categories.filter((category) => category.name);
   }
 
-  /**
-   * Seller products — unchanged
-   */
   static async getSellerProducts(sellerId, filter = {}, options = {}) {
     const { page = 1, limit = 12, sort = 'createdAt', order = -1 } = options;
     const skip = (page - 1) * limit;
     const query = { sellerId, ...filter };
 
-    // ✅ Sequential for seller dashboard too
-    const products = await Product.find(query)
-      .select('name slug category subcategory price unit minimumOrderQuantity images status averageRating reviewCount createdAt')
-      .sort({ [sort]: order })
-      .skip(skip)
-      .limit(limit)
-      .lean();
-
-    const total = await Product.countDocuments(query);
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .select('name slug category subcategory price unit minimumOrderQuantity images status averageRating reviewCount createdAt')
+        .sort({ [sort]: order })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
+      Product.countDocuments(query).exec(),
+    ]);
 
     return { products, total };
   }
 
-  /**
-   * Product detail — optimized populate
-   */
   static async findByIdOrSlug(productId) {
     const query = this.isValidId(productId)
       ? { _id: new mongoose.Types.ObjectId(productId) }
       : { slug: String(productId).toLowerCase() };
 
     return Product.findOne(query)
-      .populate('sellerId', 'name isVerified logo companyName city state')
-      .lean();
+      .populate('sellerId', 'name isVerified isActive isSuspended logo companyName city state userId')
+      .lean()
+      .exec();
   }
 
-  /**
-   * Similar products
-   */
   static async getSimilarProducts(productId, category, limit = 6) {
     return Product.find({
       _id: { $ne: productId },
@@ -193,7 +180,8 @@ class ProductRepository {
     })
       .select('name slug images price averageRating minimumOrderQuantity')
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   static async findById(productId) {
@@ -203,29 +191,24 @@ class ProductRepository {
 
   static async create(data) {
     const product = await Product.create(data);
-    cache.listings = {};
-    cache.counts = {};  // ← Clear count cache on write
+    clearProductCaches();
     return product;
   }
 
   static async save(product) {
     const saved = await product.save();
-    cache.listings = {};
-    cache.counts = {};
+    clearProductCaches();
     return saved;
   }
 
   static async delete(productId) {
-    const deleted = await Product.findByIdAndDelete(productId);
-    if (deleted) {
-      cache.listings = {};
-      cache.counts = {};
-    }
+    const deleted = await Product.findByIdAndDelete(productId).exec();
+    if (deleted) clearProductCaches();
     return deleted;
   }
 
   static async findSellerByUserId(userId) {
-    return Seller.findOne({ userId }).select('_id isVerified').lean();
+    return Seller.findOne({ userId }).select('_id isVerified').lean().exec();
   }
 
   static async findCategoryAndSubcategory(categoryId, subcategoryId) {
@@ -233,8 +216,8 @@ class ProductRepository {
       return [null, null];
     }
     return Promise.all([
-      Category.findOne({ _id: categoryId, isActive: true }).lean(),
-      Subcategory.findOne({ _id: subcategoryId, categoryId, isActive: true }).lean(),
+      Category.findOne({ _id: categoryId, isActive: true }).lean().exec(),
+      Subcategory.findOne({ _id: subcategoryId, categoryId, isActive: true }).lean().exec(),
     ]);
   }
 
@@ -243,33 +226,28 @@ class ProductRepository {
       { productId, categoryId, subcategoryId },
       { $set: { isPrimary: true } },
       { upsert: true }
-    );
+    ).exec();
   }
 
   static async deleteCategoryMappings(productId) {
-    return ProductCategoryMapping.deleteMany({ productId });
+    return ProductCategoryMapping.deleteMany({ productId }).exec();
   }
 
   static async incrementSellerProductCount(sellerId) {
-    return Seller.updateOne({ _id: sellerId }, { $inc: { totalProducts: 1 } });
+    return Seller.updateOne({ _id: sellerId }, { $inc: { totalProducts: 1 } }).exec();
   }
 
   static async decrementSellerProductCount(sellerId) {
-    return Seller.updateOne({ _id: sellerId }, { $inc: { totalProducts: -1 } });
+    return Seller.updateOne({ _id: sellerId }, { $inc: { totalProducts: -1 } }).exec();
   }
 
-  /**
-   * Sync isVerifiedSeller flag when seller status changes
-   */
   static async syncVerifiedFlagForSeller(sellerId, isVerified, isActive, isSuspended) {
     const shouldBeVerified = isVerified && isActive && !isSuspended;
     const result = await Product.updateMany(
       { sellerId },
       { $set: { isVerifiedSeller: shouldBeVerified } }
-    );
-    // Clear caches after sync
-    cache.listings = {};
-    cache.counts = {};
+    ).exec();
+    clearProductCaches();
     return result;
   }
 }

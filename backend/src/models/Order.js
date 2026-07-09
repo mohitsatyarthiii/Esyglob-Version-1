@@ -1,4 +1,9 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
+
+function generateOrderNumber(prefix) {
+  return `${prefix}${Date.now().toString(36).toUpperCase()}${crypto.randomInt(1000, 10000)}`;
+}
 
 const orderSchema = new mongoose.Schema({
   userId: {
@@ -182,18 +187,9 @@ const orderSchema = new mongoose.Schema({
 });
 
 orderSchema.pre('save', async function setOrderDefaults() {
-  try {
-    if (this.isNew && !this.orderNumber) {
-      const OrderModel = mongoose.models.Order;
-      const count = OrderModel ? await OrderModel.countDocuments() : 0;
-      const prefix = (this.orderType === 'sample' || this.orderSubType === 'sample_order') ? 'SAM' : 'ORD';
-      this.orderNumber = `${prefix}${String(count + 1).padStart(8, '0')}`;
-    }
-  } catch {
-    if (!this.orderNumber) {
-      const prefix = (this.orderType === 'sample' || this.orderSubType === 'sample_order') ? 'SAM' : 'ORD';
-      this.orderNumber = `${prefix}${Date.now().toString(36).toUpperCase()}`;
-    }
+  if (this.isNew && !this.orderNumber) {
+    const prefix = (this.orderType === 'sample' || this.orderSubType === 'sample_order') ? 'SAM' : 'ORD';
+    this.orderNumber = generateOrderNumber(prefix);
   }
 
   if (!this.buyerId && this.userId) this.buyerId = this.userId;

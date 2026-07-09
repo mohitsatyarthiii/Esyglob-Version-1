@@ -4,6 +4,7 @@ import Category from '../models/Category.js';
 import RFQ from '../models/RFQ.js';
 import Quotation from '../models/Quotation.js';
 import Order from '../models/Order.js';
+import mongoose from 'mongoose';
 import { getSearchTerms, buildRegex, summarizeMarketplaceResults } from '../lib/ai-marketplace-context.js';
 import { listServices } from '../lib/services-catalog.js';
 
@@ -17,6 +18,7 @@ const PUBLIC_SERVICE_KEYS = new Set([
 // Simple in-memory cache
 const cache = new Map();
 const CACHE_TTL = 30000;
+const MAX_CACHE_ENTRIES = 250;
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -26,6 +28,9 @@ function getCached(key) {
 }
 
 function setCached(key, data) {
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    cache.delete(cache.keys().next().value);
+  }
   cache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -96,6 +101,7 @@ class AISearchRepository {
 
     const productQuery = {
       status: { $in: ['active', 'published'] },
+      isVerifiedSeller: true,
       ...(productOr.length ? { $or: productOr } : {}),
     };
     if (filters.lowMoq) productQuery.minimumOrderQuantity = { $lte: 100 };
@@ -120,18 +126,21 @@ class AISearchRepository {
         .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
         .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
         .limit(productLimit)
-        .lean(),
+        .lean()
+        .exec(),
       Seller.find(sellerQuery)
         .select('companyName companyType companyDescription address isVerified trustScore rating productCategories exportMarkets userId')
         .populate('userId', 'fullName email')
         .sort({ isVerified: -1, trustScore: -1, rating: -1, createdAt: -1 })
         .limit(supplierLimit)
-        .lean(),
+        .lean()
+        .exec(),
       RFQ.find(rfqQuery)
         .select('title description category subcategory quantity unit targetPrice currency deliveryCountry status quotationCount createdAt')
         .sort({ createdAt: -1 })
         .limit(rfqLimit)
-        .lean(),
+        .lean()
+        .exec(),
     ]);
 
     const products = rawProducts;
@@ -140,9 +149,8 @@ class AISearchRepository {
     let quotations = [];
     let orders = [];
     if (userId) {
-      const mongoose = (await import('mongoose')).default;
       if (mongoose.Types.ObjectId.isValid(userId)) {
-        const seller = await Seller.findOne({ userId }).select('_id').lean();
+        const seller = await Seller.findOne({ userId }).select('_id').lean().exec();
         const buyerRfqIds = await RFQ.distinct('_id', { buyerId: userId });
 
         const orderQuery = {
@@ -168,14 +176,16 @@ class AISearchRepository {
             .populate('productId', 'name')
             .sort({ updatedAt: -1 })
             .limit(20)
-            .lean(),
+            .lean()
+            .exec(),
           Order.find(orderQuery)
             .select('orderNumber buyerId sellerId productId products status orderType orderSubType quantity totalAmount totalPrice currency paymentStatus trackingNumber createdAt updatedAt')
             .populate('sellerId', 'companyName isVerified')
             .populate('productId', 'name')
             .sort({ updatedAt: -1, createdAt: -1 })
             .limit(orderLimit)
-            .lean(),
+            .lean()
+            .exec(),
         ]);
       }
     }
@@ -221,7 +231,8 @@ class AISearchRepository {
     })
       .sort({ 'metadata.isFeatured': -1, 'metadata.sortOrder': 1, name: 1 })
       .limit(limit)
-      .lean();
+      .lean()
+      .exec();
   }
 
   /**

@@ -1,4 +1,5 @@
 import ProductService from '../services/product.service.js';
+import { getCurrentUser } from '../lib/session.js';
 
 class ProductController {
   /**
@@ -6,7 +7,10 @@ class ProductController {
    */
   static async getProducts(req, res) {
     try {
-      const result = await ProductService.getProducts(req.query, req.user);
+      const user = req.query?.type === 'seller' && req.user?.__sessionOnly
+        ? await getCurrentUser(req)
+        : req.user;
+      const result = await ProductService.getProducts(req.query, user);
       
       // Aggressive caching headers
       res.setHeader('Cache-Control', 'public, max-age=10, s-maxage=30, stale-while-revalidate=60');
@@ -27,7 +31,8 @@ class ProductController {
    */
   static async getProductDetail(req, res) {
     try {
-      const result = await ProductService.getProductDetail(req.params.productId, req.user);
+      const user = req.user?.__sessionOnly ? await getCurrentUser(req) : req.user;
+      const result = await ProductService.getProductDetail(req.params.productId, user);
       
       // Cache for longer period
       res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=300');

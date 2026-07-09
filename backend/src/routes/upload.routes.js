@@ -12,7 +12,10 @@ router.use(requireAuth);
 // POST - Upload files (max 10 files, 5MB each)
 router.post(
   '/',
-  upload.array('files', 10),
+  upload.fields([
+    { name: 'files', maxCount: 10 },
+    { name: 'file', maxCount: 1 },
+  ]),
   handleUploadError,
   UploadController.upload
 );

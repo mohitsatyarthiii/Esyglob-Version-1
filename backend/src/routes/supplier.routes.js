@@ -14,6 +14,22 @@ const router = Router();
 // Public routes
 router.get('/', supplierController.getSellers);
 
+router.get(
+  '/me',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.getMySupplierProfile
+);
+
+router.patch(
+  '/profile',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.saveSupplierProfile
+);
+
 // Document download (authenticated but shared between seller and admin)
 router.get(
   '/verification/documents/:documentId',
@@ -85,5 +101,7 @@ router.post(
   uploadSingle,
   supplierController.uploadDocument
 );
+
+router.get('/:sellerId', supplierController.getSellerDetails);
 
 export default router;

@@ -8,6 +8,9 @@ const router = Router();
 // POST /api/auth/login
 router.post('/login', validate(loginSchema), authController.login);
 
+// POST /api/auth/signin
+router.post('/signin', validate(loginSchema), authController.login);
+
 // POST /api/auth/signup
 router.post('/signup', validate(signupSchema), authController.signup);
 

@@ -1,35 +1,50 @@
 import app from './app.js';
 import { config } from './config/env.js';
-import { connectToDatabase, warmupDatabase } from './config/database.js';
+import { closeDatabase, connectToDatabase, warmupDatabase } from './config/database.js';
+
+let server;
 
 async function startServer() {
   try {
-    // Step 1: Connect to MongoDB
     await connectToDatabase();
-    console.log('✅ Database connected successfully');
+    console.log('Database connected successfully');
 
-    // Step 2: Pre-warm connections & cache
     await warmupDatabase();
 
-    // Step 3: Start Express server
-    app.listen(config.port, () => {
-      console.log(`🚀 Server running on port ${config.port} in ${config.nodeEnv} mode`);
+    server = app.listen(config.port, () => {
+      console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error);
+    console.error('Failed to start server:', error);
     process.exit(1);
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
-  process.exit(0);
-});
+async function shutdown(signal) {
+  console.log(`${signal} received. Shutting down gracefully...`);
+  const timer = setTimeout(() => process.exit(1), 10000);
+  timer.unref();
 
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Shutting down gracefully...');
+  if (server) {
+    server.close(async () => {
+      await closeDatabase();
+      process.exit(0);
+    });
+    return;
+  }
+
+  await closeDatabase();
   process.exit(0);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  shutdown('uncaughtException');
 });
 
 startServer();
