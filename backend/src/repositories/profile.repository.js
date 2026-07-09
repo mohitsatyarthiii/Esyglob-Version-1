@@ -6,21 +6,21 @@ class ProfileRepository {
    * Find user by ID (without password)
    */
   static async findUserById(userId) {
-    return User.findById(userId).select('-passwordHash -__v').lean();
+    return User.findById(userId).select('-passwordHash -__v').lean().exec();
   }
 
   /**
    * Find user with password hash
    */
   static async findUserWithPassword(userId) {
-    return User.findById(userId).select('+passwordHash');
+    return User.findById(userId).select('+passwordHash').exec();
   }
 
   /**
    * Find seller profile by userId
    */
   static async findSellerByUserId(userId) {
-    return Seller.findOne({ userId }).lean();
+    return Seller.findOne({ userId }).lean().exec();
   }
 
   /**
@@ -30,7 +30,7 @@ class ProfileRepository {
     const existing = await User.findOne({
       email: email.toLowerCase(),
       _id: { $ne: excludeUserId },
-    }).select('_id').lean();
+    }).select('_id').lean().exec();
     return Boolean(existing);
   }
 
@@ -38,7 +38,10 @@ class ProfileRepository {
    * Update user profile
    */
   static async updateUser(userId, data) {
-    return User.findByIdAndUpdate(userId, { $set: data }, { new: true }).select('-passwordHash -__v');
+    return User.findByIdAndUpdate(userId, { $set: data }, { new: true })
+      .select('-passwordHash -__v')
+      .lean()
+      .exec();
   }
 
   /**
@@ -52,7 +55,7 @@ class ProfileRepository {
         $setOnInsert: { userId },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    ).exec();
   }
 
   /**

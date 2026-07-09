@@ -2,6 +2,7 @@ import { connectToDatabase } from '../config/database.js';
 import { config } from '../config/env.js';
 import { createToken, verifyToken } from './crypto.js';
 import User from '../models/User.js';
+import mongoose from 'mongoose';
 
 export function setSessionCookie(res, userId) {
   const token = createToken(userId);
@@ -30,12 +31,12 @@ export function getTokenFromCookie(req) {
 
 export function getTokenFromHeader(req) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  return authHeader.substring(7);
+  const match = /^Bearer\s+(.+)$/i.exec(authHeader || '');
+  return match?.[1]?.trim() || null;
 }
 
 export function getToken(req) {
-  return getTokenFromCookie(req) || getTokenFromHeader(req);
+  return getTokenFromHeader(req) || getTokenFromCookie(req);
 }
 
 export function getSessionPayload(req) {
@@ -44,8 +45,12 @@ export function getSessionPayload(req) {
 }
 
 export async function getCurrentUser(req) {
+  if (req.currentUser) return req.currentUser;
+  if (req.user && !req.user.__sessionOnly) return req.user;
+
   const payload = getSessionPayload(req);
   if (!payload) return null;
+  if (!mongoose.Types.ObjectId.isValid(payload.sub)) return null;
 
   await connectToDatabase();
 
@@ -56,7 +61,8 @@ export async function getCurrentUser(req) {
 
   if (!user || !user.isActive || user.isBanned) return null;
 
-  return serializeUser(user);
+  req.currentUser = serializeUser(user);
+  return req.currentUser;
 }
 
 export async function getSession(req) {
@@ -74,8 +80,12 @@ export async function getSession(req) {
 export function serializeUser(user) {
   if (!user) return null;
 
+  const id = String(user._id || user.id);
+
   return {
-    id: String(user._id || user.id),
+    id,
+    _id: id,
+    userId: id,
     email: user.email,
     firstName: user.firstName || '',
     lastName: user.lastName || '',

@@ -17,6 +17,9 @@ router.post('/signup', validate(signupSchema), authController.signup);
 // POST /api/auth/logout
 router.post('/logout', authController.logout);
 
+// POST /api/auth/refresh
+router.post('/refresh', authController.refresh);
+
 // GET /api/auth/me
 router.get('/me', authController.getMe);
 

@@ -62,12 +62,31 @@ export async function logout(req, res) {
   return res.json({ success: true });
 }
 
-export async function getMe(req, res) {
-  const user = await getCurrentUser(req);
+export async function refresh(req, res, next) {
+  try {
+    const user = await getCurrentUser(req);
 
-  if (!user) {
-    return res.status(401).json({ user: null });
+    if (!user) {
+      return res.status(401).json({ user: null });
+    }
+
+    setSessionCookie(res, user.id);
+    return res.json({ user });
+  } catch (error) {
+    return next(error);
   }
+}
 
-  return res.json({ user });
+export async function getMe(req, res, next) {
+  try {
+    const user = await getCurrentUser(req);
+
+    if (!user) {
+      return res.status(401).json({ user: null });
+    }
+
+    return res.json({ user });
+  } catch (error) {
+    return next(error);
+  }
 }

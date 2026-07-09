@@ -1,18 +1,7 @@
 import ProfileRepository from '../repositories/profile.repository.js';
 import { profileSchema, passwordSchema } from '../validators/profile.validator.js';
 import { z } from 'zod';
-
-// These should come from your auth/session lib
-import bcrypt from 'bcrypt';
-
-async function hashPassword(password) {
-  const salt = await bcrypt.genSalt(12);
-  return bcrypt.hash(password, salt);
-}
-
-async function verifyPassword(password, hash) {
-  return bcrypt.compare(password, hash);
-}
+import { hashPassword, verifyPassword } from '../lib/crypto.js';
 
 function splitName(fullName) {
   const parts = fullName.trim().split(/\s+/);

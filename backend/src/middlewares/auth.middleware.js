@@ -4,7 +4,14 @@ export function authenticate(req, res, next) {
   try {
     const payload = getSessionPayload(req);
     req.auth = payload ? { userId: payload.sub, payload } : null;
-    req.user = payload ? { id: payload.sub, _id: payload.sub, __sessionOnly: true } : null;
+    req.user = payload
+      ? {
+          id: payload.sub,
+          _id: payload.sub,
+          userId: payload.sub,
+          __sessionOnly: true,
+        }
+      : null;
     next();
   } catch (error) {
     console.error('Authentication error:', error.message);
