@@ -88,8 +88,15 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
     [product, primaryImage],
   );
 
+  const productId = getId(product);
+  
+  // Validate productId
+  const isValidId = productId && /^[a-f\d]{24}$/i.test(productId);
+
   const openProduct = () => {
-    navigation.navigate('ProductDetails', { productId: getId(product) });
+    if (productId) {
+      navigation.navigate('ProductDetails', { productId });
+    }
   };
 
   const onImageSwipe = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -157,15 +164,17 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
             </View>
           )}
 
-          {/* Save button */}
-          <SavedHeartButton
-            type="product"
-            itemId={getId(product)}
-            target={product}
-            size={15}
-            style={styles.heartBtn}
-            iconColor={PALETTE.muted}
-          />
+          {/* Save button - only render if valid ID */}
+          {isValidId && (
+            <SavedHeartButton
+              type="product"
+              itemId={productId}
+              target={product}
+              size={15}
+              style={styles.heartBtn}
+              iconColor={PALETTE.muted}
+            />
+          )}
 
           {/* Verified badge */}
           {verified && (

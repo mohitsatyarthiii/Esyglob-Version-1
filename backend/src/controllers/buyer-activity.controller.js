@@ -51,11 +51,15 @@ class BuyerActivityController {
    */
   static async toggleSavedItem(req, res) {
     try {
+      console.log('[BuyerActivityController.toggleSavedItem] req.body:', JSON.stringify(req.body));
+
       if (!req.user?.roles?.includes('buyer')) {
         return res.status(403).json({ error: 'Buyer access required' });
       }
 
       const { itemType, itemId } = req.body;
+
+      console.log('[BuyerActivityController.toggleSavedItem] Destructured:', { itemType, itemId });
 
       const result = await BuyerActivityService.toggleSavedItem(
         req.user._id, itemType, itemId

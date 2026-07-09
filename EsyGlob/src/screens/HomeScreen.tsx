@@ -599,7 +599,7 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
           <Text style={styles.sellerLocation} numberOfLines={1}>{location}</Text>
           <Text style={styles.sellerMeta}>{seller.businessType ?? 'Supplier'}{seller.yearsInBusiness ? ` · ${seller.yearsInBusiness} yrs` : ''}</Text>
         </View>
-        <SavedHeartButton type="seller" itemId={sellerId} target={seller} size={16} iconColor={PALETTE.muted} />
+        <SavedHeartButton type="supplier" itemId={sellerId} target={seller} size={16} iconColor={PALETTE.muted} />
       </View>
 
       {previewImages.length > 0 && (

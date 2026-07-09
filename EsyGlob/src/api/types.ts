@@ -66,6 +66,7 @@ export type SellerSummary = {
   productCount?: number;
   logo?: string;
   companyLogo?: string;
+  logoUrl?: string;
   mainCategories?: string[];
   factoryVerified?: boolean;
   factoryImages?: string[];
@@ -98,6 +99,7 @@ export type SellerSummary = {
   status?: string;
   isSaved?: boolean;
   isFavorited?: boolean;
+  verificationLevel?: string;
 };
 
 export type Product = {
@@ -157,21 +159,40 @@ export type Product = {
   variants?: Array<Record<string, unknown>>;
   isSaved?: boolean;
   isFavorited?: boolean;
+  // Allow populated sellerId from backend
+  [key: string]: unknown;
 };
 
-export type SavedItemType = 'product' | 'seller';
+// ─── Saved Items (Standardized) ─────────────────────────────────────────────
+
+/**
+ * Standardized saved item type.
+ * Backend stores 'supplier' in MongoDB enum.
+ * Frontend uses this everywhere — NO 'seller' variant.
+ */
+export type SavedItemType = 'product' | 'supplier';
 
 export type SavedItem = {
   _id?: string;
   id?: string;
+  /** Always 'product' or 'supplier' */
   type?: SavedItemType;
+  /** Backend may return itemType instead of type */
+  itemType?: string;
   itemId?: string;
+  /** Backend populates this as a Product object OR stores it as a string */
+  productId?: string | Product;
+  /** Backend populates this as a SellerSummary object OR stores it as a string */
+  sellerId?: string | SellerSummary;
   item?: Product | SellerSummary;
   target?: Product | SellerSummary;
   product?: Product;
   seller?: SellerSummary;
   createdAt?: string;
+  updatedAt?: string;
 };
+
+// ─── Rest of types unchanged ────────────────────────────────────────────────
 
 export type Pagination = {
   page?: number;

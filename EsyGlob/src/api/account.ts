@@ -107,7 +107,14 @@ export async function fetchSavedItems(input: { type?: SavedItemType; itemId?: st
 }
 
 export async function toggleSavedItem(input: { type: SavedItemType; itemId: string }) {
-  const payload = await apiRequest('/buyer/saved', { method: 'POST', body: input });
+  // FIX: Backend expects itemType not type
+  const payload = await apiRequest('/buyer/saved', {
+    method: 'POST',
+    body: {
+      itemType: input.type,
+      itemId: input.itemId,
+    },
+  });
   return unwrapData<{ saved?: boolean; item?: SavedItem }>(payload);
 }
 
