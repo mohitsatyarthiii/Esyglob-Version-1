@@ -3,7 +3,6 @@ import { appStorage } from '../storage/appStorage';
 import { logPerf, perfNow } from '../utils/performance';
 
 const SESSION_KEY = 'session.cookie';
-const ACCESS_TOKEN_KEY = 'auth.accessToken';
 
 export class ApiError extends Error {
   status: number;
@@ -193,7 +192,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
 export function getApiHeaders(extra?: Record<string, string>) {
   const sessionCookie = appStorage.getString(SESSION_KEY);
-  const accessToken = appStorage.getString(ACCESS_TOKEN_KEY);
   const headers: Record<string, string> = {
     Accept: 'application/json',
     ...extra,
@@ -201,10 +199,6 @@ export function getApiHeaders(extra?: Record<string, string>) {
 
   if (sessionCookie) {
     headers.Cookie = sessionCookie;
-  }
-
-  if (accessToken && !headers.Authorization) {
-    headers.Authorization = `Bearer ${accessToken}`;
   }
 
   return headers;
@@ -215,26 +209,18 @@ export function clearSessionCookie() {
   responseCache.clear();
 }
 
-export function setAuthTokens(accessToken?: string) {
-  if (accessToken) {
-    appStorage.set(ACCESS_TOKEN_KEY, accessToken);
-  }
-}
-
 export function clearAuthTokens() {
-  appStorage.remove(ACCESS_TOKEN_KEY);
   responseCache.clear();
 }
 
 export function hasAuthCredentials() {
-  return Boolean(appStorage.getString(ACCESS_TOKEN_KEY) || appStorage.getString(SESSION_KEY));
+  return Boolean(appStorage.getString(SESSION_KEY));
 }
 
 function buildRequestCacheKey(method: string, url: string, headers: Record<string, string>) {
   return [
     method,
     url,
-    headers.Authorization ?? '',
     headers.Cookie ?? '',
   ].join('|');
 }

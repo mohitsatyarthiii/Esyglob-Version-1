@@ -1,4 +1,4 @@
-import { apiRequest, clearAuthTokens, clearSessionCookie, setAuthTokens } from './client';
+import { apiRequest, clearAuthTokens, clearSessionCookie } from './client';
 import { normalizeUser } from './normalizers';
 import { CurrentUser, UserRole } from './types';
 
@@ -16,44 +16,41 @@ export type SignupInput = {
   phone?: string;
 };
 
-export type ForgotPasswordInput = {
-  email: string;
-};
+export type ForgotPasswordInput = {   };
 
 export async function getCurrentUser() {
-  const payload = await apiRequest('/api/auth/me');
+  const payload = await apiRequest('/auth/me');
   return normalizeUser(payload) as CurrentUser;
 }
 
 export async function login(input: LoginInput) {
-  const payload = await apiRequest('/api/auth/login', {
+  const payload = await apiRequest('/auth/signin', {
     method: 'POST',
     body: input,
   });
-  storeTokens(payload);
 
   return normalizeUser(payload) as CurrentUser;
 }
 
 export async function signup(input: SignupInput) {
   const [firstName, ...lastNameParts] = input.name.trim().split(/\s+/);
-  const payload = await apiRequest('/api/auth/signup', {
+  const payload = await apiRequest('/auth/signup', {
     method: 'POST',
     body: {
       ...input,
       fullName: input.name,
       firstName,
       lastName: lastNameParts.join(' '),
+      roles: [input.role],
     },
   });
-  storeTokens(payload);
 
   return normalizeUser(payload) as CurrentUser;
 }
 
 export async function logout() {
   try {
-    await apiRequest('/api/auth/logout', {
+    await apiRequest('/auth/logout', {
       method: 'POST',
     });
   } finally {
@@ -63,25 +60,8 @@ export async function logout() {
 }
 
 export async function forgotPassword(input: ForgotPasswordInput) {
-  return apiRequest('/api/auth/forgot-password', {
+  return apiRequest('/auth/forgot-password', {
     method: 'POST',
     body: input,
   });
-}
-
-function storeTokens(payload: unknown) {
-  const data =
-    payload && typeof payload === 'object' && 'data' in payload
-      ? (payload as { data?: unknown }).data
-      : payload;
-
-  if (!data || typeof data !== 'object') {
-    return;
-  }
-
-  const accessToken = (data as { accessToken?: unknown }).accessToken;
-
-  if (typeof accessToken === 'string') {
-    setAuthTokens(accessToken);
-  }
 }

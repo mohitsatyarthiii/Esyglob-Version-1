@@ -35,7 +35,7 @@ export async function fetchRFQs(params: {
   sort?: string;
   order?: 'asc' | 'desc';
 } = {}) {
-  const payload = await apiRequest('/api/rfqs', {
+  const payload = await apiRequest('/rfqs', {
     query: {
       ...params,
       scope: params.scope === 'public' ? undefined : params.scope,
@@ -52,7 +52,7 @@ export async function fetchRFQs(params: {
 }
 
 export async function fetchRFQDetails(rfqId: string): Promise<RFQDetails> {
-  const payload = await apiRequest(`/api/rfqs/${rfqId}`);
+  const payload = await apiRequest(`/rfqs/${rfqId}`);
   return unwrapData<RFQDetails>(payload);
 }
 
@@ -64,7 +64,7 @@ export async function fetchSellers(params: {
   isVerified?: boolean;
   sort?: string;
 } = {}) {
-  const payload = await apiRequest('/api/sellers', { query: params, cacheTtlMs: 2 * 60_000 });
+  const payload = await apiRequest('/suppliers', { query: params, cacheTtlMs: 2 * 60_000 });
   const data = unwrapData<{ sellers?: SellerSummary[]; pagination?: unknown }>(payload);
 
   return {
@@ -75,7 +75,7 @@ export async function fetchSellers(params: {
 
 export async function fetchSellerDetails(sellerId: string): Promise<SellerDetails> {
   try {
-    const payload = await apiRequest(`/api/sellers/${sellerId}`, { cacheTtlMs: 2 * 60_000 });
+    const payload = await apiRequest(`/suppliers/${sellerId}`, { cacheTtlMs: 2 * 60_000 });
     return unwrapData<SellerDetails>(payload);
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) {
@@ -84,9 +84,9 @@ export async function fetchSellerDetails(sellerId: string): Promise<SellerDetail
   }
 
   const [sellerPayload, productsPayload, reviewsPayload] = await Promise.all([
-    apiRequest('/api/sellers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
-    apiRequest('/api/products', { query: { type: 'homepage', seller: sellerId, limit: 30 }, cacheTtlMs: 2 * 60_000 }),
-    apiRequest('/api/reviews', { query: { sellerId, limit: 20 }, cacheTtlMs: 60_000 }).catch(() => null),
+    apiRequest('/suppliers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
+    apiRequest('/products', { query: { type: 'homepage', seller: sellerId, limit: 30 }, cacheTtlMs: 2 * 60_000 }),
+    apiRequest('/reviews', { query: { sellerId, limit: 20 }, cacheTtlMs: 60_000 }).catch(() => null),
   ]);
   const sellers = unwrapData<{ sellers?: SellerSummary[] }>(sellerPayload)?.sellers ?? normalizeList<SellerSummary>(sellerPayload, ['sellers']);
   const seller = sellers.find(item => item._id === sellerId || item.id === sellerId);
@@ -103,26 +103,26 @@ export async function fetchSellerDetails(sellerId: string): Promise<SellerDetail
 }
 
 export async function fetchSellerOnboarding(): Promise<{ seller?: SellerSummary; verification?: Record<string, unknown>; completion?: Record<string, unknown>; draftAvailable?: boolean }> {
-  const payload = await apiRequest('/api/seller/onboarding');
+  const payload = await apiRequest('/suppliers/me');
   return unwrapData(payload);
 }
 
-export async function saveSellerOnboarding(input: Record<string, unknown>, draft = true) {
-  const payload = await apiRequest('/api/seller/onboarding', {
-    method: draft ? 'PATCH' : 'POST',
+export async function saveSellerOnboarding(input: Record<string, unknown>, _draft = true) {
+  const payload = await apiRequest('/suppliers/profile', {
+    method: 'PATCH',
     body: input,
   });
   return unwrapData(payload);
 }
 
 export async function fetchFactoryProfile(): Promise<{ seller?: SellerSummary; factoryProfile?: Record<string, unknown> | null }> {
-  const payload = await apiRequest('/api/seller/factory');
+  const payload = await apiRequest('/suppliers/me');
   return unwrapData(payload);
 }
 
-export async function saveFactoryProfile(input: Record<string, unknown>, draft = false) {
-  const payload = await apiRequest('/api/seller/factory', {
-    method: draft ? 'PATCH' : 'PUT',
+export async function saveFactoryProfile(input: Record<string, unknown>, _draft = false) {
+  const payload = await apiRequest('/suppliers/profile', {
+    method: 'PATCH',
     body: input,
   });
   return unwrapData(payload);
@@ -132,7 +132,7 @@ export async function uploadSellerDocument(documentType: string, file: { uri: st
   const form = new FormData();
   form.append('documentType', documentType);
   form.append('file', file as unknown as Blob);
-  const payload = await apiRequest('/api/seller/verification/documents', {
+  const payload = await apiRequest('/upload', {
     method: 'POST',
     body: form,
   });
@@ -143,7 +143,7 @@ export async function uploadFiles(folder: string, files: Array<{ uri: string; na
   const form = new FormData();
   form.append('folder', folder);
   files.forEach(file => form.append('files', file as unknown as Blob));
-  const payload = await apiRequest('/api/uploads', {
+  const payload = await apiRequest('/upload', {
     method: 'POST',
     body: form,
   });
@@ -157,7 +157,7 @@ export async function fetchReviews(params: {
   sellerDashboard?: boolean;
   limit?: number;
 } = {}): Promise<ReviewSummary> {
-  const payload = await apiRequest('/api/reviews', { query: params });
+  const payload = await apiRequest('/reviews', { query: params });
   const data = unwrapData<Partial<ReviewSummary>>(payload) ?? {};
   const breakdown = data.breakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
 
@@ -176,7 +176,7 @@ export async function fetchReviews(params: {
 }
 
 export async function createReview(input: Record<string, unknown>): Promise<ReviewItem> {
-  const payload = await apiRequest('/api/reviews', { method: 'POST', body: input });
+  const payload = await apiRequest('/reviews', { method: 'POST', body: input });
   const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
   const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
 
@@ -188,7 +188,7 @@ export async function createReview(input: Record<string, unknown>): Promise<Revi
 }
 
 export async function updateReview(input: Record<string, unknown>): Promise<ReviewItem> {
-  const payload = await apiRequest('/api/reviews', { method: 'PUT', body: input });
+  const payload = await apiRequest('/reviews', { method: 'PUT', body: input });
   const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
   const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
 
@@ -200,7 +200,7 @@ export async function updateReview(input: Record<string, unknown>): Promise<Revi
 }
 
 export async function respondToReview(reviewId: string, input: { comment: string }): Promise<ReviewItem> {
-  const payload = await apiRequest(`/api/reviews/${reviewId}/response`, { method: 'PATCH', body: input });
+  const payload = await apiRequest(`/reviews/${reviewId}/respond`, { method: 'PATCH', body: input });
   const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
   const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
 
@@ -212,7 +212,7 @@ export async function respondToReview(reviewId: string, input: { comment: string
 }
 
 export async function fetchSellerProducts(params: { q?: string; status?: string; page?: number; limit?: number } = {}) {
-  const payload = await apiRequest('/api/seller/products', { query: { ...params, limit: params.limit ?? 30 } });
+  const payload = await apiRequest('/products', { query: { type: 'seller', ...params, limit: params.limit ?? 30 } });
   const data = unwrapData<{ products?: Product[]; pagination?: unknown }>(payload);
 
   return {
@@ -222,7 +222,7 @@ export async function fetchSellerProducts(params: { q?: string; status?: string;
 }
 
 export async function fetchSellerProductDetails(productId: string): Promise<Product> {
-  const payload = await apiRequest(`/api/seller/products/${productId}`);
+  const payload = await apiRequest(`/products/${productId}`);
   const data = unwrapData<{ product?: Product } | Product>(payload);
   const product = data && typeof data === 'object' && 'product' in data ? data.product : data;
 
@@ -234,22 +234,22 @@ export async function fetchSellerProductDetails(productId: string): Promise<Prod
 }
 
 export async function createSellerProduct(input: Record<string, unknown>): Promise<{ product?: Product; visibilityNotice?: string }> {
-  const payload = await apiRequest('/api/products', { method: 'POST', body: input });
+  const payload = await apiRequest('/products', { method: 'POST', body: input });
   return unwrapData(payload);
 }
 
 export async function updateSellerProduct(productId: string, input: Record<string, unknown>): Promise<{ product?: Product; visibilityNotice?: string }> {
-  const payload = await apiRequest(`/api/products/${productId}`, { method: 'PATCH', body: input });
+  const payload = await apiRequest(`/products/${productId}`, { method: 'PATCH', body: input });
   return unwrapData(payload);
 }
 
 export async function deleteSellerProduct(productId: string) {
-  const payload = await apiRequest(`/api/products/${productId}`, { method: 'DELETE' });
+  const payload = await apiRequest(`/products/${productId}`, { method: 'DELETE' });
   return unwrapData(payload);
 }
 
 export async function fetchQuotations(params: { rfqId?: string; status?: string; page?: number; limit?: number } = {}): Promise<QuotationListResponse> {
-  const payload = await apiRequest('/api/quotations', { query: params });
+  const payload = await apiRequest('/quotations', { query: params });
   const data = unwrapData<QuotationListResponse | Quotation[]>(payload);
 
   return {
@@ -259,7 +259,7 @@ export async function fetchQuotations(params: { rfqId?: string; status?: string;
 }
 
 export async function fetchQuotationDetails(quotationId: string): Promise<Quotation> {
-  const payload = await apiRequest(`/api/quotations/${quotationId}`);
+  const payload = await apiRequest(`/quotations/${quotationId}`);
   const data = unwrapData<{ quotation?: Quotation } | Quotation>(payload);
   const quotation = data && typeof data === 'object' && 'quotation' in data ? data.quotation : data;
 
@@ -287,7 +287,7 @@ export type EnquiryInput = {
 };
 
 export async function startProductChat(input: { otherUserId: string; productId: string; role?: 'buyer' | 'seller'; enquiry?: boolean }) {
-  const payload = await apiRequest('/api/chats', {
+  const payload = await apiRequest('/chat', {
     method: 'POST',
     body: {
       role: 'buyer',
@@ -305,7 +305,7 @@ export async function startProductChat(input: { otherUserId: string; productId: 
 }
 
 export async function createProductEnquiry(input: EnquiryInput) {
-  const payload = await apiRequest('/api/rfqs/enquiry', {
+  const payload = await apiRequest('/rfqs/enquiry', {
     method: 'POST',
     body: {
       attachments: [],
@@ -322,7 +322,7 @@ export async function createProductEnquiry(input: EnquiryInput) {
 }
 
 export async function createRFQ(input: Record<string, unknown>): Promise<RFQ> {
-  const payload = await apiRequest('/api/rfqs', {
+  const payload = await apiRequest('/rfqs', {
     method: 'POST',
     body: input,
   });
@@ -337,7 +337,7 @@ export async function createRFQ(input: Record<string, unknown>): Promise<RFQ> {
 }
 
 export async function updateRFQ(rfqId: string, input: Record<string, unknown>): Promise<RFQ> {
-  const payload = await apiRequest(`/api/rfqs/${rfqId}`, {
+  const payload = await apiRequest(`/rfqs/${rfqId}`, {
     method: 'PATCH',
     body: input,
   });
@@ -352,13 +352,13 @@ export async function updateRFQ(rfqId: string, input: Record<string, unknown>): 
 }
 
 export async function archiveRFQ(rfqId: string) {
-  const payload = await apiRequest(`/api/rfqs/${rfqId}`, { method: 'DELETE' });
+  const payload = await apiRequest(`/rfqs/${rfqId}`, { method: 'DELETE' });
   return unwrapData(payload);
 }
 
 export async function fetchChats(input: string | null | { role?: string | null; view?: 'all' | 'favorites' | 'archived'; unreadOnly?: boolean; label?: string; limit?: number } = {}) {
   const params = typeof input === 'string' || input === null ? { role: input } : input;
-  const payload = await apiRequest('/api/chats', {
+  const payload = await apiRequest('/chat', {
     query: {
       role: params.role ?? undefined,
       view: params.view && params.view !== 'all' ? params.view : undefined,
@@ -371,7 +371,7 @@ export async function fetchChats(input: string | null | { role?: string | null; 
 }
 
 export async function fetchChatDetails(chatId: string, options: { markRead?: boolean; before?: string; after?: string; limit?: number } = {}): Promise<ChatDetails> {
-  const payload = await apiRequest(`/api/chats/${chatId}`, {
+  const payload = await apiRequest(`/chat/${chatId}`, {
     query: {
       limit: options.limit ?? 30,
       markRead: options.markRead,
@@ -383,7 +383,7 @@ export async function fetchChatDetails(chatId: string, options: { markRead?: boo
 }
 
 export async function sendChatMessage(chatId: string, content: string | Record<string, unknown>): Promise<MessageItem> {
-  const payload = await apiRequest(`/api/chats/${chatId}`, {
+  const payload = await apiRequest(`/chat/${chatId}`, {
     method: 'POST',
     body: typeof content === 'string' ? { content } : content,
   });
@@ -408,7 +408,7 @@ export type UploadAttachment = {
 export async function uploadChatAttachment(file: { uri: string; name: string; type: string }): Promise<UploadAttachment> {
   const form = new FormData();
   form.append('file', file as unknown as Blob);
-  const payload = await apiRequest('/api/uploads/chat', {
+  const payload = await apiRequest('/upload', {
     method: 'POST',
     body: form,
   });
@@ -422,7 +422,7 @@ export async function uploadChatAttachment(file: { uri: string; name: string; ty
 }
 
 export async function enableChatOrder(chatId: string, productId: string) {
-  const payload = await apiRequest(`/api/chats/${chatId}`, {
+  const payload = await apiRequest(`/chat/${chatId}`, {
     method: 'PATCH',
     body: { action: 'enable_order', productId },
   });
@@ -436,7 +436,7 @@ export async function enableChatOrder(chatId: string, productId: string) {
 }
 
 export async function patchChatAction(chatId: string, input: { action: string; value?: boolean; label?: string; productId?: string }) {
-  const payload = await apiRequest(`/api/chats/${chatId}`, {
+  const payload = await apiRequest(`/chat/${chatId}`, {
     method: 'PATCH',
     body: input,
   });
@@ -472,7 +472,7 @@ export async function markChatUnread(chatId: string) {
 }
 
 export async function createGroupChat(input: { groupName: string; memberIds: string[]; role?: string | null }) {
-  const payload = await apiRequest('/api/chats/groups', {
+  const payload = await apiRequest('/chat/groups', {
     method: 'POST',
     body: input,
   });
@@ -480,7 +480,7 @@ export async function createGroupChat(input: { groupName: string; memberIds: str
 }
 
 export async function createQuotation(input: Record<string, unknown>): Promise<Quotation> {
-  const payload = await apiRequest('/api/quotations', {
+  const payload = await apiRequest('/quotations', {
     method: 'POST',
     body: input,
   });
@@ -495,7 +495,7 @@ export async function createQuotation(input: Record<string, unknown>): Promise<Q
 }
 
 export async function calculateCheckoutQuote(input: Record<string, unknown>): Promise<CheckoutQuote> {
-  const payload = await apiRequest('/api/checkout/quote', {
+  const payload = await apiRequest('/checkout/quote', {
     method: 'POST',
     body: input,
   });
@@ -503,7 +503,7 @@ export async function calculateCheckoutQuote(input: Record<string, unknown>): Pr
 }
 
 export async function createSampleOrder(input: Record<string, unknown>): Promise<Order> {
-  const payload = await apiRequest('/api/sample-order', {
+  const payload = await apiRequest('/sample-order', {
     method: 'POST',
     body: input,
   });
@@ -518,7 +518,7 @@ export async function createSampleOrder(input: Record<string, unknown>): Promise
 }
 
 export async function createTradeOrder(input: Record<string, unknown>): Promise<Order> {
-  const payload = await apiRequest('/api/orders', {
+  const payload = await apiRequest('/orders', {
     method: 'POST',
     body: input,
   });
@@ -533,7 +533,7 @@ export async function createTradeOrder(input: Record<string, unknown>): Promise<
 }
 
 export async function fetchOrderDetails(orderId: string): Promise<Order> {
-  const payload = await apiRequest(`/api/orders/${orderId}`);
+  const payload = await apiRequest(`/orders/${orderId}`);
   const data = unwrapData<{ order?: Order } | Order>(payload);
   const order = data && typeof data === 'object' && 'order' in data ? data.order : data;
 
@@ -545,7 +545,7 @@ export async function fetchOrderDetails(orderId: string): Promise<Order> {
 }
 
 export async function updateOrderStatus(orderId: string, input: Record<string, unknown>): Promise<Order> {
-  const payload = await apiRequest(`/api/orders/${orderId}`, {
+  const payload = await apiRequest(`/orders/${orderId}`, {
     method: 'PATCH',
     body: input,
   });
@@ -554,12 +554,12 @@ export async function updateOrderStatus(orderId: string, input: Record<string, u
 }
 
 export async function fetchOrders(params: { type?: 'buyer' | 'seller'; status?: string; orderType?: string; q?: string } = {}) {
-  const payload = await apiRequest('/api/orders', { query: { ...params, limit: 80 } });
+  const payload = await apiRequest('/orders', { query: { ...params, limit: 80 } });
   return normalizeList<Order>(payload, ['orders', 'items', 'results']);
 }
 
 export async function initiateOrderPayment(orderId: string): Promise<PaymentInitiation> {
-  const payload = await apiRequest('/api/payments/initiate', {
+  const payload = await apiRequest('/payments/initiate', {
     method: 'POST',
     body: { orderId },
   });
@@ -567,7 +567,7 @@ export async function initiateOrderPayment(orderId: string): Promise<PaymentInit
 }
 
 export async function verifyOrderPayment(input: Record<string, unknown>): Promise<{ paymentRecord?: unknown; order?: Order; success?: boolean }> {
-  const payload = await apiRequest('/api/payments/verify-order', {
+  const payload = await apiRequest('/payments/verify/order', {
     method: 'POST',
     body: input,
   });
@@ -575,7 +575,7 @@ export async function verifyOrderPayment(input: Record<string, unknown>): Promis
 }
 
 export async function acceptQuotation(quotationId: string, input: Record<string, unknown> = {}): Promise<Quotation> {
-  const payload = await apiRequest(`/api/quotations/${quotationId}`, {
+  const payload = await apiRequest(`/quotations/${quotationId}`, {
     method: 'PUT',
     body: { action: 'accept', ...input },
   });
@@ -584,7 +584,7 @@ export async function acceptQuotation(quotationId: string, input: Record<string,
 }
 
 export async function patchQuotation(quotationId: string, input: Record<string, unknown>): Promise<Quotation> {
-  const payload = await apiRequest(`/api/quotations/${quotationId}`, {
+  const payload = await apiRequest(`/quotations/${quotationId}`, {
     method: 'PATCH',
     body: input,
   });
@@ -593,6 +593,6 @@ export async function patchQuotation(quotationId: string, input: Record<string, 
 }
 
 export async function fetchNotifications() {
-  const payload = await apiRequest('/api/notifications');
+  const payload = await apiRequest('/notifications');
   return normalizeList<NotificationItem>(payload, ['notifications', 'items']);
 }

@@ -85,7 +85,7 @@ function ShippingLogisticsScreen() {
             />
           </View>
         }
-        ListEmptyComponent={<EmptyState title="No shipments found" detail="Shipment records from /api/shipping will appear here." />}
+        ListEmptyComponent={<EmptyState title="No shipments found" detail="Shipment records from /shipping will appear here." />}
         renderItem={({ item }) => <ShipmentCard shipment={item} />}
       />
     </View>

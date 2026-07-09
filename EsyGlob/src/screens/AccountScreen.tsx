@@ -15,7 +15,7 @@ import { fetchChats, fetchNotifications, fetchRFQs } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { LoadingState } from '../components/StateViews';
-import { colors, radii, shadow, spacing, type as typography } from '../theme';
+import { radii, shadow, spacing, type as typography } from '../theme';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
 

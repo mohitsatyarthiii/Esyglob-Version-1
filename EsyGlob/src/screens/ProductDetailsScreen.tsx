@@ -77,7 +77,7 @@ function ProductDetailsScreen() {
 
   React.useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-  }, []);
+  }, [fade]);
 
   const product = useQuery({
     queryKey: ['product', productId],
@@ -128,6 +128,12 @@ function ProductDetailsScreen() {
     onError: (error: any) => Alert.alert('Error', error?.message ?? 'Failed to send enquiry'),
   });
 
+  React.useEffect(() => {
+    if (!quantity && item) {
+      setQuantity(String(item.minimumOrderQuantity ?? item.moq ?? 100));
+    }
+  }, [item, quantity]);
+
   if (product.isLoading) return <LoadingState label="Loading product" />;
   if (product.isError || !item) return <ErrorState message={(product.error as any)?.message ?? 'Not found'} onRetry={() => product.refetch()} />;
 
@@ -135,7 +141,6 @@ function ProductDetailsScreen() {
   const gallery = Array.from(new Set([image, ...(item.images ?? [])].filter(Boolean))) as string[];
   const sellerVerified = isVerifiedProduct(item);
   const location = getProductLocation(item);
-  const directOrderEnabled = Boolean((item.directOrderEnabled || item.orderEnabled) && (seller?.trustedSeller || seller?.isTrusted || sellerVerified));
   const relatedProducts = (related.data?.products ?? []).filter(next => getId(next) !== getId(item)).slice(0, 6);
 
   const onMainImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -153,12 +158,6 @@ function ProductDetailsScreen() {
   const isAuth = status === 'authenticated';
   const canChat = isAuth && Boolean(sellerUserId);
   const canEnquire = isAuth && Boolean(sellerUserId);
-
-  React.useEffect(() => {
-    if (!quantity && item) {
-      setQuantity(String(item.minimumOrderQuantity ?? item.moq ?? 100));
-    }
-  }, [item]);
 
   return (
     <View style={styles.screen}>

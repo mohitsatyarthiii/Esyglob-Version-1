@@ -4,7 +4,7 @@ import { HomePayload, ProductListResponse } from './types';
 
 export async function fetchHome() {
   try {
-    const payload = await apiRequest('/api/home', {
+    const payload = await apiRequest('/home', {
       query: { limit: 16 },
       cacheTtlMs: 90_000,
     });
@@ -24,9 +24,9 @@ export async function fetchHome() {
   }
 
   const [categoryPayload, featuredPayload, latestPayload] = await Promise.all([
-    apiRequest('/api/categories', { query: { type: 'homepage', withCounts: true }, cacheTtlMs: 5 * 60_000 }),
-    apiRequest('/api/products', { query: { type: 'homepage', limit: 12, featured: true }, cacheTtlMs: 90_000 }),
-    apiRequest('/api/products', { query: { type: 'homepage', limit: 30 }, cacheTtlMs: 90_000 }),
+    apiRequest('/categories', { query: { type: 'homepage', withCounts: true }, cacheTtlMs: 5 * 60_000 }),
+    apiRequest('/products', { query: { type: 'homepage', limit: 12, featured: true }, cacheTtlMs: 90_000 }),
+    apiRequest('/products', { query: { type: 'homepage', limit: 30 }, cacheTtlMs: 90_000 }),
   ]);
   const categories = unwrapData<HomePayload>(categoryPayload)?.categories ?? [];
   const featuredProducts = unwrapData<ProductListResponse>(featuredPayload)?.products ?? [];

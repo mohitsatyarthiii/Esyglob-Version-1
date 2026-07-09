@@ -139,7 +139,7 @@ function MessagesScreen() {
             </View>
           </View>
         }
-        ListEmptyComponent={<EmptyState title="No conversations" detail="Buyer-seller chats from /api/chats will appear here." />}
+        ListEmptyComponent={<EmptyState title="No conversations" detail="Buyer-seller conversations will appear here." />}
         renderItem={({ item }) => {
           const unread = activeRole === 'seller' ? item.sellerUnreadCount : item.buyerUnreadCount;
           const participant = resolveChatParticipant(item, user?.id ?? user?._id);

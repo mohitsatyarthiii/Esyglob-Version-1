@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiError, clearAuthTokens, clearSessionCookie, hasAuthCredentials } from '../api/client';
+import { ApiError, clearAuthTokens, clearSessionCookie } from '../api/client';
 import { getCurrentUser, login, LoginInput, logout, signup, SignupInput } from '../api/auth';
 import { CurrentUser, UserRole } from '../api/types';
 import { readJson, writeJson } from '../storage/appStorage';
@@ -56,11 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-
-    if (!hasAuthCredentials()) {
-      commitUser(null);
-      return;
-    }
 
     try {
       commitUser(await getCurrentUser());

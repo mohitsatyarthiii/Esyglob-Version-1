@@ -65,34 +65,34 @@ export type MarketInsightReport = {
 };
 
 export async function fetchAIChats(role?: string | null): Promise<AIChat[]> {
-  const payload = await apiRequest('/api/ai/chat', { query: { role: role ?? undefined } });
+  const payload = await apiRequest('/ai-chat', { query: { role: role ?? undefined } });
   const data = unwrapData<{ chats?: AIChat[] } | AIChat[]>(payload);
   return Array.isArray(data) ? data : data?.chats ?? normalizeList<AIChat>(payload, ['chats']);
 }
 
 export async function fetchAIChat(chatId: string): Promise<AIChat> {
-  const payload = await apiRequest('/api/ai/chat', { query: { chatId } });
+  const payload = await apiRequest('/ai-chat', { query: { chatId } });
   const data = unwrapData<{ chat?: AIChat } | AIChat>(payload);
   return (data && typeof data === 'object' && 'chat' in data ? data.chat : data) as AIChat;
 }
 
 export async function patchAIChat(input: { chatId: string; title?: string; status?: 'active' | 'archived' }) {
-  const payload = await apiRequest('/api/ai/chat', { method: 'PATCH', body: input });
+  const payload = await apiRequest('/ai-chat', { method: 'PATCH', body: input });
   return unwrapData(payload);
 }
 
 export async function deleteAIChat(chatId: string) {
-  const payload = await apiRequest('/api/ai/chat', { method: 'DELETE', query: { chatId } });
+  const payload = await apiRequest('/ai-chat', { method: 'DELETE', query: { chatId } });
   return unwrapData(payload);
 }
 
 export async function postAIChat(input: AIStreamInput) {
-  const payload = await apiRequest('/api/ai/chat', { method: 'POST', body: input });
+  const payload = await apiRequest('/ai-chat', { method: 'POST', body: input });
   return unwrapData<{ chat?: AIChat; response?: { message?: string; provider?: string; model?: string } }>(payload);
 }
 
 export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record<string, unknown>) => void) {
-  const response = await fetch(buildApiUrl('/api/ai/chat/stream'), {
+  const response = await fetch(buildApiUrl('/ai-chat/stream'), {
     method: 'POST',
     headers: getApiHeaders({ Accept: 'text/event-stream', 'Content-Type': 'application/json' }),
     credentials: 'include',
@@ -145,12 +145,12 @@ export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record
 }
 
 export async function fetchAIProviderStatus() {
-  const payload = await apiRequest('/api/ai/chat/stream', { query: { status: true } });
+  const payload = await apiRequest('/ai-chat/stream', { query: { status: true } });
   return unwrapData(payload);
 }
 
 export async function generateMarketInsight(input: MarketInsightInput): Promise<MarketInsightReport> {
-  const payload = await apiRequest('/api/ai/market-insights', { method: 'POST', body: input });
+  const payload = await apiRequest('/ai/market-insights', { method: 'POST', body: input });
   const data = unwrapData<{ report?: MarketInsightReport } | MarketInsightReport>(payload);
   return (data && typeof data === 'object' && 'report' in data ? data.report : data) as MarketInsightReport;
 }

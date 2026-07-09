@@ -85,7 +85,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        resValue "string", "esyglob_api_base_url", "https://esyglob.in"
+        resValue "string", "esyglob_api_base_url", "https://api.esyglob.in/api"
     }
     signingConfigs {
         debug {
@@ -99,7 +99,7 @@ android {
         debug {
             signingConfig signingConfigs.debug
             manifestPlaceholders = [usesCleartextTraffic: "true"]
-            resValue "string", "esyglob_api_base_url", "http://10.0.2.2:3001"
+            resValue "string", "esyglob_api_base_url", "https://api.esyglob.in/api"
         }
         release {
             // Caution! In production, you need to generate your own keystore file.

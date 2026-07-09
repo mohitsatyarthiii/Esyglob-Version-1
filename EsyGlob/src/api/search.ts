@@ -3,7 +3,7 @@ import { normalizeList } from './normalizers';
 import { Category, Product, SellerSummary } from './types';
 
 export async function searchMarketplace(query: string) {
-  const payload = await apiRequest('/api/search', {
+  const payload = await apiRequest('/search', {
     query: { q: query },
     cacheTtlMs: 45_000,
   });

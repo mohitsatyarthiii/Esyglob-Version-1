@@ -371,7 +371,7 @@ const AITab = React.memo(({ submittedQuery, search, categoriesQuery, featuredPro
 // ──────────────────────────────────────
 // Products Tab
 // ──────────────────────────────────────
-const ProductsTab = React.memo(({ productFeed, products, featuredProducts, latestProducts, verifiedProducts, categories, openExplore, navigation, renderHeader }: any) => (
+const ProductsTab = React.memo(({ productFeed, products, featuredProducts, latestProducts, verifiedProducts, categories: _categories, openExplore: _openExplore, navigation, renderHeader }: any) => (
   <FlashList
     data={productFeed}
     keyExtractor={(item: Product) => getId(item)}

@@ -15,7 +15,7 @@ import { fetchQuotations, fetchRFQs } from '../api/marketplace';
 import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, shadow, spacing, type as typography } from '../theme';
+import { radii, shadow, spacing } from '../theme';
 import { getId } from '../utils/format';
 import AuthScreen from './AuthScreen';
 

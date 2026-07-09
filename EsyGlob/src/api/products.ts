@@ -16,7 +16,7 @@ export type ProductQuery = {
 };
 
 export async function fetchProducts(params: ProductQuery = {}): Promise<ProductListResponse> {
-  const payload = await apiRequest('/api/products', {
+  const payload = await apiRequest('/products', {
     query: {
       type: 'homepage',
       q: params.q,
@@ -42,7 +42,7 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
 }
 
 export async function fetchProductDetails(productId: string): Promise<Product> {
-  const payload = await apiRequest(`/api/products/${productId}`, { cacheTtlMs: 2 * 60_000 });
+  const payload = await apiRequest(`/products/${productId}`, { cacheTtlMs: 2 * 60_000 });
   const data = unwrapData<{ product?: Product } | Product>(payload);
   const product = data && typeof data === 'object' && 'product' in data ? data.product : data;
 

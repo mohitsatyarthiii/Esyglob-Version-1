@@ -123,7 +123,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
       { question: 'Is tracking included?', answer: 'Tracking appears once the carrier and booking are assigned.' },
     ],
     terms: ['Rates depend on route, cargo, carrier availability, and customs requirements.'],
-    endpoint: '/api/shipping',
+    endpoint: '/shipping',
     fields: [
       { key: 'type', label: 'Shipping type', type: 'select', required: true, options: ['ocean_fcl', 'ocean_lcl', 'air_freight', 'air_express', 'express_courier'], step: 'Shipment type and packages' },
       { key: 'packageDescription', label: 'Package description', type: 'text', step: 'Shipment type and packages' },
@@ -154,7 +154,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Purchase order', 'Supplier agreement', 'Payment reference after deposit'],
     faqs: [{ question: 'When are funds released?', answer: 'Funds release after buyer approval or completion of agreed terms.' }],
     terms: ['Escrow availability depends on seller, order status, and compliance review.'],
-    endpoint: '/api/escrow',
+    endpoint: '/escrow',
     fields: [
       { key: 'sellerId', label: 'Seller ID', type: 'text', required: true },
       { key: 'orderId', label: 'Order ID', type: 'text' },
@@ -185,7 +185,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Product specification', 'Supplier contact', 'Factory address proof if available'],
     faqs: [{ question: 'Can I choose a date?', answer: 'Yes, requested dates are captured and confirmed by operations.' }],
     terms: ['Inspection dates are subject to factory access and inspector availability.'],
-    endpoint: '/api/inspections',
+    endpoint: '/inspections',
     fields: [
       { key: 'type', label: 'Inspection type', type: 'select', required: true, options: ['pre_production', 'during_production', 'pre_shipment', 'container_loading', 'factory_audit'] },
       { key: 'supplierName', label: 'Supplier name', type: 'text', required: true },
@@ -218,7 +218,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Commercial invoice', 'Packing list', 'HS code details', 'Shipment reference'],
     faqs: [{ question: 'Are duties calculated by the app?', answer: 'The backend calculates duty values from the submitted clearance payload.' }],
     terms: ['Clearance timelines depend on document completeness, port processing, and customs review.'],
-    endpoint: '/api/customs',
+    endpoint: '/customs',
     fields: [
       { key: 'type', label: 'Clearance type', type: 'select', required: true, options: ['import', 'export'], step: 'Shipment details' },
       { key: 'carrier', label: 'Carrier', type: 'select', options: ['DHL', 'FedEx', 'Maersk', 'MSC', 'CMA CGM'], step: 'Shipment details' },
@@ -254,7 +254,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Purchase order', 'Invoices', 'Bank details', 'Supplier reference'],
     faqs: [{ question: 'What happens after submission?', answer: 'Applications move to submitted and then under review by the financing workflow.' }],
     terms: ['Approval, interest, funded amount, and repayment schedule are determined by backend review.'],
-    endpoint: '/api/financing',
+    endpoint: '/financing',
     fields: [
       { key: 'type', label: 'Financing type', type: 'select', required: true, options: ['po_financing', 'invoice_factoring', 'supply_chain', 'working_capital'], step: 'Financing details' },
       { key: 'currency', label: 'Currency', type: 'select', required: true, options: ['USD', 'EUR', 'INR'], step: 'Financing details' },
@@ -289,7 +289,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Order or escrow reference', 'Evidence links', 'Photos or inspection reports if available'],
     faqs: [{ question: 'Can sellers access disputes?', answer: 'Sellers can access disputes through the API when they are involved as respondents.' }],
     terms: ['Dispute outcomes depend on evidence, transaction terms, and mediation review.'],
-    endpoint: '/api/disputes',
+    endpoint: '/disputes',
     fields: [
       { key: 'transactionType', label: 'Transaction type', type: 'select', required: true, options: ['order', 'escrow'], step: 'Transaction' },
       { key: 'transactionId', label: 'Order or escrow ID', type: 'text', required: true, step: 'Transaction' },
@@ -322,7 +322,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['Product list', 'SKU sheet', 'Inbound shipment details'],
     faqs: [{ question: 'Can existing stock be added?', answer: 'Yes, operations can add or increment warehouse inventory records.' }],
     terms: ['Storage and fulfillment fees depend on warehouse, item profile, and service usage.'],
-    endpoint: '/api/warehousing',
+    endpoint: '/warehousing',
     fields: [
       { key: 'warehouseId', label: 'Warehouse ID', type: 'text', required: true, step: 'Warehouse' },
       { key: 'sku', label: 'SKU', type: 'text', required: true, step: 'Inventory' },
@@ -407,7 +407,7 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     documents: ['GST certificate', 'PAN card', 'Business registration', 'Address proof', 'Bank statement'],
     faqs: [{ question: 'Can I update later?', answer: 'Yes, profile and documents can be updated from seller onboarding.' }],
     terms: ['Documents are reviewed by the verification team and may require additional information.'],
-    endpoint: '/api/seller/onboarding',
+    endpoint: '/suppliers/profile',
     fields: [
       { key: 'companyName', label: 'Company name', type: 'text', required: true },
       { key: 'companyType', label: 'Company type', type: 'select', required: true, options: ['manufacturer', 'wholesaler', 'distributor', 'trader', 'exporter', 'other'] },
@@ -554,23 +554,23 @@ export function getServiceByKey(key: string) {
 }
 
 export async function fetchServiceRequests(params: { role?: string; serviceKey?: string; status?: string; page?: number; limit?: number } = {}): Promise<ServiceRequestList> {
-  const payload = await apiRequest('/api/services', { query: { limit: 50, ...params } });
+  const payload = await apiRequest('/support-tickets', { query: { limit: 50, ...params } });
   const data = unwrapData<{ requests?: ServiceRequest[]; pagination?: Pagination }>(payload);
 
   return {
-    requests: data?.requests ?? normalizeList<ServiceRequest>(payload, ['requests', 'items', 'results']),
+    requests: data?.requests ?? normalizeList<ServiceRequest>(payload, ['requests', 'tickets', 'items', 'results']),
     pagination: data?.pagination,
   };
 }
 
 export async function fetchServiceRequestDetails(requestId: string): Promise<ServiceRequest> {
-  const payload = await apiRequest(`/api/services/${requestId}`);
+  const payload = await apiRequest(`/support-tickets/${requestId}`);
   const data = unwrapData<{ request?: ServiceRequest } | ServiceRequest>(payload);
   return (data && typeof data === 'object' && 'request' in data ? data.request : data) as ServiceRequest;
 }
 
 export async function fetchShipments(params: { status?: string; type?: string; page?: number; limit?: number } = {}) {
-  const payload = await apiRequest('/api/shipping', { query: { limit: 50, ...params } });
+  const payload = await apiRequest('/shipping', { query: { limit: 50, ...params } });
   const data = unwrapData<{ shipments?: ShippingOrder[]; pagination?: Pagination }>(payload);
 
   return {
@@ -616,8 +616,8 @@ export async function createServiceBooking(service: ServiceCatalogItem, role: st
   }
 
   if (service.key === 'seller-verification') {
-    return apiRequest('/api/seller/onboarding', {
-      method: 'POST',
+    return apiRequest('/suppliers/profile', {
+      method: 'PATCH',
       body: {
         companyName: values.companyName,
         companyType: values.companyType,
@@ -643,7 +643,8 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
     : [];
   const details = values.details || values.specialRequirements || values.description || values.subject || service.title;
 
-  const payload = await apiRequest('/api/services', {
+  const endpoint = service.key === 'consulting' ? '/consulting' : '/support-tickets';
+  const payload = await apiRequest(endpoint, {
     method: 'POST',
     body: {
       role: role === 'seller' ? 'seller' : 'buyer',
@@ -666,7 +667,7 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
 }
 
 async function createShipping(values: Record<string, string>) {
-  const payload = await apiRequest('/api/shipping', {
+  const payload = await apiRequest('/shipping', {
     method: 'POST',
     body: {
       type: values.type,
@@ -685,7 +686,7 @@ async function createShipping(values: Record<string, string>) {
 }
 
 async function createInspection(values: Record<string, string>) {
-  const payload = await apiRequest('/api/inspections', {
+  const payload = await apiRequest('/inspections', {
     method: 'POST',
     body: {
       type: values.type,
@@ -704,7 +705,7 @@ async function createInspection(values: Record<string, string>) {
 }
 
 async function createEscrow(values: Record<string, string>) {
-  const payload = await apiRequest('/api/escrow', {
+  const payload = await apiRequest('/escrow', {
     method: 'POST',
     body: {
       sellerId: values.sellerId,
@@ -724,7 +725,7 @@ async function createEscrow(values: Record<string, string>) {
 async function createCustoms(values: Record<string, string>) {
   const quantity = Number(values.quantity || 1);
   const unitValue = Number(values.unitValue || 0);
-  const payload = await apiRequest('/api/customs', {
+  const payload = await apiRequest('/customs', {
     method: 'POST',
     body: {
       type: values.type,
@@ -750,7 +751,7 @@ async function createCustoms(values: Record<string, string>) {
 }
 
 async function createFinancing(values: Record<string, string>) {
-  const payload = await apiRequest('/api/financing', {
+  const payload = await apiRequest('/financing', {
     method: 'POST',
     body: {
       type: values.type,
@@ -777,7 +778,7 @@ async function createFinancing(values: Record<string, string>) {
 }
 
 async function createDispute(values: Record<string, string>) {
-  const payload = await apiRequest('/api/disputes', {
+  const payload = await apiRequest('/disputes', {
     method: 'POST',
     body: {
       respondentId: values.respondentId,
@@ -796,7 +797,7 @@ async function createDispute(values: Record<string, string>) {
 }
 
 async function createWarehouseInventory(values: Record<string, string>) {
-  const payload = await apiRequest('/api/warehousing', {
+  const payload = await apiRequest('/warehousing', {
     method: 'POST',
     body: {
       action: 'add_inventory',
@@ -816,14 +817,15 @@ export async function fetchAggregatedServiceActivity(role?: string | null): Prom
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
   const calls = [
     fetchServiceRequests({ role: normalizedRole, limit: 30 }).then(result => result.requests),
-    apiRequest('/api/shipping', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['shipments'])).catch(() => []),
-    apiRequest('/api/escrow', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['transactions'])).catch(() => []),
-    apiRequest('/api/inspections', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['inspections'])).catch(() => []),
-    apiRequest('/api/customs', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['clearances'])).catch(() => []),
-    apiRequest('/api/financing', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['applications'])).catch(() => []),
-    apiRequest('/api/disputes', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['disputes'])).catch(() => []),
-    apiRequest('/api/trade-assurance', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['assurances'])).catch(() => []),
-    apiRequest('/api/warehousing', { query: { type: 'inventory', limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['inventory'])).catch(() => []),
+    apiRequest('/shipping', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['shipments'])).catch(() => []),
+    apiRequest('/escrow', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['transactions'])).catch(() => []),
+    apiRequest('/inspections', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['inspections'])).catch(() => []),
+    apiRequest('/customs', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['clearances'])).catch(() => []),
+    apiRequest('/financing', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['applications'])).catch(() => []),
+    apiRequest('/disputes', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['disputes'])).catch(() => []),
+    apiRequest('/consulting', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['engagements', 'consulting', 'items'])).catch(() => []),
+    apiRequest('/support-tickets', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['tickets', 'requests', 'items'])).catch(() => []),
+    apiRequest('/warehousing', { query: { type: 'inventory', limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['inventory'])).catch(() => []),
   ];
   const settled = await Promise.allSettled(calls);
 
