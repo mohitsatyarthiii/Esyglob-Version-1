@@ -30,7 +30,7 @@ class ReviewService {
     const isSellerDashboard = sellerDashboard === 'true';
 
     if ((isMine || isSellerDashboard) && !session?.userId) {
-      throw Object.assign(new Error('Unauthorized'), { statusCode: 401 });
+      throw Object.assign(new Error('Please sign in to continue'), { statusCode: 401 });
     }
 
     const repoQuery = {};

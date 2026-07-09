@@ -5,7 +5,7 @@ import { authenticate, requireAuth, requireRole } from '../middlewares/auth.midd
 const router = Router();
 
 // GET - List reviews (public with optional auth)
-router.get('/', ReviewController.list);
+router.get('/', authenticate, ReviewController.list);
 
 // Mutating routes require authentication
 router.use(authenticate);

@@ -35,6 +35,14 @@ function toObjectId(value) {
   return mongoose.Types.ObjectId.isValid(id) ? id : null;
 }
 
+function idString(value) {
+  if (!value) return '';
+  if (typeof value === 'object') {
+    return String(value._id || value.id || '');
+  }
+  return String(value);
+}
+
 function cleanAddress(address = {}) {
   return {
     name: address.name || address.fullName || '',
@@ -80,10 +88,10 @@ class OrderService {
 
     // Authorization check
     const isParticipant =
-      order.buyerId?._id?.toString() === userId ||
-      order.userId?.toString() === userId ||
-      order.sellerId?.userId?.toString() === userId ||
-      order.sellerId?._id?.toString() === userId;
+      idString(order.buyerId) === String(userId) ||
+      idString(order.userId) === String(userId) ||
+      idString(order.sellerId?.userId) === String(userId) ||
+      idString(order.sellerId) === String(userId);
     const isAdmin = roles?.includes('admin');
 
     if (!isParticipant && !isAdmin) {

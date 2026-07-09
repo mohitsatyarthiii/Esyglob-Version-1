@@ -1,5 +1,6 @@
 import ReviewService from '../services/review.service.js';
 import { z } from 'zod';
+import { hasRole } from '../lib/constants.js';
 
 class ReviewController {
   /**
@@ -10,10 +11,10 @@ class ReviewController {
       const result = await ReviewService.getReviews(req.query, req.user);
       return res.json(result);
     } catch (error) {
-      console.error('[Reviews-GET] Error:', error);
       if (error.statusCode === 401) {
         return res.status(401).json({ error: error.message });
       }
+      console.error('[Reviews-GET] Error:', error);
       return res.status(500).json({ error: 'Failed to fetch reviews' });
     }
   }
@@ -23,7 +24,7 @@ class ReviewController {
    */
   static async create(req, res) {
     try {
-      if (!req.user?.roles?.includes('buyer')) {
+      if (!hasRole(req.user, 'buyer')) {
         return res.status(403).json({ error: 'Only buyers can create reviews' });
       }
 
@@ -78,8 +79,8 @@ class ReviewController {
    */
   static async sellerRespond(req, res) {
     try {
-      if (!req.user?.roles?.includes('seller')) {
-        return res.status(401).json({ error: 'Unauthorized' });
+      if (!hasRole(req.user, 'seller')) {
+        return res.status(403).json({ error: 'Only suppliers can respond to reviews' });
       }
 
       const { reviewId } = req.params;

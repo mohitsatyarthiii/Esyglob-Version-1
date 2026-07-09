@@ -1,4 +1,5 @@
 import { getCurrentUser, getSessionPayload } from '../lib/session.js';
+import { hasRole } from '../lib/constants.js';
 
 export function authenticate(req, res, next) {
   try {
@@ -45,9 +46,9 @@ export function requireRole(...roles) {
       return res.status(401).json({ error: 'Please sign in to continue' });
     }
 
-    const hasRole = roles.some((role) => req.user.roles?.includes(role));
+    const isAllowed = roles.some((role) => hasRole(req.user, role));
 
-    if (!hasRole) {
+    if (!isAllowed) {
       return res.status(403).json({ error: 'You do not have permission to perform this action' });
     }
 

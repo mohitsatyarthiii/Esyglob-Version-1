@@ -3,6 +3,7 @@ import { config } from '../config/env.js';
 import { createToken, verifyToken } from './crypto.js';
 import User from '../models/User.js';
 import mongoose from 'mongoose';
+import { normalizeRole, normalizeRoles } from './constants.js';
 
 export function setSessionCookie(res, userId) {
   const token = createToken(userId);
@@ -81,6 +82,8 @@ export function serializeUser(user) {
   if (!user) return null;
 
   const id = String(user._id || user.id);
+  const roles = normalizeRoles(user.roles || ['buyer']);
+  const primaryRole = normalizeRole(user.primaryRole || roles[0] || 'buyer');
 
   return {
     id,
@@ -92,8 +95,8 @@ export function serializeUser(user) {
     fullName: user.fullName || '',
     avatarUrl: user.avatarUrl || '',
     phone: user.phone || '',
-    roles: user.roles || ['buyer'],
-    primaryRole: user.primaryRole || user.roles?.[0] || 'buyer',
+    roles,
+    primaryRole,
     isActive: user.isActive,
     isBanned: user.isBanned,
     hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),

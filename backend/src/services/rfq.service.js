@@ -79,7 +79,12 @@ export async function getRfqs(session, searchParams) {
       !visibility);
 
   if (wantsBuyerScope) {
-    if (!session?.userId || !session.roles?.includes(USER_ROLES.BUYER)) {
+    if (!session?.userId) {
+      const error = new Error('Please sign in to continue');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!session.roles?.includes(USER_ROLES.BUYER)) {
       const error = new Error('Buyer access required');
       error.statusCode = 403;
       throw error;
@@ -93,7 +98,12 @@ export async function getRfqs(session, searchParams) {
       query.status = { $ne: 'archived' };
     }
   } else if (scope === 'seller') {
-    if (!session?.userId || !session.roles?.includes(USER_ROLES.SELLER)) {
+    if (!session?.userId) {
+      const error = new Error('Please sign in to continue');
+      error.statusCode = 401;
+      throw error;
+    }
+    if (!session.roles?.includes(USER_ROLES.SELLER)) {
       const error = new Error('Seller access required');
       error.statusCode = 403;
       throw error;

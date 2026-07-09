@@ -4,6 +4,28 @@ export const USER_ROLES = {
   ADMIN: 'admin',
 };
 
+const ROLE_ALIASES = {
+  supplier: USER_ROLES.SELLER,
+};
+
+export function normalizeRole(role) {
+  const value = String(role || '').trim().toLowerCase();
+  return ROLE_ALIASES[value] || value;
+}
+
+export function normalizeRoles(roles = []) {
+  const normalized = Array.isArray(roles)
+    ? roles.map(normalizeRole).filter(Boolean)
+    : [normalizeRole(roles)].filter(Boolean);
+
+  return [...new Set(normalized)];
+}
+
+export function hasRole(userOrRoles, role) {
+  const roles = Array.isArray(userOrRoles) ? userOrRoles : userOrRoles?.roles;
+  return normalizeRoles(roles).includes(normalizeRole(role));
+}
+
 
 
 // Seller Verification Status
