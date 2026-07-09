@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { forgotPassword } from '../api/auth';
 import { useAuth } from '../auth/AuthContext';
 import { colors, radii, spacing, type } from '../theme';
@@ -29,8 +29,10 @@ type Props = {
 function AuthScreen({ initialMode = 'login', onClose, onSuccess }: Props) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { signIn, signUp, error } = useAuth();
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const routedMode = route.params?.initialMode as Mode | undefined;
+  const [mode, setMode] = useState<Mode>(routedMode ?? initialMode);
   const [role, setRole] = useState<MobileRole>('buyer');
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -53,6 +55,9 @@ function AuthScreen({ initialMode = 'login', onClose, onSuccess }: Props) {
       } else if (mode === 'login') {
         await signIn({ email: email.trim(), password });
         onSuccess?.();
+        if (!onSuccess) {
+          navigation.goBack();
+        }
       } else {
         await signUp({
           name: name.trim(),
@@ -62,6 +67,9 @@ function AuthScreen({ initialMode = 'login', onClose, onSuccess }: Props) {
           companyName: companyName.trim() || undefined,
         });
         onSuccess?.();
+        if (!onSuccess) {
+          navigation.goBack();
+        }
       }
     } catch (nextError) {
       setMessageType('error');

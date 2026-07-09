@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
 import ProductCard from '../components/ProductCard';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { fetchProducts } from '../api/products';
 import { colors, radii, spacing } from '../theme';
 import { getId } from '../utils/format';
+import { logPerf, perfNow } from '../utils/performance';
 
 type SearchParams = {
   category?: string;
@@ -28,6 +30,8 @@ function SearchScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const params = (route.params ?? {}) as SearchParams;
+  const screenStart = useRef(perfNow()).current;
+  const listVisibleLogged = useRef(false);
   const [query, setQuery] = useState(params.q ?? '');
   const [submittedQuery, setSubmittedQuery] = useState(params.q ?? '');
   const [category, setCategory] = useState(params.category ?? '');
@@ -38,6 +42,8 @@ function SearchScreen() {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const debouncedMinPrice = useDebouncedValue(minPrice, 350);
+  const debouncedMaxPrice = useDebouncedValue(maxPrice, 350);
 
   useEffect(() => {
     setCategory(params.category ?? '');
@@ -51,7 +57,7 @@ function SearchScreen() {
   }, [params.category, params.categoryName, params.q, params.seller, params.sellerName]);
 
   const products = useInfiniteQuery({
-    queryKey: ['products', submittedQuery, category, seller, sort, verifiedOnly, minPrice, maxPrice],
+    queryKey: ['products', submittedQuery, category, seller, sort, verifiedOnly, debouncedMinPrice, debouncedMaxPrice],
     queryFn: ({ pageParam }) =>
       fetchProducts({
         q: submittedQuery,
@@ -59,8 +65,8 @@ function SearchScreen() {
         seller,
         sort,
         verifiedOnly,
-        minPrice,
-        maxPrice,
+        minPrice: debouncedMinPrice,
+        maxPrice: debouncedMaxPrice,
         page: Number(pageParam),
         limit: 20,
       }),
@@ -79,6 +85,16 @@ function SearchScreen() {
     () => products.data?.pages.flatMap(page => page.products) ?? [],
     [products.data],
   );
+
+  useEffect(() => {
+    if (!listVisibleLogged.current && productRows.length) {
+      listVisibleLogged.current = true;
+      logPerf('screen:product-list-visible', {
+        products: productRows.length,
+        ms: Math.round(perfNow() - screenStart),
+      });
+    }
+  }, [productRows.length, screenStart]);
 
   const submitSearch = () => {
     setSubmittedQuery(query.trim());
@@ -172,12 +188,11 @@ function SearchScreen() {
       ) : products.isError ? (
         <ErrorState message={(products.error as Error).message} onRetry={() => products.refetch()} />
       ) : (
-        <FlatList
+        <FlashList
           data={productRows}
           keyExtractor={item => getId(item)}
           numColumns={2}
           contentContainerStyle={styles.results}
-          columnWrapperStyle={styles.column}
           refreshing={products.isRefetching && !products.isFetchingNextPage}
           onRefresh={() => products.refetch()}
           onEndReachedThreshold={0.35}
@@ -335,3 +350,15 @@ const styles = StyleSheet.create({
 });
 
 export default SearchScreen;
+
+function useDebouncedValue(value: string, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+
+    return () => clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debounced;
+}

@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 import { normalizeList, unwrapData } from './normalizers';
-import { NotificationItem } from './types';
+import { NotificationItem, SavedItem, SavedItemType } from './types';
 
 export type ProfileSettings = {
   fullName?: string;
@@ -86,8 +86,29 @@ export async function requestWithdrawal(input: Record<string, unknown>) {
 }
 
 export async function fetchNotificationCenter() {
-  const payload = await apiRequest('/api/notifications', { query: { limit: 60 } });
-  return normalizeList<NotificationItem>(payload, ['notifications', 'items']);
+  const payload = await apiRequest('/api/notifications', { query: { limit: 30 } });
+  const data = unwrapData<{ notifications?: NotificationItem[]; items?: NotificationItem[]; unreadCount?: number; pagination?: Record<string, unknown> }>(payload);
+  return {
+    notifications: data.notifications ?? data.items ?? normalizeList<NotificationItem>(payload, ['notifications', 'items']),
+    unreadCount: data.unreadCount,
+    pagination: data.pagination,
+  };
+}
+
+export async function fetchSavedItems(input: { type?: SavedItemType; itemId?: string; limit?: number } = {}) {
+  const payload = await apiRequest('/api/buyer/saved', {
+    query: {
+      type: input.type,
+      itemId: input.itemId,
+      limit: input.limit ?? 100,
+    },
+  });
+  return normalizeList<SavedItem>(payload, ['items', 'savedItems']);
+}
+
+export async function toggleSavedItem(input: { type: SavedItemType; itemId: string }) {
+  const payload = await apiRequest('/api/buyer/saved', { method: 'POST', body: input });
+  return unwrapData<{ saved?: boolean; item?: SavedItem }>(payload);
 }
 
 export async function markAllNotificationsRead() {

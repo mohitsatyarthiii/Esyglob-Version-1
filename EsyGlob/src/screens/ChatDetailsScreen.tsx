@@ -16,6 +16,10 @@ import { getId } from '../utils/format';
 import { firstImage, normalizeImageUrl } from '../utils/images';
 
 type SheetMode = 'actions' | 'product' | 'store' | 'rfq' | 'quotation' | 'start_order' | 'voice' | null;
+type LocalMessage = MessageItem & {
+  localId?: string;
+  retryPayload?: string | Record<string, unknown>;
+};
 
 const buyerActions = [
   ['camera-outline', 'Camera', 'camera'],
@@ -56,14 +60,25 @@ function ChatDetailsScreen() {
   const [recordingUri, setRecordingUri] = useState('');
   const [recordingState, setRecordingState] = useState<'idle' | 'recording' | 'paused' | 'preview'>('idle');
   const [recordTime, setRecordTime] = useState('00:00');
+  const [olderMessages, setOlderMessages] = useState<MessageItem[]>([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const chat = useQuery({
     queryKey: ['chat-details', chatId],
     queryFn: () => fetchChatDetails(chatId),
     enabled: Boolean(chatId),
+    refetchInterval: 5000,
   });
   const senderId = user?.id ?? user?._id;
   const participant = useMemo(() => {
     const item = chat.data?.chat;
+    if (item?.chatType === 'group') {
+      return {
+        name: item.groupName ?? title ?? 'Group chat',
+        image: undefined,
+      };
+    }
+
     const buyer = typeof item?.buyerId === 'object' ? item.buyerId as CurrentUser : undefined;
     const seller = typeof item?.sellerId === 'object' ? item.sellerId as CurrentUser : undefined;
     const other = senderId && buyer && getUserId(buyer) === senderId ? seller : senderId && seller && getUserId(seller) === senderId ? buyer : seller ?? buyer;
@@ -75,13 +90,27 @@ function ChatDetailsScreen() {
   }, [chat.data?.chat, senderId, title]);
   const send = useMutation({
     mutationFn: (content: string | Record<string, unknown>) => sendChatMessage(chatId, content),
-    onSuccess: () => {
+    onMutate: content => {
+      const localId = `local-${Date.now()}`;
+      const optimistic = buildOptimisticMessage(localId, content, user);
+      setLocalMessages(current => [...current, optimistic]);
+      return { localId, content };
+    },
+    onSuccess: (_message, _content, context) => {
       setDraft('');
       setSheetMode(null);
       resetForm();
+      if (context?.localId) {
+        setLocalMessages(current => current.filter(item => item.localId !== context.localId));
+      }
       invalidateChat(queryClient, chatId);
     },
-    onError: error => Alert.alert('Message failed', error instanceof Error ? error.message : 'Unable to send message.'),
+    onError: (error, _content, context) => {
+      if (context?.localId) {
+        setLocalMessages(current => current.map(item => item.localId === context.localId ? { ...item, localStatus: 'failed' } : item));
+      }
+      Alert.alert('Message failed', error instanceof Error ? error.message : 'Unable to send message.');
+    },
   });
   const business = useMutation({
     mutationFn: async (mode: Exclude<SheetMode, 'actions' | null>) => {
@@ -162,6 +191,24 @@ function ChatDetailsScreen() {
 
     if (content && !send.isPending) {
       send.mutate(content);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    const first = messages[0];
+
+    if (!first?.createdAt || loadingOlder) {
+      return;
+    }
+
+    setLoadingOlder(true);
+    try {
+      const result = await fetchChatDetails(chatId, { markRead: false, before: first.createdAt, limit: 30 });
+      setOlderMessages(current => mergeMessages(result.messages ?? [], current));
+    } catch (error) {
+      Alert.alert('Older messages unavailable', error instanceof Error ? error.message : 'Unable to load older messages.');
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -306,7 +353,7 @@ function ChatDetailsScreen() {
     return <ErrorState message={(chat.error as Error)?.message ?? 'Conversation was not returned.'} onRetry={() => chat.refetch()} />;
   }
 
-  const messages = chat.data.messages ?? [];
+  const messages = mergeMessages(olderMessages, chat.data.messages ?? [], localMessages);
   const chatProduct = typeof chat.data.chat.productId === 'object' ? chat.data.chat.productId as Product : undefined;
   const activeOrderItems = chat.data.chat.orderEligibility?.filter(item => item.isActive) ?? [];
   const selectableProducts = getSelectableProducts(chat.data, chatProduct);
@@ -356,9 +403,23 @@ function ChatDetailsScreen() {
         data={messages}
         keyExtractor={item => getId(item)}
         contentContainerStyle={styles.messages}
+        ListHeaderComponent={chat.data.pagination?.hasOlder || olderMessages.length ? (
+          <Pressable onPress={loadOlderMessages} disabled={loadingOlder} style={styles.loadOlderButton}>
+            <Text style={styles.loadOlderText}>{loadingOlder ? 'Loading...' : 'Load older messages'}</Text>
+          </Pressable>
+        ) : null}
         ListEmptyComponent={<EmptyState title="No messages yet" detail="Start the conversation with this supplier." />}
         renderItem={({ item, index }) => (
-          <MessageBubble item={item} previous={messages[index - 1]} currentUserId={senderId} chatId={chatId} />
+          <MessageBubble
+            item={item}
+            previous={messages[index - 1]}
+            currentUserId={senderId}
+            chatId={chatId}
+            onRetry={(payload, localId) => {
+              setLocalMessages(current => current.filter(message => message.localId !== localId));
+              send.mutate(payload);
+            }}
+          />
         )}
       />
 
@@ -578,7 +639,19 @@ function IconButton({ icon, label, onPress }: { icon: string; label: string; onP
   );
 }
 
-function MessageBubble({ item, previous, currentUserId, chatId }: { item: MessageItem; previous?: MessageItem; currentUserId?: string; chatId: string }) {
+function MessageBubble({
+  item,
+  previous,
+  currentUserId,
+  chatId,
+  onRetry,
+}: {
+  item: LocalMessage;
+  previous?: MessageItem;
+  currentUserId?: string;
+  chatId: string;
+  onRetry?: (payload: string | Record<string, unknown>, localId: string) => void;
+}) {
   const sender = typeof item.senderId === 'object' ? item.senderId as CurrentUser : undefined;
   const mine = Boolean(currentUserId && sender && getUserId(sender) === currentUserId);
   const createdAt = item.createdAt ? new Date(item.createdAt) : null;
@@ -600,6 +673,21 @@ function MessageBubble({ item, previous, currentUserId, chatId }: { item: Messag
         ) : null}
         <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
           <MessageContent item={item} mine={mine} chatId={chatId} />
+          {item.localStatus ? (
+            <Pressable
+              disabled={item.localStatus !== 'failed' || !item.retryPayload || !item.localId}
+              onPress={() => item.retryPayload && item.localId && onRetry?.(item.retryPayload, item.localId)}
+              style={styles.localStatusRow}>
+              <Icon
+                name={item.localStatus === 'failed' ? 'alert-circle-outline' : item.localStatus === 'sent' ? 'check' : 'clock-outline'}
+                size={12}
+                color={mine ? '#fff' : colors.muted}
+              />
+              <Text style={[styles.localStatusText, mine && styles.timeMine]}>
+                {item.localStatus === 'failed' ? 'Failed - tap to retry' : item.localStatus}
+              </Text>
+            </Pressable>
+          ) : null}
           {createdAt ? <Text style={[styles.time, mine && styles.timeMine]}>{createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text> : null}
         </View>
       </View>
@@ -716,6 +804,39 @@ function getSelectableProducts(data: { chat?: Chat; sellerProducts?: Product[]; 
   });
 }
 
+function buildOptimisticMessage(localId: string, payload: string | Record<string, unknown>, user?: CurrentUser | null): LocalMessage {
+  const record = typeof payload === 'string' ? { content: payload } : payload;
+
+  return {
+    id: localId,
+    localId,
+    senderId: user ?? undefined,
+    content: typeof record.content === 'string' ? record.content : '',
+    messageType: typeof record.messageType === 'string' ? record.messageType : 'text',
+    attachments: Array.isArray(record.attachments) ? record.attachments as string[] : undefined,
+    productDetails: record.productDetails as Product | undefined,
+    orderDetails: record.orderDetails as Record<string, unknown> | undefined,
+    rfqDetails: record.rfqDetails as Record<string, unknown> | undefined,
+    quotationDetails: record.quotationDetails as Record<string, unknown> | undefined,
+    createdAt: new Date().toISOString(),
+    localStatus: 'sending',
+    retryPayload: payload,
+  };
+}
+
+function mergeMessages(...groups: MessageItem[][]) {
+  const seen = new Set<string>();
+
+  return groups.flat().filter(message => {
+    const id = getId(message);
+    if (!id || seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+    return true;
+  }).sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+}
+
 function resolveId(value: unknown) {
   if (!value) {
     return undefined;
@@ -788,6 +909,8 @@ const styles = StyleSheet.create({
   contextButton: { backgroundColor: colors.primary, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   contextButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   messages: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  loadOlderButton: { alignItems: 'center', alignSelf: 'center', backgroundColor: colors.card, borderColor: colors.faint, borderRadius: radii.pill, borderWidth: 1, marginBottom: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  loadOlderText: { color: colors.primaryDark, fontSize: 12, fontWeight: '900' },
   dateSeparator: { alignSelf: 'center', color: colors.muted, fontSize: 11, fontWeight: '800', marginBottom: spacing.md, marginTop: spacing.sm },
   messageRow: { alignItems: 'flex-end', flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   messageRowMine: { justifyContent: 'flex-end' },
@@ -800,6 +923,8 @@ const styles = StyleSheet.create({
   messageTextMine: { color: '#fff' },
   time: { color: colors.muted, fontSize: 10, fontWeight: '800', marginTop: spacing.xs, textAlign: 'right' },
   timeMine: { color: 'rgba(255,255,255,0.78)' },
+  localStatusRow: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', gap: 3, marginTop: spacing.xs },
+  localStatusText: { color: colors.muted, fontSize: 10, fontWeight: '800', textTransform: 'capitalize' },
   messageCard: { gap: spacing.sm, minWidth: 230 },
   messageCardMine: {},
   cardHeader: { flexDirection: 'row', gap: spacing.md },

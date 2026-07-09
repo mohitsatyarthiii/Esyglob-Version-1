@@ -1,90 +1,435 @@
-import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchChats, fetchNotifications, fetchRFQs } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { LoadingState } from '../components/StateViews';
-import { colors, radii, spacing, type } from '../theme';
+import { colors, radii, shadow, spacing, type as typography } from '../theme';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
 
+// ──────────────────────────────────────
+// Types
+// ──────────────────────────────────────
 type AuthMode = 'login' | 'signup';
+type Role = 'buyer' | 'seller';
 
-const buyerItems = [
-  ['account-outline', 'Profile'],
-  ['robot-outline', 'AI Assistant'],
-  ['chart-line', 'Market Insights'],
-  ['briefcase-outline', 'Services'],
-  ['truck-fast-outline', 'Shipping & Logistics'],
-  ['clipboard-list-outline', 'Orders'],
-  ['heart-outline', 'Wishlist'],
-  ['bullseye-arrow', 'RFQs'],
-  ['wallet-outline', 'Wallet'],
-  ['bell-outline', 'Notifications'],
-  ['map-marker-outline', 'My Addresses'],
-  ['cog-outline', 'Settings'],
-  ['shield-lock-outline', 'Security & Privacy'],
-  ['lifebuoy', 'Support'],
+interface DashboardItem {
+  icon: string;
+  label: string;
+  color: string;
+  badge?: string | number;
+}
+
+interface DashboardSection {
+  title: string;
+  items: DashboardItem[];
+}
+
+// ──────────────────────────────────────
+// Navigation map — static, outside component
+// ──────────────────────────────────────
+const NAVIGATION_MAP: Record<string, string> = {
+  'All Orders': 'Orders',
+  Pending: 'Orders',
+  Shipped: 'Orders',
+  Completed: 'Orders',
+  Messages: 'Messages',
+  Profile: 'ProfileSettings',
+  Settings: 'ProfileSettings',
+  Security: 'Security',
+  Wallet: 'Wallet',
+  Addresses: 'Addresses',
+  Orders: 'Orders',
+  Services: 'Services',
+  'Find Suppliers': 'Sellers',
+  Suppliers: 'Sellers',
+  'AI Assistant': 'AIChat',
+  'AI Sourcing': 'AIChat',
+  'Market Insights': 'MarketInsights',
+  Analytics: 'MarketInsights',
+  'Saved Items': 'SavedItems',
+  'Shipping & Logistics': 'ShippingLogistics',
+  'My Reviews': 'ReviewsDashboard',
+  Reviews: 'ReviewsDashboard',
+  'My RFQs': 'RFQ',
+  RFQs: 'RFQ',
+  Quotations: 'RFQ',
+  Dashboard: 'SellerOnboarding',
+  Verification: 'SellerOnboarding',
+  'Factory Profile': 'SellerFactory',
+  Factory: 'SellerFactory',
+  Products: 'SellerProducts',
+  Wishlist: 'ProductListing',
+  'Recently Viewed': 'ProductListing',
+  Notifications: 'Notifications',
+  'Trade Assurance': 'Services',
+};
+
+// ──────────────────────────────────────
+// Alibaba-inspired color palette
+// ──────────────────────────────────────
+const PALETTE = {
+  primary: '#FF6A00',
+  primaryLight: '#FFF3E8',
+  primaryDark: '#E05500',
+  amber: '#FF9500',
+  emerald: '#00B578',
+  sky: '#3B9CFF',
+  violet: '#7B61FF',
+  rose: '#FF3B6E',
+  teal: '#00A8A8',
+  ink: '#1A1A1A',
+  text: '#333333',
+  muted: '#8C8C8C',
+  faint: '#E8E8E8',
+  surface: '#FFFFFF',
+  background: '#F5F5F5',
+  successBg: '#E8F8EE',
+  successBorder: '#B7EBCE',
+  successText: '#006C3D',
+  red: '#FF3B30',
+  logoutBorder: '#FFCCCC',
+} as const;
+
+// ──────────────────────────────────────
+// Section templates (badges injected dynamically)
+// ──────────────────────────────────────
+// ──────────────────────────────────────
+// Section templates — with explicit type annotations
+// ──────────────────────────────────────
+const BUYER_SECTIONS_TEMPLATE: {
+  title: string;
+  items: Omit<DashboardItem, 'badge'>[];
+}[] = [
+  {
+    title: 'My Orders' as string,
+    items: [
+      { icon: 'clipboard-list-outline', label: 'All Orders', color: PALETTE.violet },
+      { icon: 'clock-outline', label: 'Pending', color: PALETTE.amber },
+      { icon: 'truck-fast-outline', label: 'Shipped', color: PALETTE.sky },
+      { icon: 'check-circle-outline', label: 'Completed', color: PALETTE.emerald },
+    ],
+  },
+  {
+    title: 'Buying Services' as string,
+    items: [
+      { icon: 'bullseye-arrow', label: 'My RFQs', color: PALETTE.amber },
+      { icon: 'robot-outline', label: 'AI Sourcing', color: PALETTE.violet },
+      { icon: 'account-search-outline', label: 'Find Suppliers', color: PALETTE.emerald },
+      { icon: 'shield-check-outline', label: 'Trade Assurance', color: PALETTE.sky },
+    ],
+  },
+  {
+    title: 'Tools & Insights' as string,
+    items: [
+      { icon: 'chart-line', label: 'Market Insights', color: PALETTE.violet },
+      { icon: 'heart-outline', label: 'Saved Items', color: PALETTE.rose },
+      { icon: 'wallet-outline', label: 'Wallet', color: PALETTE.emerald },
+      { icon: 'star-outline', label: 'My Reviews', color: PALETTE.amber },
+    ],
+  },
 ];
 
-const sellerItems = [
-  ['view-dashboard-outline', 'Seller Dashboard'],
-  ['robot-outline', 'AI Assistant'],
-  ['chart-line', 'Market Insights'],
-  ['briefcase-outline', 'Services'],
-  ['truck-fast-outline', 'Shipping & Logistics'],
-  ['package-variant-closed', 'Products'],
-  ['clipboard-list-outline', 'Orders'],
-  ['bullseye-arrow', 'RFQs'],
-  ['file-document-edit-outline', 'Quotations'],
-  ['chart-line', 'Analytics'],
-  ['factory', 'Factory Profile'],
-  ['check-decagram-outline', 'Verification'],
-  ['wallet-outline', 'Wallet'],
-  ['message-text-outline', 'Messages'],
-  ['bell-outline', 'Notifications'],
-  ['cog-outline', 'Settings'],
-  ['shield-lock-outline', 'Security & Privacy'],
+const SELLER_SECTIONS_TEMPLATE: {
+  title: string;
+  items: Omit<DashboardItem, 'badge'>[];
+}[] = [
+  {
+    title: 'Store Management' as string,
+    items: [
+      { icon: 'view-dashboard-outline', label: 'Dashboard', color: PALETTE.violet },
+      { icon: 'package-variant-closed', label: 'Products', color: PALETTE.violet },
+      { icon: 'clipboard-list-outline', label: 'Orders', color: PALETTE.emerald },
+      { icon: 'factory', label: 'Factory Profile', color: PALETTE.red },
+    ],
+  },
+  {
+    title: 'Sales Services' as string,
+    items: [
+      { icon: 'file-document-edit-outline', label: 'Quotations', color: PALETTE.emerald },
+      { icon: 'bullseye-arrow', label: 'RFQs', color: PALETTE.amber },
+      { icon: 'robot-outline', label: 'AI Assistant', color: PALETTE.violet },
+      { icon: 'check-decagram-outline', label: 'Verification', color: PALETTE.sky },
+    ],
+  },
+  {
+    title: 'Analytics & Tools' as string,
+    items: [
+      { icon: 'chart-line', label: 'Analytics', color: PALETTE.violet },
+      { icon: 'heart-outline', label: 'Saved Items', color: PALETTE.rose },
+      { icon: 'wallet-outline', label: 'Wallet', color: PALETTE.emerald },
+      { icon: 'message-text-outline', label: 'Messages', color: PALETTE.violet },
+      { icon: 'star-check-outline', label: 'Reviews', color: PALETTE.amber },
+    ],
+  },
 ];
+
+// ──────────────────────────────────────
+// Query configuration
+// ──────────────────────────────────────
+const DASHBOARD_QUERY_OPTIONS = {
+  staleTime: 60_000,
+  gcTime: 5 * 60_000,
+  refetchOnWindowFocus: false,
+  retry: 2,
+  retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 10_000),
+} as const;
+
+// ──────────────────────────────────────
+// Badge map builder
+// ──────────────────────────────────────
+interface BadgeMap {
+  'All Orders': string;
+  Pending: string;
+  Shipped: string;
+  Completed: string;
+  'My RFQs': string;
+  RFQs: string;
+  Messages: string;
+  Wallet: string;
+  Products: string;
+  Orders: string;
+}
+
+function buildBadgeMap(
+  rfqCount: number,
+  chatCount: number,
+): Partial<BadgeMap> {
+  const map: Partial<BadgeMap> = {};
+
+  if (rfqCount > 0) {
+    map['My RFQs'] = String(rfqCount);
+    map['RFQs'] = String(rfqCount);
+  }
+
+  if (chatCount > 0) {
+    map['Messages'] = String(chatCount);
+  }
+
+  return map;
+}
+
+function applyBadges(
+  sections: typeof BUYER_SECTIONS_TEMPLATE,
+  badgeMap: Partial<BadgeMap>,
+): DashboardSection[] {
+  return sections.map(section => ({
+    ...section,
+    items: section.items.map(item => ({
+      ...item,
+      badge: badgeMap[item.label as keyof BadgeMap],
+    })),
+  }));
+}
+
+// ──────────────────────────────────────
+// Sub-components
+// ──────────────────────────────────────
+
+function Benefit({
+  icon,
+  title,
+  subtitle,
+  color,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.benefitRow}>
+      <View style={[styles.benefitIcon, { backgroundColor: `${color}15` }]}>
+        <Icon name={icon} size={20} color={color} />
+      </View>
+      <View style={styles.benefitInfo}>
+        <Text style={styles.benefitTitle}>{title}</Text>
+        <Text style={styles.benefitSubtitle}>{subtitle}</Text>
+      </View>
+    </View>
+  );
+}
+
+function LockedRow({ icon, title }: { icon: string; title: string }) {
+  return (
+    <View style={styles.lockedRow}>
+      <View style={styles.lockedIcon}>
+        <Icon name={icon} size={20} color={PALETTE.muted} />
+      </View>
+      <Text style={styles.lockedTitle}>{title}</Text>
+      <Icon name="lock-outline" size={14} color={PALETTE.faint} />
+    </View>
+  );
+}
+
+function StatCard({
+  icon,
+  iconBgColor,
+  iconColor,
+  value,
+  label,
+  isLoading,
+}: {
+  icon: string;
+  iconBgColor: string;
+  iconColor: string;
+  value: string | number;
+  label: string;
+  isLoading: boolean;
+}) {
+  return (
+    <View style={styles.statItem}>
+      <View style={[styles.statIconWrap, { backgroundColor: iconBgColor }]}>
+        <Icon name={icon} size={20} color={iconColor} />
+      </View>
+      {isLoading ? (
+        <ActivityIndicator size="small" color={PALETTE.muted} style={styles.statLoader} />
+      ) : (
+        <Text style={styles.statValue}>{value}</Text>
+      )}
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// ──────────────────────────────────────
+// Main Component
+// ──────────────────────────────────────
 
 function AccountScreen() {
   const navigation = useNavigation<any>();
+  const queryClient = useQueryClient();
   const { activeRole, setActiveRole, signOut, status, user } = useAuth();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [welcomeVisible, setWelcomeVisible] = useState(false);
-  const mobileRoles = user?.roles?.filter(role => role === 'buyer' || role === 'seller') ?? [];
-  const role = activeRole === 'seller' ? 'seller' : 'buyer';
-  const notifications = useQuery({
+  const [previousAuthMode, setPreviousAuthMode] = useState<AuthMode | null>(null);
+
+  const mobileRoles = useMemo(
+    () => user?.roles?.filter(r => r === 'buyer' || r === 'seller') ?? [],
+    [user?.roles],
+  );
+
+  const role: Role = activeRole === 'seller' ? 'seller' : 'buyer';
+
+  // ── Queries (matching actual function signatures) ──
+
+  // fetchNotifications() takes no arguments — we filter client-side via select
+  const notificationsQuery = useQuery({
     queryKey: ['account-notifications', role],
     queryFn: fetchNotifications,
     enabled: status === 'authenticated',
+    ...DASHBOARD_QUERY_OPTIONS,
+    select: (data: any) => ({
+      unreadCount: Array.isArray(data)
+        ? data.filter((item: any) => !item.isRead).length
+        : 0,
+    }),
   });
-  const rfqs = useQuery({
+
+  // fetchRFQs accepts { scope, limit, ... }
+  const rfqsQuery = useQuery({
     queryKey: ['account-rfqs', role],
-    queryFn: fetchRFQs,
+    queryFn: () => fetchRFQs({ scope: role, limit: 1 }),
     enabled: status === 'authenticated',
+    ...DASHBOARD_QUERY_OPTIONS,
+    select: (data: any) => ({
+      count: data?.pagination?.total ?? data?.rfqs?.length ?? 0,
+    }),
   });
-  const chats = useQuery({
+
+  // fetchChats accepts string (role) or object — passing role string directly
+  const chatsQuery = useQuery({
     queryKey: ['account-chats', role],
     queryFn: () => fetchChats(role),
     enabled: status === 'authenticated',
+    ...DASHBOARD_QUERY_OPTIONS,
+    select: (data: any) => ({
+      count: Array.isArray(data) ? data.length : 0,
+    }),
   });
 
+  const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
+  const rfqCount = rfqsQuery.data?.count ?? 0;
+  const chatCount = chatsQuery.data?.count ?? 0;
+
+  const badgeMap = useMemo(
+    () => buildBadgeMap(rfqCount, chatCount),
+    [rfqCount, chatCount],
+  );
+
+  const buyerSections = useMemo(
+    () => applyBadges(BUYER_SECTIONS_TEMPLATE, badgeMap),
+    [badgeMap],
+  );
+
+  const sellerSections = useMemo(
+    () => applyBadges(SELLER_SECTIONS_TEMPLATE, badgeMap),
+    [badgeMap],
+  );
+
+  // ── Welcome banner logic (fixed race condition) ──
   useEffect(() => {
-    if (status === 'authenticated' && authMode) {
+    if (status === 'authenticated' && previousAuthMode) {
       setAuthMode(null);
       setWelcomeVisible(true);
+      setPreviousAuthMode(null);
     }
-  }, [authMode, status]);
+  }, [status, previousAuthMode]);
 
+  const handleSetAuthMode = useCallback((mode: AuthMode | null) => {
+    if (mode) {
+      setPreviousAuthMode(mode);
+    }
+    setAuthMode(mode);
+  }, []);
+
+  // ── Pull-to-refresh ──
+  const handleRefresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['account-notifications'] });
+    queryClient.invalidateQueries({ queryKey: ['account-rfqs'] });
+    queryClient.invalidateQueries({ queryKey: ['account-chats'] });
+  }, [queryClient]);
+
+  const isRefreshing =
+    notificationsQuery.isFetching ||
+    rfqsQuery.isFetching ||
+    chatsQuery.isFetching;
+
+  const openDashboardItem = useCallback(
+    (label: string) => {
+      const route = NAVIGATION_MAP[label];
+      if (route) {
+        navigation.navigate(route);
+      } else {
+        navigation.navigate('Home');
+      }
+    },
+    [navigation],
+  );
+
+  const hasQueryError =
+    notificationsQuery.isError || rfqsQuery.isError || chatsQuery.isError;
+
+  // ══════════════════════════════════════
+  // RENDER: Auth mode
+  // ══════════════════════════════════════
   if (authMode) {
     return (
       <AuthScreen
         initialMode={authMode}
-        onClose={() => setAuthMode(null)}
+        onClose={() => handleSetAuthMode(null)}
         onSuccess={() => {
           setAuthMode(null);
           setWelcomeVisible(true);
@@ -93,40 +438,75 @@ function AccountScreen() {
     );
   }
 
+  // ══════════════════════════════════════
+  // RENDER: Session checking
+  // ══════════════════════════════════════
   if (status === 'checking') {
     return <LoadingState label="Restoring session" />;
   }
 
+  // ══════════════════════════════════════
+  // RENDER: Guest
+  // ══════════════════════════════════════
   if (status !== 'authenticated') {
     return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
         <View style={styles.guestTop}>
-          <Pressable onPress={() => navigation.navigate('Home')} hitSlop={10} style={styles.closeButton}>
-            <Icon name="close" size={24} color={colors.ink} />
+          <Pressable
+            onPress={() => navigation.navigate('Home')}
+            hitSlop={10}
+            style={styles.closeButton}>
+            <Icon name="close" size={20} color={PALETTE.muted} />
           </Pressable>
         </View>
+
         <View style={styles.guestHeader}>
           <View style={styles.guestAvatar}>
-            <Icon name="account-outline" size={42} color={colors.muted} />
+            <Icon name="account-outline" size={32} color={PALETTE.muted} />
           </View>
           <View style={styles.guestTextWrap}>
             <Text style={styles.guestTitle}>Welcome to EsyGlob</Text>
-            <Text style={styles.guestText}>Sign in to manage orders, RFQs, wishlist, and supplier messages.</Text>
+            <Text style={styles.guestText}>
+              Sign in to manage orders, RFQs, wishlist, and supplier messages.
+            </Text>
           </View>
         </View>
+
         <View style={styles.authActions}>
-          <Pressable onPress={() => setAuthMode('login')} style={styles.loginButton}>
+          <Pressable onPress={() => handleSetAuthMode('login')} style={styles.loginButton}>
             <Text style={styles.loginButtonText}>Login</Text>
           </Pressable>
-          <Pressable onPress={() => setAuthMode('signup')} style={styles.signupButton}>
+          <Pressable onPress={() => handleSetAuthMode('signup')} style={styles.signupButton}>
             <Text style={styles.signupButtonText}>Sign up</Text>
           </Pressable>
         </View>
-        <View style={styles.benefits}>
-          <Benefit icon="shield-check-outline" title="Verified trade identity" />
-          <Benefit icon="message-text-outline" title="Buyer-seller messaging" />
-          <Benefit icon="heart-outline" title="Wishlist and recently viewed" />
+
+        <View style={styles.benefitsCard}>
+          <Text style={styles.sectionTitle}>Member Benefits</Text>
+          <Benefit
+            icon="shield-check-outline"
+            title="Verified trade identity"
+            subtitle="Build trust with partners"
+            color={PALETTE.emerald}
+          />
+          <Benefit
+            icon="message-text-outline"
+            title="Buyer-seller messaging"
+            subtitle="Real-time communication"
+            color={PALETTE.violet}
+          />
+          <Benefit
+            icon="heart-outline"
+            title="Wishlist & history"
+            subtitle="Save and track products"
+            color={PALETTE.rose}
+          />
         </View>
+
+        <Text style={styles.sectionTitle}>Locked Features</Text>
         <LockedRow icon="eye-outline" title="Recently viewed" />
         <LockedRow icon="heart-outline" title="Wishlist" />
         <LockedRow icon="clipboard-list-outline" title="Orders" />
@@ -134,122 +514,77 @@ function AccountScreen() {
     );
   }
 
-  const dashboardItems = role === 'seller' ? sellerItems : buyerItems;
-  const unread = notifications.data?.filter(item => !item.isRead).length ?? 0;
+  // ══════════════════════════════════════
+  // RENDER: Authenticated
+  // ══════════════════════════════════════
   const displayName = user?.name ?? user?.fullName ?? user?.email ?? 'EsyGlob account';
-  const profileImage = firstImage(user?.profileImage, user?.avatar, user?.image);
-  const openDashboardItem = (label: string) => {
-    if (label === 'Messages') {
-      navigation.navigate('Messages');
-      return;
-    }
-
-    if (label === 'Profile' || label === 'Settings') {
-      navigation.navigate('ProfileSettings');
-      return;
-    }
-
-    if (label === 'Security & Privacy') {
-      navigation.navigate('Security');
-      return;
-    }
-
-    if (label === 'Wallet') {
-      navigation.navigate('Wallet');
-      return;
-    }
-
-    if (label === 'My Addresses') {
-      navigation.navigate('Addresses');
-      return;
-    }
-
-    if (label === 'Orders') {
-      navigation.navigate('Orders');
-      return;
-    }
-
-    if (label === 'Services') {
-      navigation.navigate('Services');
-      return;
-    }
-
-    if (label === 'AI Assistant') {
-      navigation.navigate('AIChat');
-      return;
-    }
-
-    if (label === 'Market Insights' || label === 'Analytics') {
-      navigation.navigate('MarketInsights');
-      return;
-    }
-
-    if (label === 'Shipping & Logistics') {
-      navigation.navigate('ShippingLogistics');
-      return;
-    }
-
-    if (label === 'RFQs' || label === 'Quotations') {
-      navigation.navigate('RFQ');
-      return;
-    }
-
-    if (label === 'Seller Dashboard' || label === 'Verification') {
-      navigation.navigate('SellerOnboarding');
-      return;
-    }
-
-    if (label === 'Factory Profile') {
-      navigation.navigate('SellerFactory');
-      return;
-    }
-
-    if (label === 'Products') {
-      navigation.navigate('SellerProducts');
-      return;
-    }
-
-    if (label === 'Wishlist') {
-      navigation.navigate('ProductListing');
-      return;
-    }
-
-    if (label === 'Notifications') {
-      navigation.navigate('Notifications');
-      return;
-    }
-
-    navigation.navigate('Home');
-  };
+  const profileImage = firstImage(user?.profileImage);
+  const sections = role === 'seller' ? sellerSections : buyerSections;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <RemoteImage
-          uri={profileImage}
-          width={124}
-          height={124}
-          style={styles.avatar}
-          fallback={<Text style={styles.avatarText}>{displayName.slice(0, 1).toUpperCase()}</Text>}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          tintColor={PALETTE.primary}
+          colors={[PALETTE.primary]}
         />
-        <View style={styles.identity}>
-          <Text style={styles.title}>{displayName}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
+      }>
+      {/* ── Profile Header Card ── */}
+      <View style={styles.profileCard}>
+        <View style={styles.profileTop}>
+          <RemoteImage
+            uri={profileImage}
+            width={64}
+            height={64}
+            style={styles.avatar}
+            fallback={
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarText}>
+                  {displayName.slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
+            }
+          />
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName} numberOfLines={1}>
+              {displayName}
+            </Text>
+            <Text style={styles.profileEmail} numberOfLines={1}>
+              {user?.email}
+            </Text>
+            <View style={styles.profileBadge}>
+              <Icon name="check-decagram" size={12} color={PALETTE.emerald} />
+              <Text style={styles.profileBadgeText}>Verified Account</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => navigation.navigate('ProfileSettings')}
+            style={styles.editButton}
+            hitSlop={8}>
+            <Icon name="chevron-right" size={20} color={PALETTE.muted} />
+          </Pressable>
         </View>
       </View>
 
+      {/* ── Welcome Banner ── */}
       {welcomeVisible ? (
         <View style={styles.welcomeBanner}>
-          <Icon name="check-circle-outline" size={22} color={colors.green} />
+          <Icon name="check-circle-outline" size={18} color={PALETTE.emerald} />
           <Text style={styles.welcomeText}>
-            Welcome back{user?.name ? `, ${user.name}` : ''}. Your {role} dashboard is ready.
+            Welcome back! Your {role} dashboard is ready.
           </Text>
           <Pressable onPress={() => setWelcomeVisible(false)} hitSlop={10}>
-            <Icon name="close" size={18} color={colors.muted} />
+            <Icon name="close" size={16} color={PALETTE.muted} />
           </Pressable>
         </View>
       ) : null}
 
+      {/* ── Role Switcher ── */}
       {mobileRoles.length > 1 ? (
         <View style={styles.roleRow}>
           {mobileRoles.map(item => (
@@ -257,312 +592,578 @@ function AccountScreen() {
               key={item}
               onPress={() => setActiveRole(item)}
               style={[styles.roleButton, role === item && styles.roleButtonActive]}>
-              <Text style={[styles.roleText, role === item && styles.roleTextActive]}>{item}</Text>
+              <Icon
+                name={item === 'buyer' ? 'account-outline' : 'store-outline'}
+                size={16}
+                color={role === item ? PALETTE.primary : PALETTE.muted}
+              />
+              <Text style={[styles.roleText, role === item && styles.roleTextActive]}>
+                {item === 'buyer' ? 'Buyer' : 'Seller'}
+              </Text>
             </Pressable>
           ))}
         </View>
       ) : null}
 
-      <View style={styles.summaryRow}>
-        <Metric label="RFQs" value={rfqs.data?.length ?? 0} />
-        <Metric label="Messages" value={chats.data?.length ?? 0} />
-        <Metric label="Alerts" value={unread} />
+      {/* ── Error Banner ── */}
+      {hasQueryError && !isRefreshing ? (
+        <View style={styles.errorBanner}>
+          <Icon name="alert-circle-outline" size={16} color={PALETTE.red} />
+          <Text style={styles.errorBannerText}>
+            Some data couldn't load. Pull to refresh.
+          </Text>
+        </View>
+      ) : null}
+
+      {/* ── Stats Overview ── */}
+      <View style={styles.statsCard}>
+        <StatCard
+          icon="file-document-outline"
+          iconBgColor="#FFF3E8"
+          iconColor={PALETTE.primary}
+          value={rfqCount}
+          label="Active RFQs"
+          isLoading={rfqsQuery.isLoading}
+        />
+        <View style={styles.statDivider} />
+        <StatCard
+          icon="message-text-outline"
+          iconBgColor="#E8F8EE"
+          iconColor={PALETTE.emerald}
+          value={chatCount}
+          label="Messages"
+          isLoading={chatsQuery.isLoading}
+        />
+        <View style={styles.statDivider} />
+        <StatCard
+          icon="bell-outline"
+          iconBgColor="#FFF0F0"
+          iconColor={PALETTE.red}
+          value={unreadCount}
+          label="Alerts"
+          isLoading={notificationsQuery.isLoading}
+        />
       </View>
 
-      <Text style={styles.dashboardTitle}>{role === 'seller' ? 'Seller Dashboard' : 'Buyer Dashboard'}</Text>
-      <View style={styles.grid}>
-        {dashboardItems.map(([icon, label]) => (
-          <Pressable key={label} onPress={() => openDashboardItem(label)} style={styles.gridItem}>
-            <Icon name={icon} size={24} color={colors.primary} />
-            <Text numberOfLines={2} style={styles.gridText}>{label}</Text>
-          </Pressable>
-        ))}
+      {/* ── Dashboard Sections ── */}
+      {sections.map(section => (
+        <View key={section.title} style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>{section.title}</Text>
+          <View style={styles.sectionGrid}>
+            {section.items.map(item => (
+              <Pressable
+                key={item.label}
+                onPress={() => openDashboardItem(item.label)}
+                style={styles.sectionItem}>
+                <View
+                  style={[
+                    styles.sectionIconWrap,
+                    { backgroundColor: `${item.color}12` },
+                  ]}>
+                  <Icon name={item.icon} size={20} color={item.color} />
+                  {item.badge ? (
+                    <View style={[styles.itemBadge, { backgroundColor: item.color }]}>
+                      <Text style={styles.itemBadgeText} numberOfLines={1}>
+                        {item.badge}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.sectionItemLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ))}
+
+      {/* ── Quick Actions ── */}
+      <View style={styles.quickActionsCard}>
+        <Text style={styles.sectionTitle}>Quick Actions</Text>
+        <Pressable
+          onPress={() => navigation.navigate('ProfileSettings')}
+          style={styles.actionRow}>
+          <View style={[styles.actionIcon, styles.orangeSoftBg]}>
+            <Icon name="cog-outline" size={20} color={PALETTE.primary} />
+          </View>
+          <View style={styles.actionInfo}>
+            <Text style={styles.actionLabel}>Settings</Text>
+            <Text style={styles.actionDesc}>Account, preferences, notifications</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate('Security')}
+          style={styles.actionRow}>
+          <View style={[styles.actionIcon, styles.greenSoftBg]}>
+            <Icon name="shield-lock-outline" size={20} color={PALETTE.emerald} />
+          </View>
+          <View style={styles.actionInfo}>
+            <Text style={styles.actionLabel}>Security & Privacy</Text>
+            <Text style={styles.actionDesc}>Password, 2FA, privacy settings</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate('Help')}
+          style={[styles.actionRow, styles.actionRowLast]}>
+          <View style={[styles.actionIcon, styles.redSoftBg]}>
+            <Icon name="lifebuoy" size={20} color={PALETTE.red} />
+          </View>
+          <View style={styles.actionInfo}>
+            <Text style={styles.actionLabel}>Help & Support</Text>
+            <Text style={styles.actionDesc}>FAQ, contact us, report issue</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
+        </Pressable>
       </View>
 
-      <Pressable onPress={signOut} style={styles.logout}>
+      {/* ── Logout ── */}
+      <Pressable onPress={signOut} style={styles.logoutButton}>
+        <Icon name="logout" size={18} color={PALETTE.red} />
         <Text style={styles.logoutText}>Sign out</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
-function Benefit({ icon, title }: { icon: string; title: string }) {
-  return (
-    <View style={styles.benefit}>
-      <Icon name={icon} size={22} color={colors.primary} />
-      <Text style={styles.benefitText}>{title}</Text>
-    </View>
-  );
-}
-
-function LockedRow({ icon, title }: { icon: string; title: string }) {
-  return (
-    <View style={styles.lockedRow}>
-      <Icon name={icon} size={23} color={colors.muted} />
-      <Text style={styles.lockedTitle}>{title}</Text>
-      <Icon name="lock-outline" size={18} color={colors.muted} />
-    </View>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricValue}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
-    </View>
-  );
-}
-
+// ──────────────────────────────────────
+// Styles
+// ──────────────────────────────────────
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: colors.background,
+    backgroundColor: PALETTE.background,
     flex: 1,
   },
   content: {
     padding: spacing.lg,
-    paddingBottom: 116,
+    paddingBottom: 120,
     paddingTop: spacing.xxl,
+    gap: spacing.lg,
   },
+
+  // ── Guest ──
   guestTop: {
     alignItems: 'flex-end',
   },
   closeButton: {
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: PALETTE.surface,
     borderRadius: radii.pill,
-    height: 42,
+    height: 36,
     justifyContent: 'center',
-    width: 42,
+    width: 36,
+    ...shadow,
   },
   guestHeader: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
     flexDirection: 'row',
-    marginTop: spacing.lg,
     padding: spacing.lg,
+    ...shadow,
   },
   guestAvatar: {
     alignItems: 'center',
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.pill,
-    height: 68,
+    backgroundColor: PALETTE.background,
+    borderRadius: 40,
+    height: 64,
     justifyContent: 'center',
-    width: 68,
+    width: 64,
   },
   guestTextWrap: {
     flex: 1,
     marginLeft: spacing.md,
   },
   guestTitle: {
-    color: colors.ink,
-    fontSize: 20,
-    fontWeight: '900',
+    color: PALETTE.ink,
+    fontSize: typography.body,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
   guestText: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 19,
-    marginTop: spacing.xs,
+    color: PALETTE.muted,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+    marginTop: 4,
   },
   authActions: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.lg,
   },
   loginButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
+    backgroundColor: PALETTE.primary,
+    borderRadius: radii.md,
     flex: 1,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
   },
   loginButtonText: {
     color: '#fff',
-    fontWeight: '900',
+    fontSize: 14,
+    fontWeight: '700',
   },
   signupButton: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.primary,
-    borderRadius: radii.pill,
-    borderWidth: 1,
+    backgroundColor: PALETTE.surface,
+    borderColor: PALETTE.primary,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
     flex: 1,
-    paddingVertical: spacing.md,
+    paddingVertical: 14,
   },
   signupButtonText: {
-    color: colors.primaryDark,
-    fontWeight: '900',
+    color: PALETTE.primary,
+    fontSize: 14,
+    fontWeight: '700',
   },
-  benefits: {
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    gap: spacing.md,
-    marginTop: spacing.lg,
+  benefitsCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
     padding: spacing.lg,
+    ...shadow,
   },
-  benefit: {
+  benefitRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  benefitText: {
-    color: colors.ink,
+  benefitIcon: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  benefitInfo: {
     flex: 1,
-    fontWeight: '800',
+  },
+  benefitTitle: {
+    color: PALETTE.ink,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  benefitSubtitle: {
+    color: PALETTE.muted,
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 1,
   },
   lockedRow: {
     alignItems: 'center',
-    backgroundColor: colors.card,
+    backgroundColor: PALETTE.surface,
     borderRadius: radii.md,
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.md,
-    padding: spacing.lg,
+    padding: spacing.md,
+    ...shadow,
+  },
+  lockedIcon: {
+    alignItems: 'center',
+    backgroundColor: PALETTE.background,
+    borderRadius: radii.sm,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
   },
   lockedTitle: {
-    color: colors.text,
+    color: PALETTE.muted,
     flex: 1,
-    fontWeight: '900',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  header: {
+
+  // ── Section Title ──
+  sectionTitle: {
+    color: PALETTE.ink,
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: spacing.md,
+    letterSpacing: -0.2,
+  },
+
+  // ── Profile Card ──
+  profileCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    ...shadow,
+  },
+  profileTop: {
     alignItems: 'center',
     flexDirection: 'row',
+    gap: spacing.md,
   },
   avatar: {
+    borderRadius: 32,
+    height: 64,
+    width: 64,
+  },
+  avatarFallback: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    height: 62,
+    backgroundColor: PALETTE.primary,
+    borderRadius: 32,
+    height: 64,
     justifyContent: 'center',
-    width: 62,
+    width: 64,
   },
   avatarText: {
     color: '#fff',
     fontSize: 24,
-    fontWeight: '900',
+    fontWeight: '800',
   },
-  identity: {
+  profileInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
-  title: {
-    color: colors.ink,
-    fontSize: type.title,
-    fontWeight: '900',
+  profileName: {
+    color: PALETTE.ink,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
-  email: {
-    color: colors.muted,
-    fontSize: 14,
+  profileEmail: {
+    color: PALETTE.muted,
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  profileBadge: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 6,
+  },
+  profileBadgeText: {
+    color: PALETTE.emerald,
+    fontSize: 10,
     fontWeight: '700',
-    marginTop: spacing.xs,
   },
+  editButton: {
+    padding: 4,
+  },
+
+  // ── Welcome Banner ──
   welcomeBanner: {
     alignItems: 'center',
-    backgroundColor: '#eefaf4',
-    borderColor: '#c8efd9',
+    backgroundColor: PALETTE.successBg,
+    borderColor: PALETTE.successBorder,
     borderRadius: radii.md,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: 8,
     padding: spacing.md,
   },
   welcomeText: {
-    color: colors.ink,
+    color: PALETTE.successText,
     flex: 1,
-    fontSize: 13,
-    fontWeight: '800',
-    lineHeight: 18,
+    fontSize: 11,
+    fontWeight: '600',
   },
-  roleRow: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.pill,
+
+  // ── Error Banner ──
+  errorBanner: {
+    alignItems: 'center',
+    backgroundColor: '#FFF0F0',
+    borderColor: '#FFCCCC',
+    borderRadius: radii.md,
+    borderWidth: 1,
     flexDirection: 'row',
-    marginTop: spacing.xl,
-    padding: spacing.xs,
+    gap: 8,
+    padding: spacing.md,
+  },
+  errorBannerText: {
+    color: PALETTE.red,
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  // ── Role Switcher ──
+  roleRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   roleButton: {
     alignItems: 'center',
-    borderRadius: radii.pill,
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.md,
     flex: 1,
-    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    ...shadow,
   },
   roleButtonActive: {
-    backgroundColor: colors.card,
+    backgroundColor: PALETTE.primaryLight,
+    borderColor: PALETTE.primary,
+    borderWidth: 1.5,
   },
   roleText: {
-    color: colors.muted,
-    fontWeight: '900',
-    textTransform: 'capitalize',
+    color: PALETTE.muted,
+    fontSize: 12,
+    fontWeight: '700',
   },
   roleTextActive: {
-    color: colors.primaryDark,
+    color: PALETTE.primaryDark,
   },
-  summaryRow: {
+
+  // ── Stats ──
+  statsCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
     flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.xl,
+    padding: spacing.lg,
+    ...shadow,
   },
-  metric: {
+  statItem: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
     flex: 1,
-    padding: spacing.md,
   },
-  metricValue: {
-    color: colors.ink,
-    fontSize: 20,
-    fontWeight: '900',
+  statIconWrap: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    height: 40,
+    justifyContent: 'center',
+    marginBottom: 8,
+    width: 40,
   },
-  metricLabel: {
-    color: colors.muted,
-    fontSize: 12,
+  statValue: {
+    color: PALETTE.ink,
+    fontSize: 18,
     fontWeight: '800',
-    marginTop: spacing.xs,
   },
-  dashboardTitle: {
-    color: colors.ink,
-    fontSize: 20,
-    fontWeight: '900',
-    marginTop: spacing.xl,
+  statLabel: {
+    color: PALETTE.muted,
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
   },
-  grid: {
+  statDivider: {
+    backgroundColor: PALETTE.faint,
+    width: 1,
+  },
+  statLoader: {
+    marginBottom: 2,
+  },
+
+  // ── Section Grid ──
+  sectionCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    ...shadow,
+  },
+  sectionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.md,
-    marginTop: spacing.md,
+    gap: spacing.sm,
   },
-  gridItem: {
+  sectionItem: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    minHeight: 92,
-    justifyContent: 'center',
-    padding: spacing.sm,
-    width: '30.8%',
+    width: '23%',
+    paddingVertical: spacing.sm,
   },
-  gridText: {
-    color: colors.ink,
-    fontSize: 12,
+  sectionIconWrap: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    height: 44,
+    justifyContent: 'center',
+    marginBottom: 6,
+    position: 'relative',
+    width: 44,
+  },
+  itemBadge: {
+    alignItems: 'center',
+    borderRadius: 8,
+    justifyContent: 'center',
+    minWidth: 16,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    position: 'absolute',
+    right: -4,
+    top: -4,
+  },
+  itemBadgeText: {
+    color: '#fff',
+    fontSize: 8,
     fontWeight: '800',
-    lineHeight: 16,
-    marginTop: spacing.sm,
+  },
+  sectionItemLabel: {
+    color: PALETTE.text,
+    fontSize: 10,
+    fontWeight: '600',
     textAlign: 'center',
   },
-  logout: {
+
+  // ── Quick Actions ──
+  quickActionsCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    ...shadow,
+  },
+  actionRow: {
     alignItems: 'center',
-    backgroundColor: colors.ink,
-    borderRadius: radii.pill,
-    marginTop: spacing.xl,
+    borderBottomColor: PALETTE.faint,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
     paddingVertical: spacing.md,
   },
+  actionRowLast: {
+    borderBottomWidth: 0,
+  },
+  actionIcon: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  orangeSoftBg: {
+    backgroundColor: '#FFF3E8',
+  },
+  greenSoftBg: {
+    backgroundColor: '#E8F8EE',
+  },
+  redSoftBg: {
+    backgroundColor: '#FFF0F0',
+  },
+  actionInfo: {
+    flex: 1,
+  },
+  actionLabel: {
+    color: PALETTE.ink,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  actionDesc: {
+    color: PALETTE.muted,
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+
+  // ── Logout ──
+  logoutButton: {
+    alignItems: 'center',
+    backgroundColor: PALETTE.surface,
+    borderColor: PALETTE.logoutBorder,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
   logoutText: {
-    color: '#fff',
-    fontWeight: '900',
+    color: PALETTE.red,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

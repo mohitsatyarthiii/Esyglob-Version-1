@@ -1,0 +1,151 @@
+
+> EsyGlob@0.0.1 start
+> react-native start --reset-cache
+
+
+Welcome to React Native v0.86
+Starting dev server on http://localhost:8081
+
+
+                        ▒▒▓▓▓▓▒▒
+                     ▒▓▓▓▒▒░░▒▒▓▓▓▒
+                  ▒▓▓▓▓░░░▒▒▒▒░░░▓▓▓▓▒
+                 ▓▓▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▓▓
+                 ▓▓░░░░░▒▓▓▓▓▓▓▒░░░░░▓▓
+                 ▓▓░░▓▓▒░░░▒▒░░░▒▓▒░░▓▓
+                 ▓▓░░▓▓▓▓▓▒▒▒▒▓▓▓▓▒░░▓▓
+                 ▓▓░░▓▓▓▓▓▓▓▓▓▓▓▓▓▒░░▓▓
+                 ▓▓▒░░▒▒▓▓▓▓▓▓▓▓▒░░░▒▓▓
+                  ▒▓▓▓▒░░░▒▓▓▒░░░▒▓▓▓▒
+                     ▒▓▓▓▒░░░░▒▓▓▓▒
+                        ▒▒▓▓▓▓▒▒
+
+
+ WARN  the transform cache was reset.
+                Welcome to Metro v0.84.4
+              Fast - Scalable - Integrated
+
+
+ INFO  Dev server ready. Press Ctrl+C to exit.
+ INFO  Interactive mode is not supported in this environment
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 1% (1/1)
+ BUNDLE  ./index.js ▓░░░░░░░░░░░░░░░ 9% (3/5)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (4/5)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (5/137)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (10/157)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (17/162)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (26/164)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (38/197)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (43/227)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (48/240)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (60/257)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (72/274)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (93/299)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 16% (126/330)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 17% (140/336)
+ BUNDLE  ./index.js ▓▓░░░░░░░░░░░░░░ 18% (151/353)
+ BUNDLE  ./index.js ▓▓▓░░░░░░░░░░░░░ 20% (163/364)
+ BUNDLE  ./index.js ▓▓▓░░░░░░░░░░░░░ 22% (178/376)
+ BUNDLE  ./index.js ▓▓▓▓░░░░░░░░░░░░ 25% (199/406)
+ BUNDLE  ./index.js ▓▓▓▓░░░░░░░░░░░░ 27% (221/452)
+ BUNDLE  ./index.js ▓▓▓▓░░░░░░░░░░░░ 27% (245/473)
+ BUNDLE  ./index.js ▓▓▓▓░░░░░░░░░░░░ 28% (266/508)
+ BUNDLE  ./index.js ▓▓▓▓░░░░░░░░░░░░ 29% (288/531)
+ BUNDLE  ./index.js ▓▓▓▓▓░░░░░░░░░░░ 31% (313/564)
+ BUNDLE  ./index.js ▓▓▓▓▓░░░░░░░░░░░ 34% (359/609)
+ BUNDLE  ./index.js ▓▓▓▓▓░░░░░░░░░░░ 36% (388/674)
+ BUNDLE  ./index.js ▓▓▓▓▓▓░░░░░░░░░░ 38% (436/701)
+ BUNDLE  ./index.js ▓▓▓▓▓▓░░░░░░░░░░ 40% (470/737)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓░░░░░░░░░ 46% (528/772)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 57% (608/803)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 66% (682/838)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 78% (767/866)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86% (831/896)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 90% (873/919)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98% (945/950)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98% (983/1016)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98% (1027/1053)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99% (0/1)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ ERROR  Error: Unable to resolve module ./src/screens/RFQScreen from F:\Desktop\esyglob-app\EsyGlob\App.tsx: 
+
+None of these files exist:
+  * src\screens\RFQScreen(.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.ts|.native.ts|.ts|.android.tsx|.native.tsx|.tsx)
+  * src\screens\RFQScreen
+  15 | import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
+  16 | import QuotationDetailsScreen from './src/screens/QuotationDetailsScreen';
+> 17 | import RFQScreen from './src/screens/RFQScreen';
+     |                        ^
+  18 | import RFQDetailsScreen from './src/screens/RFQDetailsScreen';
+  19 | import SecurityScreen from './src/screens/SecurityScreen';
+  20 | import SearchScreen from './src/screens/SearchScreen';
+    at ModuleResolver.resolveDependency (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\node-haste\DependencyGraph\ModuleResolution.js:143:15)
+    at DependencyGraph.resolveDependency (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\node-haste\DependencyGraph.js:263:43)
+    at F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\lib\transformHelpers.js:165:21
+    at resolveDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:43:25)
+    at visit (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:81:30)
+    at async Promise.all (index 0)
+    at async buildSubgraph (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:105:3)
+    at async Graph._buildDelta (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\Graph.js:163:22)
+    at async Graph.traverseDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\Graph.js:50:19)
+    at async DeltaCalculator._getChangedDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\DeltaCalculator.js:200:42)
+ ERROR  Error: Unable to resolve module ./src/screens/RFQDetailsScreen from F:\Desktop\esyglob-app\EsyGlob\App.tsx: 
+
+None of these files exist:
+  * src\screens\RFQDetailsScreen(.android.js|.native.js|.js|.android.jsx|.native.jsx|.jsx|.android.json|.native.json|.json|.android.ts|.native.ts|.ts|.android.tsx|.native.tsx|.tsx)
+  * src\screens\RFQDetailsScreen
+  16 | import QuotationDetailsScreen from './src/screens/QuotationDetailsScreen';
+  17 | import RFQScreen from './src/screens/RFQScreen';
+> 18 | import RFQDetailsScreen from './src/screens/RFQDetailsScreen';
+     |                               ^
+  19 | import RFQCreateScreen from './src/screens/RFQCreateScreen';
+  20 | import SecurityScreen from './src/screens/SecurityScreen';
+  21 | import SearchScreen from './src/screens/SearchScreen';
+    at ModuleResolver.resolveDependency (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\node-haste\DependencyGraph\ModuleResolution.js:143:15)
+    at DependencyGraph.resolveDependency (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\node-haste\DependencyGraph.js:263:43)
+    at F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\lib\transformHelpers.js:165:21
+    at resolveDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:43:25)
+    at visit (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:81:30)
+    at async Promise.all (index 0)
+    at async buildSubgraph (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\buildSubgraph.js:105:3)
+    at async Graph._buildDelta (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\Graph.js:163:22)
+    at async Graph.traverseDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\Graph.js:50:19)
+    at async DeltaCalculator._getChangedDependencies (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro\src\DeltaBundler\DeltaCalculator.js:200:42)
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 
+ BUNDLE  ./index.js ░░░░░░░░░░░░░░░░ 0% (0/1)
+ BUNDLE  ./index.js 

@@ -5,6 +5,7 @@ import { Category, Product, SellerSummary } from './types';
 export async function searchMarketplace(query: string) {
   const payload = await apiRequest('/api/search', {
     query: { q: query },
+    cacheTtlMs: 45_000,
   });
 
   return {

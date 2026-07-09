@@ -1,0 +1,21 @@
+node:internal/fs/watchers:262
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'F:\Desktop\esyglob-app\EsyGlob\node_modules\@react-native-firebase\.messaging-Q8bFbneA\android'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2549:36)
+    at #watchdir (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:133:33)
+    at F:\Desktop\esyglob-app\EsyGlob\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:233:31
+    at Walker.<anonymous> (F:\Desktop\esyglob-app\EsyGlob\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:378:5)
+    at Walker.emit (node:events:519:28)
+    at F:\Desktop\esyglob-app\EsyGlob\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:187:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'F:\\Desktop\\esyglob-app\\EsyGlob\\node_modules\\@react-native-firebase\\.messaging-Q8bFbneA\\android',
+  filename: 'F:\\Desktop\\esyglob-app\\EsyGlob\\node_modules\\@react-native-firebase\\.messaging-Q8bFbneA\\android'
+}
+
+Node.js v22.19.0

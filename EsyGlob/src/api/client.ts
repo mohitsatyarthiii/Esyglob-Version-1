@@ -1,5 +1,6 @@
 import { config } from '../config/env';
 import { appStorage } from '../storage/appStorage';
+import { logPerf, perfNow } from '../utils/performance';
 
 const SESSION_KEY = 'session.cookie';
 const ACCESS_TOKEN_KEY = 'auth.accessToken';
@@ -21,7 +22,13 @@ type RequestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
   query?: Record<string, string | number | boolean | undefined | null>;
+  cache?: boolean;
+  cacheTtlMs?: number;
 };
+
+const DEFAULT_GET_CACHE_TTL_MS = 20_000;
+const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const inflightRequests = new Map<string, Promise<unknown>>();
 
 export function buildApiUrl(path: string, query?: RequestOptions['query']) {
   const url = new URL(path.startsWith('http') ? path : `${config.apiBaseUrl}${path}`);
@@ -61,7 +68,14 @@ function extractSessionCookie(headers: Headers) {
 }
 
 async function parseResponse(response: Response) {
+  const parseStart = perfNow();
   const text = await response.text();
+  logPerf('api:parse', {
+    url: response.url,
+    status: response.status,
+    bytes: text.length,
+    ms: Math.round(perfNow() - parseStart),
+  });
 
   if (!text) {
     return null;
@@ -75,15 +89,51 @@ async function parseResponse(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const requestStart = perfNow();
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = getApiHeaders(options.headers);
+  const method = options.method ?? 'GET';
 
   if (!isFormData && options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(buildApiUrl(path, options.query), {
-    method: options.method ?? 'GET',
+  const url = buildApiUrl(path, options.query);
+  const canCache = method === 'GET' && options.cache !== false;
+  const cacheKey = canCache ? buildRequestCacheKey(method, url, headers) : '';
+
+  if (canCache) {
+    const cached = responseCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > Date.now()) {
+      logPerf('api:cache-hit', {
+        method,
+        path,
+        url,
+        ms: Math.round(perfNow() - requestStart),
+      });
+      return cached.value as T;
+    }
+
+    const inflight = inflightRequests.get(cacheKey);
+
+    if (inflight) {
+      logPerf('api:dedupe-hit', {
+        method,
+        path,
+        url,
+        ms: Math.round(perfNow() - requestStart),
+      });
+      return inflight as Promise<T>;
+    }
+  } else if (method !== 'GET') {
+    responseCache.clear();
+  }
+
+  logPerf('api:start', { method, path, url });
+
+  const request = fetch(url, {
+    method,
     headers,
     credentials: 'include',
     body:
@@ -92,21 +142,53 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         : isFormData
           ? (options.body as BodyInit_)
           : JSON.stringify(options.body),
-  });
+  })
+    .then(async response => {
+      logPerf('api:response', {
+        method,
+        path,
+        url,
+        status: response.status,
+        ms: Math.round(perfNow() - requestStart),
+      });
+      extractSessionCookie(response.headers);
+      const payload = await parseResponse(response);
 
-  extractSessionCookie(response.headers);
-  const payload = await parseResponse(response);
+      if (!response.ok) {
+        const message =
+          typeof payload === 'object' && payload && 'message' in payload
+            ? String((payload as { message?: unknown }).message)
+            : `Request failed with status ${response.status}`;
 
-  if (!response.ok) {
-    const message =
-      typeof payload === 'object' && payload && 'message' in payload
-        ? String((payload as { message?: unknown }).message)
-        : `Request failed with status ${response.status}`;
+        throw new ApiError(message, response.status, payload);
+      }
 
-    throw new ApiError(message, response.status, payload);
+      if (canCache) {
+        responseCache.set(cacheKey, {
+          expiresAt: Date.now() + (options.cacheTtlMs ?? DEFAULT_GET_CACHE_TTL_MS),
+          value: payload,
+        });
+      }
+
+      return payload;
+    })
+    .finally(() => {
+      logPerf('api:done', {
+        method,
+        path,
+        url,
+        ms: Math.round(perfNow() - requestStart),
+      });
+      if (canCache) {
+        inflightRequests.delete(cacheKey);
+      }
+    });
+
+  if (canCache) {
+    inflightRequests.set(cacheKey, request);
   }
 
-  return payload as T;
+  return request as Promise<T>;
 }
 
 export function getApiHeaders(extra?: Record<string, string>) {
@@ -130,6 +212,7 @@ export function getApiHeaders(extra?: Record<string, string>) {
 
 export function clearSessionCookie() {
   appStorage.remove(SESSION_KEY);
+  responseCache.clear();
 }
 
 export function setAuthTokens(accessToken?: string) {
@@ -140,8 +223,18 @@ export function setAuthTokens(accessToken?: string) {
 
 export function clearAuthTokens() {
   appStorage.remove(ACCESS_TOKEN_KEY);
+  responseCache.clear();
 }
 
 export function hasAuthCredentials() {
   return Boolean(appStorage.getString(ACCESS_TOKEN_KEY) || appStorage.getString(SESSION_KEY));
+}
+
+function buildRequestCacheKey(method: string, url: string, headers: Record<string, string>) {
+  return [
+    method,
+    url,
+    headers.Authorization ?? '',
+    headers.Cookie ?? '',
+  ].join('|');
 }

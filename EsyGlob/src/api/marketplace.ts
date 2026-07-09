@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { ApiError, apiRequest } from './client';
 import { normalizeList, unwrapData } from './normalizers';
 import {
   Chat,
@@ -13,6 +13,8 @@ import {
   QuotationListResponse,
   RFQ,
   RFQDetails,
+  ReviewItem,
+  ReviewSummary,
   SellerDetails,
   SellerSummary,
 } from './types';
@@ -21,9 +23,32 @@ export { fetchHome } from './home';
 export { fetchProducts, fetchProductDetails } from './products';
 export { searchMarketplace } from './search';
 
-export async function fetchRFQs() {
-  const payload = await apiRequest('/api/rfqs');
-  return normalizeList<RFQ>(payload, ['rfqs', 'items', 'results']);
+export async function fetchRFQs(params: {
+  scope?: 'buyer' | 'seller' | 'public';
+  status?: string;
+  category?: string;
+  country?: string;
+  search?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+  sort?: string;
+  order?: 'asc' | 'desc';
+} = {}) {
+  const payload = await apiRequest('/api/rfqs', {
+    query: {
+      ...params,
+      scope: params.scope === 'public' ? undefined : params.scope,
+      q: params.q ?? params.search,
+      limit: params.limit ?? 20,
+    },
+  });
+  const data = unwrapData<{ rfqs?: RFQ[]; pagination?: unknown } | RFQ[]>(payload);
+
+  return {
+    rfqs: Array.isArray(data) ? data : data?.rfqs ?? normalizeList<RFQ>(payload, ['rfqs', 'items', 'results']),
+    pagination: Array.isArray(data) ? undefined : data?.pagination,
+  };
 }
 
 export async function fetchRFQDetails(rfqId: string): Promise<RFQDetails> {
@@ -39,7 +64,7 @@ export async function fetchSellers(params: {
   isVerified?: boolean;
   sort?: string;
 } = {}) {
-  const payload = await apiRequest('/api/sellers', { query: params });
+  const payload = await apiRequest('/api/sellers', { query: params, cacheTtlMs: 2 * 60_000 });
   const data = unwrapData<{ sellers?: SellerSummary[]; pagination?: unknown }>(payload);
 
   return {
@@ -49,8 +74,32 @@ export async function fetchSellers(params: {
 }
 
 export async function fetchSellerDetails(sellerId: string): Promise<SellerDetails> {
-  const payload = await apiRequest(`/api/sellers/${sellerId}`);
-  return unwrapData<SellerDetails>(payload);
+  try {
+    const payload = await apiRequest(`/api/sellers/${sellerId}`, { cacheTtlMs: 2 * 60_000 });
+    return unwrapData<SellerDetails>(payload);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      throw error;
+    }
+  }
+
+  const [sellerPayload, productsPayload, reviewsPayload] = await Promise.all([
+    apiRequest('/api/sellers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
+    apiRequest('/api/products', { query: { type: 'homepage', seller: sellerId, limit: 30 }, cacheTtlMs: 2 * 60_000 }),
+    apiRequest('/api/reviews', { query: { sellerId, limit: 20 }, cacheTtlMs: 60_000 }).catch(() => null),
+  ]);
+  const sellers = unwrapData<{ sellers?: SellerSummary[] }>(sellerPayload)?.sellers ?? normalizeList<SellerSummary>(sellerPayload, ['sellers']);
+  const seller = sellers.find(item => item._id === sellerId || item.id === sellerId);
+
+  if (!seller) {
+    throw new Error('Seller details were not returned by the backend.');
+  }
+
+  return {
+    seller,
+    products: normalizeList<Product>(productsPayload, ['products']),
+    reviews: reviewsPayload ? normalizeList<Record<string, unknown>>(reviewsPayload, ['reviews']) : [],
+  };
 }
 
 export async function fetchSellerOnboarding(): Promise<{ seller?: SellerSummary; verification?: Record<string, unknown>; completion?: Record<string, unknown>; draftAvailable?: boolean }> {
@@ -99,6 +148,67 @@ export async function uploadFiles(folder: string, files: Array<{ uri: string; na
     body: form,
   });
   return unwrapData(payload);
+}
+
+export async function fetchReviews(params: {
+  productId?: string;
+  sellerId?: string;
+  mine?: boolean;
+  sellerDashboard?: boolean;
+  limit?: number;
+} = {}): Promise<ReviewSummary> {
+  const payload = await apiRequest('/api/reviews', { query: params });
+  const data = unwrapData<Partial<ReviewSummary>>(payload) ?? {};
+  const breakdown = data.breakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
+
+  return {
+    reviews: data.reviews ?? normalizeList<ReviewItem>(payload, ['reviews', 'items', 'results']),
+    averageRating: Number(data.averageRating ?? 0),
+    reviewCount: Number(data.reviewCount ?? data.reviews?.length ?? 0),
+    breakdown: {
+      '5': Number(breakdown['5'] ?? 0),
+      '4': Number(breakdown['4'] ?? 0),
+      '3': Number(breakdown['3'] ?? 0),
+      '2': Number(breakdown['2'] ?? 0),
+      '1': Number(breakdown['1'] ?? 0),
+    },
+  };
+}
+
+export async function createReview(input: Record<string, unknown>): Promise<ReviewItem> {
+  const payload = await apiRequest('/api/reviews', { method: 'POST', body: input });
+  const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
+  const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
+
+  if (!review) {
+    throw new Error('Review was not returned by the backend.');
+  }
+
+  return review as ReviewItem;
+}
+
+export async function updateReview(input: Record<string, unknown>): Promise<ReviewItem> {
+  const payload = await apiRequest('/api/reviews', { method: 'PUT', body: input });
+  const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
+  const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
+
+  if (!review) {
+    throw new Error('Review was not returned by the backend.');
+  }
+
+  return review as ReviewItem;
+}
+
+export async function respondToReview(reviewId: string, input: { comment: string }): Promise<ReviewItem> {
+  const payload = await apiRequest(`/api/reviews/${reviewId}/response`, { method: 'PATCH', body: input });
+  const data = unwrapData<{ review?: ReviewItem } | ReviewItem>(payload);
+  const review = data && typeof data === 'object' && 'review' in data ? data.review : data;
+
+  if (!review) {
+    throw new Error('Review was not returned by the backend.');
+  }
+
+  return review as ReviewItem;
 }
 
 export async function fetchSellerProducts(params: { q?: string; status?: string; page?: number; limit?: number } = {}) {
@@ -226,13 +336,49 @@ export async function createRFQ(input: Record<string, unknown>): Promise<RFQ> {
   return rfq as RFQ;
 }
 
-export async function fetchChats(role?: string | null) {
-  const payload = await apiRequest('/api/chats', { query: { role: role ?? undefined, limit: 80 } });
+export async function updateRFQ(rfqId: string, input: Record<string, unknown>): Promise<RFQ> {
+  const payload = await apiRequest(`/api/rfqs/${rfqId}`, {
+    method: 'PATCH',
+    body: input,
+  });
+  const data = unwrapData<{ rfq?: RFQ } | RFQ>(payload);
+  const rfq = data && typeof data === 'object' && 'rfq' in data ? data.rfq : data;
+
+  if (!rfq) {
+    throw new Error('RFQ was not returned by the backend.');
+  }
+
+  return rfq as RFQ;
+}
+
+export async function archiveRFQ(rfqId: string) {
+  const payload = await apiRequest(`/api/rfqs/${rfqId}`, { method: 'DELETE' });
+  return unwrapData(payload);
+}
+
+export async function fetchChats(input: string | null | { role?: string | null; view?: 'all' | 'favorites' | 'archived'; unreadOnly?: boolean; label?: string; limit?: number } = {}) {
+  const params = typeof input === 'string' || input === null ? { role: input } : input;
+  const payload = await apiRequest('/api/chats', {
+    query: {
+      role: params.role ?? undefined,
+      view: params.view && params.view !== 'all' ? params.view : undefined,
+      unreadOnly: params.unreadOnly,
+      label: params.label,
+      limit: params.limit ?? 80,
+    },
+  });
   return normalizeList<Chat>(payload, ['chats', 'conversations', 'items']);
 }
 
-export async function fetchChatDetails(chatId: string, options: { markRead?: boolean } = {}): Promise<ChatDetails> {
-  const payload = await apiRequest(`/api/chats/${chatId}`, { query: { limit: 30, markRead: options.markRead } });
+export async function fetchChatDetails(chatId: string, options: { markRead?: boolean; before?: string; after?: string; limit?: number } = {}): Promise<ChatDetails> {
+  const payload = await apiRequest(`/api/chats/${chatId}`, {
+    query: {
+      limit: options.limit ?? 30,
+      markRead: options.markRead,
+      before: options.before,
+      after: options.after,
+    },
+  });
   return unwrapData<ChatDetails>(payload);
 }
 
@@ -295,6 +441,34 @@ export async function patchChatAction(chatId: string, input: { action: string; v
     body: input,
   });
   return unwrapData<{ chat?: Chat; message?: MessageItem }>(payload);
+}
+
+export async function archiveChat(chatId: string, archived: boolean) {
+  return patchChatAction(chatId, { action: archived ? 'archive' : 'unarchive' });
+}
+
+export async function favoriteChat(chatId: string, favorite: boolean) {
+  return patchChatAction(chatId, { action: favorite ? 'favorite' : 'unfavorite' });
+}
+
+export async function pinChat(chatId: string, pinned: boolean) {
+  return patchChatAction(chatId, { action: pinned ? 'pin' : 'unpin' });
+}
+
+export async function muteChat(chatId: string, muted: boolean) {
+  return patchChatAction(chatId, { action: muted ? 'mute' : 'unmute' });
+}
+
+export async function deleteChatForMe(chatId: string) {
+  return patchChatAction(chatId, { action: 'delete' });
+}
+
+export async function markChatRead(chatId: string) {
+  return patchChatAction(chatId, { action: 'mark_read' });
+}
+
+export async function markChatUnread(chatId: string) {
+  return patchChatAction(chatId, { action: 'mark_unread' });
 }
 
 export async function createGroupChat(input: { groupName: string; memberIds: string[]; role?: string | null }) {

@@ -23,6 +23,8 @@ import {
   QuotationSchema,
   Rfq,
   RfqSchema,
+  SavedItem,
+  SavedItemSchema,
   Subcategory,
   SubcategorySchema,
 } from './catalog.schemas';
@@ -41,6 +43,7 @@ import { MarketplaceService } from './marketplace.service';
       { name: Chat.name, schema: ChatSchema },
       { name: Message.name, schema: MessageSchema },
       { name: Notification.name, schema: NotificationSchema },
+      { name: SavedItem.name, schema: SavedItemSchema },
       { name: Order.name, schema: OrderSchema },
       { name: Payment.name, schema: PaymentSchema },
       { name: Seller.name, schema: SellerSchema },

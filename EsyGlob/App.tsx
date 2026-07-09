@@ -1,12 +1,16 @@
-import React from 'react';
-import { StatusBar, useColorScheme } from 'react-native';
+import React, { useEffect } from 'react';
+import { AppState, StatusBar, StyleSheet, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import NetInfo from '@react-native-community/netinfo';
+import { QueryClient, focusManager, onlineManager } from '@tanstack/react-query';
+import { PersistQueryClientProvider, Persister } from '@tanstack/react-query-persist-client';
 import { AuthProvider } from './src/auth/AuthContext';
 import AppTabs from './src/navigation/AppTabs';
 import AIChatScreen from './src/screens/AIChatScreen';
+import AuthScreen from './src/screens/AuthScreen';
 import ChatDetailsScreen from './src/screens/ChatDetailsScreen';
 import MarketInsightsScreen from './src/screens/MarketInsightsScreen';
 import AddressesScreen from './src/screens/AddressesScreen';
@@ -16,9 +20,13 @@ import ProfileSettingsScreen from './src/screens/ProfileSettingsScreen';
 import QuotationDetailsScreen from './src/screens/QuotationDetailsScreen';
 import RFQScreen from './src/screens/RFQScreen';
 import RFQDetailsScreen from './src/screens/RFQDetailsScreen';
+import RFQCreateScreen from './src/screens/RFQCreateScreen';
+import ReviewsDashboardScreen from './src/screens/ReviewsDashboardScreen';
 import SecurityScreen from './src/screens/SecurityScreen';
 import SearchScreen from './src/screens/SearchScreen';
+import SavedItemsScreen from './src/screens/SavedItemsScreen';
 import SellerDetailsScreen from './src/screens/SellerDetailsScreen';
+import SellersScreen from './src/screens/SellersScreen';
 import OrderCheckoutScreen from './src/screens/OrderCheckoutScreen';
 import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
@@ -32,22 +40,31 @@ import BookedServiceDetailsScreen from './src/screens/BookedServiceDetailsScreen
 import ShippingLogisticsScreen from './src/screens/ShippingLogisticsScreen';
 import WalletScreen from './src/screens/WalletScreen';
 import { ServiceRequest } from './src/api/services';
+import { fetchCategories, fetchProducts, fetchSellers } from './src/api/marketplace';
+import { ProductListResponse } from './src/api/types';
+import { logPerf } from './src/utils/performance';
+import { readJson, writeJson } from './src/storage/appStorage';
 
 export type RootStackParamList = {
   MainTabs: undefined;
+  Auth: { initialMode?: 'login' | 'signup' | 'forgot' } | undefined;
   AIChat: undefined;
   MarketInsights: undefined;
   Addresses: undefined;
   Notifications: undefined;
+  SavedItems: undefined;
   ProfileSettings: undefined;
   Security: undefined;
   Wallet: undefined;
   ProductDetails: { productId: string };
   ProductListing: { category?: string; categoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
+  Sellers: undefined;
   SellerDetails: { sellerId: string; sellerName?: string };
   ChatDetails: { chatId: string; title?: string };
   RFQ: undefined;
+  RFQCreate: { prefill?: Record<string, unknown> } | undefined;
   RFQDetails: { rfqId: string };
+  ReviewsDashboard: undefined;
   QuotationDetails: { quotationId: string };
   OrderCheckout: { mode: 'sample' | 'trade'; productId?: string; chatId?: string; quotationId?: string };
   Orders: undefined;
@@ -67,17 +84,65 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
-      staleTime: 30_000,
+      retry: (failureCount, error) => {
+        const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
+
+        if (status >= 400 && status < 500) {
+          return false;
+        }
+
+        return failureCount < 2;
+      },
+      retryDelay: attempt => Math.min(1000 * 2 ** attempt, 4000),
+      staleTime: 3 * 60_000,
+      gcTime: 20 * 60_000,
+      refetchOnMount: false,
+      refetchOnReconnect: 'always',
+      refetchOnWindowFocus: false,
     },
   },
 });
+const queryPersister = createMmkvQueryPersister();
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
+  useEffect(() => {
+    logPerf('app:mounted');
+  }, []);
+
+  useEffect(() => {
+    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
+      onlineManager.setOnline(Boolean(state.isConnected && state.isInternetReachable !== false));
+    });
+    const appStateSubscription = AppState.addEventListener('change', status => {
+      const active = status === 'active';
+      focusManager.setFocused(active);
+
+      if (active) {
+        queryClient.refetchQueries({ stale: true, type: 'active' }).catch(() => undefined);
+      }
+    });
+
+    return () => {
+      unsubscribeNetInfo();
+      appStateSubscription.remove();
+    };
+  }, []);
+
   return (
-    <QueryClientProvider client={queryClient}>
+    <GestureHandlerRootView style={styles.gestureRoot}>
+      <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister: queryPersister,
+        buster: 'esyglob-mobile-v2',
+        maxAge: 60 * 60_000,
+        dehydrateOptions: {
+          shouldDehydrateQuery: query => query.state.status === 'success' && isPersistableQueryKey(query.queryKey),
+        },
+      }}
+      onSuccess={warmMarketplaceQueries}>
       <AuthProvider>
         <SafeAreaProvider>
           <StatusBar
@@ -88,19 +153,24 @@ function App() {
           <NavigationContainer>
             <Stack.Navigator screenOptions={{ headerShown: false }}>
               <Stack.Screen name="MainTabs" component={AppTabs} />
+              <Stack.Screen name="Auth" component={AuthScreen} />
               <Stack.Screen name="AIChat" component={AIChatScreen} />
               <Stack.Screen name="MarketInsights" component={MarketInsightsScreen} />
               <Stack.Screen name="Addresses" component={AddressesScreen} />
               <Stack.Screen name="Notifications" component={NotificationCenterScreen} />
+              <Stack.Screen name="SavedItems" component={SavedItemsScreen} />
               <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
               <Stack.Screen name="Security" component={SecurityScreen} />
               <Stack.Screen name="Wallet" component={WalletScreen} />
               <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
               <Stack.Screen name="ProductListing" component={SearchScreen} />
+              <Stack.Screen name="Sellers" component={SellersScreen} />
               <Stack.Screen name="SellerDetails" component={SellerDetailsScreen} />
               <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} />
               <Stack.Screen name="RFQ" component={RFQScreen} />
+              <Stack.Screen name="RFQCreate" component={RFQCreateScreen} />
               <Stack.Screen name="RFQDetails" component={RFQDetailsScreen} />
+              <Stack.Screen name="ReviewsDashboard" component={ReviewsDashboardScreen} />
               <Stack.Screen name="QuotationDetails" component={QuotationDetailsScreen} />
               <Stack.Screen name="OrderCheckout" component={OrderCheckoutScreen} />
               <Stack.Screen name="Orders" component={OrdersScreen} />
@@ -117,8 +187,115 @@ function App() {
           </NavigationContainer>
         </SafeAreaProvider>
       </AuthProvider>
-    </QueryClientProvider>
+      </PersistQueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 
 export default App;
+
+const styles = StyleSheet.create({
+  gestureRoot: {
+    flex: 1,
+  },
+});
+
+function warmMarketplaceQueries() {
+  queryClient.prefetchQuery({
+    queryKey: ['home-categories'],
+    queryFn: fetchCategories,
+    staleTime: 10 * 60_000,
+  }).catch(() => undefined);
+  queryClient.prefetchQuery({
+    queryKey: ['home-featured-products'],
+    queryFn: () => fetchProducts({ limit: 12, sort: 'latest', verifiedOnly: true }),
+    staleTime: 2 * 60_000,
+  }).catch(() => undefined);
+  queryClient.prefetchQuery({
+    queryKey: ['home-latest-products'],
+    queryFn: () => fetchProducts({ limit: 30, sort: 'latest' }),
+    staleTime: 2 * 60_000,
+  }).catch(() => undefined);
+  queryClient.prefetchInfiniteQuery({
+    queryKey: ['home-products-feed'],
+    queryFn: ({ pageParam }) => fetchProducts({ page: Number(pageParam), limit: 18, sort: 'latest' }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage: ProductListResponse) => {
+      const pagination = lastPage.pagination;
+      return pagination?.page && pagination.totalPages && pagination.page < pagination.totalPages
+        ? pagination.page + 1
+        : undefined;
+    },
+    staleTime: 3 * 60_000,
+  }).catch(() => undefined);
+  queryClient.prefetchQuery({
+    queryKey: ['manufacturers-directory'],
+    queryFn: () => fetchSellers({ limit: 30, sort: 'verified' }),
+    staleTime: 5 * 60_000,
+  }).catch(() => undefined);
+}
+
+function createMmkvQueryPersister(): Persister {
+  const storageKey = 'query.cache.marketplace.v2';
+  const maxBytes = 1_500_000;
+
+  return {
+    persistClient: client => {
+      const compacted = compactPersistedClient(client, maxBytes);
+      writeJson(storageKey, compacted);
+    },
+    restoreClient: () => readJson(storageKey) ?? undefined,
+    removeClient: () => writeJson(storageKey, null),
+  };
+}
+
+function compactPersistedClient<T extends { clientState?: { queries?: unknown[] } }>(client: T, maxBytes: number) {
+  let next = client;
+  let serialized = JSON.stringify(next);
+
+  if (serialized.length <= maxBytes) {
+    return next;
+  }
+
+  const queries = [...(next.clientState?.queries ?? [])] as Array<{ state?: { dataUpdatedAt?: number } }>;
+  queries.sort((a, b) => Number(b.state?.dataUpdatedAt ?? 0) - Number(a.state?.dataUpdatedAt ?? 0));
+
+  while (queries.length > 8) {
+    queries.pop();
+    next = {
+      ...client,
+      clientState: {
+        ...client.clientState,
+        queries: [...queries],
+      },
+    };
+    serialized = JSON.stringify(next);
+
+    if (serialized.length <= maxBytes) {
+      break;
+    }
+  }
+
+  return next;
+}
+
+function isPersistableQueryKey(queryKey: readonly unknown[]) {
+  const root = String(queryKey[0] ?? '');
+
+  return [
+    'home',
+    'home-categories',
+    'home-featured-products',
+    'home-latest-products',
+    'categories',
+    'home-products-feed',
+    'products',
+    'related-products',
+    'manufacturers-directory',
+    'sellers-module',
+    'seller-details',
+    'saved-items',
+    'chats',
+    'chat-details',
+  ].includes(root);
+}

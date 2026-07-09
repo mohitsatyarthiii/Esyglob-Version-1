@@ -1,6 +1,5 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
 import { fetchCategories } from '../api/categories';
 import { Category } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
@@ -19,6 +19,7 @@ import RemoteImage from '../components/RemoteImage';
 import { colors } from '../theme';
 import { getCategoryIcon, getId, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
+import { logPerf, perfNow } from '../utils/performance';
 
 const { width } = Dimensions.get('window');
 
@@ -33,6 +34,8 @@ const CARD_SIZE = (AVAILABLE_WIDTH - (COLUMN_COUNT - 1) * CARD_MARGIN * 2) / COL
 const CategoriesScreen = () => {
   const navigation = useNavigation<any>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const screenStart = useRef(perfNow()).current;
+  const visibleLogged = useRef(false);
 
   const {
     data: categoriesData,
@@ -76,6 +79,17 @@ const CategoriesScreen = () => {
   const handleSidebarItemPress = useCallback((itemId: string) => {
     setSelectedId(itemId);
   }, []);
+
+  useEffect(() => {
+    if (!visibleLogged.current && recommendationItems.length) {
+      visibleLogged.current = true;
+      logPerf('screen:categories-visible', {
+        categories: categories.length,
+        visibleItems: recommendationItems.length,
+        ms: Math.round(perfNow() - screenStart),
+      });
+    }
+  }, [categories.length, recommendationItems.length, screenStart]);
 
   if (isLoading) {
     return <LoadingState label="Loading categories" />;
@@ -148,7 +162,7 @@ const CategoriesScreen = () => {
           </View>
 
           {/* Main Content - 75% width */}
-          <FlatList
+          <FlashList
             style={styles.mainContent}
             contentContainerStyle={styles.mainContentContainer}
             data={recommendationItems}
@@ -224,10 +238,6 @@ const CategoriesScreen = () => {
                 )}
               </Pressable>
             )}
-            initialNumToRender={6}
-            maxToRenderPerBatch={6}
-            windowSize={10}
-            removeClippedSubviews={true}
           />
         </View>
       </View>

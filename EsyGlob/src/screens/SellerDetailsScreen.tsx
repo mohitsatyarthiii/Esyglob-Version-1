@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
@@ -7,18 +7,32 @@ import { fetchSellerDetails } from '../api/marketplace';
 import { Product, SellerSummary } from '../api/types';
 import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
+import ReviewsPanel from '../components/ReviewsPanel';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, shadow, spacing } from '../theme';
 import { formatValue, humanize } from '../utils/display';
 import { getId } from '../utils/format';
+import { logPerf, perfNow } from '../utils/performance';
 
-type Tab = 'home' | 'products' | 'business';
+type Tab = 'overview' | 'products' | 'company' | 'factory' | 'certificates' | 'reviews';
+
+const detailTabs: Array<{ key: Tab; label: string }> = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'products', label: 'Products' },
+  { key: 'company', label: 'Company' },
+  { key: 'factory', label: 'Factory' },
+  { key: 'certificates', label: 'Certificates' },
+  { key: 'reviews', label: 'Reviews' },
+];
 
 function SellerDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { sellerId, sellerName } = route.params as { sellerId: string; sellerName?: string };
-  const [tab, setTab] = useState<Tab>('home');
+  const screenStart = useRef(perfNow()).current;
+  const visibleLogged = useRef(false);
+  const tabVisibleLogged = useRef<Record<string, boolean>>({});
+  const [tab, setTab] = useState<Tab>('overview');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'latest' | 'rating' | 'price_asc'>('latest');
   const seller = useQuery({
@@ -37,6 +51,34 @@ function SellerDetailsScreen() {
 
     return [...searched].sort((a, b) => sortProducts(a, b, sort));
   }, [data?.products, query, sort]);
+
+  useEffect(() => {
+    if (!visibleLogged.current && profile) {
+      visibleLogged.current = true;
+      logPerf('screen:supplier-profile-visible', {
+        sellerId,
+        products: data?.products?.length ?? 0,
+        factoryImages: profile.factoryImages?.length ?? 0,
+        hasFactoryProfile: Boolean(data?.factoryProfile),
+        ms: Math.round(perfNow() - screenStart),
+      });
+    }
+  }, [data?.factoryProfile, data?.products?.length, profile, screenStart, sellerId]);
+
+  useEffect(() => {
+    if (!profile || tabVisibleLogged.current[tab]) {
+      return;
+    }
+
+    tabVisibleLogged.current[tab] = true;
+    logPerf('screen:supplier-tab-visible', {
+      sellerId,
+      tab,
+      products: data?.products?.length ?? 0,
+      factoryImages: profile.factoryImages?.length ?? 0,
+      ms: Math.round(perfNow() - screenStart),
+    });
+  }, [data?.products?.length, profile, screenStart, sellerId, tab]);
 
   if (seller.isLoading) {
     return <LoadingState label="Loading supplier profile" />;
@@ -106,17 +148,15 @@ function SellerDetailsScreen() {
           </View>
         </View>
 
-        <View style={styles.tabs}>
-          {(['home', 'products', 'business'] as Tab[]).map(item => (
-            <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item && styles.activeTab]}>
-              <Text style={[styles.tabText, tab === item && styles.activeTabText]}>
-                {item === 'home' ? 'Home' : item === 'products' ? 'Products' : 'Business details'}
-              </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {detailTabs.map(item => (
+            <Pressable key={item.key} onPress={() => setTab(item.key)} style={[styles.tab, tab === item.key && styles.activeTab]}>
+              <Text style={[styles.tabText, tab === item.key && styles.activeTabText]}>{item.label}</Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
 
-        {tab === 'home' ? (
+        {tab === 'overview' ? (
           <>
             <Section title="Company overview">
               <Text style={styles.paragraph}>
@@ -165,11 +205,38 @@ function SellerDetailsScreen() {
           </View>
         ) : null}
 
-        {tab === 'business' ? (
+        {tab === 'company' ? (
           <>
-            <PublicBusinessDetails seller={profile} factory={data.factoryProfile} verification={data.verification} />
-            {data.reviews?.length ? <BusinessBlock title="Buyer reviews" value={data.reviews} /> : null}
+            <PublicBusinessDetails seller={profile} factory={data.factoryProfile} verification={data.verification} mode="company" />
+            <BusinessBlock title="Export markets" value={profile.mainMarkets ?? profile.exportCountries} />
+            <BusinessBlock title="Business capabilities" value={{ annualRevenue: profile.annualRevenue, packaging: profile.packaging, oemOdmSupport: profile.oemOdmSupport }} />
           </>
+        ) : null}
+
+        {tab === 'factory' ? (
+          <>
+            <PublicBusinessDetails seller={profile} factory={data.factoryProfile} verification={data.verification} mode="factory" />
+            {images.length ? (
+              <Section title="Company and factory images">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {images.map((uri, index) => (
+                    <RemoteImage key={`${uri}-${index}`} uri={uri} width={320} height={220} style={styles.factoryImageLarge} />
+                  ))}
+                </ScrollView>
+              </Section>
+            ) : <EmptyState title="No factory media available" />}
+          </>
+        ) : null}
+
+        {tab === 'certificates' ? (
+          <>
+            <BusinessBlock title="Company certificates" value={profile.certifications ?? data.factoryProfile?.certifications} />
+            <BusinessBlock title="Verification status" value={data.verification ?? { status: profile.verificationStatus, businessLicense: profile.businessLicense, gst: profile.gst }} />
+          </>
+        ) : null}
+
+        {tab === 'reviews' ? (
+          <ReviewsPanel sellerId={profile._id ?? profile.id ?? sellerId} showForm title="Supplier Reviews" />
         ) : null}
       </ScrollView>
     </View>
@@ -237,30 +304,38 @@ function PublicBusinessDetails({
   seller,
   factory,
   verification,
+  mode = 'company',
 }: {
   seller: SellerSummary;
   factory?: Record<string, unknown> | null;
   verification?: Record<string, unknown> | null;
+  mode?: 'company' | 'factory';
 }) {
-  const rows = ([
+  const companyRows = [
     ['Business type', seller.businessType ?? seller.companyType ?? seller.supplierType],
     ['Location', seller.address?.city ?? seller.address?.country ?? seller.country],
     ['Years in business', seller.yearsInBusiness],
     ['Response rate', seller.responseRate],
     ['Response time', seller.responseTime],
     ['Main markets', seller.mainMarkets ?? seller.exportCountries],
-    ['Certifications', seller.certifications ?? factory?.certifications],
+    ['Annual revenue', seller.annualRevenue],
+    ['Business license', seller.businessLicense],
+    ['GST', seller.gst],
+    ['Verification status', seller.verificationStatus ?? verification?.status],
+  ] as Array<[string, unknown]>;
+  const factoryRows = [
     ['Factory size', seller.factorySize ?? factory?.factorySize ?? factory?.factoryArea],
     ['Employees', seller.employeeCount ?? factory?.employeeCount],
     ['Established', seller.establishedYear ?? factory?.establishedYear],
     ['Production capacity', seller.productionCapacity ?? factory?.productionCapacity],
     ['Quality control', seller.qualityControl ?? factory?.qualityControl],
     ['OEM / ODM', seller.oemOdmSupport ?? factory?.oemOdmSupport],
-    ['Verification status', seller.verificationStatus ?? verification?.status],
-  ] as Array<[string, unknown]>).filter(([, value]) => formatValue(value));
+    ['Certifications', seller.certifications ?? factory?.certifications],
+  ] as Array<[string, unknown]>;
+  const rows = (mode === 'factory' ? factoryRows : companyRows).filter(([, value]) => formatValue(value));
 
   return (
-    <Section title="Business details">
+    <Section title={mode === 'factory' ? 'Factory information' : 'Business information'}>
       <View style={styles.detailGrid}>
         {rows.map(([label, value]) => (
           <View key={String(label)} style={styles.detailRow}>
@@ -435,13 +510,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardMuted,
     borderRadius: radii.pill,
     flexDirection: 'row',
+    gap: spacing.xs,
     marginVertical: spacing.lg,
     padding: spacing.xs,
   },
   tab: {
     alignItems: 'center',
     borderRadius: radii.pill,
-    flex: 1,
+    minWidth: 96,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   activeTab: {
@@ -480,6 +557,13 @@ const styles = StyleSheet.create({
     height: 108,
     marginRight: spacing.sm,
     width: 140,
+  },
+  factoryImageLarge: {
+    backgroundColor: colors.cardMuted,
+    borderRadius: radii.md,
+    height: 132,
+    marginRight: spacing.sm,
+    width: 190,
   },
   tagWrap: {
     flexDirection: 'row',

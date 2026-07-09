@@ -1,18 +1,42 @@
-import { apiRequest } from './client';
+import { ApiError, apiRequest } from './client';
 import { unwrapData } from './normalizers';
-import { HomePayload } from './types';
+import { HomePayload, ProductListResponse } from './types';
 
 export async function fetchHome() {
-  const payload = await apiRequest('/api/home', {
-    query: { limit: 16 },
-  });
-  const data = unwrapData<HomePayload>(payload);
+  try {
+    const payload = await apiRequest('/api/home', {
+      query: { limit: 16 },
+      cacheTtlMs: 90_000,
+    });
+    const data = unwrapData<HomePayload>(payload);
+
+    return {
+      categories: data?.categories ?? data?.featuredCategories ?? [],
+      featuredProducts: data?.featuredProducts ?? [],
+      latestProducts: data?.latestProducts ?? [],
+      trendingProducts: data?.trendingProducts ?? [],
+      recommendedProducts: data?.recommendedProducts ?? [],
+    };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) {
+      throw error;
+    }
+  }
+
+  const [categoryPayload, featuredPayload, latestPayload] = await Promise.all([
+    apiRequest('/api/categories', { query: { type: 'homepage', withCounts: true }, cacheTtlMs: 5 * 60_000 }),
+    apiRequest('/api/products', { query: { type: 'homepage', limit: 12, featured: true }, cacheTtlMs: 90_000 }),
+    apiRequest('/api/products', { query: { type: 'homepage', limit: 30 }, cacheTtlMs: 90_000 }),
+  ]);
+  const categories = unwrapData<HomePayload>(categoryPayload)?.categories ?? [];
+  const featuredProducts = unwrapData<ProductListResponse>(featuredPayload)?.products ?? [];
+  const latestProducts = unwrapData<ProductListResponse>(latestPayload)?.products ?? [];
 
   return {
-    categories: data?.categories ?? data?.featuredCategories ?? [],
-    featuredProducts: data?.featuredProducts ?? [],
-    latestProducts: data?.latestProducts ?? [],
-    trendingProducts: data?.trendingProducts ?? [],
-    recommendedProducts: data?.recommendedProducts ?? [],
+    categories,
+    featuredProducts,
+    latestProducts,
+    trendingProducts: latestProducts.slice(0, 12),
+    recommendedProducts: latestProducts.slice(12, 24),
   };
 }

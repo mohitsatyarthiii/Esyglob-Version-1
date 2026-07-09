@@ -1,17 +1,34 @@
 import React from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Animated,
+  Dimensions,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchProductDetails, fetchProducts } from '../api/products';
 import { createProductEnquiry, startProductChat } from '../api/marketplace';
 import { Product } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
+import ReviewsPanel from '../components/ReviewsPanel';
+import SavedHeartButton from '../components/SavedHeartButton';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, spacing } from '../theme';
+import { radii, shadow, spacing } from '../theme';
 import {
   formatMoq,
   formatProductPrice,
@@ -22,296 +39,275 @@ import {
   isVerifiedProduct,
 } from '../utils/format';
 
-type RouteParams = {
-  productId: string;
-};
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const PALETTE = {
+  primary: '#FF6A00',
+  primaryLight: '#FFF3E8',
+  primaryDark: '#E05500',
+  emerald: '#00B578',
+  sky: '#3B9CFF',
+  violet: '#7B61FF',
+  rose: '#FF3B6E',
+  amber: '#FF9500',
+  ink: '#1A1A1A',
+  text: '#333333',
+  muted: '#8C8C8C',
+  faint: '#E8E8E8',
+  surface: '#FFFFFF',
+  background: '#F5F5F5',
+  cardMuted: '#F8F9FB',
+} as const;
 
 function ProductDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { status } = useAuth();
-  const { productId } = route.params as RouteParams;
+  const { productId } = route.params as { productId: string };
+  const queryClient = useQueryClient();
   const [enquiryOpen, setEnquiryOpen] = React.useState(false);
-  const [quantity, setQuantity] = React.useState('100');
+  const [quantity, setQuantity] = React.useState('');
   const [targetPrice, setTargetPrice] = React.useState('');
   const [destinationCountry, setDestinationCountry] = React.useState('India');
   const [additionalNotes, setAdditionalNotes] = React.useState('');
+  const [selectedImage, setSelectedImage] = React.useState(0);
+  const flatListRef = React.useRef<FlatList>(null);
+  const fade = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.timing(fade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  }, []);
+
   const product = useQuery({
     queryKey: ['product', productId],
     queryFn: () => fetchProductDetails(productId),
     enabled: Boolean(productId),
+    initialData: () => findCachedProduct(queryClient, productId),
+    staleTime: 2 * 60_000,
   });
+
   const related = useQuery({
     queryKey: ['related-products', product.data?.category, product.data?.subcategory],
-    queryFn: () => fetchProducts({
-      category: product.data?.category,
-      subcategory: product.data?.subcategory,
-      limit: 8,
-    }),
+    queryFn: () => fetchProducts({ category: product.data?.category, subcategory: product.data?.subcategory, limit: 8 }),
     enabled: Boolean(product.data?.category || product.data?.subcategory),
   });
+
   const item = product.data;
-  const seller = item && typeof item.sellerId === 'object' ? item.sellerId : item && typeof item.seller === 'object' ? item.seller : undefined;
+
+  const seller = item && typeof item.sellerId === 'object' ? item.sellerId as any : item && typeof item.seller === 'object' ? item.seller as any : undefined;
   const sellerRouteId = seller?._id ?? seller?.id;
   const sellerUser = typeof seller?.userId === 'object' ? seller.userId : undefined;
-  const sellerUserId = typeof seller?.userId === 'string' ? seller.userId : sellerUser?._id ?? sellerUser?.id ?? (item as (Product & { sellerUserId?: string }) | undefined)?.sellerUserId;
+  const sellerUserId = typeof seller?.userId === 'string' ? seller.userId : sellerUser?._id ?? sellerUser?.id ?? (item as any)?.sellerUserId;
+
   const chatNow = useMutation({
     mutationFn: () => {
-      if (!item) {
-        throw new Error('Product details were not returned by the backend.');
-      }
-
-      if (!sellerUserId) {
-        throw new Error('Supplier user ID was not returned for this product.');
-      }
-
-      return startProductChat({
-        otherUserId: sellerUserId,
-        productId: getId(item),
-        role: 'buyer',
-        enquiry: false,
-      });
+      if (!item || !sellerUserId) throw new Error('Cannot start chat.');
+      return startProductChat({ otherUserId: sellerUserId, productId: getId(item), role: 'buyer', enquiry: false });
     },
-    onSuccess: result => {
-      if (!item) {
-        return;
-      }
-
-      if (!result.chat) {
-        Alert.alert('Chat unavailable', 'Conversation was not returned by the backend.');
-        return;
-      }
-
-      navigation.navigate('ChatDetails', { chatId: getId(result.chat), title: getSellerName(item) });
+    onSuccess: (result) => {
+      if (result.chat) navigation.navigate('ChatDetails', { chatId: getId(result.chat), title: getSellerName(item!) });
     },
-    onError: error => Alert.alert('Chat unavailable', error instanceof Error ? error.message : 'Unable to open conversation.'),
+    onError: (error: any) => Alert.alert('Error', error?.message ?? 'Failed to open chat'),
   });
+
   const sendEnquiry = useMutation({
     mutationFn: () => {
-      if (!item) {
-        throw new Error('Product details were not returned by the backend.');
-      }
-
-      if (!sellerUserId) {
-        throw new Error('Supplier user ID was not returned for this product.');
-      }
-
+      if (!item || !sellerUserId) throw new Error('Cannot send enquiry.');
       return createProductEnquiry({
-        productId: getId(item),
-        sellerUserId,
-        productName: item.name ?? item.title,
-        quantity: Number(quantity) || Number(item.minimumOrderQuantity ?? item.moq ?? 1),
-        unit: item.unit ?? 'pcs',
-        targetPrice: targetPrice ? Number(targetPrice) : undefined,
-        destinationCountry,
-        additionalNotes,
-        attachments: [],
+        productId: getId(item), sellerUserId, productName: item.name ?? item.title,
+        quantity: Number(quantity) || Number(item.minimumOrderQuantity ?? 100),
+        unit: (item as any).unit ?? 'pcs', targetPrice: targetPrice ? Number(targetPrice) : undefined,
+        destinationCountry, additionalNotes, attachments: [],
       });
     },
-    onSuccess: result => {
-      if (!item) {
-        return;
-      }
-
-      if (!result.chat) {
-        Alert.alert('Enquiry created', 'RFQ was created but the backend did not return a conversation.');
-        return;
-      }
-
+    onSuccess: (result) => {
       setEnquiryOpen(false);
-      navigation.navigate('ChatDetails', { chatId: getId(result.chat), title: getSellerName(item) });
+      if (result.chat) navigation.navigate('ChatDetails', { chatId: getId(result.chat), title: getSellerName(item!) });
     },
-    onError: error => Alert.alert('Enquiry failed', error instanceof Error ? error.message : 'Unable to send enquiry.'),
+    onError: (error: any) => Alert.alert('Error', error?.message ?? 'Failed to send enquiry'),
   });
 
-  if (product.isLoading) {
-    return <LoadingState label="Loading product" />;
-  }
-
-  if (product.isError || !item) {
-    return <ErrorState message={(product.error as Error)?.message ?? 'Product was not returned.'} onRetry={() => product.refetch()} />;
-  }
+  if (product.isLoading) return <LoadingState label="Loading product" />;
+  if (product.isError || !item) return <ErrorState message={(product.error as any)?.message ?? 'Not found'} onRetry={() => product.refetch()} />;
 
   const image = getProductImage(item);
+  const gallery = Array.from(new Set([image, ...(item.images ?? [])].filter(Boolean))) as string[];
   const sellerVerified = isVerifiedProduct(item);
   const location = getProductLocation(item);
-  const categoryName = typeof item.categoryId === 'object' ? item.categoryId.name : item.category;
-  const gallery = Array.from(new Set([image, ...(item.images ?? [])].filter(Boolean))) as string[];
-  const directOrderEnabled = Boolean((item.directOrderEnabled || item.orderEnabled) && (seller?.trustedSeller || seller?.isTrusted || seller?.trustedBadgeActive || sellerVerified));
-  const specifications = [
-    ['Product type', item.productType],
-    ['Sample price', item.samplePrice],
-    ['Order type', item.orderType],
-    ['Payment terms', formatValue(item.paymentTerms)],
-    ['Trade terms', formatValue(item.tradeTerms)],
-    ['Lead time', item.leadTime],
-    ['Delivery', item.deliveryTime],
-    ['Warranty', item.warrantyPeriod ?? (typeof item.warranty === 'boolean' ? (item.warranty ? 'Available' : undefined) : item.warranty)],
-  ].filter(([, value]) => Boolean(value)) as string[][];
+  const directOrderEnabled = Boolean((item.directOrderEnabled || item.orderEnabled) && (seller?.trustedSeller || seller?.isTrusted || sellerVerified));
   const relatedProducts = (related.data?.products ?? []).filter(next => getId(next) !== getId(item)).slice(0, 6);
+
+  const onMainImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (index !== selectedImage) setSelectedImage(index);
+  };
+
+  const scrollToImage = (index: number) => {
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+    setSelectedImage(index);
+  };
+
+  const shareProduct = () => Share.share({ message: `${item.name ?? 'Product'}\n${formatProductPrice(item)}` });
+
+  const isAuth = status === 'authenticated';
+  const canChat = isAuth && Boolean(sellerUserId);
+  const canEnquire = isAuth && Boolean(sellerUserId);
+
+  React.useEffect(() => {
+    if (!quantity && item) {
+      setQuantity(String(item.minimumOrderQuantity ?? item.moq ?? 100));
+    }
+  }, [item]);
 
   return (
     <View style={styles.screen}>
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.iconButton}>
-          <Icon name="arrow-left" size={24} color={colors.ink} />
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.headerBtn}>
+          <Icon name="arrow-left" size={20} color={PALETTE.ink} />
         </Pressable>
-        <Text numberOfLines={1} style={styles.headerTitle}>Product details</Text>
-        <Pressable hitSlop={10} style={styles.iconButton}>
-          <Icon name="heart-outline" size={22} color={colors.ink} />
+        <Text numberOfLines={1} style={styles.headerTitle}>{item.name ?? item.title ?? 'Product'}</Text>
+        <Pressable onPress={shareProduct} hitSlop={10} style={styles.headerBtn}>
+          <Icon name="share-variant-outline" size={18} color={PALETTE.ink} />
         </Pressable>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <RemoteImage
-          uri={gallery[0]}
-          width={900}
-          height={620}
-          style={styles.image}
-          fallback={
-            <Icon name="package-variant-closed" size={54} color={colors.muted} />
-          }
-        />
 
-        <View style={styles.body}>
-          <Text style={styles.title}>{item.name ?? item.title ?? 'Product'}</Text>
-          <Text style={styles.price}>{formatProductPrice(item)}</Text>
-          <Text style={styles.moq}>{formatMoq(item)}</Text>
-
-          {gallery.length > 1 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
-              {gallery.map(uri => (
-                <RemoteImage key={uri} uri={uri} width={180} height={180} style={styles.galleryImage} />
+      <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} style={{ opacity: fade }}>
+        {/* Swipeable Gallery */}
+        <View style={styles.galleryWrap}>
+          <FlatList
+            ref={flatListRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            data={gallery}
+            keyExtractor={(uri, i) => `${uri}-${i}`}
+            onMomentumScrollEnd={onMainImageScroll}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            renderItem={({ item: uri }) => (
+              <Pressable onPress={() => {/* optional fullscreen later */}} style={styles.gallerySlide}>
+                <RemoteImage uri={uri} width={SCREEN_WIDTH} height={SCREEN_WIDTH} style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={PALETTE.muted} />} />
+              </Pressable>
+            )}
+          />
+          <SavedHeartButton type="product" itemId={getId(item)} target={item} size={18} style={styles.heartBtn} iconColor={PALETTE.ink} />
+          {gallery.length > 1 && (
+            <View style={styles.paginationRow}>
+              {gallery.map((_, i) => (
+                <Pressable key={i} onPress={() => scrollToImage(i)} style={[styles.dot, selectedImage === i && styles.dotActive]} />
               ))}
-            </ScrollView>
-          ) : null}
-
-          <Pressable
-            disabled={!sellerRouteId}
-            onPress={() => navigation.navigate('SellerDetails', { sellerId: sellerRouteId, sellerName: getSellerName(item) })}
-            style={styles.sellerPanel}>
-            <View style={styles.sellerIcon}>
-              <Icon name={sellerVerified ? 'check-decagram' : 'store-outline'} size={24} color={sellerVerified ? colors.green : colors.primary} />
             </View>
-            <View style={styles.sellerBody}>
-              <Text numberOfLines={1} style={styles.sellerName}>{getSellerName(item)}</Text>
-              <Text style={styles.sellerMeta}>
-                {sellerVerified ? 'Verified supplier' : 'Supplier'}{location ? ` from ${location}` : ''}
-              </Text>
-            </View>
-            {sellerRouteId ? <Icon name="chevron-right" size={22} color={colors.muted} /> : null}
-          </Pressable>
-
-          <View style={styles.factGrid}>
-            {categoryName ? <Fact label="Category" value={categoryName} /> : null}
-            {item.subcategory ? <Fact label="Subcategory" value={item.subcategory} /> : null}
-            {item.unit ? <Fact label="Unit" value={item.unit} /> : null}
-            {item.averageRating ? <Fact label="Rating" value={`${Number(item.averageRating).toFixed(1)} / 5`} /> : null}
-            {item.totalOrders ? <Fact label="Orders" value={String(item.totalOrders)} /> : null}
-            {item.responseRate ? <Fact label="Response" value={String(item.responseRate)} /> : null}
-          </View>
-
-          {specifications.length ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Specifications</Text>
-              <View style={styles.specGrid}>
-                {specifications.map(([label, value]) => (
-                  <Fact key={label} label={label} value={String(value)} />
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          {item.priceTiers?.length ? (
-            <InfoSection title="Price tiers">
-              {item.priceTiers.map((tier, index) => (
-                <View key={`${tier.minQuantity}-${index}`} style={styles.tierRow}>
-                  <Text style={styles.tierQty}>
-                    {tier.minQuantity}
-                    {tier.maxQuantity ? ` - ${tier.maxQuantity}` : '+'} {tier.unit ?? item.unit ?? 'units'}
-                  </Text>
-                  <Text style={styles.tierPrice}>{formatTierPrice(tier.price, item.currency)}</Text>
-                </View>
-              ))}
-            </InfoSection>
-          ) : null}
-
-          <DataSection title="Certifications" value={item.certifications} />
-          <DataSection title="Packaging" value={item.packaging} />
-          <DataSection title="Shipping" value={item.shipping} />
-          <DataSection title="Factory details" value={item.manufacturingDetails ?? item.factoryDetails} />
-
-          {item.variants?.length ? (
-            <InfoSection title="Variants">
-              {item.variants.slice(0, 6).map((variant, index) => (
-                <Text key={index} style={styles.description}>{formatObject(variant)}</Text>
-              ))}
-            </InfoSection>
-          ) : null}
-
-          {item.description ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Description</Text>
-              <Text style={styles.description}>{item.description}</Text>
-            </View>
-          ) : null}
-
-          {relatedProducts.length ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Related products</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.relatedList}>
-                {relatedProducts.map(next => (
-                  <ProductCard key={getId(next)} product={next} />
-                ))}
-              </ScrollView>
-            </View>
-          ) : null}
+          )}
+          {sellerVerified && <View style={styles.verifiedTag}><Icon name="check-decagram" size={12} color={PALETTE.emerald} /><Text style={styles.verifiedTagText}>Verified</Text></View>}
         </View>
-      </ScrollView>
-      <View style={[styles.actionBar, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
-        <Pressable disabled={!sellerRouteId} onPress={() => navigation.navigate('SellerDetails', { sellerId: sellerRouteId, sellerName: getSellerName(item) })} style={styles.storeAction}>
-          <Icon name="storefront-outline" size={20} color={colors.ink} />
-          <Text style={styles.storeActionText}>Store</Text>
+
+        {/* Compact Summary */}
+        <View style={styles.compactCard}>
+          <Text style={styles.productTitle} numberOfLines={2}>{item.name ?? item.title}</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.price}>{formatProductPrice(item)}</Text>
+            <Text style={styles.moq}>{formatMoq(item)}</Text>
+          </View>
+          <View style={styles.metaRow}>
+            {item.averageRating ? <Text style={styles.metaText}>★ {Number(item.averageRating).toFixed(1)}</Text> : null}
+            {item.totalOrders ? <Text style={styles.metaText}>· {item.totalOrders} orders</Text> : null}
+            {location ? <Text style={styles.metaText}>· {location}</Text> : null}
+          </View>
+        </View>
+
+        {/* Supplier Strip */}
+        <Pressable
+          disabled={!sellerRouteId}
+          onPress={() => sellerRouteId && navigation.navigate('SellerDetails', { sellerId: sellerRouteId, sellerName: getSellerName(item) })}
+          style={styles.supplierStrip}>
+          <View style={styles.supplierAvatar}>
+            <Icon name="store-outline" size={18} color={PALETTE.primary} />
+          </View>
+          <View style={styles.supplierInfo}>
+            <Text style={styles.supplierName} numberOfLines={1}>{getSellerName(item)}</Text>
+            <Text style={styles.supplierMeta}>{sellerVerified ? 'Verified' : 'Supplier'}{location ? ` · ${location}` : ''}</Text>
+          </View>
+          <Icon name="chevron-right" size={18} color={PALETTE.muted} />
         </Pressable>
-        <Pressable disabled={status !== 'authenticated' || !sellerUserId || chatNow.isPending} onPress={() => chatNow.mutate()} style={[styles.secondaryAction, (status !== 'authenticated' || !sellerUserId || chatNow.isPending) && styles.disabledAction]}>
-          <Icon name="message-text-outline" size={18} color={colors.primaryDark} />
-          <Text style={styles.secondaryActionText}>Chat Now</Text>
+
+        {/* Quantity Picker */}
+        <View style={styles.compactCard}>
+          <Text style={styles.sectionLabel}>QUANTITY</Text>
+          <View style={styles.qtyRow}>
+            {[item.minimumOrderQuantity ?? 100, 500, 1000].filter(Boolean).map(q => (
+              <Pressable
+                key={q}
+                onPress={() => setQuantity(String(q))}
+                style={[styles.qtyChip, quantity === String(q) && styles.qtyChipActive]}>
+                <Text style={[styles.qtyChipText, quantity === String(q) && styles.qtyChipTextActive]}>{q} {(item as any).unit ?? 'pcs'}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {/* Description */}
+        {item.description ? (
+          <View style={styles.compactCard}>
+            <Text style={styles.sectionLabel}>DETAILS</Text>
+            <Text style={styles.descText} numberOfLines={3}>{item.description}</Text>
+          </View>
+        ) : null}
+
+        {/* Reviews */}
+        <ReviewsPanel productId={getId(item)} sellerId={sellerRouteId} showForm title="Reviews" />
+
+        {/* Related */}
+        {relatedProducts.length > 0 && (
+          <View style={styles.relatedWrap}>
+            <Text style={styles.relatedTitle}>Related Products</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
+              {relatedProducts.map(p => <ProductCard key={getId(p)} product={p} />)}
+            </ScrollView>
+          </View>
+        )}
+
+        <View style={{ height: 100 }} />
+      </Animated.ScrollView>
+
+      {/* Bottom Bar */}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.xs }]}>
+        <Pressable
+          disabled={!canChat || chatNow.isPending}
+          onPress={() => chatNow.mutate()}
+          style={[styles.bottomBtn, styles.bottomBtnOutline]}>
+          <Icon name="message-text-outline" size={16} color={PALETTE.primary} />
+          <Text style={styles.bottomBtnOutlineText}>Chat</Text>
         </Pressable>
-        <Pressable disabled={status !== 'authenticated' || !sellerUserId} onPress={() => setEnquiryOpen(true)} style={[styles.primaryAction, (status !== 'authenticated' || !sellerUserId) && styles.disabledAction]}>
-          <Icon name="send-outline" size={18} color="#fff" />
-          <Text style={styles.primaryActionText}>Send Enquiry</Text>
+        <Pressable
+          disabled={!canEnquire || sendEnquiry.isPending}
+          onPress={() => setEnquiryOpen(true)}
+          style={[styles.bottomBtn, styles.bottomBtnPrimary]}>
+          <Icon name="send-outline" size={16} color="#fff" />
+          <Text style={styles.bottomBtnPrimaryText}>Send Inquiry</Text>
         </Pressable>
       </View>
-      <View pointerEvents="box-none" style={styles.floatingOrderActions}>
-        {item.sampleAvailable ? (
-          <Pressable onPress={() => navigation.navigate('OrderCheckout', { mode: 'sample', productId: getId(item) })} style={styles.floatingButton}>
-            <Icon name="flask-outline" size={17} color={colors.ink} />
-            <Text style={styles.floatingButtonText}>Sample Order</Text>
-          </Pressable>
-        ) : null}
-        {directOrderEnabled ? (
-          <Pressable onPress={() => navigation.navigate('OrderCheckout', { mode: 'trade', productId: getId(item) })} style={styles.floatingButton}>
-            <Icon name="cart-arrow-right" size={17} color={colors.ink} />
-            <Text style={styles.floatingButtonText}>Start Order</Text>
-          </Pressable>
-        ) : null}
-      </View>
-      <Modal animationType="slide" transparent visible={enquiryOpen} onRequestClose={() => setEnquiryOpen(false)}>
+
+      {/* Enquiry Modal */}
+      <Modal visible={enquiryOpen} animationType="slide" transparent onRequestClose={() => setEnquiryOpen(false)}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.enquirySheet}>
+          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + spacing.md }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Send enquiry</Text>
-              <Pressable onPress={() => setEnquiryOpen(false)} style={styles.iconButton}>
-                <Icon name="close" size={22} color={colors.ink} />
+              <Text style={styles.modalTitle}>Send Inquiry</Text>
+              <Pressable onPress={() => setEnquiryOpen(false)} hitSlop={10}>
+                <Icon name="close" size={22} color={PALETTE.ink} />
               </Pressable>
             </View>
-            <Text style={styles.modalMeta}>{item.name ?? item.title}</Text>
-            <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-            <Field label="Target price" value={targetPrice} onChangeText={setTargetPrice} keyboardType="numeric" />
-            <Field label="Destination country" value={destinationCountry} onChangeText={setDestinationCountry} />
-            <Field label="Additional notes" value={additionalNotes} onChangeText={setAdditionalNotes} multiline />
-            <Pressable disabled={sendEnquiry.isPending || !destinationCountry.trim()} onPress={() => sendEnquiry.mutate()} style={[styles.submitEnquiry, (sendEnquiry.isPending || !destinationCountry.trim()) && styles.disabledAction]}>
-              <Text style={styles.primaryActionText}>{sendEnquiry.isPending ? 'Creating RFQ...' : 'Create RFQ and open chat'}</Text>
+            <Text style={styles.modalProductName} numberOfLines={1}>{item.name ?? item.title}</Text>
+            <ModalField label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
+            <ModalField label="Target Price" value={targetPrice} onChangeText={setTargetPrice} keyboardType="numeric" />
+            <ModalField label="Destination" value={destinationCountry} onChangeText={setDestinationCountry} />
+            <ModalField label="Notes" value={additionalNotes} onChangeText={setAdditionalNotes} multiline />
+            <Pressable
+              disabled={sendEnquiry.isPending || !destinationCountry.trim()}
+              onPress={() => sendEnquiry.mutate()}
+              style={[styles.modalSubmit, (sendEnquiry.isPending || !destinationCountry.trim()) && styles.disabled]}>
+              <Text style={styles.modalSubmitText}>{sendEnquiry.isPending ? 'Sending...' : 'Create RFQ & Open Chat'}</Text>
             </Pressable>
           </View>
         </View>
@@ -320,389 +316,169 @@ function ProductDetailsScreen() {
   );
 }
 
-function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
+function ModalField({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
   return (
-    <View style={styles.modalField}>
-      <Text style={styles.modalLabel}>{label}</Text>
-      <TextInput placeholderTextColor={colors.muted} style={styles.modalInput} {...props} />
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput placeholderTextColor={PALETTE.muted} style={[styles.fieldInput, props.multiline && styles.fieldTextarea]} {...props} />
     </View>
   );
 }
 
-function InfoSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.infoBox}>{children}</View>
-    </View>
-  );
-}
-
-function DataSection({ title, value }: { title: string; value?: Product[keyof Product] }) {
-  const formatted = formatValue(value);
-
-  if (!formatted) {
-    return null;
-  }
-
-  return (
-    <InfoSection title={title}>
-      <Text style={styles.description}>{formatted}</Text>
-    </InfoSection>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.fact}>
-      <Text style={styles.factLabel}>{label}</Text>
-      <Text numberOfLines={2} style={styles.factValue}>{value}</Text>
-    </View>
-  );
-}
-
-function formatValue(value: unknown): string | undefined {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(item => formatValue(item)).filter(Boolean).join(', ');
-  }
-
-  if (typeof value === 'object') {
-    return formatObject(value as Record<string, unknown>);
-  }
-
-  return String(value);
-}
-
-function formatObject(value: Record<string, unknown>) {
-  return Object.entries(value)
-    .filter(([, item]) => item !== undefined && item !== null && item !== '')
-    .map(([key, item]) => `${humanize(key)}: ${formatValue(item)}`)
-    .join('\n');
-}
-
-function humanize(value: string) {
-  return value.replace(/([A-Z])/g, ' $1').replace(/[_-]+/g, ' ').replace(/^./, char => char.toUpperCase());
-}
-
-function formatTierPrice(price: unknown, currency?: string) {
-  if (price === undefined || price === null || price === '') {
-    return 'Contact supplier';
-  }
-
-  return `${currency ?? '$'}${price}`;
-}
-
+// ── Styles ──
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
+  screen: { flex: 1, backgroundColor: PALETTE.background },
   header: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderBottomColor: colors.faint,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.surface,
+    paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, gap: spacing.sm, ...shadow,
   },
-  iconButton: {
-    alignItems: 'center',
-    borderRadius: radii.pill,
-    height: 42,
-    justifyContent: 'center',
-    width: 42,
+  headerBtn: {
+    width: 38, height: 38, alignItems: 'center', justifyContent: 'center',
+    borderRadius: radii.pill, backgroundColor: PALETTE.cardMuted,
   },
-  headerTitle: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '900',
-    textAlign: 'center',
+  headerTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: PALETTE.ink, textAlign: 'center' },
+  scrollContent: { paddingBottom: 20 },
+
+  // Gallery
+  galleryWrap: { position: 'relative', backgroundColor: PALETTE.surface },
+  gallerySlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH },
+  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: PALETTE.cardMuted },
+  heartBtn: {
+    position: 'absolute', top: spacing.sm, right: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: radii.pill,
+    width: 34, height: 34, alignItems: 'center', justifyContent: 'center',
   },
-  content: {
-    paddingBottom: 190,
+  paginationRow: {
+    position: 'absolute', bottom: spacing.sm, alignSelf: 'center',
+    flexDirection: 'row', gap: 6,
   },
-  image: {
-    backgroundColor: colors.cardMuted,
-    height: 320,
-    width: '100%',
+  dot: {
+    width: 6, height: 6, borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.5)',
   },
-  body: {
-    padding: spacing.lg,
+  dotActive: { backgroundColor: PALETTE.primary, width: 8, height: 8, borderRadius: 4 },
+  verifiedTag: {
+    position: 'absolute', top: spacing.sm, left: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(0,181,120,0.9)', borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm, paddingVertical: 3,
   },
-  title: {
-    color: colors.ink,
-    fontSize: 24,
-    fontWeight: '900',
-    lineHeight: 31,
+  verifiedTagText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+
+  // Compact Card
+  compactCard: { backgroundColor: PALETTE.surface, marginHorizontal: spacing.sm, marginTop: spacing.sm, padding: spacing.sm, borderRadius: radii.md, ...shadow },
+  productTitle: { fontSize: 15, fontWeight: '800', color: PALETTE.ink, lineHeight: 20 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, marginTop: 4 },
+  price: { fontSize: 20, fontWeight: '900', color: PALETTE.primaryDark },
+  moq: { fontSize: 11, fontWeight: '700', color: PALETTE.muted },
+  metaRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  metaText: { fontSize: 11, fontWeight: '600', color: PALETTE.muted },
+
+  // Supplier Strip
+  supplierStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    backgroundColor: PALETTE.surface, marginHorizontal: spacing.sm, marginTop: spacing.sm,
+    padding: spacing.sm, borderRadius: radii.md, ...shadow,
   },
-  price: {
-    color: colors.primaryDark,
-    fontSize: 25,
-    fontWeight: '900',
-    marginTop: spacing.md,
+  supplierAvatar: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: PALETTE.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
   },
-  moq: {
-    color: colors.muted,
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: spacing.xs,
+  supplierInfo: { flex: 1 },
+  supplierName: { fontSize: 13, fontWeight: '800', color: PALETTE.ink },
+  supplierMeta: { fontSize: 10, fontWeight: '600', color: PALETTE.muted, marginTop: 1 },
+
+  // Quantity
+  sectionLabel: { fontSize: 10, fontWeight: '800', color: PALETTE.muted, letterSpacing: 0.5, marginBottom: spacing.sm },
+  qtyRow: { flexDirection: 'row', gap: spacing.sm },
+  qtyChip: {
+    flex: 1, paddingVertical: spacing.sm, borderRadius: radii.sm,
+    backgroundColor: PALETTE.cardMuted, alignItems: 'center',
+    borderWidth: 1, borderColor: 'transparent',
   },
-  gallery: {
-    marginTop: spacing.lg,
+  qtyChipActive: { backgroundColor: PALETTE.primaryLight, borderColor: PALETTE.primary },
+  qtyChipText: { fontSize: 12, fontWeight: '700', color: PALETTE.text },
+  qtyChipTextActive: { color: PALETTE.primaryDark },
+
+  // Description
+  descText: { fontSize: 12, fontWeight: '500', color: PALETTE.text, lineHeight: 18 },
+
+  // Related
+  relatedWrap: { marginTop: spacing.md, paddingLeft: spacing.sm },
+  relatedTitle: { fontSize: 13, fontWeight: '800', color: PALETTE.ink, marginBottom: spacing.sm },
+  relatedList: { gap: spacing.sm, paddingRight: spacing.sm },
+
+  // Bottom Bar
+  bottomBar: {
+    flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.sm, paddingTop: spacing.xs,
+    backgroundColor: PALETTE.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: PALETTE.faint,
   },
-  galleryImage: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.md,
-    height: 78,
-    marginRight: spacing.sm,
-    width: 78,
+  bottomBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, height: 44, borderRadius: radii.md,
   },
-  sellerPanel: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    marginTop: spacing.lg,
-    padding: spacing.md,
+  bottomBtnOutline: { borderWidth: 1.5, borderColor: PALETTE.primary },
+  bottomBtnOutlineText: { fontSize: 13, fontWeight: '800', color: PALETTE.primary },
+  bottomBtnPrimary: { backgroundColor: PALETTE.primary },
+  bottomBtnPrimaryText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+
+  // Modal
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: PALETTE.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.md },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  modalTitle: { flex: 1, fontSize: 16, fontWeight: '900', color: PALETTE.ink },
+  modalProductName: { fontSize: 12, fontWeight: '700', color: PALETTE.muted, marginBottom: spacing.md },
+  fieldWrap: { marginBottom: spacing.md },
+  fieldLabel: { fontSize: 10, fontWeight: '800', color: PALETTE.muted, marginBottom: 4, textTransform: 'uppercase' },
+  fieldInput: {
+    backgroundColor: PALETTE.cardMuted, borderRadius: radii.sm,
+    height: 40, paddingHorizontal: spacing.sm, fontSize: 13, fontWeight: '700', color: PALETTE.ink,
   },
-  sellerIcon: {
-    alignItems: 'center',
-    backgroundColor: '#fff8f3',
-    borderRadius: radii.pill,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
+  fieldTextarea: { height: 70, paddingTop: spacing.sm, textAlignVertical: 'top' },
+  modalSubmit: {
+    backgroundColor: PALETTE.primary, borderRadius: radii.md,
+    height: 46, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm,
   },
-  sellerBody: {
-    flex: 1,
-    marginLeft: spacing.md,
-  },
-  sellerName: {
-    color: colors.ink,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  sellerMeta: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-  },
-  factGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  specGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  fact: {
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    minHeight: 74,
-    padding: spacing.md,
-    width: '48%',
-  },
-  factLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  factValue: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '900',
-    marginTop: spacing.xs,
-  },
-  section: {
-    marginTop: spacing.xl,
-  },
-  sectionTitle: {
-    color: colors.ink,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  description: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 22,
-    marginTop: spacing.sm,
-  },
-  infoBox: {
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-  },
-  tierRow: {
-    alignItems: 'center',
-    borderBottomColor: colors.faint,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  tierQty: {
-    color: colors.text,
-    flex: 1,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  tierPrice: {
-    color: colors.primaryDark,
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  relatedList: {
-    marginTop: spacing.md,
-  },
-  actionBar: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderTopColor: colors.faint,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    bottom: 0,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    left: 0,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    position: 'absolute',
-    right: 0,
-  },
-  storeAction: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 50,
-    width: 56,
-  },
-  storeActionText: {
-    color: colors.ink,
-    fontSize: 11,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-  secondaryAction: {
-    alignItems: 'center',
-    backgroundColor: '#fff8f3',
-    borderRadius: radii.pill,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  secondaryActionText: {
-    color: colors.primaryDark,
-    fontWeight: '900',
-  },
-  primaryAction: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  primaryActionText: {
-    color: '#fff',
-    fontWeight: '900',
-  },
-  disabledAction: {
-    opacity: 0.45,
-  },
-  floatingOrderActions: {
-    bottom: 82,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    left: spacing.md,
-    position: 'absolute',
-    right: spacing.md,
-  },
-  floatingButton: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.faint,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 42,
-  },
-  floatingButtonText: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  modalBackdrop: {
-    backgroundColor: 'rgba(15, 23, 42, 0.38)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  enquirySheet: {
-    backgroundColor: colors.card,
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
-    padding: spacing.lg,
-  },
-  modalHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-  modalTitle: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 21,
-    fontWeight: '900',
-  },
-  modalMeta: {
-    color: colors.muted,
-    fontSize: 13,
-    fontWeight: '800',
-    marginBottom: spacing.md,
-    marginTop: spacing.xs,
-  },
-  modalField: {
-    marginBottom: spacing.md,
-  },
-  modalLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '900',
-    marginBottom: spacing.xs,
-  },
-  modalInput: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.md,
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '800',
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  submitEnquiry: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    justifyContent: 'center',
-    minHeight: 48,
-  },
+  modalSubmitText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  disabled: { opacity: 0.45 },
 });
 
 export default React.memo(ProductDetailsScreen);
+
+// ── Cached product lookup (unchanged) ──
+function findCachedProduct(queryClient: QueryClient, productId: string) {
+  const groups = [
+    queryClient.getQueriesData({ queryKey: ['home'] }),
+    queryClient.getQueriesData({ queryKey: ['home-products-feed'] }),
+    queryClient.getQueriesData({ queryKey: ['products'] }),
+    queryClient.getQueriesData({ queryKey: ['related-products'] }),
+  ];
+  for (const queries of groups) {
+    for (const [, data] of queries) {
+      const found = scanForProduct(data, productId);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
+
+function scanForProduct(value: unknown, productId: string, depth = 0): Product | undefined {
+  if (!value || depth > 5) return undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = scanForProduct(item, productId, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  if (typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  if ((record._id === productId || record.id === productId) && (record.name || record.title)) {
+    return record as Product;
+  }
+  for (const key of ['product', 'products', 'featuredProducts', 'latestProducts', 'trendingProducts', 'recommendedProducts', 'pages']) {
+    const found = scanForProduct(record[key], productId, depth + 1);
+    if (found) return found;
+  }
+  return undefined;
+}

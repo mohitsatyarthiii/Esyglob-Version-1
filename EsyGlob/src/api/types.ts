@@ -96,6 +96,8 @@ export type SellerSummary = {
   trustedBadgeActive?: boolean;
   isSuspended?: boolean;
   status?: string;
+  isSaved?: boolean;
+  isFavorited?: boolean;
 };
 
 export type Product = {
@@ -153,6 +155,22 @@ export type Product = {
     unit?: string;
   }>;
   variants?: Array<Record<string, unknown>>;
+  isSaved?: boolean;
+  isFavorited?: boolean;
+};
+
+export type SavedItemType = 'product' | 'seller';
+
+export type SavedItem = {
+  _id?: string;
+  id?: string;
+  type?: SavedItemType;
+  itemId?: string;
+  item?: Product | SellerSummary;
+  target?: Product | SellerSummary;
+  product?: Product;
+  seller?: SellerSummary;
+  createdAt?: string;
 };
 
 export type Pagination = {
@@ -243,6 +261,40 @@ export type SellerDetails = {
   reviews?: Record<string, unknown>[];
 };
 
+export type ReviewItem = {
+  _id?: string;
+  id?: string;
+  userId?: CurrentUser | string;
+  sellerId?: SellerSummary | string;
+  productId?: Product | string;
+  orderId?: Order | string;
+  rating?: {
+    overall?: number;
+    quality?: number;
+    communication?: number;
+    shipping?: number;
+    value?: number;
+  };
+  title?: string;
+  comment?: string;
+  images?: string[];
+  verifiedPurchase?: boolean;
+  sellerResponse?: {
+    comment?: string;
+    respondedAt?: string;
+  };
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ReviewSummary = {
+  reviews: ReviewItem[];
+  averageRating: number;
+  reviewCount: number;
+  breakdown: Record<'5' | '4' | '3' | '2' | '1', number>;
+};
+
 export type RFQDetails = {
   rfq?: RFQ;
   quotations?: Quotation[];
@@ -262,6 +314,19 @@ export type Chat = {
   chatType?: string;
   buyerUnreadCount?: number;
   sellerUnreadCount?: number;
+  isArchived?: boolean;
+  isFavorite?: boolean;
+  isPinned?: boolean;
+  isMuted?: boolean;
+  isDeletedForMe?: boolean;
+  groupName?: string;
+  groupMembers?: Array<CurrentUser | string>;
+  groupOwnerId?: CurrentUser | string;
+  archivedFor?: string[];
+  favoriteFor?: string[];
+  pinnedFor?: string[];
+  mutedFor?: string[];
+  deletedFor?: string[];
   productId?: Product | string;
   rfqId?: RFQ | string;
   buyerId?: CurrentUser | string;
@@ -289,6 +354,7 @@ export type MessageItem = {
   updatedAt?: string;
   readAt?: string;
   actionType?: string;
+  localStatus?: 'sending' | 'sent' | 'failed';
   productDetails?: Record<string, unknown> | Product | null;
   orderDetails?: Record<string, unknown> | Order | null;
   rfqDetails?: Record<string, unknown> | RFQ | null;
@@ -298,6 +364,11 @@ export type MessageItem = {
 export type ChatDetails = {
   chat?: Chat;
   messages?: MessageItem[];
+  pagination?: {
+    hasOlder?: boolean;
+    before?: string;
+    after?: string;
+  };
   sellerProfile?: SellerSummary;
   sellerProducts?: Product[];
   rfqProducts?: Product[];
@@ -353,6 +424,19 @@ export type NotificationItem = {
   title?: string;
   message?: string;
   type?: string;
+  notificationType?: string;
+  category?: string;
+  status?: string;
+  data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  link?: string;
+  actionUrl?: string;
+  orderId?: string | Order;
+  productId?: string | Product;
+  sellerId?: string | SellerSummary;
+  chatId?: string | Chat;
+  rfqId?: string | RFQ;
+  quotationId?: string | Quotation;
   isRead?: boolean;
   createdAt?: string;
 };

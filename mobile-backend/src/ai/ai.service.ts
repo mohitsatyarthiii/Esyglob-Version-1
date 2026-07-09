@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Category, Product, Rfq } from '../marketplace/catalog.schemas';
 import { Seller } from '../sellers/seller.schema';
-import { AIChat, AIChatDocument, SavedResearchReport, SavedResearchReportDocument } from './ai.schemas';
+import { AIChat, AIChatDocument, SavedResearchReport } from './ai.schemas';
 
 type ChatInput = {
   message?: string;

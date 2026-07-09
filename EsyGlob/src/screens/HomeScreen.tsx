@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
   FlatList,
   Pressable,
   RefreshControl,
@@ -12,439 +14,644 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { fetchHome } from '../api/home';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
+import { fetchNotificationCenter } from '../api/account';
+import { fetchCategories } from '../api/categories';
 import { fetchSellers } from '../api/marketplace';
 import { fetchProducts } from '../api/products';
 import { searchMarketplace } from '../api/search';
-import { Product, SellerSummary } from '../api/types';
+import { Category, Product, SellerSummary } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
 import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
+import SavedHeartButton from '../components/SavedHeartButton';
 import SectionHeader from '../components/SectionHeader';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, shadow, spacing, type } from '../theme';
-import { getId, getProductLocation, getStableKey, isVerifiedProduct } from '../utils/format';
+import { spacing } from '../theme';
+import { getId, getStableKey, isVerifiedProduct } from '../utils/format';
 import { firstImage } from '../utils/images';
 
-type HomeTab = 'AI' | 'Products' | 'Manufacturers' | 'Worldwide';
+type HomeTab = 'AI' | 'Products' | 'Manufacturers';
 
-const tabs: HomeTab[] = ['AI', 'Products', 'Manufacturers', 'Worldwide'];
+const TABS: HomeTab[] = ['AI', 'Products', 'Manufacturers'];
+
+type ExploreAction = {
+  icon: string;
+  title: string;
+  color: string;
+  route?: string;
+  tab?: HomeTab;
+};
+
+const EXPLORE_ACTIONS: ExploreAction[] = [
+  { icon: 'robot-outline', title: 'AI Chat', color: '#6366F1', route: 'AIChat' },
+  { icon: 'calculator-variant-outline', title: 'Tax Calc', color: '#0F8B8D' },
+  { icon: 'account-search-outline', title: 'Suppliers', color: '#10B981', route: 'Sellers' },
+  { icon: 'clipboard-list-outline', title: 'RFQ', color: '#F59E0B', route: 'RFQCreate' },
+  { icon: 'chart-line', title: 'Insights', color: '#8B5CF6', route: 'MarketInsights' },
+  { icon: 'magnify-scan', title: 'Research', color: '#2563EB', route: 'ProductListing' },
+  { icon: 'briefcase-check-outline', title: 'Trade', color: '#F26A21', route: 'Services' },
+  { icon: 'truck-delivery-outline', title: 'Logistics', color: '#06B6D4', route: 'ShippingLogistics' },
+];
+
+const PALETTE = {
+  primary: '#2563EB',
+  primaryLight: '#EFF6FF',
+  primaryDark: '#1D4ED8',
+  accent: '#F26A21',
+  accentLight: '#FFF7ED',
+  emerald: '#10B981',
+  amber: '#F59E0B',
+  rose: '#EF4444',
+  violet: '#7C3AED',
+  sky: '#0EA5E9',
+  ink: '#0F172A',
+  text: '#1E293B',
+  muted: '#64748B',
+  faint: '#E2E8F0',
+  surface: '#FFFFFF',
+  background: '#F8FAFC',
+  cardMuted: '#F1F5F9',
+};
+
+const CACHE_CONFIG = {
+  staleTime: 5 * 60_000,
+  gcTime: 30 * 60_000,
+  retry: 2,
+  retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 8000),
+};
 
 function HomeScreen() {
   const navigation = useNavigation<any>();
+  const { status } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<HomeTab>('AI');
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
-  const home = useQuery({
-    queryKey: ['home'],
-    queryFn: fetchHome,
+  const tabPosition = useRef(new Animated.Value(0)).current;
+  const [tabWidths, setTabWidths] = useState<number[]>([]);
+
+  // Prefetch all data on mount
+  useEffect(() => {
+    const prefetchAll = async () => {
+      await Promise.allSettled([
+        queryClient.prefetchQuery({ queryKey: ['home-categories'], queryFn: fetchCategories, ...CACHE_CONFIG }),
+        queryClient.prefetchQuery({ queryKey: ['home-featured-products'], queryFn: () => fetchProducts({ limit: 12, sort: 'latest', verifiedOnly: true }), ...CACHE_CONFIG }),
+        queryClient.prefetchQuery({ queryKey: ['home-latest-products'], queryFn: () => fetchProducts({ limit: 30, sort: 'latest' }), ...CACHE_CONFIG }),
+        queryClient.prefetchInfiniteQuery({
+          queryKey: ['home-products-feed'],
+          queryFn: ({ pageParam }) => fetchProducts({ page: Number(pageParam), limit: 18, sort: 'latest' }),
+          initialPageParam: 1,
+          ...CACHE_CONFIG,
+        }),
+        queryClient.prefetchQuery({ queryKey: ['manufacturers-directory'], queryFn: () => fetchSellers({ limit: 30, sort: 'verified' }), ...CACHE_CONFIG }),
+      ]);
+    };
+    prefetchAll();
+  }, [queryClient]);
+
+  // Smooth tab animation
+  useEffect(() => {
+    const index = TABS.indexOf(activeTab);
+    if (tabWidths.length === TABS.length) {
+      const targetX = tabWidths.slice(0, index).reduce((sum, w) => sum + w + 6, 0);
+      Animated.spring(tabPosition, {
+        toValue: targetX,
+        tension: 300,
+        friction: 20,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [activeTab, tabWidths, tabPosition]);
+
+  const categoriesQuery = useQuery({
+    queryKey: ['home-categories'],
+    queryFn: fetchCategories,
+    ...CACHE_CONFIG,
   });
+
+  const featuredProducts = useQuery({
+    queryKey: ['home-featured-products'],
+    queryFn: () => fetchProducts({ limit: 12, sort: 'latest', verifiedOnly: true }),
+    ...CACHE_CONFIG,
+  });
+
+  const latestProducts = useQuery({
+    queryKey: ['home-latest-products'],
+    queryFn: () => fetchProducts({ limit: 30, sort: 'latest' }),
+    ...CACHE_CONFIG,
+  });
+
   const search = useQuery({
     queryKey: ['home-search', submittedQuery],
     queryFn: () => searchMarketplace(submittedQuery),
     enabled: submittedQuery.trim().length > 1,
     staleTime: 60_000,
+    placeholderData: (previousData: any) => previousData,
   });
+
   const products = useInfiniteQuery({
     queryKey: ['home-products-feed'],
     queryFn: ({ pageParam }) => fetchProducts({ page: Number(pageParam), limit: 18, sort: 'latest' }),
     initialPageParam: 1,
-    enabled: activeTab === 'Products',
-    getNextPageParam: lastPage => {
+    ...CACHE_CONFIG,
+    getNextPageParam: (lastPage: any) => {
       const pagination = lastPage.pagination;
       return pagination?.page && pagination.totalPages && pagination.page < pagination.totalPages
         ? pagination.page + 1
         : undefined;
     },
   });
+
   const sellers = useQuery({
     queryKey: ['manufacturers-directory'],
     queryFn: () => fetchSellers({ limit: 30, sort: 'verified' }),
-    enabled: activeTab === 'Manufacturers' || activeTab === 'AI',
-    staleTime: 120_000,
+    ...CACHE_CONFIG,
+  });
+
+  const notifications = useQuery({
+    queryKey: ['notification-center'],
+    queryFn: fetchNotificationCenter,
+    enabled: status === 'authenticated',
+    staleTime: 45_000,
   });
 
   const homeProducts = useMemo(
-    () => [
-      ...(home.data?.featuredProducts ?? []),
-      ...(home.data?.recommendedProducts ?? []),
-      ...(home.data?.latestProducts ?? []),
-    ],
-    [home.data],
+    () => [...(featuredProducts.data?.products ?? []), ...(latestProducts.data?.products?.slice(12, 24) ?? []), ...(latestProducts.data?.products ?? [])],
+    [featuredProducts.data, latestProducts.data],
   );
-  const productFeed = useMemo(() => products.data?.pages.flatMap(page => page.products) ?? [], [products.data]);
+
+  const productFeed = useMemo(() => products.data?.pages?.flatMap((page: any) => page.products) ?? [], [products.data]);
   const verifiedProducts = useMemo(() => homeProducts.filter(isVerifiedProduct), [homeProducts]);
+  
   const manufacturers = useMemo(
     () => sellers.data?.sellers?.length ? sellers.data.sellers : collectSellers(productFeed.length ? productFeed : homeProducts),
     [homeProducts, productFeed, sellers.data],
   );
-  const countries = useMemo(() => collectCountries(productFeed.length ? productFeed : homeProducts), [homeProducts, productFeed]);
+  
+  const categories = useMemo(
+    () => (categoriesQuery.data ?? []).filter((cat: Category, i: number, list: Category[]) => list.findIndex((c: Category) => getStableKey(c) === getStableKey(cat)) === i),
+    [categoriesQuery.data],
+  );
 
-  const submitSearch = () => setSubmittedQuery(query.trim());
+  const submitSearch = useCallback(() => setSubmittedQuery(query.trim()), [query]);
+  const handleTabChange = useCallback((tab: HomeTab) => setActiveTab(tab), []);
+
+  const openExplore = useCallback((action: ExploreAction) => {
+    if (action.tab) { setActiveTab(action.tab); return; }
+    if (action.route) { navigation.navigate(action.route); return; }
+    Alert.alert(action.title, 'Coming soon to mobile app.');
+  }, [navigation]);
+
+  const refreshAll = useCallback(() => {
+    Promise.allSettled([
+      categoriesQuery.refetch(),
+      featuredProducts.refetch(),
+      latestProducts.refetch(),
+      sellers.refetch(),
+    ]).catch(() => {});
+  }, [categoriesQuery, featuredProducts, latestProducts, sellers]);
+
+  const renderHeader = () => (
+    <View>
+      <SearchBar
+        query={query}
+        onChangeText={setQuery}
+        onSubmit={submitSearch}
+        onCameraPress={() => navigation.navigate('ImageSearch')}
+      />
+      <ExploreShortcuts actions={EXPLORE_ACTIONS} onPress={openExplore} />
+      <CategorySlider categories={categories} loading={categoriesQuery.isLoading} navigation={navigation} />
+    </View>
+  );
 
   return (
     <View style={styles.screen}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.brand}>EsyGlob</Text>
+          <View style={styles.brandRow}>
+            <Icon name="shopping" size={22} color={PALETTE.primary} />
+            <Text style={styles.brand}>EsyGlob</Text>
+          </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.iconButton}>
-              <Icon name="bell-outline" size={22} color={colors.ink} />
+            <Pressable
+              onPress={() => navigation.navigate(status === 'authenticated' ? 'Notifications' : 'Auth', { initialMode: 'login' })}
+              style={styles.iconBtn}>
+              <Icon name="bell-outline" size={18} color={PALETTE.primary} />
+              {status === 'authenticated' && (notifications.data?.unreadCount ?? 0) > 0 && <View style={styles.badge} />}
             </Pressable>
-            <Pressable onPress={() => navigation.navigate('Messages')} style={styles.iconButton}>
-              <Icon name="message-text-outline" size={22} color={colors.ink} />
+            <Pressable onPress={() => navigation.navigate('Messages')} style={styles.iconBtn}>
+              <Icon name="message-text-outline" size={18} color={PALETTE.primary} />
             </Pressable>
-            <Pressable onPress={() => navigation.navigate('Account')} style={styles.iconButton}>
-              <Icon name="account-outline" size={22} color={colors.ink} />
+            <Pressable onPress={() => navigation.navigate('Account')} style={styles.iconBtn}>
+              <Icon name="account-outline" size={18} color={PALETTE.primary} />
             </Pressable>
           </View>
         </View>
-        <View style={styles.tabs}>
-          {tabs.map(tab => (
-            <Pressable key={tab} onPress={() => setActiveTab(tab)} style={styles.tabButton}>
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
-              {activeTab === tab ? <View style={styles.tabIndicator} /> : null}
-            </Pressable>
-          ))}
+
+        {/* Animated Tab Switcher */}
+        <View style={styles.tabContainer}>
+          <View style={styles.tabTrack}>
+            {tabWidths.length === TABS.length && (
+              <Animated.View
+                style={[
+                  styles.tabIndicator,
+                  {
+                    transform: [{ translateX: tabPosition }],
+                    width: tabWidths[TABS.indexOf(activeTab)] || 0,
+                  },
+                ]}
+              />
+            )}
+            {TABS.map((tab, index) => (
+              <Pressable
+                key={tab}
+                onPress={() => handleTabChange(tab)}
+                onLayout={(e) => {
+                  const w = e.nativeEvent.layout.width;
+                  setTabWidths(prev => {
+                    const next = [...prev];
+                    next[index] = w;
+                    return next;
+                  });
+                }}
+                style={styles.tabButton}>
+                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                  {tab}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       </View>
 
-      {activeTab === 'AI' ? (
-        <ScrollView
-          refreshControl={<RefreshControl refreshing={home.isRefetching || search.isRefetching} onRefresh={() => home.refetch()} />}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}>
-          <View style={styles.searchShell}>
-            <Icon name="camera-outline" size={25} color={colors.ink} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={submitSearch}
-              returnKeyType="search"
-              placeholder="Search Products, Suppliers, Categories..."
-              placeholderTextColor={colors.muted}
-              style={styles.searchInput}
-            />
-            <Pressable hitSlop={8}>
-              <Icon name="microphone-outline" size={22} color={colors.ink} />
-            </Pressable>
-            <Pressable onPress={submitSearch} style={styles.searchButton}>
-              <Icon name="magnify" size={24} color="#fff" />
-            </Pressable>
-          </View>
-
-          {submittedQuery ? (
-            <SearchResults
-              loading={search.isLoading}
-              error={search.error as Error | null}
-              onRetry={() => search.refetch()}
-              products={search.data?.products ?? []}
-              categories={search.data?.categories ?? []}
-              sellers={search.data?.suppliers?.length ? search.data.suppliers : collectSellers(search.data?.products ?? [])}
-            />
-          ) : (
-            <>
-              <View style={styles.quickRow}>
-                <QuickAction icon="view-grid-outline" title="Source by category" onPress={() => navigation.navigate('Categories')} />
-                <QuickAction icon="bullseye-arrow" title="Request quotation" onPress={() => navigation.navigate('RFQ')} />
-                <QuickAction icon="check-decagram-outline" title="Verified suppliers" onPress={() => setActiveTab('Manufacturers')} />
-              </View>
-              <ProductSection title="Featured products" products={home.data?.featuredProducts ?? []} loading={home.isLoading} />
-              <ProductSection title="Recommended products" products={home.data?.recommendedProducts ?? []} loading={home.isLoading} />
-              <ProductSection title="Latest arrivals" products={home.data?.latestProducts ?? []} loading={home.isLoading} />
-            </>
-          )}
-        </ScrollView>
-      ) : null}
-
-      {activeTab === 'Products' ? (
-        <FlatList
-          data={productFeed}
-          keyExtractor={item => getId(item)}
-          numColumns={2}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.gridColumn}
-          refreshControl={<RefreshControl refreshing={products.isRefetching && !products.isFetchingNextPage} onRefresh={() => products.refetch()} />}
-          onEndReachedThreshold={0.4}
-          onEndReached={() => {
-            if (products.hasNextPage && !products.isFetchingNextPage) {
-              products.fetchNextPage();
-            }
-          }}
-          ListHeaderComponent={
-            <View>
-              <ProductSection title="Featured products" products={home.data?.featuredProducts ?? []} loading={home.isLoading} />
-              <ProductSection title="Trending products" products={home.data?.trendingProducts ?? []} loading={home.isLoading} />
-              <ProductSection title="Recommended products" products={home.data?.recommendedProducts ?? []} loading={home.isLoading} />
-              <ProductSection title="Verified products" products={verifiedProducts} loading={home.isLoading} />
-              <SectionHeader title="Latest products" />
-            </View>
-          }
-          ListEmptyComponent={products.isLoading ? <LoadingState label="Loading products" /> : <EmptyState title="No products" />}
-          ListFooterComponent={products.isFetchingNextPage ? <ActivityIndicator color={colors.primary} style={styles.footerLoader} /> : null}
-          renderItem={({ item }) => <ProductCard product={item} variant="grid" />}
-        />
-      ) : null}
-
-      {activeTab === 'Manufacturers' ? (
-        <FlatList
-          data={manufacturers}
-          keyExtractor={item => getStableKey(item)}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={home.isRefetching} onRefresh={() => home.refetch()} />}
-          ListEmptyComponent={(home.isLoading || sellers.isLoading) ? <LoadingState label="Loading manufacturers" /> : <EmptyState title="No manufacturers available" />}
-          renderItem={({ item }) => <SellerCard seller={item} />}
-        />
-      ) : null}
-
-      {activeTab === 'Worldwide' ? (
-        <FlatList
-          data={countries}
-          keyExtractor={item => item.country}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={home.isRefetching} onRefresh={() => home.refetch()} />}
-          ListEmptyComponent={home.isLoading ? <LoadingState label="Loading worldwide products" /> : <EmptyState title="No worldwide products" />}
-          renderItem={({ item }) => (
-            <View style={styles.countryCard}>
-              <View style={styles.countryHeader}>
-                <Icon name="earth" size={22} color={colors.secondary} />
-                <Text style={styles.countryTitle}>{item.country}</Text>
-                <Text style={styles.countryCount}>{item.products.length}</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
-                {item.products.map(product => <ProductCard key={getId(product)} product={product} />)}
-              </ScrollView>
-            </View>
-          )}
-        />
-      ) : null}
+      {/* Tab Content */}
+      <View style={styles.content}>
+        {activeTab === 'AI' && (
+          <AITab
+            submittedQuery={submittedQuery}
+            search={search}
+            categoriesQuery={categoriesQuery}
+            featuredProducts={featuredProducts}
+            latestProducts={latestProducts}
+            categories={categories}
+            openExplore={openExplore}
+            navigation={navigation}
+            refreshAll={refreshAll}
+          />
+        )}
+        {activeTab === 'Products' && (
+          <ProductsTab
+            productFeed={productFeed}
+            products={products}
+            featuredProducts={featuredProducts}
+            latestProducts={latestProducts}
+            verifiedProducts={verifiedProducts}
+            categories={categories}
+            openExplore={openExplore}
+            navigation={navigation}
+            renderHeader={renderHeader}
+          />
+        )}
+        {activeTab === 'Manufacturers' && (
+          <ManufacturersTab
+            manufacturers={manufacturers}
+            sellers={sellers}
+            categories={categories}
+            openExplore={openExplore}
+            navigation={navigation}
+            refreshAll={refreshAll}
+          />
+        )}
+      </View>
     </View>
   );
 }
 
-function SearchResults({
-  loading,
-  error,
-  onRetry,
-  products,
-  categories,
-  sellers,
-}: {
-  loading: boolean;
-  error: Error | null;
-  onRetry: () => void;
-  products: Product[];
-  categories: { _id?: string; id?: string; name?: string; slug?: string }[];
-  sellers: SellerSummary[];
-}) {
-  const navigation = useNavigation<any>();
-
-  if (loading) {
-    return <LoadingState label="Searching marketplace" />;
-  }
-
-  if (error) {
-    return <ErrorState message={error.message} onRetry={onRetry} />;
-  }
-
-  if (!products.length && !categories.length && !sellers.length) {
-    return <EmptyState title="No results found" detail="Try a different product, supplier, or category term." />;
+// ──────────────────────────────────────
+// AI Tab
+// ──────────────────────────────────────
+const AITab = React.memo(({ submittedQuery, search, categoriesQuery, featuredProducts, latestProducts, categories, openExplore, navigation, refreshAll }: any) => {
+  if (submittedQuery) {
+    return (
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={search.isFetching} onRefresh={() => search.refetch()} tintColor={PALETTE.primary} />}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.tabContent}>
+        <SearchResults
+          loading={search.isLoading}
+          error={search.error as Error | null}
+          onRetry={() => search.refetch()}
+          products={search.data?.products ?? []}
+          categories={search.data?.categories ?? []}
+          sellers={search.data?.suppliers?.length ? search.data.suppliers : collectSellers(search.data?.products ?? [])}
+          navigation={navigation}
+        />
+      </ScrollView>
+    );
   }
 
   return (
+    <ScrollView
+      refreshControl={<RefreshControl refreshing={categoriesQuery.isRefetching || featuredProducts.isRefetching || latestProducts.isRefetching} onRefresh={refreshAll} tintColor={PALETTE.primary} />}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.tabContent}>
+      <ExploreShortcuts actions={EXPLORE_ACTIONS} onPress={openExplore} />
+      <CategorySlider categories={categories} loading={categoriesQuery.isLoading} navigation={navigation} />
+      <ProductSection title="Featured" products={featuredProducts.data?.products ?? []} loading={featuredProducts.isLoading} navigation={navigation} />
+      <ProductSection title="Trending" products={latestProducts.data?.products?.slice(0, 12) ?? []} loading={latestProducts.isLoading} navigation={navigation} />
+      <ProductSection title="Latest" products={latestProducts.data?.products ?? []} loading={latestProducts.isLoading} navigation={navigation} />
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+});
+
+// ──────────────────────────────────────
+// Products Tab
+// ──────────────────────────────────────
+const ProductsTab = React.memo(({ productFeed, products, featuredProducts, latestProducts, verifiedProducts, categories, openExplore, navigation, renderHeader }: any) => (
+  <FlashList
+    data={productFeed}
+    keyExtractor={(item: Product) => getId(item)}
+    numColumns={2}
+    contentContainerStyle={styles.gridContent}
+    refreshControl={<RefreshControl refreshing={products.isRefetching && !products.isFetchingNextPage} onRefresh={() => products.refetch()} tintColor={PALETTE.primary} />}
+    onEndReachedThreshold={0.3}
+    onEndReached={() => { if (products.hasNextPage && !products.isFetchingNextPage) products.fetchNextPage(); }}
+    ListHeaderComponent={
+      <View>
+        {renderHeader()}
+        <ProductSection title="Featured" products={featuredProducts.data?.products ?? []} loading={featuredProducts.isLoading} navigation={navigation} />
+        <ProductSection title="Verified" products={verifiedProducts} loading={featuredProducts.isLoading || latestProducts.isLoading} navigation={navigation} />
+        <SectionHeader title="All Products" />
+      </View>
+    }
+    ListEmptyComponent={products.isLoading ? <LoadingState label="Loading products" /> : <EmptyState title="No products" />}
+    ListFooterComponent={products.isFetchingNextPage ? <ActivityIndicator color={PALETTE.primary} style={styles.footerLoader} /> : null}
+    renderItem={({ item }: { item: Product }) => <ProductCard product={item} variant="grid" />}
+  />
+));
+
+// ──────────────────────────────────────
+// Manufacturers Tab
+// ──────────────────────────────────────
+const ManufacturersTab = React.memo(({ manufacturers, sellers, categories, openExplore, navigation, refreshAll }: any) => (
+  <FlashList
+    data={manufacturers}
+    keyExtractor={(item: SellerSummary) => getStableKey(item)}
+    contentContainerStyle={styles.listContent}
+    refreshControl={<RefreshControl refreshing={sellers.isRefetching} onRefresh={refreshAll} tintColor={PALETTE.primary} />}
+    ListHeaderComponent={
+      <View>
+        <ExploreShortcuts actions={EXPLORE_ACTIONS.slice(0, 4)} onPress={openExplore} />
+        <CategorySlider categories={categories} loading={false} navigation={navigation} />
+        <SectionHeader title="Verified Manufacturers" />
+      </View>
+    }
+    ListEmptyComponent={sellers.isLoading ? <LoadingState label="Loading manufacturers" /> : <EmptyState title="No manufacturers" />}
+    renderItem={({ item }: { item: SellerSummary }) => <SellerCard seller={item} navigation={navigation} />}
+  />
+));
+
+// ──────────────────────────────────────
+// Search Bar
+// ──────────────────────────────────────
+const SearchBar = React.memo(({ query, onChangeText, onSubmit, onCameraPress }: any) => (
+  <View style={styles.searchShell}>
+    <Icon name="magnify" size={18} color={PALETTE.muted} />
+    <TextInput
+      value={query}
+      onChangeText={onChangeText}
+      onSubmitEditing={onSubmit}
+      returnKeyType="search"
+      placeholder="Search products, suppliers..."
+      placeholderTextColor={PALETTE.muted}
+      style={styles.searchInput}
+    />
+    {query.length > 0 && (
+      <Pressable onPress={() => onChangeText('')} hitSlop={8}>
+        <Icon name="close-circle" size={16} color={PALETTE.muted} />
+      </Pressable>
+    )}
+    <Pressable onPress={onCameraPress} hitSlop={8} style={styles.searchIconBtn}>
+      <Icon name="camera-outline" size={18} color={PALETTE.primary} />
+    </Pressable>
+  </View>
+));
+
+// ──────────────────────────────────────
+// Explore Shortcuts
+// ──────────────────────────────────────
+const ExploreShortcuts = React.memo(({ actions, onPress }: { actions: ExploreAction[]; onPress: (action: ExploreAction) => void }) => (
+  <View style={styles.exploreSection}>
+    <Text style={styles.sectionTitle}>Explore Services</Text>
+    <FlatList
+      data={actions}
+      horizontal
+      keyExtractor={item => item.title}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.exploreRail}
+      renderItem={({ item }) => (
+        <Pressable
+          onPress={() => onPress(item)}
+          style={({ pressed }) => [styles.exploreItem, pressed && styles.exploreItemPressed]}>
+          <View style={[styles.exploreIconWrap, { backgroundColor: `${item.color}12` }]}>
+            <Icon name={item.icon} size={18} color={item.color} />
+          </View>
+          <Text style={styles.exploreItemText} numberOfLines={1}>{item.title}</Text>
+        </Pressable>
+      )}
+    />
+  </View>
+));
+
+// ──────────────────────────────────────
+// Category Slider
+// ──────────────────────────────────────
+const CategorySlider = React.memo(({ categories, loading, navigation }: any) => {
+  if (loading && !categories.length) {
+    return (
+      <View style={styles.categorySection}>
+        <Text style={styles.sectionTitle}>Categories</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}>
+          {[0, 1, 2, 3, 4, 5].map(i => <View key={i} style={styles.categorySkeleton} />)}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (!categories.length) return null;
+
+  return (
+    <View style={styles.categorySection}>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>Categories</Text>
+        <Pressable onPress={() => navigation.navigate('Categories')} hitSlop={8}>
+          <Text style={styles.seeAll}>See all</Text>
+        </Pressable>
+      </View>
+      <FlatList
+        data={categories.slice(0, 10)}
+        horizontal
+        keyExtractor={(item: Category) => getStableKey(item)}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryRail}
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => navigation.navigate('ProductListing', { category: item.slug ?? item.name, categoryName: item.name })}
+            style={styles.categoryItem}>
+            <View style={styles.categoryIconWrap}>
+              <RemoteImage
+                uri={item.image}
+                width={80}
+                height={80}
+                style={styles.categoryIcon}
+                fallback={<Icon name="view-grid-outline" size={20} color={PALETTE.primary} />}
+              />
+            </View>
+            <Text style={styles.categoryName} numberOfLines={2}>{item.name ?? item.slug}</Text>
+          </Pressable>
+        )}
+      />
+    </View>
+  );
+});
+
+// ──────────────────────────────────────
+// Product Section
+// ──────────────────────────────────────
+const ProductSection = React.memo(({ title, products: items, loading, navigation }: any) => {
+  if (loading || !items?.length) return null;
+
+  return (
+    <View style={styles.productSection}>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Pressable onPress={() => navigation.navigate('ProductListing')} hitSlop={8}>
+          <Text style={styles.seeAll}>View all</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.productRail}>
+        {items.map((product: Product) => <ProductCard key={getId(product)} product={product} />)}
+      </ScrollView>
+    </View>
+  );
+});
+
+// ──────────────────────────────────────
+// Search Results
+// ──────────────────────────────────────
+const SearchResults = React.memo(({ loading, error, onRetry, products, categories, sellers, navigation }: any) => {
+  if (loading) return <LoadingState label="Searching..." />;
+  if (error) return <ErrorState message={error.message} onRetry={onRetry} />;
+  if (!products.length && !categories.length && !sellers.length) return <EmptyState title="No results" detail="Try different keywords." />;
+
+  return (
     <View>
-      {categories.length ? (
-        <View>
-          <SectionHeader title="Categories" />
+      {categories.length > 0 && (
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionTitle}>Categories</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipList}>
-            {categories.map(category => (
-              <Pressable
-                key={getStableKey(category)}
-                onPress={() => navigation.navigate('ProductListing', { category: category.name ?? getId(category), categoryName: category.name })}
-                style={styles.resultChip}>
-                <Text style={styles.resultChipText}>{category.name ?? category.slug ?? 'Category'}</Text>
+            {categories.map((cat: any) => (
+              <Pressable key={getStableKey(cat)} onPress={() => navigation.navigate('ProductListing', { category: cat.name, categoryName: cat.name })} style={styles.chip}>
+                <Text style={styles.chipText}>{cat.name}</Text>
               </Pressable>
             ))}
           </ScrollView>
         </View>
-      ) : null}
-      {sellers.length ? (
-        <View>
-          <SectionHeader title="Suppliers" />
-          {sellers.slice(0, 4).map(seller => <SellerCard key={getStableKey(seller)} seller={seller} compact />)}
+      )}
+      {sellers.length > 0 && (
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionTitle}>Suppliers</Text>
+          {sellers.slice(0, 3).map((seller: SellerSummary) => <SellerCard key={getStableKey(seller)} seller={seller} navigation={navigation} />)}
         </View>
-      ) : null}
-      <ProductSection title="Products" products={products} loading={false} />
+      )}
+      <ProductSection title="Products" products={products} loading={false} navigation={navigation} />
     </View>
   );
-}
+});
 
-function ProductSection({ title, products, loading }: { title: string; products: Product[]; loading: boolean }) {
-  const navigation = useNavigation<any>();
-
-  if (loading) {
-    return <SkeletonSection title={title} />;
-  }
-
-  if (!products.length) {
-    return null;
-  }
-
-  return (
-    <View>
-      <SectionHeader title={title} action="View all" onAction={() => navigation.navigate('ProductListing')} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalList}>
-        {products.map(product => <ProductCard key={getId(product)} product={product} />)}
-      </ScrollView>
-    </View>
-  );
-}
-
-function QuickAction({ icon, title, onPress }: { icon: string; title: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={styles.quickCard}>
-      <Icon name={icon} size={28} color={colors.primary} />
-      <Text style={styles.quickTitle}>{title}</Text>
-    </Pressable>
-  );
-}
-
-function SellerCard({ seller, compact }: { seller: SellerSummary; compact?: boolean }) {
-  const navigation = useNavigation<any>();
+// ──────────────────────────────────────
+// Seller Card
+// ──────────────────────────────────────
+const SellerCard = React.memo(({ seller, navigation }: any) => {
   const verified = seller.isVerified || seller.verificationStatus === 'verified';
   const title = seller.companyName ?? seller.businessName ?? seller.displayName ?? 'Supplier';
-  const location = seller.address?.country ?? seller.country ?? 'Worldwide';
+  const location = [seller.address?.city, seller.address?.country ?? seller.country].filter(Boolean).join(', ') || 'Worldwide';
   const categories = seller.mainCategories?.filter(Boolean).slice(0, 3) ?? [];
   const previewImages = seller.factoryImages?.filter(Boolean).slice(0, 3) ?? [];
-  const businessType = seller.businessType ?? seller.companyType ?? seller.supplierType;
-  const intro = seller.companyIntroduction ?? seller.description;
-  const sellerImage = getSellerImage(seller);
+  const sellerImage = firstImage(seller.logo, seller.companyLogo, seller.profileImage, seller.avatar, seller.image, seller.factoryImages);
   const sellerId = seller._id ?? seller.id ?? title;
 
   return (
     <Pressable
       onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
-      style={[styles.sellerCard, compact && styles.sellerCompact]}>
-      <View style={styles.sellerTopLine}>
-        <View style={styles.sellerBadges}>
-          {verified ? (
-            <View style={styles.verifiedBadge}>
-              <Icon name="check-decagram" size={13} color="#fff" />
-              <Text style={styles.verifiedBadgeText}>Verified Supplier</Text>
-            </View>
-          ) : null}
-          {seller.factoryVerified ? (
-            <View style={styles.factoryBadge}>
-              <Icon name="factory" size={13} color={colors.secondary} />
-              <Text style={styles.factoryBadgeText}>Factory checked</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text numberOfLines={1} style={styles.sellerCountry}>{location}</Text>
-      </View>
-      <View style={styles.sellerHeroRow}>
-        <RemoteImage
-          uri={sellerImage}
-          width={108}
-          height={108}
-          style={styles.sellerLogo}
-          fallback={<Text style={styles.sellerLogoText}>{title.slice(0, 1).toUpperCase()}</Text>}
-        />
-        <View style={styles.sellerBody}>
-          <View style={styles.sellerTitleRow}>
-            <Text numberOfLines={1} style={styles.sellerTitle}>{title}</Text>
+      style={styles.sellerCard}>
+      <View style={styles.sellerTop}>
+        <RemoteImage uri={sellerImage} width={48} height={48} style={styles.sellerLogo} fallback={<Text style={styles.sellerLogoText}>{title[0]}</Text>} />
+        <View style={styles.sellerInfo}>
+          <View style={styles.sellerNameRow}>
+            <Text style={styles.sellerName} numberOfLines={1}>{title}</Text>
+            {verified && <Icon name="check-decagram" size={14} color={PALETTE.primary} />}
           </View>
-          <Text numberOfLines={1} style={styles.sellerMeta}>
-            {[businessType, seller.responseTime].filter(Boolean).join(' | ') || 'B2B manufacturer and supplier'}
-          </Text>
-          {intro ? <Text numberOfLines={2} style={styles.sellerIntro}>{intro}</Text> : null}
+          <Text style={styles.sellerLocation} numberOfLines={1}>{location}</Text>
+          <Text style={styles.sellerMeta}>{seller.businessType ?? 'Supplier'}{seller.yearsInBusiness ? ` · ${seller.yearsInBusiness} yrs` : ''}</Text>
         </View>
+        <SavedHeartButton type="seller" itemId={sellerId} target={seller} size={16} iconColor={PALETTE.muted} />
       </View>
-      {previewImages.length ? (
+
+      {previewImages.length > 0 && (
         <View style={styles.factoryStrip}>
-          {previewImages.map((uri, index) => (
-            <RemoteImage key={`${uri}-${index}`} uri={uri} width={220} height={140} style={styles.factoryImage} />
+          {previewImages.map((uri: string, i: number) => (
+            <RemoteImage key={`${uri}-${i}`} uri={uri} width={120} height={80} style={styles.factoryImage} />
           ))}
         </View>
-      ) : null}
+      )}
+
       <View style={styles.sellerStats}>
-        {seller.yearsInBusiness ? <StatPill icon="calendar-check-outline" text={`${seller.yearsInBusiness} yrs`} /> : null}
-        {seller.rating ? <StatPill icon="star" text={`${seller.rating} rating`} /> : null}
-        {seller.responseRate ? <StatPill icon="timer-outline" text={`${seller.responseRate} response`} /> : null}
-        {seller.productCount ? <StatPill icon="package-variant-closed" text={`${seller.productCount} products`} /> : null}
-        {seller.minMoq ? <StatPill icon="format-list-numbered" text={`MOQ ${seller.minMoq}`} /> : null}
+        {seller.rating && <StatPill icon="star" text={`${seller.rating}`} color={PALETTE.amber} />}
+        {seller.responseRate && <StatPill icon="timer-outline" text={seller.responseRate} color={PALETTE.emerald} />}
+        {seller.productCount && <StatPill icon="package-variant-closed" text={`${seller.productCount} products`} color={PALETTE.violet} />}
+        {seller.minMoq && <StatPill icon="format-list-numbered" text={`MOQ ${seller.minMoq}`} color={PALETTE.rose} />}
       </View>
-      {categories.length ? (
+
+      {categories.length > 0 && (
         <View style={styles.categoryTags}>
-          {categories.map(category => <Text key={category} numberOfLines={1} style={styles.categoryTag}>{category}</Text>)}
+          {categories.map((cat: string) => <Text key={cat} style={styles.categoryTag}>{cat}</Text>)}
         </View>
-      ) : null}
+      )}
+
       <View style={styles.sellerActions}>
-        <Pressable onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })} style={styles.storeButton}>
-          <Icon name="storefront-outline" size={16} color={colors.primaryDark} />
-          <Text style={styles.storeButtonText}>View store</Text>
+        <Pressable onPress={() => navigation.navigate('Messages')} style={styles.chatBtn}>
+          <Icon name="message-text-outline" size={14} color="#fff" />
+          <Text style={styles.chatBtnText}>Chat</Text>
         </Pressable>
-        <Pressable onPress={() => navigation.navigate('Messages')} style={styles.contactButton}>
-          <Icon name="message-text-outline" size={16} color="#fff" />
-          <Text style={styles.contactButtonText}>Contact</Text>
+        <Pressable onPress={() => navigation.navigate('RFQCreate', { prefill: { sellerId, supplierName: title } })} style={styles.rfqBtn}>
+          <Icon name="bullseye-arrow" size={14} color="#fff" />
+          <Text style={styles.chatBtnText}>Send RFQ</Text>
         </Pressable>
       </View>
     </Pressable>
   );
-}
+});
 
-function getSellerImage(seller: SellerSummary) {
-  const record = seller as SellerSummary & {
-    profileImage?: string;
-    avatar?: string;
-    image?: string;
-    coverImage?: string;
-    bannerImage?: string;
-    images?: string[];
-  };
+const StatPill = React.memo(({ icon, text, color }: any) => (
+  <View style={[styles.statPill, { borderLeftColor: color, borderLeftWidth: 2 }]}>
+    <Icon name={icon} size={10} color={color} />
+    <Text style={styles.statPillText}>{text}</Text>
+  </View>
+));
 
-  return firstImage(
-    seller.logo,
-    seller.companyLogo,
-    record.profileImage,
-    record.avatar,
-    record.image,
-    record.coverImage,
-    record.bannerImage,
-    seller.factoryImages,
-    record.images,
-  );
-}
-
-function StatPill({ icon, text }: { icon: string; text: string }) {
-  return (
-    <View style={styles.statPill}>
-      <Icon name={icon} size={13} color={colors.primaryDark} />
-      <Text style={styles.sellerStat}>{text}</Text>
-    </View>
-  );
-}
-
-function SkeletonSection({ title }: { title: string }) {
-  return (
-    <View>
-      <SectionHeader title={title} />
-      <View style={styles.skeletonRow}>
-        {[0, 1, 2].map(item => <View key={item} style={styles.skeletonCard} />)}
-      </View>
-    </View>
-  );
-}
-
+// ──────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────
 function collectSellers(products: Product[]) {
   const sellers = new Map<string, SellerSummary>();
-
   products.forEach(product => {
     const seller = product.seller ?? product.sellerId;
-    if (!seller || typeof seller === 'string') {
-      return;
-    }
-
+    if (!seller || typeof seller === 'string') return;
     const id = getStableKey(seller);
     const existing = sellers.get(id);
     sellers.set(id, {
@@ -454,403 +661,399 @@ function collectSellers(products: Product[]) {
       mainCategories: Array.from(new Set([...(existing?.mainCategories ?? []), product.category].filter(Boolean) as string[])),
     });
   });
-
   return Array.from(sellers.values());
 }
 
-function collectCountries(products: Product[]) {
-  const byCountry = new Map<string, Product[]>();
-
-  products.forEach(product => {
-    const country = getProductLocation(product);
-    if (!country) {
-      return;
-    }
-
-    byCountry.set(country, [...(byCountry.get(country) ?? []), product]);
-  });
-
-  return Array.from(byCountry.entries()).map(([country, countryProducts]) => ({ country, products: countryProducts }));
-}
-
+// ──────────────────────────────────────
+// Styles
+// ──────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
+  screen: { flex: 1, backgroundColor: PALETTE.background },
   header: {
-    backgroundColor: '#fff8f3',
-    paddingHorizontal: spacing.lg,
+    backgroundColor: PALETTE.surface,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.xxl,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: PALETTE.faint,
   },
   headerTop: {
-    alignItems: 'center',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  brand: {
-    color: colors.ink,
-    fontSize: type.title,
-    fontWeight: '900',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  iconButton: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.pill,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  tabs: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xl,
-  },
-  tabButton: {
-    alignItems: 'center',
-    minHeight: 44,
-  },
-  tabText: {
-    color: colors.ink,
-    fontSize: 16,
-    fontWeight: '900',
-  },
-  tabTextActive: {
-    fontSize: 20,
-  },
-  tabIndicator: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    height: 4,
-    marginTop: spacing.sm,
-    width: 86,
-  },
-  content: {
-    paddingBottom: 116,
-  },
-  searchShell: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderColor: colors.primary,
-    borderRadius: radii.md,
-    borderWidth: 2,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    margin: spacing.lg,
-    minHeight: 58,
-    paddingLeft: spacing.md,
-    paddingRight: spacing.xs,
-    ...shadow,
-  },
-  searchInput: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    padding: 0,
-  },
-  searchButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-    height: 48,
-    justifyContent: 'center',
-    width: 62,
-  },
-  quickRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  quickCard: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    flex: 1,
-    minHeight: 92,
-    justifyContent: 'center',
-    padding: spacing.sm,
-  },
-  quickTitle: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: '900',
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  horizontalList: {
-    paddingBottom: spacing.xxl,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xs,
-  },
-  gridContent: {
-    paddingBottom: 116,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-  },
-  gridColumn: {
-    alignItems: 'stretch',
-  },
-  listContent: {
-    padding: spacing.lg,
-    paddingBottom: 116,
-  },
-  footerLoader: {
-    padding: spacing.xl,
-  },
-  sellerCard: {
-    backgroundColor: colors.card,
-    borderColor: '#edf0f5',
-    borderRadius: radii.md,
-    borderWidth: 1,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-    ...shadow,
-  },
-  sellerCompact: {
-    elevation: 0,
-    marginHorizontal: spacing.lg,
-    shadowOpacity: 0,
-  },
-  sellerTopLine: {
-    alignItems: 'center',
-    flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
   },
-  sellerBadges: {
+  brandRow: {
     flexDirection: 'row',
-    flexShrink: 1,
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  verifiedBadge: {
     alignItems: 'center',
-    backgroundColor: colors.green,
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 3,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    gap: 6,
   },
-  verifiedBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  factoryBadge: {
-    alignItems: 'center',
-    backgroundColor: '#e9fbfb',
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 3,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  factoryBadgeText: {
-    color: colors.secondary,
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  sellerCountry: {
-    color: colors.muted,
-    flexShrink: 1,
-    fontSize: 11,
+  brand: {
+    fontSize: 20,
     fontWeight: '800',
-    marginLeft: spacing.sm,
-    textAlign: 'right',
+    color: PALETTE.ink,
+    letterSpacing: -0.3,
   },
-  sellerLogo: {
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: PALETTE.primaryLight,
     alignItems: 'center',
-    backgroundColor: '#fff2eb',
-    borderColor: '#ffe0d0',
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    height: 54,
+    justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: PALETTE.rose,
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
+
+  // Tabs
+  tabContainer: {
+    marginTop: 0,
+  },
+  tabTrack: {
+    flexDirection: 'row',
+    backgroundColor: PALETTE.cardMuted,
+    borderRadius: 10,
+    padding: 3,
+    position: 'relative',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    top: 3,
+    left: 3,
+    bottom: 3,
+    backgroundColor: PALETTE.surface,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    zIndex: 1,
+  },
+  tabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: PALETTE.muted,
+  },
+  tabTextActive: {
+    color: PALETTE.primary,
+    fontWeight: '800',
+  },
+
+  // Content
+  content: { flex: 1 },
+  tabContent: { paddingBottom: 100 },
+  gridContent: { paddingBottom: 100, paddingHorizontal: spacing.sm },
+  listContent: { padding: spacing.sm, paddingBottom: 100 },
+  footerLoader: { padding: spacing.xl },
+
+  // Search
+  searchShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: PALETTE.primaryLight,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: PALETTE.primary,
+    margin: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    height: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: PALETTE.ink,
+    padding: 0,
+  },
+  searchIconBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: PALETTE.surface,
+  },
+
+  // Explore
+  exploreSection: {
+    paddingBottom: spacing.md,
+  },
+  exploreRail: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  exploreItem: {
+    alignItems: 'center',
+    width: 68,
+    paddingVertical: spacing.sm,
+  },
+  exploreItemPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.95 }],
+  },
+  exploreIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exploreItemText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: PALETTE.text,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+
+  // Categories
+  categorySection: {
+    paddingBottom: spacing.md,
+  },
+  categoryRail: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.md,
+  },
+  categoryItem: {
+    alignItems: 'center',
+    width: 64,
+  },
+  categoryIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: PALETTE.primaryLight,
+    alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    width: 54,
+  },
+  categoryIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
+  categoryName: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: PALETTE.text,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 11,
+  },
+  categorySkeleton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: PALETTE.cardMuted,
+  },
+
+  // Product Section
+  productSection: {
+    paddingBottom: spacing.lg,
+  },
+  productRail: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  sectionWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: PALETTE.ink,
+    letterSpacing: -0.2,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  seeAll: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.primary,
+    paddingRight: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+
+  // Chips
+  chipList: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  chip: {
+    backgroundColor: PALETTE.primaryLight,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: PALETTE.primary,
+  },
+
+  // Seller Card
+  sellerCard: {
+    backgroundColor: PALETTE.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sellerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sellerLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: PALETTE.cardMuted,
   },
   sellerLogoText: {
-    color: colors.primaryDark,
     fontSize: 20,
-    fontWeight: '900',
+    fontWeight: '800',
+    color: PALETTE.primary,
   },
-  sellerBody: {
+  sellerInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
-  sellerHeroRow: {
-    alignItems: 'center',
+  sellerNameRow: {
     flexDirection: 'row',
-  },
-  sellerTitleRow: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
+    gap: 4,
   },
-  sellerTitle: {
-    color: colors.ink,
+  sellerName: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: PALETTE.ink,
     flex: 1,
-    fontSize: 16,
-    fontWeight: '900',
+  },
+  sellerLocation: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: PALETTE.muted,
+    marginTop: 1,
   },
   sellerMeta: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-  },
-  sellerIntro: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 17,
-    marginTop: spacing.xs,
+    fontSize: 9,
+    fontWeight: '600',
+    color: PALETTE.muted,
+    marginTop: 1,
   },
   factoryStrip: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
+    gap: 6,
+    marginTop: spacing.sm,
   },
   factoryImage: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.sm,
     flex: 1,
-    height: 74,
+    height: 56,
+    borderRadius: 6,
+    backgroundColor: PALETTE.cardMuted,
   },
   sellerStats: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: 4,
     marginTop: spacing.sm,
   },
   statPill: {
-    alignItems: 'center',
-    backgroundColor: '#fff8f3',
-    borderRadius: radii.pill,
     flexDirection: 'row',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: PALETTE.cardMuted,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
-  sellerStat: {
-    color: colors.primaryDark,
-    fontSize: 11,
-    fontWeight: '900',
+  statPillText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: PALETTE.text,
   },
   categoryTags: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    gap: 4,
+    marginTop: spacing.sm,
   },
   categoryTag: {
-    backgroundColor: '#f7f8fb',
-    borderColor: '#eceff4',
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    color: colors.ink,
-    fontSize: 11,
-    fontWeight: '800',
-    maxWidth: 150,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    fontSize: 9,
+    fontWeight: '600',
+    color: PALETTE.primary,
+    backgroundColor: PALETTE.primaryLight,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   sellerActions: {
-    borderTopColor: colors.faint,
-    borderTopWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
     paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: PALETTE.faint,
   },
-  storeButton: {
-    alignItems: 'center',
-    backgroundColor: '#fff8f3',
-    borderRadius: radii.pill,
+  chatBtn: {
     flex: 1,
     flexDirection: 'row',
-    gap: spacing.xs,
-    justifyContent: 'center',
-    minHeight: 40,
-  },
-  storeButtonText: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  contactButton: {
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: PALETTE.primary,
+    borderRadius: 8,
+    paddingVertical: 8,
+  },
+  rfqBtn: {
     flex: 1,
     flexDirection: 'row',
-    gap: spacing.xs,
+    alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 40,
+    gap: 4,
+    backgroundColor: PALETTE.accent,
+    borderRadius: 8,
+    paddingVertical: 8,
   },
-  contactButtonText: {
+  chatBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  countryCard: {
-    backgroundColor: colors.card,
-    borderRadius: radii.md,
-    marginBottom: spacing.lg,
-    paddingTop: spacing.md,
-  },
-  countryHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  countryTitle: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  countryCount: {
-    color: colors.muted,
-    fontWeight: '900',
-  },
-  chipList: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  resultChip: {
-    backgroundColor: colors.card,
-    borderColor: colors.faint,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    marginRight: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  resultChipText: {
-    color: colors.ink,
-    fontWeight: '800',
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-  },
-  skeletonCard: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.md,
-    height: 210,
-    width: 180,
   },
 });
 

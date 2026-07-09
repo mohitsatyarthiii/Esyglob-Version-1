@@ -18,7 +18,9 @@ export type ProductQuery = {
 export async function fetchProducts(params: ProductQuery = {}): Promise<ProductListResponse> {
   const payload = await apiRequest('/api/products', {
     query: {
+      type: 'homepage',
       q: params.q,
+      search: params.q,
       category: params.category,
       subcategory: params.subcategory,
       seller: params.seller,
@@ -29,6 +31,7 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
       page: params.page ?? 1,
       limit: params.limit ?? 20,
     },
+    cacheTtlMs: params.q ? 45_000 : 90_000,
   });
   const data = unwrapData<ProductListResponse | Product[]>(payload);
 
@@ -39,7 +42,7 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
 }
 
 export async function fetchProductDetails(productId: string): Promise<Product> {
-  const payload = await apiRequest(`/api/products/${productId}`);
+  const payload = await apiRequest(`/api/products/${productId}`, { cacheTtlMs: 2 * 60_000 });
   const data = unwrapData<{ product?: Product } | Product>(payload);
   const product = data && typeof data === 'object' && 'product' in data ? data.product : data;
 

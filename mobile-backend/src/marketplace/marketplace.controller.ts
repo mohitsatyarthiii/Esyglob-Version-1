@@ -168,8 +168,11 @@ export class MarketplaceController {
   }
 
   @Get('rfqs')
-  async rfqs(@Query() query: Record<string, string | number | boolean | undefined>) {
-    return success(await this.marketplace.listRfqs(query));
+  async rfqs(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: Record<string, string | number | boolean | undefined>,
+  ) {
+    return success(await this.marketplace.listRfqs(query, request.header('authorization')));
   }
 
   @Post('rfqs')
@@ -186,23 +189,61 @@ export class MarketplaceController {
     return success(await this.marketplace.createProductEnquiry(request.user.sub, body));
   }
 
+  @Get('buyer/saved')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async savedItems(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: Record<string, string | number | boolean | undefined>,
+  ) {
+    return success(await this.marketplace.listSavedItems(request.user.sub, query));
+  }
+
+  @Post('buyer/saved')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async toggleSavedItem(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: Record<string, unknown>,
+    @Query() query: Record<string, string | number | boolean | undefined>,
+  ) {
+    return success(await this.marketplace.toggleSavedItem(request.user.sub, body, query));
+  }
+
   @Get('rfqs/:rfqId')
-  async rfqDetails(@Param('rfqId') rfqId: string) {
-    return success(await this.marketplace.rfqDetails(rfqId));
+  async rfqDetails(@Req() request: AuthenticatedRequest, @Param('rfqId') rfqId: string) {
+    return success(await this.marketplace.rfqDetails(rfqId, request.header('authorization')));
+  }
+
+  @Patch('rfqs/:rfqId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer')
+  async patchRfq(@Req() request: AuthenticatedRequest, @Param('rfqId') rfqId: string, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.patchRfq(request.user.sub, rfqId, body));
+  }
+
+  @Delete('rfqs/:rfqId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer')
+  async archiveRfq(@Req() request: AuthenticatedRequest, @Param('rfqId') rfqId: string) {
+    return success(await this.marketplace.archiveRfq(request.user.sub, rfqId));
   }
 
   @Get('quotations')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('buyer', 'seller')
-  async quotations(@Query() query: Record<string, string | number | boolean | undefined>) {
-    return success(await this.marketplace.listQuotations(query));
+  async quotations(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: Record<string, string | number | boolean | undefined>,
+  ) {
+    return success(await this.marketplace.listQuotations(request.user.sub, query));
   }
 
   @Get('quotations/:quotationId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('buyer', 'seller')
-  async quotationDetails(@Param('quotationId') quotationId: string) {
-    return success(await this.marketplace.quotationDetails(quotationId));
+  async quotationDetails(@Req() request: AuthenticatedRequest, @Param('quotationId') quotationId: string) {
+    return success(await this.marketplace.quotationDetails(request.user.sub, quotationId));
   }
 
   @Post('quotations')
@@ -234,6 +275,39 @@ export class MarketplaceController {
     return success(await this.marketplace.acceptQuotation(request.user.sub, quotationId, body));
   }
 
+  @Get('reviews')
+  async reviews(
+    @Req() request: AuthenticatedRequest,
+    @Query() query: Record<string, string | number | boolean | undefined>,
+  ) {
+    return success(await this.marketplace.listReviews(query, request.header('authorization')));
+  }
+
+  @Post('reviews')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer')
+  async createReview(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.createReview(request.user.sub, body));
+  }
+
+  @Put('reviews')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer')
+  async updateReview(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.updateReview(request.user.sub, body));
+  }
+
+  @Patch('reviews/:reviewId/response')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('seller')
+  async respondToReview(
+    @Req() request: AuthenticatedRequest,
+    @Param('reviewId') reviewId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return success(await this.marketplace.respondToReview(request.user.sub, reviewId, body));
+  }
+
   @Get('chats')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('buyer', 'seller')
@@ -249,6 +323,13 @@ export class MarketplaceController {
   @Roles('buyer', 'seller')
   async createChat(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
     return success(await this.marketplace.createChat(request.user.sub, body));
+  }
+
+  @Post('chats/groups')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('buyer', 'seller')
+  async createGroupChat(@Req() request: AuthenticatedRequest, @Body() body: Record<string, unknown>) {
+    return success(await this.marketplace.createGroupChat(request.user.sub, body));
   }
 
   @Get('chats/:chatId')

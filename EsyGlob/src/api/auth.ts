@@ -36,9 +36,15 @@ export async function login(input: LoginInput) {
 }
 
 export async function signup(input: SignupInput) {
+  const [firstName, ...lastNameParts] = input.name.trim().split(/\s+/);
   const payload = await apiRequest('/api/auth/signup', {
     method: 'POST',
-    body: input,
+    body: {
+      ...input,
+      fullName: input.name,
+      firstName,
+      lastName: lastNameParts.join(' '),
+    },
   });
   storeTokens(payload);
 

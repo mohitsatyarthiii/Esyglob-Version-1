@@ -9,6 +9,7 @@ export type QuotationDocument = HydratedDocument<Quotation>;
 export type ChatDocument = HydratedDocument<Chat>;
 export type MessageDocument = HydratedDocument<Message>;
 export type NotificationDocument = HydratedDocument<Notification>;
+export type SavedItemDocument = HydratedDocument<SavedItem>;
 export type OrderDocument = HydratedDocument<Order>;
 export type PaymentDocument = HydratedDocument<Payment>;
 
@@ -243,6 +244,15 @@ export class Chat {
   @Prop({ type: Types.ObjectId, ref: 'Quotation' })
   quotationId?: Types.ObjectId;
 
+  @Prop({ trim: true })
+  groupName?: string;
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  groupMembers!: Types.ObjectId[];
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  groupOwnerId?: Types.ObjectId;
+
   @Prop({ default: 'general' })
   chatType!: string;
 
@@ -263,6 +273,21 @@ export class Chat {
 
   @Prop({ type: [MongooseSchema.Types.Mixed], default: [] })
   orderEligibility!: Array<Record<string, unknown>>;
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  archivedFor!: Types.ObjectId[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  favoriteFor!: Types.ObjectId[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  pinnedFor!: Types.ObjectId[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  mutedFor!: Types.ObjectId[];
+
+  @Prop({ type: [Types.ObjectId], ref: 'User', default: [], index: true })
+  deletedFor!: Types.ObjectId[];
 }
 
 @Schema({ timestamps: true, collection: 'messages', strict: false })
@@ -300,6 +325,20 @@ export class Notification {
 
   @Prop({ default: false, index: true })
   isRead!: boolean;
+}
+
+@Schema({ timestamps: true, collection: 'saveditems' })
+export class SavedItem {
+  _id!: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true, index: true })
+  userId!: Types.ObjectId;
+
+  @Prop({ required: true, enum: ['product', 'seller'], index: true })
+  type!: string;
+
+  @Prop({ type: Types.ObjectId, required: true, index: true })
+  itemId!: Types.ObjectId;
 }
 
 @Schema({ timestamps: true, collection: 'orders', strict: false })
@@ -389,6 +428,7 @@ export const QuotationSchema = SchemaFactory.createForClass(Quotation);
 export const ChatSchema = SchemaFactory.createForClass(Chat);
 export const MessageSchema = SchemaFactory.createForClass(Message);
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
+export const SavedItemSchema = SchemaFactory.createForClass(SavedItem);
 export const OrderSchema = SchemaFactory.createForClass(Order);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 
@@ -405,6 +445,8 @@ QuotationSchema.index({ rfqId: 1, status: 1, createdAt: -1 });
 ChatSchema.index({ buyerId: 1, sellerId: 1, updatedAt: -1 });
 MessageSchema.index({ chatId: 1, createdAt: -1 });
 NotificationSchema.index({ userId: 1, createdAt: -1 });
+SavedItemSchema.index({ userId: 1, type: 1, itemId: 1 }, { unique: true });
+SavedItemSchema.index({ userId: 1, createdAt: -1 });
 OrderSchema.index({ buyerId: 1, status: 1, createdAt: -1 });
 OrderSchema.index({ sellerId: 1, status: 1, createdAt: -1 });
 PaymentSchema.index({ orderId: 1, status: 1 });

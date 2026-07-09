@@ -8,8 +8,9 @@ import { extname, join } from 'path';
 import { Seller } from '../sellers/seller.schema';
 import { SellerVerification } from '../sellers/seller-verification.schema';
 import { User } from '../users/user.schema';
+import { AuthService } from '../auth/auth.service';
 import { PasswordService } from '../auth/password.service';
-import { Category, Chat, Message, Notification, Order, Payment, Product, Quotation, Rfq, Subcategory } from './catalog.schemas';
+import { Category, Chat, Message, Notification, Order, Payment, Product, Quotation, Rfq, SavedItem, Subcategory } from './catalog.schemas';
 
 const PRODUCT_VISIBLE_STATUSES = ['published', 'active'];
 const RFQ_VISIBLE_STATUSES = ['active', 'pending', 'viewed', 'replied', 'quoted', 'negotiating'];
@@ -29,11 +30,13 @@ export class MarketplaceService {
     @InjectModel(Chat.name) private readonly chats: Model<Chat>,
     @InjectModel(Message.name) private readonly messages: Model<Message>,
     @InjectModel(Notification.name) private readonly notifications: Model<Notification>,
+    @InjectModel(SavedItem.name) private readonly savedItems: Model<SavedItem>,
     @InjectModel(Order.name) private readonly orders: Model<Order>,
     @InjectModel(Payment.name) private readonly payments: Model<Payment>,
     @InjectModel(Seller.name) private readonly sellers: Model<Seller>,
     @InjectModel(SellerVerification.name) private readonly sellerVerifications: Model<SellerVerification>,
     @InjectModel(User.name) private readonly users: Model<User>,
+    private readonly auth: AuthService,
     private readonly passwords: PasswordService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
@@ -526,37 +529,88 @@ export class MarketplaceService {
     return { success: true };
   }
 
-  async listRfqs(query: Record<string, QueryValue>) {
-    const filter: Record<string, unknown> = {
-      visibility: 'public',
-      status: { $in: RFQ_VISIBLE_STATUSES },
-    };
-    const q = this.clean(query.q);
+  async listRfqs(query: Record<string, QueryValue>, authorization?: string) {
+    const session = await this.optionalSession(authorization);
+    const scope = this.clean(query.scope);
+    const status = this.clean(query.status);
+    const country = this.clean(query.country);
+    const filter: Record<string, unknown> = {};
+    const q = this.clean(query.q ?? query.search);
     const category = this.clean(query.category);
+    const limit = this.limit(query.limit, 50);
+    const page = this.page(query.page);
+    const skip = (page - 1) * limit;
+
+    if (scope === 'buyer') {
+      if (!session?.roles.includes('buyer')) {
+        throw new ForbiddenException('Buyer access required.');
+      }
+      filter.buyerId = new Types.ObjectId(session.sub);
+    } else if (scope === 'seller') {
+      if (!session?.roles.includes('seller')) {
+        throw new ForbiddenException('Seller access required.');
+      }
+      const seller = await this.sellers.findOne({ userId: new Types.ObjectId(session.sub) }).lean();
+      if (!seller) {
+        throw new ForbiddenException('Seller profile required.');
+      }
+      filter.$or = [
+        { visibility: 'public', status: { $in: RFQ_VISIBLE_STATUSES } },
+        { sellerUserId: new Types.ObjectId(session.sub) },
+        { sellerId: seller._id },
+        { specificSupplierIds: seller._id },
+      ];
+      filter.status = { $nin: ['archived', 'closed', 'expired', 'rejected'] };
+    } else {
+      filter.visibility = 'public';
+      filter.status = { $in: RFQ_VISIBLE_STATUSES };
+    }
+
+    if (status) {
+      const mapped = this.rfqStatusFilter(status);
+      filter.status = mapped.length === 1 ? mapped[0] : { $in: mapped };
+    }
 
     if (q) {
-      filter.$or = [{ title: this.regex(q) }, { description: this.regex(q) }, { category: this.regex(q) }];
+      const searchFilter = [{ title: this.regex(q) }, { description: this.regex(q) }, { category: this.regex(q) }, { subcategory: this.regex(q) }];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchFilter }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchFilter;
+      }
     }
 
     if (category) {
       filter.category = this.exactRegex(category);
     }
 
-    const rfqs = await this.rfqs
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .limit(this.limit(query.limit, 50))
-      .lean();
+    if (country) {
+      filter.deliveryCountry = this.exactRegex(country);
+    }
+
+    const sortField = query.sort === 'quantity' ? 'quantity' : query.sort === 'quotationCount' ? 'quotationCount' : 'createdAt';
+    const sortDirection = query.order === 'asc' ? 1 : -1;
+    const [rfqs, total] = await Promise.all([
+      this.rfqs
+        .find(filter)
+        .sort({ [sortField]: sortDirection, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      this.rfqs.countDocuments(filter),
+    ]);
 
     return {
       rfqs: rfqs.map(rfq => ({
         ...rfq,
         destinationCountry: rfq.deliveryCountry,
       })),
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
 
-  async rfqDetails(rfqId: string) {
+  async rfqDetails(rfqId: string, authorization?: string) {
     if (!Types.ObjectId.isValid(rfqId)) {
       throw new BadRequestException('Invalid RFQ id.');
     }
@@ -570,6 +624,9 @@ export class MarketplaceService {
     if (!rfq) {
       throw new NotFoundException('RFQ not found.');
     }
+
+    const session = await this.optionalSession(authorization);
+    await this.assertRfqReadAccess(rfq, session);
 
     const [quotations, chats] = await Promise.all([
       this.quotations
@@ -591,8 +648,42 @@ export class MarketplaceService {
     };
   }
 
-  async listQuotations(query: Record<string, QueryValue>) {
-    const filter: Record<string, unknown> = {};
+  async patchRfq(userId: string, rfqId: string, body: Record<string, unknown>) {
+    const objectId = this.requireObjectId(rfqId, 'RFQ id');
+    const rfq = await this.rfqs.findOne({ _id: objectId, buyerId: new Types.ObjectId(userId) });
+
+    if (!rfq) {
+      throw new NotFoundException('RFQ not found.');
+    }
+
+    const action = this.clean(body.action);
+    const update: Record<string, unknown> = {};
+
+    if (action === 'close') {
+      update.status = 'closed';
+      update.closedAt = new Date();
+    } else if (action === 'reopen' || action === 'publish') {
+      update.status = 'active';
+      update.reopenedAt = new Date();
+    } else if (action === 'archive') {
+      update.status = 'archived';
+      update.archivedAt = new Date();
+    } else {
+      Object.assign(update, this.rfqPayload(body, false));
+    }
+
+    Object.assign(rfq, update);
+    await rfq.save();
+
+    return { success: true, rfq: { ...rfq.toObject(), destinationCountry: rfq.deliveryCountry } };
+  }
+
+  async archiveRfq(userId: string, rfqId: string) {
+    return this.patchRfq(userId, rfqId, { action: 'archive' });
+  }
+
+  async listQuotations(userId: string, query: Record<string, QueryValue>) {
+    const filter: Record<string, unknown> = await this.quotationAccessFilter(userId);
     const rfqId = this.clean(query.rfqId);
     const status = this.clean(query.status);
     const limit = this.limit(query.limit, 50);
@@ -635,7 +726,7 @@ export class MarketplaceService {
     };
   }
 
-  async quotationDetails(quotationId: string) {
+  async quotationDetails(userId: string, quotationId: string) {
     if (!Types.ObjectId.isValid(quotationId)) {
       throw new BadRequestException('Invalid quotation id.');
     }
@@ -651,25 +742,55 @@ export class MarketplaceService {
       throw new NotFoundException('Quotation not found.');
     }
 
+    await this.assertQuotationAccess(userId, quotation);
+
     return { quotation };
   }
 
   async listChats(userId: string, query: Record<string, QueryValue>) {
     const objectId = new Types.ObjectId(userId);
+    const view = this.clean(query.view);
+    const label = this.clean(query.label);
+    const unreadOnly = String(query.unreadOnly ?? '').toLowerCase() === 'true';
+    const filter: Record<string, unknown> = {
+      isActive: { $ne: false },
+      deletedFor: { $ne: objectId },
+      $or: [{ buyerId: objectId }, { sellerId: objectId }, { groupMembers: objectId }],
+    };
+
+    if (view === 'archived') {
+      filter.archivedFor = objectId;
+    } else {
+      filter.archivedFor = { $ne: objectId };
+    }
+
+    if (view === 'favorites' || label === 'favorite') {
+      filter.favoriteFor = objectId;
+    }
+
+    if (label === 'pinned') {
+      filter.pinnedFor = objectId;
+    }
+
+    if (unreadOnly) {
+      filter.$or = [
+        { buyerId: objectId, buyerUnreadCount: { $gt: 0 } },
+        { sellerId: objectId, sellerUnreadCount: { $gt: 0 } },
+      ];
+    }
+
     const chats = await this.chats
-      .find({
-        isActive: { $ne: false },
-        $or: [{ buyerId: objectId }, { sellerId: objectId }, { groupMembers: objectId }],
-      })
-      .sort({ lastMessageAt: -1, updatedAt: -1 })
+      .find(filter)
+      .sort({ pinnedFor: -1, lastMessageAt: -1, updatedAt: -1 })
       .limit(this.limit(query.limit, 50))
       .populate('buyerId', 'name fullName email profileImage avatar image')
       .populate('sellerId', 'name fullName email profileImage avatar image')
+      .populate('groupMembers', 'name fullName email profileImage avatar image')
       .populate('productId', 'name slug images price currency minimumOrderQuantity unit status')
       .populate('rfqId', 'title quantity unit deliveryCountry status')
       .lean();
 
-    return { chats };
+    return { chats: chats.map(chat => this.serializeChatForUser(chat, userId)) };
   }
 
   async chatDetails(userId: string, chatId: string, query: Record<string, QueryValue>) {
@@ -682,10 +803,12 @@ export class MarketplaceService {
       .findOne({
         _id: new Types.ObjectId(chatId),
         isActive: { $ne: false },
+        deletedFor: { $ne: objectId },
         $or: [{ buyerId: objectId }, { sellerId: objectId }, { groupMembers: objectId }],
       })
       .populate('buyerId', 'name fullName email profileImage avatar image')
       .populate('sellerId', 'name fullName email profileImage avatar image')
+      .populate('groupMembers', 'name fullName email profileImage avatar image')
       .populate('productId', 'name slug images price currency minimumOrderQuantity unit status')
       .populate('rfqId', 'title quantity unit deliveryCountry status')
       .lean();
@@ -694,12 +817,24 @@ export class MarketplaceService {
       throw new NotFoundException('Chat not found.');
     }
 
-    const messages = await this.messages
-      .find({ chatId: chat._id })
-      .sort({ createdAt: 1 })
+    const messageFilter: Record<string, unknown> = { chatId: chat._id };
+    const before = this.dateQuery(query.before);
+    const after = this.dateQuery(query.after);
+
+    if (before || after) {
+      messageFilter.createdAt = {
+        ...(before ? { $lt: before } : {}),
+        ...(after ? { $gt: after } : {}),
+      };
+    }
+
+    const messagesDesc = await this.messages
+      .find(messageFilter)
+      .sort({ createdAt: -1 })
       .limit(this.limit(query.limit, 100))
       .populate('senderId', 'name fullName email profileImage avatar image')
       .lean();
+    const messages = messagesDesc.reverse();
     const sellerProfile = await this.sellers.findOne({ userId: chat.sellerId }).lean();
     const sellerProducts = sellerProfile
       ? await this.products.find({ sellerId: sellerProfile._id, status: { $in: PRODUCT_VISIBLE_STATUSES } }).limit(12).lean()
@@ -713,7 +848,21 @@ export class MarketplaceService {
       await this.chats.updateOne({ _id: chat._id }, { $set: { [readField]: 0 } });
     }
 
-    return { chat, messages, sellerProfile, sellerProducts: sellerProducts.map(product => this.serializeProduct(product)), rfqProducts: rfqProducts.map(product => this.serializeProduct(product)) };
+    const firstMessage = messages[0] as Record<string, any> | undefined;
+    const lastMessage = messages[messages.length - 1] as Record<string, any> | undefined;
+
+    return {
+      chat: this.serializeChatForUser(chat, userId),
+      messages,
+      pagination: {
+        hasOlder: messages.length >= this.limit(query.limit, 100),
+        before: firstMessage?.createdAt,
+        after: lastMessage?.createdAt,
+      },
+      sellerProfile,
+      sellerProducts: sellerProducts.map(product => this.serializeProduct(product)),
+      rfqProducts: rfqProducts.map(product => this.serializeProduct(product)),
+    };
   }
 
   async sendMessage(userId: string, chatId: string, body: Record<string, unknown>) {
@@ -752,27 +901,53 @@ export class MarketplaceService {
       quotationDetails: body.quotationDetails,
       storeDetails: body.storeDetails,
     });
-    const receiverId = chat.buyerId.toString() === userId ? chat.sellerId : chat.buyerId;
-    const unreadField = chat.buyerId.toString() === userId ? 'sellerUnreadCount' : 'buyerUnreadCount';
+    const lastMessage = text || `${messageType} message`;
+    if (chat.chatType === 'group') {
+      const recipientIds = (Array.isArray(chat.groupMembers) ? chat.groupMembers : [])
+        .filter((id: Types.ObjectId | string) => id.toString() !== userId);
 
-    await this.chats.updateOne(
-      { _id: chat._id },
-      {
-        $set: {
-          lastMessage: text || `${messageType} message`,
-          lastMessageAt: new Date(),
+      await this.chats.updateOne(
+        { _id: chat._id },
+        {
+          $set: {
+            lastMessage,
+            lastMessageAt: new Date(),
+          },
         },
-        $inc: { [unreadField]: 1 },
-      },
-    );
-    await this.notifications.create({
-      userId: receiverId,
-      title: 'New message',
-      message: text || `New ${messageType} message`,
-      type: 'message',
-      relatedModel: 'Chat',
-      relatedId: chat._id,
-    });
+      );
+      if (recipientIds.length) {
+        await this.notifications.insertMany(recipientIds.map((id: Types.ObjectId | string) => ({
+          userId: id,
+          title: chat.groupName ? `New message in ${chat.groupName}` : 'New group message',
+          message: lastMessage,
+          type: 'message',
+          relatedModel: 'Chat',
+          relatedId: chat._id,
+        })));
+      }
+    } else {
+      const receiverId = chat.buyerId.toString() === userId ? chat.sellerId : chat.buyerId;
+      const unreadField = chat.buyerId.toString() === userId ? 'sellerUnreadCount' : 'buyerUnreadCount';
+
+      await this.chats.updateOne(
+        { _id: chat._id },
+        {
+          $set: {
+            lastMessage,
+            lastMessageAt: new Date(),
+          },
+          $inc: { [unreadField]: 1 },
+        },
+      );
+      await this.notifications.create({
+        userId: receiverId,
+        title: 'New message',
+        message: lastMessage,
+        type: 'message',
+        relatedModel: 'Chat',
+        relatedId: chat._id,
+      });
+    }
 
     return { message: message.toObject() };
   }
@@ -843,6 +1018,67 @@ export class MarketplaceService {
     });
   }
 
+  async createGroupChat(userId: string, body: Record<string, unknown>) {
+    const ownerId = new Types.ObjectId(userId);
+    const groupName = this.cleanString(body.groupName ?? body.title ?? body.name);
+    const rawMemberIds = Array.isArray(body.memberIds) ? body.memberIds : [];
+    const memberIds = rawMemberIds.map(value => this.optionalObjectId(value));
+    const validMemberIds = memberIds.filter((id): id is Types.ObjectId => Boolean(id));
+
+    if (!groupName || groupName.length < 2) {
+      throw new BadRequestException('Group name is required.');
+    }
+
+    if (!rawMemberIds.length || validMemberIds.length !== rawMemberIds.length) {
+      throw new BadRequestException('Enter valid group member ids.');
+    }
+
+    const uniqueMemberIds = Array.from(new Set([ownerId.toString(), ...validMemberIds.map(id => id.toString())])).map(id => new Types.ObjectId(id));
+
+    if (uniqueMemberIds.length < 2) {
+      throw new BadRequestException('Select at least one group member.');
+    }
+
+    const activeUsers = await this.users.find({ _id: { $in: uniqueMemberIds } }).select('_id').lean();
+    if (activeUsers.length !== uniqueMemberIds.length) {
+      throw new BadRequestException('One or more group members are invalid.');
+    }
+
+    const chat = await this.chats.create({
+      buyerId: ownerId,
+      sellerId: ownerId,
+      groupOwnerId: ownerId,
+      groupMembers: uniqueMemberIds,
+      groupName,
+      chatType: 'group',
+      isActive: true,
+      lastMessage: 'Group created',
+      lastMessageAt: new Date(),
+    });
+
+    await this.messages.create({
+      chatId: chat._id,
+      senderId: ownerId,
+      content: `${groupName} group created.`,
+      messageType: 'system',
+    });
+
+    await this.notifications.insertMany(
+      uniqueMemberIds
+        .filter(id => id.toString() !== userId)
+        .map(id => ({
+          userId: id,
+          title: 'Added to group chat',
+          message: `You were added to ${groupName}.`,
+          type: 'message',
+          relatedModel: 'Chat',
+          relatedId: chat._id,
+        })),
+    );
+
+    return { chat: this.serializeChatForUser(chat.toObject(), userId), created: true };
+  }
+
   async createProductEnquiry(userId: string, body: Record<string, unknown>) {
     const buyerId = new Types.ObjectId(userId);
     const productId = this.requireObjectId(body.productId, 'Product id');
@@ -869,6 +1105,15 @@ export class MarketplaceService {
     if (!destinationCountry) {
       throw new BadRequestException('Destination country is required.');
     }
+
+    this.assertNoDirectContact([
+      body.productName,
+      body.additionalNotes,
+      body.customSpecifications,
+      body.customizationRequirements,
+      body.packagingRequirements,
+      body.deliveryRequirements,
+    ]);
 
     const rfq = await this.rfqs.create({
       buyerId,
@@ -952,34 +1197,36 @@ export class MarketplaceService {
   async createRfq(userId: string, body: Record<string, unknown>) {
     const productId = this.optionalObjectId(body.productId);
     const product = productId ? await this.products.findById(productId).lean() : null;
-    const quantity = Math.max(Number(body.quantity ?? 1) || 1, 1);
-    const deliveryCountry = String(body.destinationCountry ?? body.deliveryCountry ?? '').trim();
-
-    if (!deliveryCountry) {
-      throw new BadRequestException('Destination country is required.');
-    }
+    const payload = this.rfqPayload(
+      {
+        ...body,
+        title: body.title ?? body.productName ?? product?.name,
+        description: body.description ?? body.additionalNotes,
+        category: body.category ?? product?.category,
+        unit: body.unit ?? product?.unit,
+        currency: body.currency ?? product?.currency,
+      },
+      true,
+    );
 
     const rfq = await this.rfqs.create({
       buyerId: new Types.ObjectId(userId),
       productId,
-      title: String(body.title ?? body.productName ?? product?.name ?? 'RFQ'),
-      description: String(body.description ?? body.additionalNotes ?? 'Buyer created an RFQ.'),
-      category: String(body.category ?? product?.category ?? 'General'),
-      quantity,
-      unit: String(body.unit ?? product?.unit ?? 'pcs'),
-      targetPrice: body.targetPrice,
-      currency: body.currency ?? product?.currency ?? 'INR',
-      deliveryCountry,
-      status: 'active',
-      visibility: body.visibility === 'private' ? 'private' : 'public',
-      attachments: Array.isArray(body.attachments) ? body.attachments : [],
+      ...payload,
+      status: body.status === 'draft' ? 'draft' : 'active',
     });
 
-    return { rfq: rfq.toObject() };
+    return { rfq: { ...rfq.toObject(), destinationCountry: rfq.deliveryCountry } };
   }
 
   async patchChat(userId: string, chatId: string, body: Record<string, unknown>) {
-    if (body.action !== 'enable_order') {
+    const action = this.clean(body.action);
+
+    if (['archive', 'unarchive', 'favorite', 'unfavorite', 'pin', 'unpin', 'mute', 'unmute', 'delete', 'mark_read', 'mark_unread'].includes(action ?? '')) {
+      return this.patchChatMetadata(userId, chatId, action as string);
+    }
+
+    if (action !== 'enable_order') {
       throw new BadRequestException('Unsupported chat action.');
     }
 
@@ -1068,6 +1315,17 @@ export class MarketplaceService {
       throw new NotFoundException('RFQ or seller was not found.');
     }
 
+    await this.assertRfqReadAccess(rfq, { sub: userId, roles: ['seller'] });
+    this.assertNoDirectContact([
+      body.title,
+      body.sellerMessage,
+      body.notes,
+      body.paymentTerms,
+      body.deliveryTerms,
+      body.validity,
+      body.terms,
+    ]);
+
     const unitPrice = Number(body.unitPrice ?? 0) || 0;
     const suppliedQuantity = Number(body.suppliedQuantity ?? rfq.quantity ?? 1) || 1;
     const quotation = await this.quotations.create({
@@ -1076,7 +1334,7 @@ export class MarketplaceService {
       sellerId: seller._id,
       buyerId: rfq.buyerId,
       productId: rfq.productId,
-      status: 'sent',
+      status: String(body.status ?? 'submitted'),
       currency: body.currency ?? rfq.currency ?? 'INR',
       unitPrice,
       quantity: suppliedQuantity,
@@ -1125,6 +1383,9 @@ export class MarketplaceService {
       throw new NotFoundException('Quotation not found.');
     }
 
+    await this.assertQuotationAccess(userId, quotation.toObject());
+    this.assertNoDirectContact([body.reason, body.message, body.notes, body.paymentTerms, body.deliveryTerms, body.terms]);
+
     const action = String(body.action ?? '');
     const update: Record<string, unknown> = {};
 
@@ -1134,6 +1395,9 @@ export class MarketplaceService {
     } else if (action === 'counter_offer') {
       update.status = 'counter_offered';
       update.counterOffer = body;
+    } else if (action === 'reject') {
+      update.status = 'rejected';
+      update.rejectionReason = body.reason;
     } else {
       Object.assign(update, body);
       delete update.action;
@@ -1164,20 +1428,27 @@ export class MarketplaceService {
       throw new NotFoundException('Quotation not found.');
     }
 
+    await this.assertQuotationAccess(userId, quotation);
+    if (quotation.buyerId?.toString() !== userId) {
+      throw new ForbiddenException('Only the buyer can accept a quotation.');
+    }
+
     const quotationRecord = quotation as typeof quotation & { chatId?: Types.ObjectId; orderId?: Types.ObjectId; quantity?: number };
     const existingOrder = quotationRecord.orderId ? await this.orders.findById(quotationRecord.orderId).lean() : null;
-    const order = existingOrder ?? (await this.createOrder(userId, {
-      ...body,
-      productId: quotation.productId,
-      rfqId: quotation.rfqId,
-      quotationId: quotation._id,
-      chatId: quotationRecord.chatId,
-      quantity: quotationRecord.quantity ?? 1,
-      orderType: 'bulk',
-      orderSubType: 'trade_order',
-      status: 'pending_approval',
-      paymentRequired: false,
-    })).order;
+    const order = existingOrder ?? (quotation.productId
+      ? (await this.createOrder(userId, {
+          ...body,
+          productId: quotation.productId,
+          rfqId: quotation.rfqId,
+          quotationId: quotation._id,
+          chatId: quotationRecord.chatId,
+          quantity: quotationRecord.quantity ?? 1,
+          orderType: 'bulk',
+          orderSubType: 'trade_order',
+          status: 'pending_approval',
+          paymentRequired: false,
+        })).order
+      : await this.createManualQuotationOrder(userId, quotation, body));
 
     if (!order) {
       throw new BadRequestException('Order could not be created from quotation.');
@@ -1196,6 +1467,197 @@ export class MarketplaceService {
     }
 
     return { quotation: { ...quotation, status: 'accepted', orderId: order } };
+  }
+
+  async listReviews(query: Record<string, QueryValue>, authorization?: string) {
+    const session = await this.optionalSession(authorization);
+    const productId = this.optionalObjectId(query.productId);
+    const sellerId = this.optionalObjectId(query.sellerId);
+    const mine = String(query.mine ?? '').toLowerCase() === 'true';
+    const sellerDashboard = String(query.sellerDashboard ?? '').toLowerCase() === 'true';
+    const limit = this.limit(query.limit, 60);
+    const filter: Record<string, unknown> = { status: 'published' };
+
+    if (mine) {
+      if (!session) throw new ForbiddenException('Authentication is required.');
+      filter.userId = new Types.ObjectId(session.sub);
+    } else if (sellerDashboard) {
+      if (!session?.roles.includes('seller')) throw new ForbiddenException('Seller access required.');
+      const seller = await this.sellers.findOne({ userId: new Types.ObjectId(session.sub) }).lean();
+      if (!seller) throw new NotFoundException('Seller profile not found.');
+      filter.sellerId = seller._id;
+    } else {
+      if (productId) filter.productId = productId;
+      if (sellerId) filter.sellerId = sellerId;
+    }
+
+    const [reviews, summary] = await Promise.all([
+      this.connection.collection('reviews').find(filter).sort({ createdAt: -1 }).limit(limit).toArray(),
+      this.reviewSummary(filter),
+    ]);
+
+    return {
+      reviews: await this.enrichReviews(reviews),
+      ...summary,
+    };
+  }
+
+  async createReview(userId: string, body: Record<string, unknown>) {
+    const payload = await this.reviewPayload(userId, body, false);
+    const duplicateFilter: Record<string, unknown> = {
+      userId: payload.userId,
+      sellerId: payload.sellerId,
+      status: { $ne: 'removed' },
+    };
+    if (payload.productId) duplicateFilter.productId = payload.productId;
+    if (payload.orderId) duplicateFilter.orderId = payload.orderId;
+    const existing = await this.connection.collection('reviews').findOne(duplicateFilter);
+
+    if (existing) {
+      throw new ConflictException('You have already reviewed this experience.');
+    }
+
+    const now = new Date();
+    const result = await this.connection.collection('reviews').insertOne({
+      ...payload,
+      helpfulCount: 0,
+      notHelpfulCount: 0,
+      status: 'published',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const review = await this.connection.collection('reviews').findOne({ _id: result.insertedId });
+    await this.refreshReviewAggregates(payload.productId, payload.sellerId);
+    await this.notifyReviewCreated(review as Record<string, any>);
+
+    return { review };
+  }
+
+  async updateReview(userId: string, body: Record<string, unknown>) {
+    const reviewId = this.requireObjectId(body.reviewId, 'Review id');
+    const existing = await this.connection.collection('reviews').findOne({ _id: reviewId, userId: new Types.ObjectId(userId) });
+
+    if (!existing) {
+      throw new NotFoundException('Review not found.');
+    }
+
+    const payload = await this.reviewPayload(userId, { ...body, productId: existing.productId, sellerId: existing.sellerId, orderId: existing.orderId }, true);
+    await this.connection.collection('reviews').updateOne(
+      { _id: reviewId, userId: new Types.ObjectId(userId) },
+      {
+        $set: {
+          rating: payload.rating,
+          title: payload.title,
+          comment: payload.comment,
+          images: payload.images,
+          updatedAt: new Date(),
+        },
+      },
+    );
+    const review = await this.connection.collection('reviews').findOne({ _id: reviewId });
+    await this.refreshReviewAggregates(existing.productId, existing.sellerId);
+
+    return { review };
+  }
+
+  async respondToReview(userId: string, reviewId: string, body: Record<string, unknown>) {
+    const seller = await this.sellers.findOne({ userId: new Types.ObjectId(userId) }).lean();
+    if (!seller) throw new NotFoundException('Seller profile not found.');
+
+    const comment = this.cleanString(body.comment);
+    if (!comment || comment.length < 2 || comment.length > 1000) {
+      throw new BadRequestException('Please enter a response.');
+    }
+
+    const objectId = this.requireObjectId(reviewId, 'Review id');
+    const review = await this.connection.collection('reviews').findOne({ _id: objectId, sellerId: seller._id, status: 'published' });
+    if (!review) throw new NotFoundException('Review not found.');
+
+    await this.connection.collection('reviews').updateOne(
+      { _id: objectId },
+      {
+        $set: {
+          sellerResponse: { comment, respondedAt: new Date() },
+          updatedAt: new Date(),
+        },
+      },
+    );
+    const updated = await this.connection.collection('reviews').findOne({ _id: objectId });
+    await this.notifications.create({
+      userId: review.userId,
+      title: 'Supplier responded to your review',
+      message: comment,
+      type: 'review_response',
+      relatedModel: 'Review',
+      relatedId: objectId,
+      actionUrl: '/dashboard/buyer/reviews',
+    });
+
+    return { review: updated };
+  }
+
+  private async createManualQuotationOrder(userId: string, quotation: Record<string, any>, body: Record<string, unknown>) {
+    const seller = quotation.sellerId ? await this.sellers.findById(quotation.sellerId).lean() : null;
+    const rfq = quotation.rfqId ? await this.rfqs.findById(quotation.rfqId).lean() : null;
+
+    if (!seller?.userId) {
+      throw new BadRequestException('Seller profile is required before a quotation can become an order.');
+    }
+
+    const quantity = Math.max(Number(quotation.quantity ?? quotation.suppliedQuantity ?? rfq?.quantity ?? 1) || 1, 1);
+    const totalAmount = Number(quotation.totalPrice ?? quotation.totalAmount ?? (Number(quotation.unitPrice ?? 0) * quantity)) || 0;
+    const now = new Date();
+    const order = {
+      orderNumber: await this.nextOrderNumber('TRD'),
+      buyerId: new Types.ObjectId(userId),
+      sellerId: seller._id,
+      sellerUserId: seller.userId,
+      rfqId: quotation.rfqId,
+      quotationId: quotation._id,
+      chatId: quotation.chatId,
+      orderType: 'bulk',
+      orderSubType: 'trade_order',
+      status: String(body.status ?? 'pending_approval'),
+      paymentStatus: 'not_required',
+      paymentRequired: false,
+      quantity,
+      currency: quotation.currency ?? rfq?.currency ?? 'INR',
+      totalAmount,
+      totalPrice: totalAmount,
+      pricePerUnit: Number(quotation.unitPrice ?? 0) || undefined,
+      shippingAddress: body.shippingAddress,
+      buyerCompany: body.buyerCompany,
+      sellerCompany: body.sellerCompany,
+      tradeInformation: body.tradeInformation,
+      notes: body.notes,
+      termsAccepted: body.termsAccepted,
+      products: [
+        {
+          name: quotation.title ?? rfq?.title ?? 'Manual RFQ quotation',
+          quantity,
+          unit: quotation.unit ?? rfq?.unit ?? 'pcs',
+          price: quotation.unitPrice,
+          category: rfq?.category,
+          rfqId: quotation.rfqId,
+          quotationId: quotation._id,
+        },
+      ],
+      tradeAssurance: { status: 'active', automated: true },
+      platformServices: [{ code: 'trade_assurance', status: 'attached' }],
+      timeline: [
+        {
+          status: 'pending_approval',
+          label: 'Quotation accepted',
+          description: 'Manual RFQ quotation converted to a trade order.',
+          at: now,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const result = await this.connection.collection('orders').insertOne(order);
+    return { ...order, _id: result.insertedId };
   }
 
   async calculateCheckoutQuote(body: Record<string, unknown>) {
@@ -1846,21 +2308,80 @@ export class MarketplaceService {
     return { success: true };
   }
 
+  async listSavedItems(userId: string, query: Record<string, QueryValue>) {
+    const type = this.savedItemType(query.type);
+    const itemId = query.itemId ? this.requireObjectId(query.itemId, 'Saved item id') : undefined;
+    const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+
+    if (type) {
+      filter.type = type;
+    }
+
+    if (itemId) {
+      filter.itemId = itemId;
+    }
+
+    const savedItems = await this.savedItems.find(filter).sort({ createdAt: -1 }).limit(this.limit(query.limit, 100)).lean();
+    return { items: await this.populateSavedTargets(savedItems) };
+  }
+
+  async toggleSavedItem(userId: string, body: Record<string, unknown>, query: Record<string, QueryValue>) {
+    const type = this.savedItemType(body.type ?? query.type);
+    const itemId = this.requireObjectId(body.itemId ?? query.itemId, 'Saved item id');
+
+    if (!type) {
+      throw new BadRequestException('Saved item type must be product or seller.');
+    }
+
+    await this.assertSavedTargetExists(type, itemId);
+
+    const filter = { userId: new Types.ObjectId(userId), type, itemId };
+    const existing = await this.savedItems.findOne(filter).lean();
+
+    if (existing) {
+      await this.savedItems.deleteOne({ _id: existing._id });
+      return { saved: false, item: { ...existing, target: null } };
+    }
+
+    const created = await this.savedItems.create(filter);
+    const [item] = await this.populateSavedTargets([created.toObject()]);
+    return { saved: true, item };
+  }
+
   async listNotifications(userId: string, query: Record<string, QueryValue>) {
     const unreadOnly = String(query.unreadOnly ?? '').toLowerCase() === 'true';
+    const status = this.clean(query.status);
+    const category = this.clean(query.category);
+    const page = this.page(query.page);
+    const limit = this.limit(query.limit, 50);
+    const skip = (page - 1) * limit;
     const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
 
     if (unreadOnly) {
       filter.isRead = false;
     }
 
-    const notifications = await this.notifications
-      .find(filter)
-      .sort({ createdAt: -1 })
-      .limit(this.limit(query.limit, 50))
-      .lean();
+    if (status === 'read') {
+      filter.isRead = true;
+    } else if (status === 'unread') {
+      filter.isRead = false;
+    }
 
-    return { notifications };
+    if (category && category !== 'all') {
+      filter.$or = [
+        { type: category },
+        { notificationType: category },
+        { category },
+      ];
+    }
+
+    const [notifications, total, unreadCount] = await Promise.all([
+      this.notifications.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      this.notifications.countDocuments(filter),
+      this.notifications.countDocuments({ userId: new Types.ObjectId(userId), isRead: false }),
+    ]);
+
+    return { notifications, unreadCount, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   async markNotifications(userId: string, notificationId?: string) {
@@ -1898,6 +2419,317 @@ export class MarketplaceService {
       featuredProducts: featured.products,
       recommendedProducts: featured.products.length ? featured.products : latest.products,
     };
+  }
+
+  private async optionalSession(authorization?: string) {
+    if (!authorization?.startsWith('Bearer ')) {
+      return null;
+    }
+
+    try {
+      return await this.auth.verifyAccessToken(authorization.slice('Bearer '.length));
+    } catch {
+      return null;
+    }
+  }
+
+  private async assertRfqReadAccess(rfq: Record<string, any>, session: { sub: string; roles: string[] } | null) {
+    const isPublicOpen = rfq.visibility !== 'private' && RFQ_VISIBLE_STATUSES.includes(String(rfq.status ?? ''));
+
+    if (isPublicOpen) {
+      return;
+    }
+
+    if (!session) {
+      throw new ForbiddenException('Authentication is required to view this RFQ.');
+    }
+
+    if (session.roles.includes('admin') || rfq.buyerId?.toString() === session.sub || rfq.sellerUserId?.toString() === session.sub) {
+      return;
+    }
+
+    if (session.roles.includes('seller')) {
+      const seller = await this.sellers.findOne({ userId: new Types.ObjectId(session.sub) }).lean();
+      const sellerId = seller?._id?.toString();
+      const targeted = sellerId && [
+        rfq.sellerId?.toString(),
+        ...(Array.isArray(rfq.specificSupplierIds) ? rfq.specificSupplierIds.map((id: unknown) => id?.toString()) : []),
+      ].includes(sellerId);
+      const existingChat = await this.chats.exists({
+        rfqId: rfq._id,
+        sellerId: new Types.ObjectId(session.sub),
+        isActive: { $ne: false },
+      });
+
+      if (targeted || existingChat) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException('You do not have access to this RFQ.');
+  }
+
+  private async quotationAccessFilter(userId: string) {
+    const objectUserId = new Types.ObjectId(userId);
+    const user = await this.users.findById(objectUserId).select('roles').lean();
+
+    if (!user) {
+      throw new ForbiddenException('User session is no longer valid.');
+    }
+
+    if (user.roles?.includes('admin')) {
+      return {};
+    }
+
+    if (user.roles?.includes('seller')) {
+      const seller = await this.sellers.findOne({ userId: objectUserId }).lean();
+      if (!seller) {
+        throw new ForbiddenException('Seller profile required.');
+      }
+
+      return { $or: [{ sellerId: seller._id }, { sellerUserId: objectUserId }] };
+    }
+
+    return { buyerId: objectUserId };
+  }
+
+  private async assertQuotationAccess(userId: string, quotation: Record<string, any>) {
+    const filter = await this.quotationAccessFilter(userId);
+
+    if (!Object.keys(filter).length) {
+      return;
+    }
+
+    const accessible = await this.quotations.exists({ _id: quotation._id, ...filter });
+    if (!accessible) {
+      throw new ForbiddenException('You do not have access to this quotation.');
+    }
+  }
+
+  private rfqStatusFilter(status: string) {
+    switch (status) {
+      case 'active':
+        return ['active', 'pending', 'viewed'];
+      case 'quoted':
+        return ['replied', 'quoted'];
+      case 'converted':
+        return ['order_initiated', 'converted'];
+      case 'closed':
+        return ['closed', 'archived', 'expired', 'rejected'];
+      default:
+        return [status];
+    }
+  }
+
+  private rfqPayload(body: Record<string, unknown>, requireCore: boolean) {
+    const title = this.clean(body.title ?? body.productName) || (requireCore ? 'RFQ' : '');
+    const description = this.clean(body.description ?? body.additionalNotes) || (requireCore ? 'Buyer created an RFQ.' : '');
+    const category = this.clean(body.category) || (requireCore ? 'General' : '');
+    const deliveryCountry = this.clean(body.destinationCountry ?? body.deliveryCountry);
+    const quantity = Math.max(Number(body.quantity ?? 1) || 1, 1);
+
+    if (requireCore && !deliveryCountry) {
+      throw new BadRequestException('Destination country is required.');
+    }
+
+    this.assertNoDirectContact([
+      title,
+      description,
+      body.customSpecifications,
+      body.customizationRequirements,
+      body.packagingRequirements,
+      body.deliveryRequirements,
+      body.additionalNotes,
+    ]);
+
+    const payload: Record<string, unknown> = {};
+    const assign = (key: string, value: unknown) => {
+      if (value !== undefined && value !== null && value !== '') {
+        payload[key] = value;
+      }
+    };
+
+    assign('title', title);
+    assign('productName', this.clean(body.productName) || title);
+    assign('description', description);
+    assign('category', category);
+    assign('subcategory', this.clean(body.subcategory));
+    assign('quantity', quantity);
+    assign('unit', this.clean(body.unit) || 'pcs');
+    assign('targetPrice', Number.isFinite(Number(body.targetPrice)) ? Number(body.targetPrice) : undefined);
+    assign('currency', this.clean(body.currency) || 'INR');
+    assign('deliveryCountry', deliveryCountry);
+    assign('destinationCountry', deliveryCountry);
+    assign('deliveryTimeline', this.clean(body.deliveryTimeline));
+    assign('deadline', body.deadline);
+    assign('visibility', body.visibility === 'private' ? 'private' : 'public');
+    assign('customSpecifications', body.customSpecifications);
+    assign('customizationRequirements', body.customizationRequirements);
+    assign('packagingRequirements', body.packagingRequirements);
+    assign('deliveryRequirements', body.deliveryRequirements);
+    assign('additionalNotes', body.additionalNotes);
+    assign('rfqType', body.rfqType);
+
+    if (Array.isArray(body.attachments)) {
+      payload.attachments = body.attachments;
+    }
+    if (Array.isArray(body.items)) {
+      payload.items = body.items;
+    }
+    if (Array.isArray(body.specificSupplierIds)) {
+      payload.specificSupplierIds = body.specificSupplierIds
+        .map(value => this.optionalObjectId(value))
+        .filter(Boolean);
+    }
+
+    return payload;
+  }
+
+  private assertNoDirectContact(values: unknown[]) {
+    const directContact = /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|(\+\d[\d\s().-]{7,}\d)|(\d{3,}[\s().-]\d[\d\s().-]{5,}\d)|(https?:\/\/|www\.)/i;
+    const containsContact = values.some(value => typeof value === 'string' && directContact.test(value));
+
+    if (containsContact) {
+      throw new BadRequestException('Direct contact information is not allowed in RFQ or quotation text.');
+    }
+  }
+
+  private async reviewPayload(userId: string, body: Record<string, unknown>, updating: boolean) {
+    const productId = this.optionalObjectId(body.productId);
+    let sellerId = this.optionalObjectId(body.sellerId);
+    const orderId = this.optionalObjectId(body.orderId);
+    const overall = Number(body.rating ?? body.overall ?? (body.rating && typeof body.rating === 'object' ? (body.rating as Record<string, unknown>).overall : 0));
+
+    if (!productId && !sellerId) {
+      throw new BadRequestException('Select a product or supplier to review.');
+    }
+
+    if (!Number.isFinite(overall) || overall < 1 || overall > 5) {
+      throw new BadRequestException('Please complete the review form.');
+    }
+
+    const product = productId ? await this.products.findById(productId).lean() : null;
+    if (productId && !product) throw new NotFoundException('Product not found.');
+    sellerId = sellerId ?? product?.sellerId;
+    if (!sellerId) throw new NotFoundException('Supplier not found for review.');
+    const seller = await this.sellers.findById(sellerId).lean();
+    if (!seller) throw new NotFoundException('Supplier not found for review.');
+
+    const order = await this.findReviewOrder(new Types.ObjectId(userId), sellerId, productId, orderId);
+    const title = this.cleanString(body.title)?.slice(0, 120);
+    const comment = this.cleanString(body.comment)?.slice(0, 2000);
+    const images = Array.isArray(body.images) ? body.images.map(String).filter(Boolean).slice(0, 5) : [];
+    const rating = {
+      overall: Math.round(overall),
+      quality: this.ratingField(body.quality, overall),
+      communication: this.ratingField(body.communication, overall),
+      shipping: this.ratingField(body.shipping, overall),
+      value: this.ratingField(body.value, overall),
+    };
+
+    return {
+      userId: new Types.ObjectId(userId),
+      sellerId,
+      productId,
+      orderId: order?._id ?? orderId,
+      rating,
+      title,
+      comment,
+      images,
+      verifiedPurchase: Boolean(order),
+      ...(updating ? {} : { productSnapshot: product ? { name: product.name, images: product.images } : undefined }),
+    };
+  }
+
+  private ratingField(value: unknown, fallback: number) {
+    const next = Number(value ?? fallback);
+    return Math.min(Math.max(Number.isFinite(next) ? Math.round(next) : Math.round(fallback), 1), 5);
+  }
+
+  private async findReviewOrder(buyerId: Types.ObjectId, sellerId: Types.ObjectId, productId?: Types.ObjectId, orderId?: Types.ObjectId) {
+    const statuses = ['delivered', 'completed', 'payment_confirmed', 'confirmed'];
+    if (orderId) {
+      return this.orders.findOne({ _id: orderId, buyerId }).lean();
+    }
+
+    return this.orders.findOne({
+      buyerId,
+      sellerId,
+      status: { $in: statuses },
+      ...(productId ? { productId } : {}),
+    }).lean();
+  }
+
+  private async reviewSummary(filter: Record<string, unknown>) {
+    const match = { ...filter, status: 'published' };
+    const [avg] = await this.connection.collection('reviews').aggregate([
+      { $match: match },
+      { $group: { _id: null, averageRating: { $avg: '$rating.overall' }, reviewCount: { $sum: 1 } } },
+    ]).toArray();
+    const rows = await this.connection.collection('reviews').aggregate([
+      { $match: match },
+      { $group: { _id: '$rating.overall', count: { $sum: 1 } } },
+    ]).toArray();
+    const breakdown = { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
+    rows.forEach(row => {
+      const key = String(row._id) as keyof typeof breakdown;
+      if (key in breakdown) breakdown[key] = row.count;
+    });
+
+    return {
+      averageRating: avg?.averageRating ? Math.round(avg.averageRating * 10) / 10 : 0,
+      reviewCount: avg?.reviewCount ?? 0,
+      breakdown,
+    };
+  }
+
+  private async enrichReviews(reviews: Record<string, any>[]) {
+    const userIds = reviews.map(review => review.userId).filter(Boolean);
+    const sellerIds = reviews.map(review => review.sellerId).filter(Boolean);
+    const productIds = reviews.map(review => review.productId).filter(Boolean);
+    const [users, sellers, products] = await Promise.all([
+      this.users.find({ _id: { $in: userIds } }).select('email fullName name firstName lastName profileImage avatar image').lean(),
+      this.sellers.find({ _id: { $in: sellerIds } }).select('companyName businessName displayName country verificationStatus isVerified rating').lean(),
+      this.products.find({ _id: { $in: productIds } }).select('name title images').lean(),
+    ]);
+    const userMap = new Map(users.map(item => [item._id.toString(), item]));
+    const sellerMap = new Map(sellers.map(item => [item._id.toString(), item]));
+    const productMap = new Map(products.map(item => [item._id.toString(), item]));
+
+    return reviews.map(review => ({
+      ...review,
+      userId: userMap.get(review.userId?.toString()) ?? review.userId,
+      sellerId: sellerMap.get(review.sellerId?.toString()) ?? review.sellerId,
+      productId: review.productId ? productMap.get(review.productId?.toString()) ?? review.productId : undefined,
+    }));
+  }
+
+  private async refreshReviewAggregates(productId?: Types.ObjectId, sellerId?: Types.ObjectId) {
+    if (productId) {
+      const productSummary = await this.reviewSummary({ productId });
+      await this.products.updateOne({ _id: productId }, { $set: { averageRating: productSummary.averageRating, reviewCount: productSummary.reviewCount } });
+    }
+
+    if (sellerId) {
+      const sellerSummary = await this.reviewSummary({ sellerId });
+      await this.sellers.updateOne({ _id: sellerId }, { $set: { rating: sellerSummary.averageRating, reviewCount: sellerSummary.reviewCount } });
+    }
+  }
+
+  private async notifyReviewCreated(review: Record<string, any>) {
+    const seller = review.sellerId ? await this.sellers.findById(review.sellerId).lean() : null;
+    if (!seller?.userId) return;
+    const rating = Number(review.rating?.overall ?? 0);
+    await this.notifications.create({
+      userId: seller.userId,
+      title: review.productId ? 'New product review received' : 'New supplier rating received',
+      message: review.title ?? review.comment ?? `Buyer left a ${rating}/5 review.`,
+      type: review.productId ? 'review_received' : 'rating_received',
+      priority: rating <= 2 ? 'high' : 'medium',
+      relatedModel: 'Review',
+      relatedId: review._id,
+      actionUrl: '/dashboard/reviews',
+    });
   }
 
   private async findOrCreateConversation(input: {
@@ -2186,6 +3018,132 @@ export class MarketplaceService {
       .populate('quotationId', 'title status totalPrice currency')
       .populate('chatId', 'chatType lastMessage')
       .lean();
+  }
+
+  private serializeChatForUser(chat: Record<string, any>, userId: string) {
+    const includesUser = (values: unknown) => Array.isArray(values) && values.some(value => value?.toString?.() === userId);
+
+    return {
+      ...chat,
+      isArchived: includesUser(chat.archivedFor),
+      isFavorite: includesUser(chat.favoriteFor),
+      isPinned: includesUser(chat.pinnedFor),
+      isMuted: includesUser(chat.mutedFor),
+      isDeletedForMe: includesUser(chat.deletedFor),
+    };
+  }
+
+  private dateQuery(value: unknown) {
+    if (!value) {
+      return undefined;
+    }
+
+    const date = new Date(String(value));
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  }
+
+  private async patchChatMetadata(userId: string, chatId: string, action: string) {
+    const objectId = new Types.ObjectId(userId);
+    const chatObjectId = this.requireObjectId(chatId, 'Chat id');
+    const chat = await this.chats.findOne({
+      _id: chatObjectId,
+      isActive: { $ne: false },
+      deletedFor: { $ne: objectId },
+      $or: [{ buyerId: objectId }, { sellerId: objectId }, { groupMembers: objectId }],
+    }).lean();
+
+    if (!chat) {
+      throw new NotFoundException('Chat not found.');
+    }
+
+    if (action === 'archive') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $addToSet: { archivedFor: objectId } });
+    } else if (action === 'unarchive') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $pull: { archivedFor: objectId } });
+    } else if (action === 'favorite') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $addToSet: { favoriteFor: objectId } });
+    } else if (action === 'unfavorite') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $pull: { favoriteFor: objectId } });
+    } else if (action === 'pin') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $addToSet: { pinnedFor: objectId } });
+    } else if (action === 'unpin') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $pull: { pinnedFor: objectId } });
+    } else if (action === 'mute') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $addToSet: { mutedFor: objectId } });
+    } else if (action === 'unmute') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $pull: { mutedFor: objectId } });
+    } else if (action === 'delete') {
+      await this.chats.updateOne({ _id: chatObjectId }, { $addToSet: { deletedFor: objectId }, $pull: { archivedFor: objectId, favoriteFor: objectId, pinnedFor: objectId, mutedFor: objectId } });
+    } else if (action === 'mark_read') {
+      const readField = chat.buyerId?.toString() === userId ? 'buyerUnreadCount' : 'sellerUnreadCount';
+      await this.chats.updateOne({ _id: chatObjectId }, { $set: { [readField]: 0 } });
+    } else if (action === 'mark_unread') {
+      const readField = chat.buyerId?.toString() === userId ? 'buyerUnreadCount' : 'sellerUnreadCount';
+      await this.chats.updateOne({ _id: chatObjectId }, { $set: { [readField]: Math.max(Number(chat[readField] ?? 0), 1) } });
+    }
+
+    const updated = await this.chats
+      .findById(chatObjectId)
+      .populate('buyerId', 'name fullName email profileImage avatar image')
+      .populate('sellerId', 'name fullName email profileImage avatar image')
+      .populate('groupMembers', 'name fullName email profileImage avatar image')
+      .populate('productId', 'name slug images price currency minimumOrderQuantity unit status')
+      .populate('rfqId', 'title quantity unit deliveryCountry status')
+      .lean();
+
+    return { chat: updated ? this.serializeChatForUser(updated, userId) : null };
+  }
+
+  private savedItemType(value: unknown) {
+    const type = this.clean(value);
+
+    if (!type) {
+      return undefined;
+    }
+
+    if (['product', 'seller'].includes(type)) {
+      return type;
+    }
+
+    throw new BadRequestException('Saved item type must be product or seller.');
+  }
+
+  private async assertSavedTargetExists(type: string, itemId: Types.ObjectId) {
+    const exists = type === 'product'
+      ? await this.products.exists({ _id: itemId })
+      : await this.sellers.exists({ _id: itemId });
+
+    if (!exists) {
+      throw new NotFoundException(`${type === 'product' ? 'Product' : 'Seller'} not found.`);
+    }
+  }
+
+  private async populateSavedTargets(savedItems: Array<Record<string, any>>) {
+    const productIds = savedItems.filter(item => item.type === 'product').map(item => item.itemId).filter(Boolean);
+    const sellerIds = savedItems.filter(item => item.type === 'seller').map(item => item.itemId).filter(Boolean);
+    const [products, sellers] = await Promise.all([
+      productIds.length
+        ? this.products.find({ _id: { $in: productIds } }).populate('sellerId', 'userId companyName businessName displayName country verificationStatus isVerified').lean()
+        : [],
+      sellerIds.length
+        ? this.sellers.find({ _id: { $in: sellerIds } }).populate('userId', 'name fullName email').lean()
+        : [],
+    ]);
+    const productMap = new Map(products.map(product => [product._id.toString(), this.serializeProduct(product)]));
+    const sellerMap = new Map(sellers.map(seller => [seller._id.toString(), this.serializeSeller(seller)]));
+
+    return savedItems.map(item => {
+      const targetId = item.itemId?.toString?.() ?? String(item.itemId ?? '');
+      const target = item.type === 'product' ? productMap.get(targetId) : sellerMap.get(targetId);
+
+      return {
+        ...item,
+        itemId: targetId,
+        target,
+        product: item.type === 'product' ? target : undefined,
+        seller: item.type === 'seller' ? target : undefined,
+      };
+    }).filter(item => item.target);
   }
 
   private async assertOrderAccess(userId: string, order: Record<string, any>) {
