@@ -1,126 +1,83 @@
-import RecentlyViewed from '../models/RecentlyViewed.js';
-import SavedItem from '../models/SavedItem.js';
-import Product from '../models/Product.js';
-import Seller from '../models/Seller.js';
+import BuyerActivityRepository from '../repositories/buyer-activity.repository.js';
 import mongoose from 'mongoose';
 
-class BuyerActivityRepository {
+class BuyerActivityService {
   /**
-   * Check valid ObjectId
-   */
-  static isValidId(id) {
-    return mongoose.Types.ObjectId.isValid(id);
-  }
-
-  // ==================== RECENTLY VIEWED ====================
-
-  /**
-   * Track recently viewed product (upsert)
+   * Track recently viewed product
    */
   static async trackRecentlyViewed(userId, productId) {
-    if (!this.isValidId(productId)) return null;
-
-    return RecentlyViewed.findOneAndUpdate(
-      { userId, productId },
-      { $set: { viewedAt: new Date() } },
-      { upsert: true, new: true }
-    );
-  }
-
-  // ==================== SAVED ITEMS ====================
-
-  /**
-   * Resolve saved target (product or supplier)
-   */
-  static async resolveSavedTarget(itemType, itemId) {
-    console.log('[BuyerActivityRepository.resolveSavedTarget] Input:', { itemType, itemId });
-
-    if (!this.isValidId(itemId)) {
-      console.warn('[BuyerActivityRepository.resolveSavedTarget] Invalid ID:', itemId);
-      return null;
+    if (!productId) {
+      throw Object.assign(new Error('productId is required'), { statusCode: 422 });
+    }
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      throw Object.assign(new Error('Invalid product ID'), { statusCode: 422 });
     }
 
-    if (itemType === 'product') {
-      const product = await Product.findById(itemId).select('_id').lean();
-      console.log('[BuyerActivityRepository.resolveSavedTarget] Product found:', !!product);
-      return product ? { productId: product._id } : null;
+    await BuyerActivityRepository.trackRecentlyViewed(userId, productId);
+    return { tracked: true };
+  }
+
+  /**
+   * Get saved items or check if specific item is saved
+   */
+  static async getSavedItems(userId, query = {}) {
+    const { type, itemId } = query;
+
+    // Check if specific item is saved
+    if (type && itemId) {
+      console.log('[BuyerActivityService.getSavedItems] Checking saved status:', { type, itemId });
+
+      if (!['product', 'supplier'].includes(type) || !mongoose.Types.ObjectId.isValid(itemId)) {
+        return { saved: false, items: [] };
+      }
+
+      const target = await BuyerActivityRepository.resolveSavedTarget(type, itemId);
+      if (!target) {
+        return { saved: false, items: [] };
+      }
+
+      const exists = await BuyerActivityRepository.isSaved(userId, type, target);
+      return { saved: Boolean(exists), items: [] };
     }
 
-    // supplier - check both _id and userId
-    const seller = await Seller.findOne({
-      $or: [{ _id: itemId }, { userId: itemId }],
-    }).select('_id').lean();
-    console.log('[BuyerActivityRepository.resolveSavedTarget] Seller found:', !!seller);
-    return seller ? { sellerId: seller._id } : null;
+    // Get all saved items
+    const items = await BuyerActivityRepository.getSavedItems(userId, type);
+    return { items };
   }
 
   /**
-   * Get all saved items for user
+   * Toggle saved item (save/unsave)
    */
-  static async getSavedItems(userId, type = null) {
-    const query = { userId };
-    if (type) query.itemType = type;
+  static async toggleSavedItem(userId, itemType, itemId) {
+    console.log('[BuyerActivityService.toggleSavedItem] Input:', { userId, itemType, itemId });
 
-    console.log('[BuyerActivityRepository.getSavedItems] Query:', query);
-
-    return SavedItem.find(query)
-      .populate('productId', 'name images price category minimumOrderQuantity')
-      .populate({
-        path: 'sellerId',
-        select: 'companyName companyType isVerified verificationLevel rating address userId companyLogo logo logoUrl',
-        populate: { path: 'userId', select: 'fullName avatarUrl avatar profileImage' },
-      })
-      .sort({ createdAt: -1 })
-      .lean();
-  }
-
-  /**
-   * Check if item is saved
-   */
-  static async isSaved(userId, itemType, target) {
-    return SavedItem.exists({
-      userId,
-      itemType,
-      ...target,
-    });
-  }
-
-  /**
-   * Toggle saved item (save if not exists, unsave if exists)
-   */
-  static async toggleSaved(userId, itemType, target) {
-    console.log('[BuyerActivityRepository.toggleSaved] Input:', { userId, itemType, target });
-
-    // Try to delete first
-    const deleted = await SavedItem.findOneAndDelete({
-      userId,
-      itemType,
-      ...target,
-    }).select('_id');
-
-    console.log('[BuyerActivityRepository.toggleSaved] Deleted:', !!deleted);
-
-    if (deleted) {
-      return { saved: false };
+    if (!['product', 'supplier'].includes(itemType) || !itemId) {
+      console.error('[BuyerActivityService.toggleSavedItem] Validation failed:', { itemType, itemId });
+      throw Object.assign(
+        new Error('Valid item type and ID are required'),
+        { statusCode: 422 }
+      );
     }
 
-    // Create if not exists
-    const created = await SavedItem.findOneAndUpdate(
-      { userId, itemType, ...target },
-      { $setOnInsert: { userId, itemType, ...target } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      console.error('[BuyerActivityService.toggleSavedItem] Invalid ObjectId:', itemId);
+      throw Object.assign(new Error('Invalid item ID'), { statusCode: 422 });
+    }
 
-    console.log('[BuyerActivityRepository.toggleSaved] Created:', !!created);
-    return { saved: true };
-  }
+    const target = await BuyerActivityRepository.resolveSavedTarget(itemType, itemId);
+    console.log('[BuyerActivityService.toggleSavedItem] Resolved target:', target);
 
-  /**
-   * Ensure saved item indexes
-   */
-  static async ensureIndexes() {
-    await SavedItem.syncIndexes();
+    if (!target) {
+      throw Object.assign(
+        new Error(itemType === 'product' ? 'Product not found' : 'Supplier not found'),
+        { statusCode: 404 }
+      );
+    }
+
+    const result = await BuyerActivityRepository.toggleSaved(userId, itemType, target);
+    console.log('[BuyerActivityService.toggleSavedItem] Result:', result);
+    return result;
   }
 }
 
-export default BuyerActivityRepository;
+export default BuyerActivityService;
