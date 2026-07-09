@@ -1,4 +1,5 @@
 import AIChatService from '../services/ai-chat.service.js';
+import AIChatRepository from '../repositories/ai-chat.repository.js';
 import mongoose from 'mongoose';
 
 // Ollama streaming configuration
@@ -6,8 +7,6 @@ const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
-const CHAT_CONTEXT_MESSAGES = Number(process.env.AI_CHAT_CONTEXT_MESSAGES || 6);
-const CLOUD_RACE_TIMEOUT = Number(process.env.AI_CLOUD_RACE_TIMEOUT || 8000);
 
 // Provider health tracking
 const providerHealth = {
@@ -22,12 +21,6 @@ function isObjectId(value) {
 
 function debugLog(...args) {
   if (process.env.AI_DEBUG === 'true') console.log(...args);
-}
-
-function providerScore(provider) {
-  const health = providerHealth[provider] || {};
-  return (health.successes ? health.totalLatency / health.successes : provider === 'groq' ? 500 : provider === 'ollama' ? 300 : 1500)
-    + (health.failures || 0) * 900 + (health.rateLimits || 0) * 2500 + (health.timeouts || 0) * 1200;
 }
 
 class AIChatController {
@@ -120,6 +113,7 @@ class AIChatController {
       const message = body.message?.trim();
       const displayMessage = body.displayMessage?.trim() || message;
 
+      // Validate message exists (only reject if no message at all)
       if (!message) {
         return res.status(400).json({ error: 'Message is required' });
       }
@@ -127,25 +121,28 @@ class AIChatController {
       const roleContext = AIChatService.getRoleContext(body.role, req.user);
       let chat;
 
-      // Find or create chat
+      // ── Load or create chat ────────────────────────────────────────────
+
       if (body.chatId) {
+        // Existing chat
         if (!isObjectId(body.chatId)) {
           return res.status(404).json({ error: 'Chat not found' });
         }
-        chat = await AIChatService.getUserChats(userId, { chatId: body.chatId });
-        chat = chat.chat;
+        const result = await AIChatService.getUserChats(userId, { chatId: body.chatId });
+        chat = result.chat;
         if (!chat) return res.status(404).json({ error: 'Chat not found' });
       } else {
-        const result = await AIChatService.sendMessage(userId, {
-          message: '',
-          displayMessage: '',
-          role: roleContext,
+        // NEW: Create empty chat directly — do NOT call sendMessage()
+        const result = await AIChatService.createChat(userId, {
+          title: message.substring(0, 70),
+          roleContext,
           conversationType: body.conversationType || 'assistant',
         });
         chat = result.chat;
       }
 
-      // Set up SSE
+      // ── Set up SSE ─────────────────────────────────────────────────────
+
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
@@ -156,7 +153,6 @@ class AIChatController {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
 
-      // Send start event
       sendSSE({ type: 'start', chatId: String(chat._id) });
 
       try {
@@ -182,7 +178,6 @@ class AIChatController {
           sendSSE({ type: 'typing' });
 
           try {
-            // Try Ollama streaming
             if (OLLAMA_ENABLED) {
               const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
                 method: 'POST',
@@ -230,6 +225,9 @@ class AIChatController {
                     }
                   }
                 }
+
+                // Update health
+                providerHealth.ollama.successes++;
               } else {
                 throw new Error('Ollama stream failed');
               }
@@ -238,6 +236,7 @@ class AIChatController {
             }
           } catch (error) {
             debugLog('[Stream] AI failed:', error.message);
+            providerHealth.ollama.failures++;
             aiFailed = true;
           }
         } else {
@@ -272,48 +271,40 @@ class AIChatController {
           }
         }
 
-        // Save to chat
         const cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
 
-        // Update chat in database
-        const AIChat = (await import('../models/AIChat.js')).default;
-        await AIChat.findByIdAndUpdate(chat._id, {
-          $push: {
-            messages: {
-              $each: [
-                {
-                  role: 'user',
-                  content: displayMessage,
-                  timestamp: new Date(),
-                  metadata: body.pluginPayload
-                    ? { pluginPayload: body.pluginPayload, pluginId: body.pluginPayload.pluginId }
-                    : undefined,
-                },
-                {
-                  role: 'assistant',
-                  content: cleanText,
-                  tokens: tokensUsed,
-                  timestamp: new Date(),
-                  metadata: {
-                    fallback: aiFailed,
-                    provider: activeProvider,
-                    model: activeModel,
-                    streamed: true,
-                    card: body.responseCard || undefined,
-                  },
-                },
-              ],
+        // ── SINGLE database write ────────────────────────────────────────
+        await AIChatRepository.updateChatAfterResponse(chat._id, userId, {
+          userMessage: {
+            role: 'user',
+            content: displayMessage,
+            timestamp: new Date(),
+            metadata: body.pluginPayload
+              ? { pluginPayload: body.pluginPayload, pluginId: body.pluginPayload.pluginId }
+              : undefined,
+          },
+          assistantMessage: {
+            role: 'assistant',
+            content: cleanText,
+            tokens: tokensUsed,
+            timestamp: new Date(),
+            metadata: {
+              fallback: aiFailed,
+              provider: activeProvider,
+              model: activeModel,
+              streamed: true,
+              card: body.responseCard || undefined,
             },
           },
-          $inc: { totalMessages: 2, totalTokensUsed: tokensUsed },
-          $set: {
-            lastMessageAt: new Date(),
-            provider: activeProvider,
-            model: activeModel,
+          provider: activeProvider,
+          model: activeModel,
+          tokensUsed,
+          contextUpdates: {
+            'context.lastQuery': message,
+            'context.marketplaceSnapshot': platformContext.snapshot,
           },
         });
 
-        // Send done event
         sendSSE({
           type: 'done',
           chatId: String(chat._id),
@@ -329,7 +320,10 @@ class AIChatController {
       }
     } catch (error) {
       console.error('[Stream-POST] Error:', error);
-      return res.status(500).json({ error: 'Failed to stream chat' });
+      if (!res.headersSent) {
+        return res.status(500).json({ error: 'Failed to stream chat' });
+      }
+      res.end();
     }
   }
 

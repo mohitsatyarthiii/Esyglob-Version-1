@@ -176,6 +176,26 @@ class AIChatService {
     }
   }
 
+  // ─── NEW: Dedicated createChat method ──────────────────────────────────
+
+  /**
+   * Create a new empty AI chat conversation.
+   * Does NOT validate message or generate AI response.
+   */
+  static async createChat(userId, { title, roleContext, conversationType = 'assistant' } = {}) {
+    const chat = await AIChatRepository.createChat({
+      userId,
+      title: title || 'New Conversation',
+      roleContext: roleContext || 'general',
+      conversationType,
+      messages: [],
+      context: {},
+    });
+    return { chat };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+
   /**
    * Get user's AI chats
    */
