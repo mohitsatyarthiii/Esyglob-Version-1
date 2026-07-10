@@ -136,7 +136,7 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
               index,
             })}
             renderItem={({ item: uri }) => (
-              <View style={[styles.imageSlide, { width: variant === 'carousel' ? CARD_WIDTH : '100%' }]}>
+              <View style={[styles.imageSlide, variant === 'carousel' ? styles.imageSlideCarousel : styles.imageSlideFull]}>
                 <RemoteImage
                   uri={uri}
                   width={420}
@@ -278,6 +278,8 @@ const styles = StyleSheet.create({
   imageSlide: {
     height: IMAGE_HEIGHT,
   },
+  imageSlideCarousel: { width: CARD_WIDTH },
+  imageSlideFull: { width: '100%' },
   image: {
     width: '100%',
     height: IMAGE_HEIGHT,

@@ -103,7 +103,8 @@ export async function getOnboarding(user) {
     seller?.onboardingDraftSavedAt && !user.hasCompletedOnboarding
   );
 
-  return { seller, verification, draftAvailable };
+  const completion = seller ? getSellerCompletionSummary(seller) : null;
+  return { seller, verification, completion, draftAvailable };
 }
 
 export async function saveOnboardingDraft(user, data) {

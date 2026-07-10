@@ -1,17 +1,15 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   Animated,
   Dimensions,
   FlatList,
-  Modal,
   Pressable,
   ScrollView,
   Share,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   View,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -35,6 +33,7 @@ import SavedHeartButton from '../components/SavedHeartButton';
 import TradeAssurance from '../components/TradeAssurance';
 import QuickInfo from '../components/QuickInfo';
 import MoqSelector from '../components/MoqSelector';
+import EnquiryModal from '../components/EnquiryModal';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import { radii, shadow, spacing } from '../theme';
 import {
@@ -56,9 +55,15 @@ type MoqTier = {
   unit: string;
 };
 
+type Attachment = {
+  uri: string;
+  name: string;
+  type: string;
+};
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const PALETTE = {
+const P = {
   primary: '#FF6A00',
   primaryLight: '#FFF3E8',
   primaryDark: '#E05500',
@@ -89,7 +94,6 @@ function resolveSellerUserId(item: Product): string | undefined {
 
 function buildMoqTiers(item: Product): MoqTier[] {
   const tiers: MoqTier[] = [];
-
   if (item.priceTiers && item.priceTiers.length > 0) {
     for (const t of item.priceTiers) {
       tiers.push({
@@ -100,7 +104,6 @@ function buildMoqTiers(item: Product): MoqTier[] {
       });
     }
   }
-
   if (tiers.length === 0) {
     tiers.push({
       minQty: Number((item as any).minimumOrderQuantity ?? item.moq ?? 100),
@@ -109,7 +112,6 @@ function buildMoqTiers(item: Product): MoqTier[] {
       unit: (item as any).unit ?? 'pcs',
     });
   }
-
   return tiers;
 }
 
@@ -159,18 +161,24 @@ function ProductDetailsScreen() {
   const { status } = useAuth();
   const { productId } = route.params as { productId: string };
   const queryClient = useQueryClient();
-  const [enquiryOpen, setEnquiryOpen] = React.useState(false);
-  const [quantity, setQuantity] = React.useState('100');
-  const [targetPrice, setTargetPrice] = React.useState('');
-  const [destinationCountry, setDestinationCountry] = React.useState('India');
-  const [additionalNotes, setAdditionalNotes] = React.useState('');
-  const [selectedImage, setSelectedImage] = React.useState(0);
+
+  // ── State ──────────────────────────────────────────────────────────────
+
+  const [enquiryOpen, setEnquiryOpen] = useState(false);
+  const [quantity, setQuantity] = useState('100');
+  const [targetPrice, setTargetPrice] = useState('');
+  const [destinationCountry, setDestinationCountry] = useState('India');
+  const [additionalNotes, setAdditionalNotes] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [selectedImage, setSelectedImage] = useState(0);
   const flatListRef = React.useRef<FlatList>(null);
   const fade = React.useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, [fade]);
+
+  // ── Queries ────────────────────────────────────────────────────────────
 
   const productQuery = useQuery({
     queryKey: ['product', productId],
@@ -182,16 +190,14 @@ function ProductDetailsScreen() {
 
   const relatedQuery = useQuery({
     queryKey: ['related-products', (productQuery.data as any)?.category],
-    queryFn: () =>
-      fetchProducts({
-        category: (productQuery.data as any)?.category,
-        limit: 8,
-      }),
+    queryFn: () => fetchProducts({ category: (productQuery.data as any)?.category, limit: 8 }),
     enabled: Boolean((productQuery.data as any)?.category),
   });
 
   const item = productQuery.data as Product | undefined;
   const sellerUserId = item ? resolveSellerUserId(item) : undefined;
+
+  // ── Track view ─────────────────────────────────────────────────────────
 
   React.useEffect(() => {
     if (item && status === 'authenticated') {
@@ -199,26 +205,34 @@ function ProductDetailsScreen() {
     }
   }, [item, status]);
 
+  // ── Derived data ───────────────────────────────────────────────────────
+
   const seller: Record<string, any> | undefined =
     item && typeof item.sellerId === 'object'
       ? (item.sellerId as Record<string, any>)
-      : item && typeof item.seller === 'object'
-      ? (item.seller as Record<string, any>)
       : undefined;
   const sellerRouteId = seller?._id ?? seller?.id;
   const sellerVerified = item ? isVerifiedProduct(item) : false;
+
+  const canStartOrder = Boolean(
+    seller?.isTrustedSeller &&
+    seller?.trustedSellerBadge === 'active' &&
+    (item as any)?.directOrderEnabled &&
+    seller?.isActive !== false &&
+    seller?.isSuspended !== true
+  );
 
   const moqTiers: MoqTier[] = useMemo(() => {
     if (!item) return [];
     return buildMoqTiers(item);
   }, [item]);
 
-  // ── Mutations ─────────────────────────────────────────────────────────
+  // ── Mutations ──────────────────────────────────────────────────────────
 
   const chatNow = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!item) throw new Error('Product not loaded.');
-      if (!sellerUserId) throw new Error('Seller not available.');
+      if (!sellerUserId) throw new Error('Seller contact not available.');
       return startProductChat({
         otherUserId: sellerUserId,
         productId: getId(item) ?? '',
@@ -239,9 +253,9 @@ function ProductDetailsScreen() {
   });
 
   const sendEnquiry = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!item) throw new Error('Product not loaded.');
-      if (!sellerUserId) throw new Error('Seller not available.');
+      if (!sellerUserId) throw new Error('Seller information missing.');
       return createProductEnquiry({
         productId: getId(item) ?? '',
         sellerUserId,
@@ -251,31 +265,47 @@ function ProductDetailsScreen() {
         targetPrice: targetPrice ? Number(targetPrice) : undefined,
         destinationCountry: destinationCountry.trim() || 'India',
         additionalNotes: additionalNotes.trim() || undefined,
-        attachments: [],
+        attachments: attachments.map(a => ({
+          filename: a.name,
+          type: a.type,
+        })),
       });
     },
     onSuccess: (result: any) => {
       setEnquiryOpen(false);
+      setAttachments([]);
       if (result.chat) {
         navigation.navigate('ChatDetails', {
           chatId: getId(result.chat),
           title: getSellerName(item!),
         });
+      } else if (result.rfq) {
+        Alert.alert('✓ Enquiry Sent', 'The supplier will respond shortly.');
       }
     },
     onError: (error: any) =>
-      Alert.alert('Error', error?.message ?? 'Failed to send enquiry.'),
+      Alert.alert('Enquiry Failed', error?.message ?? 'Unable to send enquiry.'),
   });
 
-  const handleGetSample = useCallback(() => {
+  // ── Navigation ─────────────────────────────────────────────────────────
+
+  const goToStore = useCallback(() => {
+    if (!sellerRouteId || !item) return;
+    navigation.navigate('SellerDetails', {
+      sellerId: sellerRouteId,
+      sellerName: getSellerName(item),
+    });
+  }, [sellerRouteId, item, navigation]);
+
+  const goToStartOrder = useCallback(() => {
     if (!item) return;
     navigation.navigate('OrderCheckout', {
-      mode: 'sample',
+      mode: 'trade',
       productId: getId(item),
     });
   }, [item, navigation]);
 
-  // ── Loading / Error ──────────────────────────────────────────────────
+  // ── Loading / Error ────────────────────────────────────────────────────
 
   if (productQuery.isLoading) return <LoadingState label="Loading product..." />;
   if (productQuery.isError || !item)
@@ -287,9 +317,7 @@ function ProductDetailsScreen() {
     );
 
   const image = getProductImage(item);
-  const gallery: string[] = Array.from(
-    new Set([image, ...(item.images ?? [])].filter(Boolean)),
-  ) as string[];
+  const gallery: string[] = Array.from(new Set([image, ...(item.images ?? [])].filter(Boolean))) as string[];
   const location = getProductLocation(item);
   const relatedProducts: Product[] = (relatedQuery.data?.products ?? [])
     .filter((p: Product) => getId(p) !== getId(item))
@@ -308,24 +336,20 @@ function ProductDetailsScreen() {
   };
 
   const shareProduct = () =>
-    Share.share({
-      message: `${item.name ?? 'Product'}\n${formatProductPrice(item)}`,
-    });
+    Share.share({ message: `${item.name ?? 'Product'}\n${formatProductPrice(item)}` });
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={PALETTE.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.headerBtn}>
-          <Icon name="arrow-left" size={20} color={PALETTE.ink} />
+          <Icon name="arrow-left" size={20} color={P.ink} />
         </Pressable>
-        <Text numberOfLines={1} style={styles.headerTitle}>
-          {item.name ?? 'Product'}
-        </Text>
+        <Text numberOfLines={1} style={styles.headerTitle}>{item.name ?? 'Product'}</Text>
         <Pressable onPress={shareProduct} hitSlop={10} style={styles.headerBtn}>
-          <Icon name="share-variant-outline" size={18} color={PALETTE.ink} />
+          <Icon name="share-variant-outline" size={18} color={P.ink} />
         </Pressable>
       </View>
 
@@ -333,7 +357,8 @@ function ProductDetailsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
         style={{ opacity: fade }}>
-        {/* Gallery */}
+
+        {/* ── 1. Gallery ── */}
         <View style={styles.galleryWrap}>
           <FlatList
             ref={flatListRef}
@@ -343,39 +368,18 @@ function ProductDetailsScreen() {
             data={gallery}
             keyExtractor={(uri, i) => `${uri}-${i}`}
             onMomentumScrollEnd={onMainImageScroll}
-            getItemLayout={(_, index) => ({
-              length: SCREEN_WIDTH,
-              offset: SCREEN_WIDTH * index,
-              index,
-            })}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
             renderItem={({ item: uri }) => (
               <View style={styles.gallerySlide}>
-                <RemoteImage
-                  uri={uri}
-                  width={SCREEN_WIDTH}
-                  height={SCREEN_WIDTH}
-                  style={styles.galleryImage}
-                  fallback={<Icon name="image-off" size={40} color={PALETTE.muted} />}
-                />
+                <RemoteImage uri={uri} width={SCREEN_WIDTH} height={SCREEN_WIDTH} style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={P.muted} />} />
               </View>
             )}
           />
-          <SavedHeartButton
-            type="product"
-            itemId={getId(item) ?? ''}
-            target={item}
-            size={18}
-            style={styles.heartBtn}
-            iconColor={PALETTE.ink}
-          />
+          <SavedHeartButton type="product" itemId={getId(item) ?? ''} target={item} size={18} style={styles.heartBtn} iconColor={P.ink} />
           {gallery.length > 1 && (
             <View style={styles.paginationRow}>
               {gallery.map((_, i) => (
-                <Pressable
-                  key={i}
-                  onPress={() => scrollToImage(i)}
-                  style={[styles.dot, selectedImage === i && styles.dotActive]}
-                />
+                <Pressable key={i} onPress={() => scrollToImage(i)} style={[styles.dot, selectedImage === i && styles.dotActive]} />
               ))}
             </View>
           )}
@@ -387,7 +391,7 @@ function ProductDetailsScreen() {
           )}
         </View>
 
-        {/* Product Info */}
+        {/* ── 2. Product Title + Rating ── */}
         <View style={styles.card}>
           <Text style={styles.productName}>{item.name ?? item.title}</Text>
           <View style={styles.priceRow}>
@@ -395,68 +399,59 @@ function ProductDetailsScreen() {
             <Text style={styles.moq}>{formatMoq(item)}</Text>
           </View>
           <View style={styles.metaRow}>
-            {item.averageRating ? (
-              <Text style={styles.metaText}>
-                ★ {Number(item.averageRating).toFixed(1)} ({item.reviewCount ?? 0})
-              </Text>
-            ) : null}
-            {item.totalOrders ? (
-              <Text style={styles.metaText}>· {item.totalOrders} orders</Text>
-            ) : null}
+            {item.averageRating ? <Text style={styles.metaText}>★ {Number(item.averageRating).toFixed(1)} ({item.reviewCount ?? 0})</Text> : null}
+            {item.totalOrders ? <Text style={styles.metaText}>· {item.totalOrders} orders</Text> : null}
             {location ? <Text style={styles.metaText}>· {location}</Text> : null}
           </View>
         </View>
 
-        {/* MOQ Selector */}
-        <MoqSelector
-          tiers={moqTiers}
-          selectedQty={Number(quantity)}
-          onSelect={(qty: number) => setQuantity(String(qty))}
-        />
+        {/* ── 3. MOQ Selector ── */}
+        <MoqSelector tiers={moqTiers} selectedQty={Number(quantity)} onSelect={(qty: number) => setQuantity(String(qty))} />
 
-        {/* Seller Card */}
+        {/* ── 4. Variants (if any) ── */}
+        {(item as any).variants?.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>VARIANTS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.variantRow}>
+              {((item as any).variants as any[]).map((v: any, i: number) => (
+                <View key={i} style={styles.variantChip}>
+                  <Text style={styles.variantText}>{v.name ?? v.label ?? `Option ${i + 1}`}</Text>
+                  {v.price && <Text style={styles.variantPrice}>+{formatProductPrice(v)}</Text>}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── 5. Seller Card ── */}
         {seller && (
-          <Pressable
-            onPress={() =>
-              sellerRouteId &&
-              navigation.navigate('SellerDetails', {
-                sellerId: sellerRouteId,
-                sellerName: getSellerName(item),
-              })
-            }
-            style={styles.sellerCard}>
+          <Pressable onPress={goToStore} style={styles.sellerCard}>
             <View style={styles.sellerAvatar}>
-              <Icon name="store-outline" size={22} color={PALETTE.primary} />
+              <Icon name="store-outline" size={22} color={P.primary} />
             </View>
             <View style={styles.sellerInfo}>
               <View style={styles.sellerNameRow}>
                 <Text style={styles.sellerName}>{getSellerName(item)}</Text>
-                {sellerVerified && (
-                  <Icon name="check-decagram" size={14} color={PALETTE.emerald} />
-                )}
+                {sellerVerified && <Icon name="check-decagram" size={14} color={P.emerald} />}
               </View>
               <Text style={styles.sellerMeta}>
                 {sellerVerified ? 'Verified Supplier' : 'Supplier'}
                 {location ? ` · ${location}` : ''}
                 {seller.rating ? ` · ★ ${Number(seller.rating).toFixed(1)}` : ''}
               </Text>
-              {seller.productCount ? (
-                <Text style={styles.sellerProducts}>
-                  {seller.productCount} products
-                </Text>
-              ) : null}
+              {seller.productCount ? <Text style={styles.sellerProducts}>{seller.productCount} products</Text> : null}
             </View>
-            <Icon name="chevron-right" size={20} color={PALETTE.muted} />
+            <Icon name="chevron-right" size={20} color={P.muted} />
           </Pressable>
         )}
 
-        {/* Trade Assurance */}
+        {/* ── 6. Trade Assurance ── */}
         <TradeAssurance />
 
-        {/* Quick Info */}
+        {/* ── 7. Quick Info ── */}
         <QuickInfo />
 
-        {/* Description */}
+        {/* ── 8. Description ── */}
         {item.description ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>DETAILS</Text>
@@ -464,25 +459,15 @@ function ProductDetailsScreen() {
           </View>
         ) : null}
 
-        {/* Reviews */}
-        <ReviewsPanel
-          productId={getId(item) ?? ''}
-          sellerId={sellerRouteId}
-          showForm
-          title="Reviews"
-        />
+        {/* ── 9. Reviews ── */}
+        <ReviewsPanel productId={getId(item) ?? ''} sellerId={sellerRouteId} showForm title="Reviews" />
 
-        {/* Related Products */}
+        {/* ── 10. Related Products ── */}
         {relatedProducts.length > 0 && (
           <View style={styles.relatedWrap}>
             <Text style={styles.relatedTitle}>Related Products</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.relatedList}>
-              {relatedProducts.map((p: Product) => (
-                <ProductCard key={getId(p)} product={p} />
-              ))}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
+              {relatedProducts.map((p: Product) => <ProductCard key={getId(p)} product={p} />)}
             </ScrollView>
           </View>
         )}
@@ -490,86 +475,62 @@ function ProductDetailsScreen() {
         <View style={{ height: 120 }} />
       </Animated.ScrollView>
 
-      {/* Bottom Bar */}
+      {/* ── BOTTOM BAR ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
         {!isAuth ? (
-          <Pressable
-            onPress={() => navigation.navigate('Auth', { initialMode: 'login' })}
-            style={styles.authBtn}>
+          <Pressable onPress={() => navigation.navigate('Auth', { initialMode: 'login' })} style={styles.authBtn}>
             <Icon name="login" size={18} color="#FFF" />
             <Text style={styles.authBtnText}>Sign In to Continue</Text>
           </Pressable>
         ) : (
           <>
-            <Pressable
-              disabled={!canAct || chatNow.isPending}
-              onPress={() => chatNow.mutate()}
-              style={styles.outlineBtn}>
-              <Icon name="message-text-outline" size={18} color={PALETTE.primary} />
-              <Text style={styles.outlineBtnText}>Chat Now</Text>
+            {/* Store */}
+            <Pressable disabled={!sellerRouteId} onPress={goToStore} style={styles.storeBtn}>
+              <Icon name="store-outline" size={20} color={P.ink} />
             </Pressable>
-            <Pressable
-              disabled={!canAct}
-              onPress={() => setEnquiryOpen(true)}
-              style={styles.primaryBtn}>
+
+            {/* Start Order (conditional) */}
+            {canStartOrder && (
+              <Pressable onPress={goToStartOrder} style={styles.startOrderBtn}>
+                <Icon name="rocket-launch" size={16} color="#FFF" />
+                <Text style={styles.startOrderBtnText}>Start Order</Text>
+              </Pressable>
+            )}
+
+            {/* Chat Now */}
+            <Pressable disabled={!canAct || chatNow.isPending} onPress={() => chatNow.mutate()} style={styles.outlineBtn}>
+              <Icon name="message-text-outline" size={18} color={P.primary} />
+              <Text style={styles.outlineBtnText}>{chatNow.isPending ? '...' : 'Chat Now'}</Text>
+            </Pressable>
+
+            {/* Send Enquiry */}
+            <Pressable disabled={!canAct} onPress={() => setEnquiryOpen(true)} style={styles.primaryBtn}>
               <Icon name="send-outline" size={18} color="#FFF" />
               <Text style={styles.primaryBtnText}>Send Enquiry</Text>
-            </Pressable>
-            <Pressable
-              disabled={!canAct}
-              onPress={handleGetSample}
-              style={styles.sampleBtn}>
-              <Icon name="package-variant-closed" size={18} color="#FFF" />
-              <Text style={styles.sampleBtnText}>Get Sample</Text>
             </Pressable>
           </>
         )}
       </View>
 
-      {/* Enquiry Modal */}
-      <Modal
+      {/* ── Enquiry Modal ── */}
+      <EnquiryModal
         visible={enquiryOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setEnquiryOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 20 }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Send Enquiry</Text>
-              <Pressable onPress={() => setEnquiryOpen(false)} hitSlop={10}>
-                <Icon name="close" size={22} color={PALETTE.ink} />
-              </Pressable>
-            </View>
-            <Text style={styles.modalProductName}>{item.name ?? item.title}</Text>
-            <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-            <Field label="Target Price (optional)" value={targetPrice} onChangeText={setTargetPrice} keyboardType="numeric" placeholder="Enter target price" />
-            <Field label="Destination Country" value={destinationCountry} onChangeText={setDestinationCountry} />
-            <Field label="Additional Notes" value={additionalNotes} onChangeText={setAdditionalNotes} multiline placeholder="Any special requirements..." />
-            <Pressable
-              disabled={sendEnquiry.isPending || !destinationCountry.trim()}
-              onPress={() => sendEnquiry.mutate()}
-              style={[styles.modalSubmit, (sendEnquiry.isPending || !destinationCountry.trim()) && styles.disabled]}>
-              <Text style={styles.modalSubmitText}>
-                {sendEnquiry.isPending ? 'Sending...' : 'Submit Enquiry'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
-}
-
-// ─── Field Component ────────────────────────────────────────────────────────
-
-function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
-  return (
-    <View style={styles.fieldWrap}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        placeholderTextColor={PALETTE.muted}
-        style={[styles.fieldInput, props.multiline && styles.fieldTextarea]}
-        {...props}
+        productName={item.name ?? item.title ?? 'Product'}
+        defaultQuantity={quantity}
+        defaultUnit={(item as any).unit ?? 'pcs'}
+        pending={sendEnquiry.isPending}
+        quantity={quantity}
+        targetPrice={targetPrice}
+        destinationCountry={destinationCountry}
+        additionalNotes={additionalNotes}
+        attachments={attachments}
+        onQuantityChange={setQuantity}
+        onTargetPriceChange={setTargetPrice}
+        onDestinationChange={setDestinationCountry}
+        onNotesChange={setAdditionalNotes}
+        onAttachmentsChange={setAttachments}
+        onClose={() => setEnquiryOpen(false)}
+        onSubmit={() => sendEnquiry.mutate()}
       />
     </View>
   );
@@ -578,31 +539,28 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: PALETTE.background },
+  screen: { flex: 1, backgroundColor: P.background },
   header: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.surface,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: P.surface,
     paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, gap: spacing.sm, ...shadow,
   },
   headerBtn: {
     width: 38, height: 38, borderRadius: radii.pill,
-    backgroundColor: PALETTE.cardMuted, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: PALETTE.ink, textAlign: 'center' },
+  headerTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: P.ink, textAlign: 'center' },
   scrollContent: { paddingBottom: 20 },
-  galleryWrap: { position: 'relative', backgroundColor: PALETTE.surface },
+  galleryWrap: { position: 'relative', backgroundColor: P.surface },
   gallerySlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH },
-  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: PALETTE.cardMuted },
+  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: P.cardMuted },
   heartBtn: {
     position: 'absolute', top: spacing.sm, right: spacing.sm,
     backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: radii.pill,
     width: 34, height: 34, alignItems: 'center', justifyContent: 'center',
   },
-  paginationRow: {
-    position: 'absolute', bottom: spacing.sm, alignSelf: 'center',
-    flexDirection: 'row', gap: 6,
-  },
+  paginationRow: { position: 'absolute', bottom: spacing.sm, alignSelf: 'center', flexDirection: 'row', gap: 6 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive: { backgroundColor: PALETTE.primary, width: 8, height: 8, borderRadius: 4 },
+  dotActive: { backgroundColor: P.primary, width: 8, height: 8, borderRadius: 4 },
   verifiedTag: {
     position: 'absolute', top: spacing.sm, left: spacing.sm,
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -611,84 +569,53 @@ const styles = StyleSheet.create({
   },
   verifiedTagText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
   card: {
-    backgroundColor: PALETTE.surface, marginHorizontal: 8, marginTop: 8,
+    backgroundColor: P.surface, marginHorizontal: 8, marginTop: 8,
     padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9',
   },
-  productName: { fontSize: 16, fontWeight: '700', color: PALETTE.ink, lineHeight: 22 },
+  productName: { fontSize: 16, fontWeight: '700', color: P.ink, lineHeight: 22 },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, marginTop: 6 },
-  price: { fontSize: 22, fontWeight: '800', color: PALETTE.primaryDark },
-  moq: { fontSize: 12, fontWeight: '600', color: PALETTE.muted },
+  price: { fontSize: 22, fontWeight: '800', color: P.primaryDark },
+  moq: { fontSize: 12, fontWeight: '600', color: P.muted },
   metaRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  metaText: { fontSize: 11, fontWeight: '600', color: PALETTE.muted },
-  sectionTitle: { fontSize: 10, fontWeight: '800', color: PALETTE.muted, letterSpacing: 0.5, marginBottom: 8 },
-  descText: { fontSize: 13, fontWeight: '400', color: PALETTE.text, lineHeight: 20 },
+  metaText: { fontSize: 11, fontWeight: '600', color: P.muted },
+  sectionTitle: { fontSize: 10, fontWeight: '800', color: P.muted, letterSpacing: 0.5, marginBottom: 8 },
+  descText: { fontSize: 13, fontWeight: '400', color: P.text, lineHeight: 20 },
+  variantRow: { gap: 8 },
+  variantChip: {
+    backgroundColor: P.cardMuted, borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: P.faint, minWidth: 100, alignItems: 'center',
+  },
+  variantText: { fontSize: 12, fontWeight: '600', color: P.text },
+  variantPrice: { fontSize: 11, fontWeight: '700', color: P.primary, marginTop: 2 },
   sellerCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: PALETTE.surface,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: P.surface,
     marginHorizontal: 8, marginTop: 8, padding: 14, borderRadius: 16,
     borderWidth: 1, borderColor: '#F1F5F9', gap: 12,
   },
-  sellerAvatar: {
-    width: 44, height: 44, borderRadius: 12,
-    backgroundColor: PALETTE.primaryLight, alignItems: 'center', justifyContent: 'center',
-  },
+  sellerAvatar: { width: 44, height: 44, borderRadius: 12, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center' },
   sellerInfo: { flex: 1 },
   sellerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sellerName: { fontSize: 14, fontWeight: '700', color: PALETTE.ink },
-  sellerMeta: { fontSize: 11, color: PALETTE.muted, marginTop: 2 },
-  sellerProducts: { fontSize: 10, color: PALETTE.primary, fontWeight: '600', marginTop: 2 },
+  sellerName: { fontSize: 14, fontWeight: '700', color: P.ink },
+  sellerMeta: { fontSize: 11, color: P.muted, marginTop: 2 },
+  sellerProducts: { fontSize: 10, color: P.primary, fontWeight: '600', marginTop: 2 },
   relatedWrap: { marginTop: 16, paddingLeft: 8 },
-  relatedTitle: { fontSize: 13, fontWeight: '700', color: PALETTE.ink, marginBottom: 10 },
+  relatedTitle: { fontSize: 13, fontWeight: '700', color: P.ink, marginBottom: 10 },
   relatedList: { gap: 10, paddingRight: 8 },
+
+  // Bottom Bar
   bottomBar: {
     flexDirection: 'row', gap: 6, paddingHorizontal: 8, paddingTop: 8,
-    backgroundColor: PALETTE.surface, borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: PALETTE.faint,
+    backgroundColor: P.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: P.faint, alignItems: 'center',
   },
-  authBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, backgroundColor: PALETTE.primary, borderRadius: 12, height: 48,
-  },
+  authBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: P.primary, borderRadius: 12, height: 44 },
   authBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  outlineBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, borderWidth: 1.5, borderColor: PALETTE.primary, borderRadius: 12, height: 48,
-  },
-  outlineBtnText: { fontSize: 13, fontWeight: '700', color: PALETTE.primary },
-  primaryBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: PALETTE.primary, borderRadius: 12, height: 48,
-  },
-  primaryBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  sampleBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, backgroundColor: PALETTE.primaryDark, borderRadius: 12, height: 48,
-  },
-  sampleBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalSheet: {
-    backgroundColor: PALETTE.surface, borderTopLeftRadius: 20,
-    borderTopRightRadius: 20, padding: 20,
-  },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  modalTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: PALETTE.ink },
-  modalProductName: { fontSize: 13, fontWeight: '600', color: PALETTE.muted, marginBottom: 16 },
-  fieldWrap: { marginBottom: 14 },
-  fieldLabel: {
-    fontSize: 10, fontWeight: '700', color: PALETTE.muted,
-    marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5,
-  },
-  fieldInput: {
-    backgroundColor: PALETTE.cardMuted, borderRadius: 10, height: 44,
-    paddingHorizontal: 12, fontSize: 14, fontWeight: '600', color: PALETTE.ink,
-    borderWidth: 1, borderColor: PALETTE.faint,
-  },
-  fieldTextarea: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
-  modalSubmit: {
-    backgroundColor: PALETTE.primary, borderRadius: 12, height: 48,
-    alignItems: 'center', justifyContent: 'center', marginTop: 4,
-  },
-  modalSubmitText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
-  disabled: { opacity: 0.45 },
+  storeBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.faint },
+  startOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: P.ink, borderRadius: 12, paddingHorizontal: 14, height: 40 },
+  startOrderBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  outlineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1.5, borderColor: P.primary, borderRadius: 12, height: 40 },
+  outlineBtnText: { fontSize: 12, fontWeight: '700', color: P.primary },
+  primaryBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: P.primary, borderRadius: 12, height: 40 },
+  primaryBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
 });
 
 export default React.memo(ProductDetailsScreen);

@@ -145,7 +145,7 @@ function NotificationRow({ item, onOpen, onRead, onDelete }: { item: Notificatio
       <Icon name={item.isRead ? 'bell-outline' : 'bell-ring-outline'} size={22} color={colors.primary} />
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle}>{item.title ?? 'Notification'}</Text>
-        <Text style={styles.rowMessage}>{item.message ?? ''}</Text>
+        <Text style={styles.rowMessage}>{item.message ?? item.description ?? ''}</Text>
         <Text style={styles.rowType}>{filterLabel(normalizeType(item))}</Text>
         <Text style={styles.rowDate}>{item.createdAt ? new Date(item.createdAt).toLocaleString() : ''}</Text>
       </View>
@@ -213,6 +213,8 @@ function filterLabel(filter: NotificationFilter) {
 
 function navigateFromNotification(navigation: any, item: NotificationItem) {
   const data = { ...(item.metadata ?? {}), ...(item.data ?? {}) } as Record<string, unknown>;
+  const relatedId = resolveLinkedId(data.relatedId);
+  const relatedModel = String(data.relatedModel ?? '').toLowerCase();
   const orderId = resolveLinkedId(item.orderId ?? data.orderId);
   const productId = resolveLinkedId(item.productId ?? data.productId);
   const sellerId = resolveLinkedId(item.sellerId ?? data.sellerId);
@@ -220,12 +222,17 @@ function navigateFromNotification(navigation: any, item: NotificationItem) {
   const rfqId = resolveLinkedId(item.rfqId ?? data.rfqId);
   const quotationId = resolveLinkedId(item.quotationId ?? data.quotationId);
 
-  if (chatId) navigation.navigate('ChatDetails', { chatId });
+  if (chatId || (relatedModel === 'chat' && relatedId)) navigation.navigate('ChatDetails', { chatId: chatId ?? relatedId });
   else if (orderId) navigation.navigate('OrderDetails', { orderId });
   else if (productId) navigation.navigate('ProductDetails', { productId });
   else if (sellerId) navigation.navigate('SellerDetails', { sellerId });
   else if (rfqId) navigation.navigate('RFQDetails', { rfqId });
   else if (quotationId) navigation.navigate('QuotationDetails', { quotationId });
+  else if (relatedModel === 'order' && relatedId) navigation.navigate('OrderDetails', { orderId: relatedId });
+  else if (relatedModel === 'product' && relatedId) navigation.navigate('ProductDetails', { productId: relatedId });
+  else if (relatedModel === 'seller' && relatedId) navigation.navigate('SellerDetails', { sellerId: relatedId });
+  else if (relatedModel === 'rfq' && relatedId) navigation.navigate('RFQDetails', { rfqId: relatedId });
+  else if (relatedModel === 'quotation' && relatedId) navigation.navigate('QuotationDetails', { quotationId: relatedId });
 }
 
 function resolveLinkedId(value: unknown) {

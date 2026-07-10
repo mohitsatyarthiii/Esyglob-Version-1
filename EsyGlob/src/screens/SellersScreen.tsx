@@ -162,7 +162,7 @@ function SellerDirectoryCard({ seller }: { seller: SellerSummary }) {
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={styles.sellerName}>{title}</Text>
             {trusted ? <Icon name="check-decagram" size={19} color={colors.primary} /> : null}
-            <SavedHeartButton type="seller" itemId={sellerId} target={seller} size={15} style={styles.saveButton} iconColor={colors.muted} />
+            <SavedHeartButton type="supplier" itemId={sellerId} target={seller} size={15} style={styles.saveButton} iconColor={colors.muted} />
           </View>
           <Text numberOfLines={1} style={styles.sellerMeta}>{type}</Text>
           <Text numberOfLines={1} style={styles.location}>{location}</Text>

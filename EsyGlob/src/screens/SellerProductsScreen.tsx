@@ -10,7 +10,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
 import { formatProductPrice, getId } from '../utils/format';
 import { firstImage } from '../utils/images';
-import { Header, Chip } from './SellerOnboardingScreen';
+import { Header, Chip } from '../components/SellerFormPrimitives';
 
 const filters = ['all', 'draft', 'published', 'active', 'paused', 'pending_review', 'rejected'];
 

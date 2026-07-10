@@ -11,7 +11,10 @@ import { ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
 import { getId } from '../utils/format';
 import { firstImage } from '../utils/images';
-import { Header, Card, Field, Chip } from './SellerOnboardingScreen';
+import { Header, Card, Field, Chip } from '../components/SellerFormPrimitives';
+
+const PRODUCT_UNITS = ['piece', 'kg', 'gram', 'metric_ton', 'litre', 'millilitre', 'meter', 'centimeter', 'roll', 'pack', 'box', 'bottle', 'carton', 'bag', 'set'];
+const PAYMENT_TERMS = ['prepayment', 'partial_prepayment', 'bank_transfer', 'credit', 'negotiable'];
 
 function SellerProductFormScreen() {
   const route = useRoute<any>();
@@ -29,7 +32,7 @@ function SellerProductFormScreen() {
     description: '',
     price: '',
     minimumOrderQuantity: '1',
-    unit: 'pcs',
+    unit: 'piece',
     orderType: 'inquiry_only',
     directOrderEnabled: false,
     sampleAvailable: false,
@@ -66,7 +69,7 @@ function SellerProductFormScreen() {
     },
     onSuccess: result => {
       queryClient.invalidateQueries({ queryKey: ['seller-products'] });
-      Alert.alert('Product saved', result.visibilityNotice ?? 'Product was saved.');
+      Alert.alert('Product saved', result.message ?? result.visibilityNotice ?? 'Product was saved.');
       navigation.goBack();
     },
     onError: error => Alert.alert('Save failed', error instanceof Error ? error.message : 'Unable to save product.'),
@@ -84,7 +87,7 @@ function SellerProductFormScreen() {
       description: item.description ?? '',
       price: String(item.price ?? ''),
       minimumOrderQuantity: String(item.minimumOrderQuantity ?? item.moq ?? 1),
-      unit: item.unit ?? 'pcs',
+      unit: item.unit ?? 'piece',
       orderType: item.orderType ?? 'inquiry_only',
       directOrderEnabled: Boolean(item.directOrderEnabled),
       sampleAvailable: Boolean(item.sampleAvailable),
@@ -147,11 +150,11 @@ function SellerProductFormScreen() {
       <Card title="Pricing, MOQ and Orders">
         <Field label="Price" value={form.price} onChangeText={price => setForm({ ...form, price })} keyboardType="numeric" />
         <Field label="MOQ" value={form.minimumOrderQuantity} onChangeText={minimumOrderQuantity => setForm({ ...form, minimumOrderQuantity })} keyboardType="numeric" />
-        <Field label="Unit" value={form.unit} onChangeText={unit => setForm({ ...form, unit })} />
-        <Text style={styles.label}>Order Type</Text><View style={styles.chips}>{['inquiry_only', 'direct_order'].map(item => <Chip key={item} label={item} active={form.orderType === item} onPress={() => setForm({ ...form, orderType: item, directOrderEnabled: item === 'direct_order' })} />)}</View>
+        <Text style={styles.label}>Unit</Text><View style={styles.chips}>{PRODUCT_UNITS.map(item => <Chip key={item} label={item.replace(/_/g, ' ')} active={form.unit === item} onPress={() => setForm({ ...form, unit: item })} />)}</View>
+        <Text style={styles.label}>Order Type</Text><View style={styles.chips}>{['inquiry_only', 'rfq_only', 'direct_order_enabled'].map(item => <Chip key={item} label={item.replace(/_/g, ' ')} active={form.orderType === item} onPress={() => setForm({ ...form, orderType: item, directOrderEnabled: item === 'direct_order_enabled' })} />)}</View>
         <Text style={styles.label}>Sample Orders</Text><View style={styles.chips}>{[false, true].map(value => <Chip key={String(value)} label={value ? 'Sample available' : 'No sample'} active={form.sampleAvailable === value} onPress={() => setForm({ ...form, sampleAvailable: value })} />)}</View>
         <Field label="Sample Price" value={form.samplePrice} onChangeText={samplePrice => setForm({ ...form, samplePrice })} keyboardType="numeric" />
-        <Field label="Payment Terms" value={form.paymentTerms} onChangeText={paymentTerms => setForm({ ...form, paymentTerms })} />
+        <Text style={styles.label}>Payment Terms</Text><View style={styles.chips}>{PAYMENT_TERMS.map(item => <Chip key={item} label={item.replace(/_/g, ' ')} active={form.paymentTerms === item} onPress={() => setForm({ ...form, paymentTerms: item })} />)}</View>
       </Card>
       <Card title="Shipping and Warranty">
         <Field label="Lead Time" value={form.leadTime} onChangeText={leadTime => setForm({ ...form, leadTime })} keyboardType="numeric" />
@@ -177,8 +180,14 @@ function SellerProductFormScreen() {
         <Text style={styles.label}>Status</Text><View style={styles.chips}>{['draft', 'published', 'paused'].map(item => <Chip key={item} label={item} active={form.status === item} onPress={() => setForm({ ...form, status: item })} />)}</View>
       </Card>
       <View style={styles.actions}>
-        <Pressable onPress={() => save.mutate('draft')} style={styles.secondary}><Text style={styles.secondaryText}>Save Draft</Text></Pressable>
-        <Pressable onPress={() => save.mutate('published')} style={styles.primary}><Text style={styles.primaryText}>{editing ? 'Update & Publish' : 'Publish Product'}</Text></Pressable>
+        <Pressable disabled={save.isPending} onPress={() => save.mutate('draft')} style={[styles.secondary, save.isPending && styles.disabled]}><Text style={styles.secondaryText}>Save Draft</Text></Pressable>
+        <Pressable disabled={save.isPending} onPress={() => {
+          if (!form.name.trim() || !form.categoryId || !form.subcategoryId) {
+            Alert.alert('Missing information', 'Product name, category and subcategory are required to publish.');
+            return;
+          }
+          save.mutate('published');
+        }} style={[styles.primary, save.isPending && styles.disabled]}><Text style={styles.primaryText}>{save.isPending ? 'Saving…' : editing ? 'Update & Publish' : 'Publish Product'}</Text></Pressable>
       </View>
     </ScrollView>
   );
@@ -236,6 +245,7 @@ const styles = StyleSheet.create({
   primaryText: { color: '#fff', fontSize: 14, fontWeight: '900' },
   secondary: { alignItems: 'center', backgroundColor: colors.card, borderRadius: radii.pill, flex: 1, padding: spacing.md },
   secondaryText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
+  disabled: { opacity: 0.55 },
 });
 
 export default SellerProductFormScreen;

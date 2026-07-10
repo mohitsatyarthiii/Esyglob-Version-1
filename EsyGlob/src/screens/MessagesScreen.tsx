@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   archiveChat,
   deleteChatForMe,
+  favoriteChat,
   fetchChats,
   markChatRead,
   markChatUnread,
@@ -57,7 +58,7 @@ const WP = {
   fab: '#00A884',
 };
 
-type ChatView = 'all' | 'archived';
+type ChatView = 'all' | 'favorites' | 'archived';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ function resolveChatParticipant(chat: Chat, currentUserId?: string) {
 
   return {
     name: other?.name ?? other?.fullName ?? other?.email ?? 'User',
-    image: firstImage(other?.profileImage, other?.avatar, other?.image),
+    image: firstImage(other?.profileImage, other?.avatarUrl, other?.avatar, other?.image),
   };
 }
 
@@ -227,6 +228,16 @@ function MessagesScreen() {
     queryKey,
     (chatId: string) => muteChat(chatId, false),
     (chat: Chat) => ({ ...chat, isMuted: false }),
+  );
+  const favoriteMutation = useChatMutation(
+    queryKey,
+    (chatId: string) => favoriteChat(chatId, true),
+    (chat: Chat) => ({ ...chat, isFavorite: true }),
+  );
+  const unfavoriteMutation = useChatMutation(
+    queryKey,
+    (chatId: string) => favoriteChat(chatId, false),
+    (chat: Chat) => ({ ...chat, isFavorite: false }),
   );
   const markReadMutation = useChatMutation(
     queryKey,
@@ -425,6 +436,13 @@ function MessagesScreen() {
           </Text>
         </Pressable>
         <Pressable
+          onPress={() => setView('favorites')}
+          style={[styles.viewTab, view === 'favorites' && styles.viewTabActive]}>
+          <Text style={[styles.viewTabText, view === 'favorites' && styles.viewTabTextActive]}>
+            Starred
+          </Text>
+        </Pressable>
+        <Pressable
           onPress={() => setView('archived')}
           style={[styles.viewTab, view === 'archived' && styles.viewTabActive]}>
           <Text style={[styles.viewTabText, view === 'archived' && styles.viewTabTextActive]}>
@@ -457,9 +475,9 @@ function MessagesScreen() {
       {/* Menu Modal */}
       <ChatMenuModal
         visible={menuChatId !== null}
-        chatTitle={menuTitle}
         isPinned={menuChat?.isPinned ?? false}
         isMuted={menuChat?.isMuted ?? false}
+        isFavorite={menuChat?.isFavorite ?? false}
         unread={
           menuChat
             ? activeRole === 'seller'
@@ -477,6 +495,12 @@ function MessagesScreen() {
         onMute={() => {
           if (menuChatId) {
             (menuChat?.isMuted ? unmuteMutation : muteMutation).mutate(menuChatId);
+          }
+          setMenuChatId(null);
+        }}
+        onFavorite={() => {
+          if (menuChatId) {
+            (menuChat?.isFavorite ? unfavoriteMutation : favoriteMutation).mutate(menuChatId);
           }
           setMenuChatId(null);
         }}
@@ -666,25 +690,27 @@ function ChatRow({
 
 function ChatMenuModal({
   visible,
-  chatTitle,
   isPinned,
   isMuted,
+  isFavorite,
   unread,
   onClose,
   onPin,
   onMute,
+  onFavorite,
   onMarkRead,
   onMarkUnread,
   onDelete,
 }: {
   visible: boolean;
-  chatTitle: string;
   isPinned: boolean;
   isMuted: boolean;
+  isFavorite: boolean;
   unread: number;
   onClose: () => void;
   onPin: () => void;
   onMute: () => void;
+  onFavorite: () => void;
   onMarkRead: () => void;
   onMarkUnread: () => void;
   onDelete: () => void;
@@ -711,6 +737,14 @@ function ChatMenuModal({
             />
             <Text style={styles.menuText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
           </Pressable>
+          <Pressable onPress={onFavorite} style={styles.menuItem}>
+            <Icon
+              name={isFavorite ? 'star-off-outline' : 'star-outline'}
+              size={20}
+              color={WP.title}
+            />
+            <Text style={styles.menuText}>{isFavorite ? 'Remove star' : 'Star chat'}</Text>
+          </Pressable>
           {unread > 0 ? (
             <Pressable onPress={onMarkRead} style={styles.menuItem}>
               <Icon name="email-open-outline" size={20} color={WP.title} />
@@ -725,7 +759,7 @@ function ChatMenuModal({
           <View style={styles.menuDivider} />
           <Pressable onPress={onDelete} style={styles.menuItem}>
             <Icon name="delete-outline" size={20} color="#EF4444" />
-            <Text style={[styles.menuText, { color: '#EF4444' }]}>Delete chat</Text>
+            <Text style={[styles.menuText, styles.menuTextDanger]}>Delete chat</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -854,6 +888,7 @@ function GroupChatModal({
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  menuTextDanger: { color: '#EF4444' },
   screen: {
     flex: 1,
     backgroundColor: WP.bg,

@@ -153,6 +153,7 @@ async function* streamAIResponse(
       }),
     );
   });
+  promise.catch(() => undefined);
 
   // Poll queue
   while (true) {

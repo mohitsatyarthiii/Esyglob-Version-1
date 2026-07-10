@@ -19,7 +19,6 @@ import { uploadFiles } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, spacing } from '../theme';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -309,7 +308,7 @@ function ProfileSettingsScreen() {
           )}
         </Pressable>
 
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </View>
   );
@@ -343,6 +342,7 @@ function InputField({
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  bottomSpacer: { height: 40 },
   screen: {
     flex: 1,
     backgroundColor: P.bg,

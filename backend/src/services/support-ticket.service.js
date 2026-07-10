@@ -16,6 +16,14 @@ class SupportTicketService {
     return { tickets };
   }
 
+  static async getUserTicket(userId, ticketId) {
+    const request = await SupportTicketRepository.findOwnedById(ticketId, userId);
+    if (!request) {
+      throw Object.assign(new Error('Support ticket not found'), { statusCode: 404 });
+    }
+    return { request };
+  }
+
   /**
    * Create support ticket
    */

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -18,7 +18,6 @@ import RemoteImage from '../components/RemoteImage';
 import ReviewsPanel from '../components/ReviewsPanel';
 import SavedHeartButton from '../components/SavedHeartButton';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { radii, spacing } from '../theme';
 import { formatValue } from '../utils/display';
 import { getId, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
@@ -119,7 +118,7 @@ function SellerDetailsScreen() {
   const profile = data?.seller;
   const factory = data?.factoryProfile as Record<string, any> | null;
   const verification = data?.verification as Record<string, any> | null;
-  const allProducts: Product[] = data?.products ?? [];
+  const allProducts = useMemo<Product[]>(() => data?.products ?? [], [data?.products]);
 
   const products = useMemo(() => {
     const searched: Product[] = query.trim()
@@ -131,6 +130,20 @@ function SellerDetailsScreen() {
       : allProducts;
     return [...searched].sort((a, b) => sortProducts(a, b, sort));
   }, [allProducts, query, sort]);
+
+  const tabAvailability = useMemo(() => {
+    const certs = profile?.certifications ?? factory?.certifications ?? [];
+    const hasCerts = Array.isArray(certs) ? certs.length > 0 : hasData(certs);
+    const hasFactory = hasData(factory);
+
+    return {
+      products: true,
+      company: true,
+      factory: hasFactory,
+      certificates: hasCerts,
+      reviews: true,
+    };
+  }, [profile?.certifications, factory]);
 
   if (seller.isLoading) return <LoadingState label="Loading supplier..." />;
   if (seller.isError || !profile)
@@ -155,21 +168,6 @@ function SellerDetailsScreen() {
     profile.logoUrl,
   );
   const supplierId = getStableKey(profile);
-
-  // Determine which tabs have data
-  const tabAvailability = useMemo(() => {
-    const certs = profile.certifications ?? factory?.certifications ?? [];
-    const hasCerts = Array.isArray(certs) ? certs.length > 0 : hasData(certs);
-    const hasFactory = hasData(factory);
-
-    return {
-      products: true,
-      company: true,
-      factory: hasFactory,
-      certificates: hasCerts,
-      reviews: true,
-    };
-  }, [profile, factory]);
 
   const visibleTabs = TABS.filter(t => tabAvailability[t.key]);
 

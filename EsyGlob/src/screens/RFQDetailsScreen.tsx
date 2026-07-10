@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -12,142 +14,92 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { createQuotation, fetchRFQDetails, patchQuotation } from '../api/marketplace';
+import { createQuotation, fetchRFQDetails, startProductChat } from '../api/marketplace';
 import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { radii, shadow, spacing } from '../theme';
 import { getId } from '../utils/format';
 
-// ──────────────────────────────────────
-// Utility helpers
-// ──────────────────────────────────────
-function safeDate(value: unknown): string {
-  if (!value) return '';
-  const date = new Date(value as string);
-  if (isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-  });
-}
+// ─── Palette ────────────────────────────────────────────────────────────────
 
-function safeString(value: unknown, fallback: string = ''): string {
-  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
-  if (typeof value === 'number') return String(value);
-  return fallback;
-}
-
-// ──────────────────────────────────────
-// Alibaba-inspired palette
-// ──────────────────────────────────────
-const PALETTE = {
-  primary: '#FF6A00',
-  primaryLight: '#FFF3E8',
-  primaryDark: '#E05500',
-  emerald: '#00B578',
-  sky: '#3B9CFF',
-  violet: '#7B61FF',
-  rose: '#FF3B6E',
-  amber: '#FF9500',
-  ink: '#1A1A1A',
-  text: '#333333',
-  muted: '#8C8C8C',
-  faint: '#E8E8E8',
+const P = {
+  bg: '#F8FAFC',
   surface: '#FFFFFF',
-  background: '#F5F5F5',
-  cardMuted: '#F8F9FB',
-} as const;
+  primary: '#0F172A',
+  accent: '#2563EB',
+  accentLight: '#EFF6FF',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  muted: '#94A3B8',
+  border: '#E2E8F0',
+  inputBg: '#F1F5F9',
+  success: '#059669',
+  successLight: '#ECFDF5',
+  warning: '#D97706',
+  warningLight: '#FFFBEB',
+  danger: '#DC2626',
+  dangerLight: '#FEF2F2',
+  violet: '#7C3AED',
+  violetLight: '#F5F3FF',
+};
 
-const contactPattern =
-  /(\+?\d[\d\s().-]{7,}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|https?:\/\/|www\.)/i;
+// ─── Status Config ──────────────────────────────────────────────────────────
 
-// ──────────────────────────────────────
-// Status config
-// ──────────────────────────────────────
-const STATUS_CONFIG: Record<
-  string,
-  { bg: string; color: string; icon: string; label: string }
-> = {
-  active: { bg: '#E8F8EE', color: '#00B578', icon: 'pulse', label: 'Active' },
-  draft: {
-    bg: '#F5F5F5',
-    color: '#8C8C8C',
-    icon: 'pencil-outline',
-    label: 'Draft',
-  },
-  quoted: {
-    bg: '#FFF3E8',
-    color: '#FF6A00',
-    icon: 'cash-multiple',
-    label: 'Quoted',
-  },
-  negotiating: {
-    bg: '#EEF0FF',
-    color: '#7B61FF',
-    icon: 'handshake',
-    label: 'Negotiating',
-  },
-  converted: {
-    bg: '#E8F4FF',
-    color: '#3B9CFF',
-    icon: 'check-decagram',
-    label: 'Converted',
-  },
-  closed: {
-    bg: '#FFF0F0',
-    color: '#FF3B30',
-    icon: 'close-circle-outline',
-    label: 'Closed',
-  },
-  submitted: {
-    bg: '#E8F4FF',
-    color: '#3B9CFF',
-    icon: 'send-outline',
-    label: 'Submitted',
-  },
-  pending: {
-    bg: '#FFF8E8',
-    color: '#FF9500',
-    icon: 'clock-outline',
-    label: 'Pending',
-  },
-  accepted: {
-    bg: '#E8F8EE',
-    color: '#00B578',
-    icon: 'check-circle-outline',
-    label: 'Accepted',
-  },
-  rejected: {
-    bg: '#FFF0F0',
-    color: '#FF3B30',
-    icon: 'close-circle-outline',
-    label: 'Rejected',
-  },
+const STATUS_CONFIG: Record<string, { bg: string; color: string; icon: string; label: string }> = {
+  active: { bg: '#ECFDF5', color: '#059669', icon: 'pulse', label: 'Active' },
+  draft: { bg: '#F1F5F9', color: '#64748B', icon: 'pencil', label: 'Draft' },
+  quoted: { bg: '#FFF7ED', color: '#EA580C', icon: 'cash-multiple', label: 'Quoted' },
+  negotiating: { bg: '#F5F3FF', color: '#7C3AED', icon: 'handshake', label: 'Negotiating' },
+  converted: { bg: '#EFF6FF', color: '#2563EB', icon: 'check-decagram', label: 'Converted' },
+  closed: { bg: '#FEF2F2', color: '#DC2626', icon: 'close-circle', label: 'Closed' },
+  submitted: { bg: '#EFF6FF', color: '#2563EB', icon: 'send', label: 'Submitted' },
+  pending: { bg: '#FFFBEB', color: '#D97706', icon: 'clock-outline', label: 'Pending' },
+  accepted: { bg: '#ECFDF5', color: '#059669', icon: 'check-circle', label: 'Accepted' },
+  rejected: { bg: '#FEF2F2', color: '#DC2626', icon: 'close-circle', label: 'Rejected' },
 };
 
 function getStatusConfig(status: string) {
-  return (
-    STATUS_CONFIG[status] ?? {
-      bg: '#F5F5F5',
-      color: '#8C8C8C',
-      icon: 'information-outline',
-      label: status.replace(/_/g, ' '),
-    }
-  );
+  return STATUS_CONFIG[status] ?? {
+    bg: '#F1F5F9', color: '#64748B', icon: 'information',
+    label: (status || 'sent').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+  };
 }
 
-// ──────────────────────────────────────
-// Main Component
-// ──────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function resolveSellerUserId(item: any): string | undefined {
+  if (!item) return undefined;
+  // Try sellerId populated
+  if (typeof item.sellerId === 'object' && item.sellerId) {
+    if (typeof item.sellerId.userId === 'string') return item.sellerId.userId;
+    if (item.sellerId.userId?._id) return String(item.sellerId.userId._id);
+    return String(item.sellerId._id ?? '');
+  }
+  // Try sellerUserId directly
+  if (typeof item.sellerUserId === 'string') return item.sellerUserId;
+  if (item.sellerUserId?._id) return String(item.sellerUserId._id);
+  return undefined;
+}
+
+function resolveBuyerUserId(item: any): string | undefined {
+  if (!item) return undefined;
+  if (typeof item.userId === 'string') return item.userId;
+  if (item.userId?._id) return String(item.userId._id);
+  if (typeof item.buyerId === 'string') return item.buyerId;
+  if (item.buyerId?._id) return String(item.buyerId._id);
+  return undefined;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
 function RFQDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const { activeRole } = useAuth();
   const { rfqId } = route.params as { rfqId: string };
-  const [quoteOpen, setQuoteOpen] = React.useState(false);
-  const [quoteForm, setQuoteForm] = React.useState({
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quoteForm, setQuoteForm] = useState({
     suppliedQuantity: '',
     unitPrice: '',
     currency: 'INR',
@@ -165,535 +117,284 @@ function RFQDetailsScreen() {
     staleTime: 30_000,
   });
 
+  // ── Submit Quote ──────────────────────────────────────────────────────
+
   const submitQuote = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const item = rfq.data?.rfq;
-      if (!item) {
-        throw new Error('RFQ details are unavailable.');
-      }
+      if (!item) throw new Error('RFQ details unavailable.');
+
+      const productId = typeof item.productId === 'string'
+        ? item.productId
+        : (item.productId as any)?._id;
 
       return createQuotation({
-        rfqId: getId(item),
-        productId:
-          typeof item.productId === 'string'
-            ? item.productId
-            : (item.productId as any)?._id,
+        rfqId: getId(item) ?? '',
+        productId: productId ?? '',
         title: item.title ?? (item as any).productName ?? 'Quotation',
-        suppliedQuantity:
-          Number(quoteForm.suppliedQuantity) ||
-          Number(item.quantity ?? 1) ||
-          1,
+        suppliedQuantity: Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1) || 1,
         unitPrice: Number(quoteForm.unitPrice) || 0,
         currency: quoteForm.currency || (item as any).currency || 'INR',
         leadTime: quoteForm.leadTime,
         paymentTerms: quoteForm.paymentTerms,
         incoterms: quoteForm.incoterms,
         shippingCost: Number(quoteForm.shippingCost) || 0,
-        sellerMessage:
-          quoteForm.sellerMessage || 'Quotation submitted from mobile.',
+        sellerMessage: quoteForm.sellerMessage || 'Quotation submitted from mobile.',
       });
     },
-    onSuccess: async quotation => {
+    onSuccess: async (result: any) => {
       setQuoteOpen(false);
-      await queryClient.invalidateQueries({
-        queryKey: ['rfq-details', rfqId],
-      });
-      navigation.navigate('QuotationDetails', {
-        quotationId: getId(quotation),
-      });
+      await queryClient.invalidateQueries({ queryKey: ['rfq-details', rfqId] });
+      const quotationId = getId(result);
+      if (quotationId) {
+        navigation.navigate('QuotationDetails', { quotationId });
+      } else {
+        Alert.alert('✓ Sent', 'Quotation submitted successfully.');
+      }
     },
-    onError: error =>
-      Alert.alert(
-        'Quotation failed',
-        error instanceof Error ? error.message : 'Unable to submit quotation.',
-      ),
+    onError: (error: unknown) =>
+      Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to submit.'),
   });
 
-  // ── Loading ──
-  if (rfq.isLoading) {
-    return <LoadingState label="Loading RFQ workspace" />;
-  }
+  // ── Open Chat ─────────────────────────────────────────────────────────
 
-  // ── Error ──
-  if (rfq.isError || !rfq.data?.rfq) {
+  const openChat = useMutation({
+    mutationFn: async () => {
+      const item = rfq.data?.rfq as any;
+      if (!item) throw new Error('RFQ not loaded.');
+
+      const sellerView = activeRole === 'seller';
+      // Check if chat already exists
+      const chats: any[] = (rfq.data as any)?.chats ?? [];
+      if (chats.length > 0) {
+        const existingChat = chats[0];
+        return { chat: existingChat, created: false };
+      }
+
+      // Create new chat
+      const otherUserId = sellerView
+        ? resolveBuyerUserId(item)
+        : resolveSellerUserId(item);
+
+      if (!otherUserId) throw new Error('Cannot find the other user.');
+
+      return startProductChat({
+        otherUserId,
+        productId: typeof item.productId === 'string' ? item.productId : (item.productId as any)?._id ?? '',
+        role: activeRole === 'seller' ? 'seller' : 'buyer',
+        enquiry: false,
+      });
+    },
+    onSuccess: (result: any) => {
+      const chatId = getId(result.chat);
+      if (chatId) {
+        navigation.navigate('ChatDetails', {
+          chatId,
+          title: (rfq.data?.rfq as any)?.title ?? 'RFQ Chat',
+        });
+      }
+    },
+    onError: (error: unknown) =>
+      Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to open chat.'),
+  });
+
+  if (rfq.isLoading) return <LoadingState label="Loading RFQ..." />;
+  if (rfq.isError || !rfq.data?.rfq)
     return (
       <ErrorState
-        message={
-          (rfq.error as Error)?.message ?? 'RFQ was not returned.'
-        }
+        message={(rfq.error as Error)?.message ?? 'RFQ not found'}
         onRetry={() => rfq.refetch()}
       />
     );
-  }
 
-  const item = rfq.data.rfq as RFQ & {
-    productName?: string;
-    deliveryCountry?: string;
-    deliveryTimeline?: string;
-    deadline?: string;
-    visibility?: string;
-    currency?: string;
-    customSpecifications?: string;
-    customizationRequirements?: string;
-    packagingRequirements?: string;
-    deliveryRequirements?: string;
-    additionalNotes?: string;
-    attachments?: string[];
-  };
+  const item = rfq.data.rfq as RFQ & any;
   const sellerView = activeRole === 'seller';
-  const title =
-    item.title ?? item.productName ?? (item as any).productName ?? 'RFQ';
-  const destination =
-    (item as any).destinationCountry ??
-    (item as any).deliveryCountry ??
-    undefined;
-  const productId =
-    typeof item.productId === 'string'
-      ? item.productId
-      : (item.productId as any)?._id;
-  const statusCfg = getStatusConfig((item as any).status ?? 'active');
-  const quotations = (rfq.data as any).quotations ?? [];
-  const chats = (rfq.data as any).chats ?? [];
-  const timeline = (item as any).deliveryTimeline ?? (item as any).deadline;
-
-  const validateAndQuote = () => {
-    const moderated = [
-      quoteForm.sellerMessage,
-      quoteForm.paymentTerms,
-      quoteForm.leadTime,
-      quoteForm.incoterms,
-    ];
-    if (moderated.some(value => contactPattern.test(value))) {
-      Alert.alert(
-        'Contact information blocked',
-        'Do not include direct phone numbers, emails, websites, or links in quotations.',
-      );
-      return;
-    }
-    submitQuote.mutate();
-  };
+  const title = item.title ?? item.productName ?? 'RFQ';
+  const destination = item.destinationCountry ?? item.deliveryCountry;
+  const productId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
+  const statusCfg = getStatusConfig(item.status ?? 'active');
+  const quotations: Quotation[] = (rfq.data as any)?.quotations ?? [];
+  const chats: any[] = (rfq.data as any)?.chats ?? [];
+  const timeline = item.deliveryTimeline ?? item.deadline;
+  const hasExistingChat = chats.length > 0;
 
   return (
     <View style={styles.screen}>
-      {/* ── Header ── */}
+      <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
+
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.headerBtn}
-          hitSlop={8}>
-          <Icon name="arrow-left" size={22} color={PALETTE.ink} />
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={22} color={P.text} />
         </Pressable>
         <Text numberOfLines={1} style={styles.headerTitle}>
           {sellerView ? 'RFQ Workspace' : 'RFQ Details'}
         </Text>
-        <Pressable
-          onPress={() => rfq.refetch()}
-          style={styles.headerBtn}
-          hitSlop={8}>
-          <Icon name="refresh" size={20} color={PALETTE.ink} />
+        <Pressable onPress={() => rfq.refetch()} style={styles.backBtn}>
+          <Icon name="refresh" size={20} color={P.textSecondary} />
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        {/* ── Hero Card ── */}
-        <View style={styles.heroCard}>
-          {/* Status + icon row */}
-          <View style={styles.heroTop}>
-            <View style={styles.heroIconWrap}>
-              <Icon
-                name="clipboard-list-outline"
-                size={24}
-                color={PALETTE.primary}
-              />
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: statusCfg.bg },
-              ]}>
-              <Icon name={statusCfg.icon} size={12} color={statusCfg.color} />
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  { color: statusCfg.color },
-                ]}>
-                {statusCfg.label}
-              </Text>
-            </View>
-          </View>
-
-          {/* Title */}
-          <Text style={styles.rfqTitle}>{title}</Text>
-
-          {/* Description — only if it exists */}
-          {item.description ? (
-            <Text style={styles.rfqDescription} numberOfLines={4}>
-              {item.description}
-            </Text>
-          ) : null}
-
-          {/* Specs grid */}
-          <View style={styles.specsGrid}>
-            <SpecBadge
-              icon="cube-outline"
-              label="Quantity"
-              value={`${item.quantity ?? '—'} ${(item as any).unit ?? ''}`}
-            />
-            <SpecBadge
-              icon="shape-outline"
-              label="Category"
-              value={safeString((item as any).category, 'General')}
-            />
-            {item.targetPrice ? (
-              <SpecBadge
-                icon="currency-inr"
-                label="Target Price"
-                value={`${(item as any).currency ?? '₹'} ${Number(item.targetPrice).toLocaleString('en-IN')}`}
-              />
-            ) : null}
-            {destination ? (
-              <SpecBadge
-                icon="map-marker-outline"
-                label="Destination"
-                value={destination}
-              />
-            ) : null}
-            {timeline ? (
-              <SpecBadge
-                icon="clock-outline"
-                label="Timeline"
-                value={safeString(timeline)}
-              />
-            ) : null}
-          </View>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Status */}
+        <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+          <Icon name={statusCfg.icon} size={14} color={statusCfg.color} />
+          <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
         </View>
 
-        {/* ── Action Buttons ── */}
+        {/* Title */}
+        <Text style={styles.rfqTitle}>{title}</Text>
+        {item.description && <Text style={styles.rfqDesc}>{item.description}</Text>}
+
+        {/* Specs */}
+        <View style={styles.specsGrid}>
+          <SpecBadge icon="cube-outline" label="Quantity" value={`${item.quantity ?? '—'} ${item.unit ?? ''}`} />
+          <SpecBadge icon="shape-outline" label="Category" value={item.category ?? 'General'} />
+          {item.targetPrice && <SpecBadge icon="currency-inr" label="Target Price" value={`${item.currency ?? '₹'} ${Number(item.targetPrice).toLocaleString('en-IN')}`} />}
+          {destination && <SpecBadge icon="map-marker" label="Destination" value={destination} />}
+          {timeline && <SpecBadge icon="clock-outline" label="Timeline" value={String(timeline)} />}
+        </View>
+
+        {/* Action Buttons */}
         <View style={styles.actionRow}>
+          {/* Message Button — opens or creates chat */}
           <Pressable
-            onPress={() => navigation.navigate('Messages')}
+            onPress={() => openChat.mutate()}
+            disabled={openChat.isPending}
             style={styles.actionBtn}>
-            <Icon
-              name="message-text-outline"
-              size={18}
-              color={PALETTE.primary}
-            />
-            <Text style={styles.actionBtnText}>Messages</Text>
+            {openChat.isPending ? (
+              <ActivityIndicator size="small" color={P.accent} />
+            ) : (
+              <>
+                <Icon name="message-text" size={18} color={P.accent} />
+                <Text style={styles.actionBtnText}>
+                  {hasExistingChat ? 'Open Chat' : 'Message'}
+                </Text>
+              </>
+            )}
           </Pressable>
 
-          {productId ? (
+          {productId && (
             <Pressable
-              onPress={() =>
-                navigation.navigate('ProductDetails', { productId })
-              }
+              onPress={() => navigation.navigate('ProductDetails', { productId })}
               style={styles.actionBtn}>
-              <Icon
-                name="package-variant-closed"
-                size={18}
-                color={PALETTE.primary}
-              />
-              <Text style={styles.actionBtnText}>View Product</Text>
+              <Icon name="package-variant" size={18} color={P.accent} />
+              <Text style={styles.actionBtnText}>Product</Text>
             </Pressable>
-          ) : null}
+          )}
 
-          {sellerView ? (
-            <Pressable
-              onPress={() => setQuoteOpen(true)}
-              style={styles.submitQuoteBtn}>
-              <Icon name="cash-multiple" size={18} color="#fff" />
-              <Text style={styles.submitQuoteBtnText}>Submit Quote</Text>
+          {sellerView && (
+            <Pressable onPress={() => setQuoteOpen(true)} style={styles.quoteBtn}>
+              <Icon name="cash-multiple" size={18} color="#FFF" />
+              <Text style={styles.quoteBtnText}>Submit Quote</Text>
             </Pressable>
-          ) : null}
-        </View>
-
-        {/* ── Requirements Section ── */}
-        {item.customSpecifications ||
-        item.customizationRequirements ||
-        item.packagingRequirements ||
-        item.deliveryRequirements ||
-        item.additionalNotes ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Requirements</Text>
-            {item.customSpecifications ? (
-              <RequirementRow
-                icon="tune"
-                label="Specifications"
-                value={item.customSpecifications}
-              />
-            ) : null}
-            {item.customizationRequirements ? (
-              <RequirementRow
-                icon="brush"
-                label="Customization"
-                value={item.customizationRequirements}
-              />
-            ) : null}
-            {item.packagingRequirements ? (
-              <RequirementRow
-                icon="package-variant-closed"
-                label="Packaging"
-                value={item.packagingRequirements}
-              />
-            ) : null}
-            {item.deliveryRequirements ? (
-              <RequirementRow
-                icon="truck-fast-outline"
-                label="Delivery"
-                value={item.deliveryRequirements}
-              />
-            ) : null}
-            {item.additionalNotes ? (
-              <RequirementRow
-                icon="note-text-outline"
-                label="Notes"
-                value={item.additionalNotes}
-              />
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* ── Attachments ── */}
-        {item.attachments?.length ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Attachments</Text>
-            {item.attachments.map((uri, index) => (
-              <View key={uri} style={styles.attachmentRow}>
-                <Icon name="paperclip" size={16} color={PALETTE.sky} />
-                <Text style={styles.attachmentText} numberOfLines={1}>
-                  Attachment {index + 1}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* ── Quotations Section ── */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>
-              {sellerView ? 'Your Quotations' : 'Seller Responses'}
-            </Text>
-            {quotations.length > 0 ? (
-              <View style={styles.countBadge}>
-                <Text style={styles.countBadgeText}>
-                  {quotations.length}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-
-          {quotations.length > 0 ? (
-            quotations.map((quotation: Quotation) => (
-              <QuotationRow
-                key={getId(quotation)}
-                quotation={quotation}
-                rfqId={rfqId}
-              />
-            ))
-          ) : (
-            <EmptyState
-              title="No quotations yet"
-              detail={
-                sellerView
-                  ? 'Submit a quotation to respond to this RFQ.'
-                  : 'Supplier responses will appear here.'
-              }
-            />
           )}
         </View>
 
-        {/* ── Linked Chats ── */}
-        {chats.length > 0 ? (
-          <View style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Conversations</Text>
-            {chats.map((chat: any) => (
-              <Pressable
-                key={getId(chat)}
-                onPress={() =>
-                  navigation.navigate('ChatDetails', {
-                    chatId: getId(chat),
-                    title,
-                  })
-                }
-                style={styles.chatRow}>
-                <View style={styles.chatIconWrap}>
-                  <Icon
-                    name="message-text-outline"
-                    size={18}
-                    color={PALETTE.primary}
-                  />
-                </View>
-                <View style={styles.chatInfo}>
-                  <Text style={styles.chatTitle} numberOfLines={1}>
-                    {chat.lastMessage ??
-                      chat.chatType ??
-                      'Conversation'}
-                  </Text>
-                  <Text style={styles.chatMeta}>
-                    {safeDate(chat.updatedAt ?? chat.createdAt)}
-                  </Text>
-                </View>
-                <Icon
-                  name="chevron-right"
-                  size={20}
-                  color={PALETTE.muted}
-                />
-              </Pressable>
-            ))}
+        {/* Requirements */}
+        {item.customSpecifications || item.customizationRequirements || item.packagingRequirements || item.deliveryRequirements || item.additionalNotes ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Requirements</Text>
+            {item.customSpecifications && <ReqRow icon="tune" label="Specifications" value={item.customSpecifications} />}
+            {item.customizationRequirements && <ReqRow icon="brush" label="Customization" value={item.customizationRequirements} />}
+            {item.packagingRequirements && <ReqRow icon="package-variant" label="Packaging" value={item.packagingRequirements} />}
+            {item.deliveryRequirements && <ReqRow icon="truck-fast" label="Delivery" value={item.deliveryRequirements} />}
+            {item.additionalNotes && <ReqRow icon="note-text" label="Notes" value={item.additionalNotes} />}
           </View>
         ) : null}
 
-        {/* Bottom spacer */}
+        {/* Quotations */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Quotations</Text>
+            {quotations.length > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{quotations.length}</Text>
+              </View>
+            )}
+          </View>
+          {quotations.length > 0 ? (
+            quotations.map((q: Quotation) => (
+              <Pressable
+                key={getId(q)}
+                onPress={() => navigation.navigate('QuotationDetails', { quotationId: getId(q) })}
+                style={styles.quoteRow}>
+                <View style={styles.quoteIcon}>
+                  <Icon name="cash-multiple" size={18} color={P.success} />
+                </View>
+                <View style={styles.quoteInfo}>
+                  <Text style={styles.quoteTitle} numberOfLines={1}>
+                    {q.title ?? (q.sellerId as any)?.companyName ?? 'Quotation'}
+                  </Text>
+                  <View style={styles.quoteMeta}>
+                    <View style={[styles.quoteStatus, { backgroundColor: getStatusConfig((q as any).status ?? 'submitted').bg }]}>
+                      <Text style={[styles.quoteStatusText, { color: getStatusConfig((q as any).status ?? 'submitted').color }]}>
+                        {getStatusConfig((q as any).status ?? 'submitted').label}
+                      </Text>
+                    </View>
+                    {q.totalPrice && (
+                      <Text style={styles.quotePrice}>
+                        {q.currency ?? '₹'} {Number(q.totalPrice).toLocaleString('en-IN')}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <Icon name="chevron-right" size={18} color={P.muted} />
+              </Pressable>
+            ))
+          ) : (
+            <EmptyState title="No quotations yet" detail={sellerView ? 'Submit a quote to respond.' : 'Waiting for seller responses.'} />
+          )}
+        </View>
+
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* ── Quotation Modal ── */}
-      <Modal
-        visible={quoteOpen}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setQuoteOpen(false)}>
+      {/* Quote Modal */}
+      <Modal visible={quoteOpen} animationType="slide" transparent onRequestClose={() => setQuoteOpen(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.sheet}>
-            {/* Sheet handle */}
             <View style={styles.sheetHandle} />
-
-            {/* Sheet header */}
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Submit Quotation</Text>
-              <Pressable
-                onPress={() => setQuoteOpen(false)}
-                style={styles.sheetCloseBtn}
-                hitSlop={8}>
-                <Icon name="close" size={22} color={PALETTE.ink} />
+              <Pressable onPress={() => setQuoteOpen(false)} style={styles.sheetClose}>
+                <Icon name="close" size={20} color={P.textSecondary} />
               </Pressable>
             </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              style={styles.sheetScroll}>
-              {/* Quantity + Unit Price row */}
+            <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
               <View style={styles.formRow}>
-                <FormField
-                  compact
-                  label="Quantity"
-                  value={
-                    quoteForm.suppliedQuantity ||
-                    String(item.quantity ?? '')
-                  }
-                  onChangeText={suppliedQuantity =>
-                    setQuoteForm({ ...quoteForm, suppliedQuantity })
-                  }
-                  keyboardType="numeric"
-                  placeholder={String(item.quantity ?? '1')}
-                />
-                <FormField
-                  compact
-                  label="Unit Price (₹)"
-                  value={quoteForm.unitPrice}
-                  onChangeText={unitPrice =>
-                    setQuoteForm({ ...quoteForm, unitPrice })
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
+                <FormField label="Quantity" value={quoteForm.suppliedQuantity || String(item.quantity ?? '')} onChangeText={v => setQuoteForm({ ...quoteForm, suppliedQuantity: v })} keyboardType="numeric" compact />
+                <FormField label="Unit Price (₹)" value={quoteForm.unitPrice} onChangeText={v => setQuoteForm({ ...quoteForm, unitPrice: v })} keyboardType="numeric" compact />
               </View>
-
-              {/* Currency + Shipping row */}
               <View style={styles.formRow}>
-                <FormField
-                  compact
-                  label="Currency"
-                  value={quoteForm.currency}
-                  onChangeText={currency =>
-                    setQuoteForm({ ...quoteForm, currency })
-                  }
-                  placeholder="INR"
-                />
-                <FormField
-                  compact
-                  label="Shipping Cost"
-                  value={quoteForm.shippingCost}
-                  onChangeText={shippingCost =>
-                    setQuoteForm({ ...quoteForm, shippingCost })
-                  }
-                  keyboardType="numeric"
-                  placeholder="0"
-                />
+                <FormField label="Currency" value={quoteForm.currency} onChangeText={v => setQuoteForm({ ...quoteForm, currency: v })} compact />
+                <FormField label="Shipping" value={quoteForm.shippingCost} onChangeText={v => setQuoteForm({ ...quoteForm, shippingCost: v })} keyboardType="numeric" compact />
               </View>
+              <FormField label="Lead Time" value={quoteForm.leadTime} onChangeText={v => setQuoteForm({ ...quoteForm, leadTime: v })} />
+              <FormField label="Payment Terms" value={quoteForm.paymentTerms} onChangeText={v => setQuoteForm({ ...quoteForm, paymentTerms: v })} />
+              <FormField label="Incoterms" value={quoteForm.incoterms} onChangeText={v => setQuoteForm({ ...quoteForm, incoterms: v })} />
+              <FormField label="Message to Buyer" value={quoteForm.sellerMessage} onChangeText={v => setQuoteForm({ ...quoteForm, sellerMessage: v })} multiline />
 
-              <FormField
-                label="Lead Time"
-                value={quoteForm.leadTime}
-                onChangeText={leadTime =>
-                  setQuoteForm({ ...quoteForm, leadTime })
-                }
-                placeholder="e.g. 15 days"
-              />
-              <FormField
-                label="Payment Terms"
-                value={quoteForm.paymentTerms}
-                onChangeText={paymentTerms =>
-                  setQuoteForm({ ...quoteForm, paymentTerms })
-                }
-                placeholder="e.g. 30% advance"
-              />
-              <FormField
-                label="Incoterms"
-                value={quoteForm.incoterms}
-                onChangeText={incoterms =>
-                  setQuoteForm({ ...quoteForm, incoterms })
-                }
-                placeholder="e.g. FOB"
-              />
-              <FormField
-                label="Message to Buyer"
-                value={quoteForm.sellerMessage}
-                onChangeText={sellerMessage =>
-                  setQuoteForm({ ...quoteForm, sellerMessage })
-                }
-                multiline
-                placeholder="Introduce your offer, highlight quality, MOQ, certifications..."
-              />
-
-              {/* Price preview */}
-              {quoteForm.unitPrice && quoteForm.suppliedQuantity ? (
+              {quoteForm.unitPrice && quoteForm.suppliedQuantity && (
                 <View style={styles.pricePreview}>
-                  <Text style={styles.pricePreviewLabel}>
-                    Total Value
-                  </Text>
+                  <Text style={styles.pricePreviewLabel}>Total Value</Text>
                   <Text style={styles.pricePreviewValue}>
-                    {quoteForm.currency}{' '}
-                    {(
-                      Number(quoteForm.unitPrice) *
-                      (Number(quoteForm.suppliedQuantity) ||
-                        Number(item.quantity ?? 1))
-                    ).toLocaleString('en-IN')}
+                    {quoteForm.currency} {(Number(quoteForm.unitPrice) * (Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1))).toLocaleString('en-IN')}
                   </Text>
                 </View>
-              ) : null}
+              )}
 
               <Pressable
                 disabled={submitQuote.isPending}
-                onPress={validateAndQuote}
-                style={[
-                  styles.submitSheetBtn,
-                  submitQuote.isPending && styles.submitSheetBtnDisabled,
-                ]}>
+                onPress={() => submitQuote.mutate()}
+                style={[styles.submitSheetBtn, submitQuote.isPending && styles.btnDisabled]}>
                 {submitQuote.isPending ? (
-                  <Text style={styles.submitSheetBtnText}>
-                    Submitting...
-                  </Text>
+                  <ActivityIndicator size="small" color="#FFF" />
                 ) : (
-                  <Text style={styles.submitSheetBtnText}>
-                    Send Quotation
-                  </Text>
+                  <Text style={styles.submitSheetBtnText}>Send Quotation</Text>
                 )}
               </Pressable>
-
-              <View style={styles.sheetBottomSpacer} />
+              <View style={styles.modalSpacer} />
             </ScrollView>
           </View>
         </View>
@@ -702,178 +403,39 @@ function RFQDetailsScreen() {
   );
 }
 
-// ──────────────────────────────────────
-// Quotation Row
-// ──────────────────────────────────────
-function QuotationRow({
-  quotation,
-  rfqId,
-}: {
-  quotation: Quotation;
-  rfqId: string;
-}) {
-  const navigation = useNavigation<any>();
-  const queryClient = useQueryClient();
-  const seller =
-    typeof quotation.sellerId === 'object'
-      ? (quotation.sellerId as any)
-      : undefined;
-  const title =
-    quotation.title ??
-    seller?.companyName ??
-    seller?.businessName ??
-    'Quotation';
-  const statusCfg = getStatusConfig((quotation as any).status ?? 'submitted');
+// ─── Sub-Components ─────────────────────────────────────────────────────────
 
-  const requestRevision = useMutation({
-    mutationFn: () =>
-      patchQuotation(getId(quotation), {
-        action: 'request_revision',
-        reason: 'Buyer requested revision from RFQ workspace.',
-      }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: ['rfq-details', rfqId],
-      }),
-  });
-
-  return (
-    <Pressable
-      onPress={() =>
-        navigation.navigate('QuotationDetails', {
-          quotationId: getId(quotation),
-        })
-      }
-      style={styles.quotationRow}>
-      {/* Seller avatar placeholder */}
-      <View style={styles.quotationAvatar}>
-        <Icon name="cash-multiple" size={20} color={PALETTE.emerald} />
-      </View>
-
-      <View style={styles.quotationInfo}>
-        <Text style={styles.quotationTitle} numberOfLines={1}>
-          {title}
-        </Text>
-        <View style={styles.quotationMetaRow}>
-          <View
-            style={[
-              styles.quotationStatus,
-              { backgroundColor: statusCfg.bg },
-            ]}>
-            <Text
-              style={[
-                styles.quotationStatusText,
-                { color: statusCfg.color },
-              ]}>
-              {statusCfg.label}
-            </Text>
-          </View>
-          {(quotation as any).totalPrice ? (
-            <Text style={styles.quotationPrice}>
-              {(quotation as any).currency ?? '₹'}{' '}
-              {Number((quotation as any).totalPrice).toLocaleString(
-                'en-IN',
-              )}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <Pressable
-        onPress={() => requestRevision.mutate()}
-        style={styles.reviseBtn}
-        hitSlop={8}>
-        <Text style={styles.reviseBtnText}>Revise</Text>
-      </Pressable>
-
-      <Icon name="chevron-right" size={20} color={PALETTE.muted} />
-    </Pressable>
-  );
-}
-
-// ──────────────────────────────────────
-// Spec Badge
-// ──────────────────────────────────────
-function SpecBadge({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
+function SpecBadge({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <View style={styles.specBadge}>
-      <Icon name={icon} size={14} color={PALETTE.muted} />
-      <View style={styles.specBadgeContent}>
-        <Text style={styles.specBadgeLabel}>{label}</Text>
-        <Text style={styles.specBadgeValue} numberOfLines={1}>
-          {value}
-        </Text>
+      <Icon name={icon} size={14} color={P.muted} />
+      <View style={styles.specContent}>
+        <Text style={styles.specLabel}>{label}</Text>
+        <Text style={styles.specValue} numberOfLines={1}>{value}</Text>
       </View>
     </View>
   );
 }
 
-// ──────────────────────────────────────
-// Requirement Row
-// ──────────────────────────────────────
-function RequirementRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
-  const [expanded, setExpanded] = React.useState(false);
+function ReqRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  const [expanded, setExpanded] = useState(false);
   const isLong = value.length > 80;
-
   return (
-    <Pressable
-      onPress={() => isLong && setExpanded(!expanded)}
-      style={styles.requirementRow}>
-      <View style={styles.requirementIcon}>
-        <Icon name={icon} size={16} color={PALETTE.primary} />
+    <Pressable onPress={() => isLong && setExpanded(!expanded)} style={styles.reqRow}>
+      <View style={styles.reqIcon}>
+        <Icon name={icon} size={16} color={P.accent} />
       </View>
-      <View style={styles.requirementContent}>
-        <Text style={styles.requirementLabel}>{label}</Text>
-        <Text
-          style={styles.requirementValue}
-          numberOfLines={expanded ? undefined : 2}>
-          {value}
-        </Text>
-        {isLong ? (
-          <Text style={styles.expandText}>
-            {expanded ? 'Show less' : 'Show more'}
-          </Text>
-        ) : null}
+      <View style={styles.reqContent}>
+        <Text style={styles.reqLabel}>{label}</Text>
+        <Text style={styles.reqValue} numberOfLines={expanded ? undefined : 2}>{value}</Text>
+        {isLong && <Text style={styles.expandText}>{expanded ? 'Show less' : 'Show more'}</Text>}
       </View>
     </Pressable>
   );
 }
 
-// ──────────────────────────────────────
-// Form Field
-// ──────────────────────────────────────
-function FormField({
-  label,
-  value,
-  onChangeText,
-  multiline,
-  keyboardType,
-  compact,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  multiline?: boolean;
-  keyboardType?: 'default' | 'numeric';
-  compact?: boolean;
-  placeholder?: string;
+function FormField({ label, value, onChangeText, multiline, keyboardType, compact }: {
+  label: string; value: string; onChangeText: (v: string) => void; multiline?: boolean; keyboardType?: 'default' | 'numeric'; compact?: boolean;
 }) {
   return (
     <View style={[styles.formField, compact && styles.formFieldCompact]}>
@@ -883,485 +445,90 @@ function FormField({
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         multiline={multiline}
-        placeholder={placeholder}
-        placeholderTextColor={PALETTE.muted}
+        placeholderTextColor={P.muted}
         style={[styles.formInput, multiline && styles.formTextarea]}
       />
     </View>
   );
 }
 
-// ──────────────────────────────────────
-// Styles
-// ──────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  screen: {
-    backgroundColor: PALETTE.background,
-    flex: 1,
-  },
-
-  // ── Header ──
+  bottomSpacer: { height: 40 },
+  modalSpacer: { height: 30 },
+  screen: { flex: 1, backgroundColor: P.bg },
   header: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.surface,
-    flexDirection: 'row',
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.xxl,
-    ...shadow,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 56, paddingHorizontal: 14, paddingBottom: 10,
+    backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border,
   },
-  headerBtn: {
-    alignItems: 'center',
-    borderRadius: radii.pill,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  headerTitle: {
-    color: PALETTE.ink,
-    flex: 1,
-    fontSize: 17,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: P.text },
+  content: { padding: 14 },
 
-  content: {
-    padding: spacing.lg,
-    paddingBottom: 40,
-  },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 10 },
+  statusBadgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  // ── Hero Card ──
-  heroCard: {
-    backgroundColor: PALETTE.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
-    ...shadow,
-  },
-  heroTop: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  heroIconWrap: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.md,
-    height: 48,
-    justifyContent: 'center',
-    width: 48,
-  },
-  statusBadge: {
-    alignItems: 'center',
-    borderRadius: radii.pill,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  rfqTitle: {
-    color: PALETTE.ink,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-    lineHeight: 28,
-  },
-  rfqDescription: {
-    color: PALETTE.text,
-    fontSize: 14,
-    fontWeight: '500',
-    lineHeight: 21,
-    marginTop: spacing.sm,
-  },
+  rfqTitle: { fontSize: 20, fontWeight: '700', color: P.text, marginBottom: 6 },
+  rfqDesc: { fontSize: 13, color: P.textSecondary, lineHeight: 20, marginBottom: 14 },
 
-  // ── Specs Grid ──
-  specsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  specBadge: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.cardMuted,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    padding: spacing.md,
-    width: '47%',
-  },
-  specBadgeContent: {
-    flex: 1,
-  },
-  specBadgeLabel: {
-    color: PALETTE.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  specBadgeValue: {
-    color: PALETTE.ink,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 2,
-  },
+  specsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  specBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: P.surface, borderRadius: 12, padding: 12, width: '47%', borderWidth: 1, borderColor: P.border },
+  specContent: { flex: 1 },
+  specLabel: { fontSize: 9, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  specValue: { fontSize: 13, fontWeight: '700', color: P.text, marginTop: 2 },
 
-  // ── Action Row ──
-  actionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  actionBtn: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.surface,
-    borderRadius: radii.lg,
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    ...shadow,
-  },
-  actionBtnText: {
-    color: PALETTE.primary,
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  submitQuoteBtn: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primary,
-    borderRadius: radii.lg,
-    flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    shadowColor: PALETTE.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  submitQuoteBtnText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '800',
-  },
+  actionRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: P.surface, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: P.border },
+  actionBtnText: { fontSize: 12, fontWeight: '600', color: P.accent },
+  quoteBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: P.primary, borderRadius: 12, paddingVertical: 12 },
+  quoteBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
 
-  // ── Section Card ──
-  sectionCard: {
-    backgroundColor: PALETTE.surface,
-    borderRadius: radii.lg,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
-    ...shadow,
-  },
-  sectionHeaderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    color: PALETTE.ink,
-    fontSize: 17,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  countBadge: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.pill,
-    justifyContent: 'center',
-    minWidth: 24,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  countBadgeText: {
-    color: PALETTE.primary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
+  card: { backgroundColor: P.surface, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: P.border },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: P.text },
+  countBadge: { backgroundColor: P.accentLight, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  countBadgeText: { fontSize: 11, fontWeight: '700', color: P.accent },
 
-  // ── Requirements ──
-  requirementRow: {
-    borderTopColor: PALETTE.faint,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  requirementIcon: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.sm,
-    height: 32,
-    justifyContent: 'center',
-    marginTop: 2,
-    width: 32,
-  },
-  requirementContent: {
-    flex: 1,
-  },
-  requirementLabel: {
-    color: PALETTE.muted,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  requirementValue: {
-    color: PALETTE.text,
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 19,
-    marginTop: 2,
-  },
-  expandText: {
-    color: PALETTE.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 4,
-  },
+  reqRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: P.border },
+  reqIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: P.accentLight, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  reqContent: { flex: 1 },
+  reqLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  reqValue: { fontSize: 13, color: P.textSecondary, marginTop: 2, lineHeight: 18 },
+  expandText: { fontSize: 11, color: P.accent, fontWeight: '600', marginTop: 4 },
 
-  // ── Attachments ──
-  attachmentRow: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.cardMuted,
-    borderRadius: radii.md,
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    padding: spacing.md,
-  },
-  attachmentText: {
-    color: PALETTE.sky,
-    flex: 1,
-    fontSize: 12,
-    fontWeight: '700',
-  },
+  quoteRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: P.border },
+  quoteIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: P.successLight, alignItems: 'center', justifyContent: 'center' },
+  quoteInfo: { flex: 1 },
+  quoteTitle: { fontSize: 13, fontWeight: '600', color: P.text },
+  quoteMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  quoteStatus: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
+  quoteStatusText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  quotePrice: { fontSize: 11, fontWeight: '600', color: P.textSecondary },
 
-  // ── Quotations ──
-  quotationRow: {
-    alignItems: 'center',
-    borderTopColor: PALETTE.faint,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  quotationAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#E8F8EE',
-    borderRadius: radii.md,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  quotationInfo: {
-    flex: 1,
-  },
-  quotationTitle: {
-    color: PALETTE.ink,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  quotationMetaRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: 4,
-  },
-  quotationStatus: {
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-  },
-  quotationStatusText: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  quotationPrice: {
-    color: PALETTE.muted,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  reviseBtn: {
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-  },
-  reviseBtnText: {
-    color: PALETTE.primary,
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: P.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '85%' },
+  sheetHandle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: P.border, marginTop: 12 },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, paddingBottom: 8 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: P.text },
+  sheetClose: { width: 32, height: 32, borderRadius: 8, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center' },
+  sheetScroll: { paddingHorizontal: 16 },
 
-  // ── Chats ──
-  chatRow: {
-    alignItems: 'center',
-    borderTopColor: PALETTE.faint,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  chatIconWrap: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.md,
-    height: 40,
-    justifyContent: 'center',
-    width: 40,
-  },
-  chatInfo: {
-    flex: 1,
-  },
-  chatTitle: {
-    color: PALETTE.ink,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  chatMeta: {
-    color: PALETTE.muted,
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
+  formRow: { flexDirection: 'row', gap: 10 },
+  formField: { marginBottom: 12 },
+  formFieldCompact: { flex: 1 },
+  formLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  formInput: { backgroundColor: P.inputBg, borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 14, color: P.text, borderWidth: 1, borderColor: P.border },
+  formTextarea: { height: 90, paddingTop: 12, textAlignVertical: 'top' },
 
-  // ── Modal Sheet ──
-  modalBackdrop: {
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: PALETTE.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    backgroundColor: PALETTE.faint,
-    borderRadius: 2,
-    height: 4,
-    marginTop: spacing.md,
-    width: 36,
-  },
-  sheetHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    padding: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  sheetTitle: {
-    color: PALETTE.ink,
-    flex: 1,
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  sheetCloseBtn: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.cardMuted,
-    borderRadius: radii.pill,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  sheetScroll: {
-    paddingHorizontal: spacing.lg,
-  },
+  pricePreview: { backgroundColor: P.accentLight, borderRadius: 12, padding: 14, marginBottom: 14 },
+  pricePreviewLabel: { fontSize: 10, fontWeight: '700', color: P.accent, textTransform: 'uppercase' },
+  pricePreviewValue: { fontSize: 24, fontWeight: '800', color: P.text, marginTop: 4 },
 
-  // ── Form ──
-  formRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  formField: {
-    marginBottom: spacing.md,
-  },
-  formFieldCompact: {
-    flex: 1,
-  },
-  formLabel: {
-    color: PALETTE.muted,
-    fontSize: 11,
-    fontWeight: '800',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-  },
-  formInput: {
-    backgroundColor: PALETTE.cardMuted,
-    borderRadius: radii.md,
-    color: PALETTE.ink,
-    fontSize: 15,
-    fontWeight: '700',
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-  },
-  formTextarea: {
-    minHeight: 100,
-    paddingTop: spacing.md,
-    textAlignVertical: 'top',
-  },
-
-  // ── Price Preview ──
-  pricePreview: {
-    backgroundColor: PALETTE.primaryLight,
-    borderRadius: radii.md,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-  },
-  pricePreviewLabel: {
-    color: PALETTE.primary,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  pricePreviewValue: {
-    color: PALETTE.primaryDark,
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 2,
-  },
-
-  // ── Submit Sheet Button ──
-  submitSheetBtn: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.primary,
-    borderRadius: radii.lg,
-    justifyContent: 'center',
-    minHeight: 52,
-    shadowColor: PALETTE.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  submitSheetBtnDisabled: {
-    opacity: 0.5,
-  },
-  submitSheetBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-
-  sheetBottomSpacer: {
-    height: 40,
-  },
-
-  bottomSpacer: {
-    height: 40,
-  },
+  submitSheetBtn: { backgroundColor: P.primary, borderRadius: 14, alignItems: 'center', justifyContent: 'center', height: 50 },
+  submitSheetBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  btnDisabled: { opacity: 0.5 },
 });
 
 export default RFQDetailsScreen;

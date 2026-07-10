@@ -21,7 +21,6 @@ import {
   uploadSellerDocument,
 } from '../api/marketplace';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { radii, spacing } from '../theme';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -158,6 +157,8 @@ function SellerOnboardingScreen() {
   const [currentStep, setCurrentStep] = useState(1);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrated = useRef(false);
+  const userEdited = useRef(false);
 
   const onboarding = useQuery({
     queryKey: ['seller-onboarding'],
@@ -168,13 +169,13 @@ function SellerOnboardingScreen() {
 
   useEffect(() => {
     const seller = onboarding.data?.seller as Record<string, any> | undefined;
-    if (!seller) return;
+    if (!seller || hydrated.current) return;
 
     setForm({
       companyName: seller.companyName ?? seller.businessName ?? '',
       companyType: seller.companyType ?? 'manufacturer',
-      businessEmail: seller.businessEmail ?? seller.businessPhone ?? '',
-      businessPhone: seller.businessPhone ?? seller.businessPhone ?? '',
+      businessEmail: seller.businessEmail ?? '',
+      businessPhone: seller.businessPhone ?? '',
       gstNumber: seller.gstNumber ?? '',
       panNumber: seller.panNumber ?? '',
       street: seller.address?.street ?? '',
@@ -184,6 +185,7 @@ function SellerOnboardingScreen() {
       pincode: seller.address?.pincode ?? '',
     });
 
+    hydrated.current = true;
     const completion = onboarding.data?.completion as Record<string, any> | undefined;
     if (completion) {
       const pct =
@@ -208,12 +210,13 @@ function SellerOnboardingScreen() {
   // ── Save mutation ──────────────────────────────────────────────────────
 
   const save = useMutation({
-  mutationFn: async (_draft: boolean) => {
-    return saveSellerOnboarding(buildPayload(form));
+  mutationFn: async (draft: boolean) => {
+    return saveSellerOnboarding(buildPayload(form), !draft);
   },
   onSuccess: async (_result: unknown, draft: boolean) => {
-    await queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
+    userEdited.current = false;
     if (!draft) {
+      await queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
       Alert.alert('✓ Submitted!', 'Your business setup has been submitted for verification.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
@@ -222,17 +225,21 @@ function SellerOnboardingScreen() {
   onError: (error: unknown) =>
     Alert.alert('Save Failed', error instanceof Error ? error.message : 'Unable to save.'),
 });
+  const saveDraftRef = useRef(save.mutate);
+  useEffect(() => {
+    saveDraftRef.current = save.mutate;
+  }, [save.mutate]);
   // ── Auto-save draft ────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!onboarding.data?.seller) return;
+    if (!hydrated.current || !userEdited.current) return;
 
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
     }
 
     autoSaveTimer.current = setTimeout(() => {
-      save.mutate(true);
+      saveDraftRef.current(true);
     }, 1500);
 
     return () => {
@@ -276,6 +283,7 @@ function SellerOnboardingScreen() {
   );
 
   const updateField = useCallback((key: keyof FormData, value: string) => {
+    userEdited.current = true;
     setForm(prev => ({ ...prev, [key]: value }));
   }, []);
 
@@ -600,7 +608,7 @@ function SellerOnboardingScreen() {
             </Pressable>
           </View>
 
-          <View style={{ height: 40 }} />
+          <View style={styles.bottomSpacer} />
         </Animated.View>
       </ScrollView>
     </View>
@@ -628,6 +636,7 @@ function InputField({
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  bottomSpacer: { height: 40 },
   screen: { flex: 1, backgroundColor: P.bg },
   header: {
     flexDirection: 'row',

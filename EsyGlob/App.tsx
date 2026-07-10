@@ -57,7 +57,7 @@ export type RootStackParamList = {
   Security: undefined;
   Wallet: undefined;
   ProductDetails: { productId: string };
-  ProductListing: { category?: string; categoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
+  ProductListing: { category?: string; categoryName?: string; subcategory?: string; subcategoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
   Sellers: undefined;
   SellerDetails: { sellerId: string; sellerName?: string };
   ChatDetails: { chatId: string; title?: string };

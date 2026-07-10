@@ -119,7 +119,10 @@ export async function toggleSavedItem(input: { type: SavedItemType; itemId: stri
 }
 
 export async function markAllNotificationsRead() {
-  const payload = await apiRequest('/notifications/bulk', { method: 'PATCH' });
+  const payload = await apiRequest('/notifications/bulk', {
+    method: 'PATCH',
+    body: { action: 'mark_all_read' },
+  });
   return unwrapData(payload);
 }
 
@@ -134,7 +137,7 @@ export async function deleteNotification(notificationId: string) {
 }
 
 export async function clearReadNotifications() {
-  const payload = await apiRequest('/notifications', { method: 'DELETE', query: { scope: 'read' } });
+  const payload = await apiRequest('/notifications/bulk', { method: 'DELETE', query: { scope: 'read' } });
   return unwrapData(payload);
 }
 

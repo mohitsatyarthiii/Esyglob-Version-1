@@ -18,10 +18,10 @@ import {
   acceptQuotation,
   fetchQuotationDetails,
   patchQuotation,
+  respondToQuotation,
 } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { radii, spacing } from '../theme';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -62,9 +62,7 @@ const STATUS_CONFIG: Record<string, { bg: string; color: string; icon: string; l
 
 function getStatusConfig(status: string) {
   return STATUS_CONFIG[status] ?? {
-    bg: '#F1F5F9',
-    color: '#64748B',
-    icon: 'information',
+    bg: '#F1F5F9', color: '#64748B', icon: 'information',
     label: (status || 'sent').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
   };
 }
@@ -91,38 +89,59 @@ function QuotationDetailsScreen() {
     staleTime: 30_000,
   });
 
+  // ── Accept ────────────────────────────────────────────────────────────
+
   const accept = useMutation({
     mutationFn: () => acceptQuotation(quotationId),
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] });
-      const orderId = typeof result?.orderId === 'string' ? result.orderId : result?.orderId?._id;
-      Alert.alert('✓ Quotation Accepted', orderId ? 'Order created successfully.' : 'Status updated.');
-      if (orderId) navigation.navigate('OrderDetails', { orderId });
+      const orderId =
+        result?.tradeOrder?._id ?? result?.tradeOrder?.id ?? result?.orderId;
+      Alert.alert('✓ Accepted', orderId ? 'Order created.' : 'Status updated.', [
+        orderId
+          ? { text: 'View Order', onPress: () => navigation.navigate('OrderDetails', { orderId }) }
+          : { text: 'OK' },
+      ]);
     },
     onError: (error: unknown) =>
       Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to accept.'),
   });
 
+  // ── Revise / Counter / Reject ─────────────────────────────────────────
+
   const revise = useMutation({
     mutationFn: async (action: 'request_revision' | 'counter_offer' | 'reject') => {
-      const body: Record<string, unknown> = action === 'reject'
-        ? { status: 'rejected', rejectionReason: actionText || 'Buyer rejected from mobile.' }
-        : { action, reason: actionText || 'Buyer requested update from mobile.' };
+      if (action === 'reject') {
+        // Use respondToQuotation for reject
+        return respondToQuotation(quotationId, 'reject', {
+          reason: actionText || 'Buyer rejected this quotation.',
+        });
+      }
+      // Use patchQuotation for revise/counter
+      const body: Record<string, unknown> = {
+        action,
+        reason: actionText || 'Buyer requested an update.',
+      };
       return patchQuotation(quotationId, body);
     },
     onSuccess: () => {
       setActionOpen(null);
       setActionText('');
       queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] });
-      Alert.alert('✓ Sent', 'Quotation updated successfully.');
+      Alert.alert('✓ Sent', 'Quotation updated.');
     },
     onError: (error: unknown) =>
       Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to update.'),
   });
 
-  if (quotation.isLoading) return <LoadingState label="Loading quotation..." />;
+  if (quotation.isLoading) return <LoadingState label="Loading..." />;
   if (quotation.isError || !quotation.data)
-    return <ErrorState message={(quotation.error as Error)?.message ?? 'Not found'} onRetry={() => quotation.refetch()} />;
+    return (
+      <ErrorState
+        message={(quotation.error as Error)?.message ?? 'Not found'}
+        onRetry={() => quotation.refetch()}
+      />
+    );
 
   const item = quotation.data as any;
   const buyerView = activeRole !== 'seller';
@@ -142,9 +161,9 @@ function QuotationDetailsScreen() {
   };
 
   const actionPlaceholders: Record<string, string> = {
-    counter_offer: 'Describe your counter offer — target price, quantity, terms.',
-    request_revision: 'What needs to be revised?',
-    reject: 'Why are you rejecting this quotation?',
+    counter_offer: 'Describe your counter offer...',
+    request_revision: 'What needs revision?',
+    reject: 'Reason for rejection?',
   };
 
   return (
@@ -163,17 +182,17 @@ function QuotationDetailsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Status Badge */}
+        {/* Status */}
         <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
           <Icon name={statusCfg.icon} size={14} color={statusCfg.color} />
           <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
         </View>
 
-        {/* Title & Supplier */}
+        {/* Title */}
         <Text style={styles.title}>{title}</Text>
         {seller?.companyName && <Text style={styles.supplierName}>{seller.companyName}</Text>}
 
-        {/* Price Card */}
+        {/* Price */}
         {item.totalPrice || item.unitPrice ? (
           <View style={styles.priceCard}>
             <Text style={styles.priceLabel}>Total Value</Text>
@@ -190,8 +209,8 @@ function QuotationDetailsScreen() {
           <Text style={styles.pricePending}>Price on request</Text>
         )}
 
-        {/* Actions — Buyer only */}
-        {buyerView ? (
+        {/* Buyer Actions */}
+        {buyerView && (
           <View style={styles.actionSection}>
             <Pressable
               disabled={accept.isPending || !canAccept}
@@ -222,10 +241,13 @@ function QuotationDetailsScreen() {
               </Pressable>
             </View>
           </View>
-        ) : (
+        )}
+
+        {/* Seller Info */}
+        {!buyerView && (
           <View style={styles.infoBanner}>
             <Icon name="information" size={16} color={P.accent} />
-            <Text style={styles.infoBannerText}>Use the seller dashboard to manage this quotation.</Text>
+            <Text style={styles.infoBannerText}>Manage from your seller dashboard or chat.</Text>
           </View>
         )}
 
@@ -233,7 +255,7 @@ function QuotationDetailsScreen() {
         {buyerView && !canAccept && (
           <View style={styles.warningBanner}>
             <Icon name="alert-circle" size={16} color={P.danger} />
-            <Text style={styles.warningBannerText}>No product linked — cannot create order yet.</Text>
+            <Text style={styles.warningBannerText}>No product linked — cannot create order.</Text>
           </View>
         )}
 
@@ -246,7 +268,9 @@ function QuotationDetailsScreen() {
             </Pressable>
           )}
           {nextProductId && (
-            <Pressable onPress={() => navigation.navigate('OrderCheckout', { mode: 'trade', quotationId, productId: nextProductId })} style={styles.quickLink}>
+            <Pressable
+              onPress={() => navigation.navigate('OrderCheckout', { mode: 'trade', quotationId, productId: nextProductId })}
+              style={styles.quickLink}>
               <Icon name="cart-arrow-right" size={18} color={P.accent} />
               <Text style={styles.quickLinkText}>Create Order</Text>
             </Pressable>
@@ -324,11 +348,7 @@ function QuotationDetailsScreen() {
               disabled={!actionOpen || revise.isPending}
               onPress={() => actionOpen && revise.mutate(actionOpen as 'request_revision' | 'counter_offer' | 'reject')}
               style={[styles.sheetSubmit, revise.isPending && styles.btnDisabled]}>
-              {revise.isPending ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Text style={styles.sheetSubmitText}>Send</Text>
-              )}
+              {revise.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.sheetSubmitText}>Send</Text>}
             </Pressable>
           </View>
         </View>
@@ -343,9 +363,7 @@ function DetailRow({ icon, label, value, multiline }: { icon: string; label: str
   if (!value) return null;
   return (
     <View style={styles.detailRow}>
-      <View style={styles.detailIcon}>
-        <Icon name={icon} size={16} color={P.muted} />
-      </View>
+      <View style={styles.detailIcon}><Icon name={icon} size={16} color={P.muted} /></View>
       <View style={styles.detailContent}>
         <Text style={styles.detailLabel}>{label}</Text>
         <Text style={styles.detailValue} numberOfLines={multiline ? undefined : 2}>{value}</Text>
@@ -358,68 +376,40 @@ function DetailRow({ icon, label, value, multiline }: { icon: string; label: str
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: P.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 14, paddingBottom: 10,
-    backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 56, paddingHorizontal: 14, paddingBottom: 10, backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border },
   backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '700', color: P.text },
   content: { padding: 14 },
-
-  // Status
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 10 },
   statusBadgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  // Title
   title: { fontSize: 20, fontWeight: '700', color: P.text, marginBottom: 4 },
   supplierName: { fontSize: 13, color: P.textSecondary, marginBottom: 14 },
-
-  // Price
   priceCard: { backgroundColor: P.accentLight, borderRadius: 14, padding: 16, marginBottom: 16 },
   priceLabel: { fontSize: 10, fontWeight: '700', color: P.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
   priceValue: { fontSize: 28, fontWeight: '800', color: P.text, marginTop: 4 },
   priceSub: { fontSize: 12, color: P.textSecondary, marginTop: 4 },
   pricePending: { fontSize: 14, color: P.muted, fontStyle: 'italic', marginBottom: 16 },
-
-  // Actions
   actionSection: { gap: 10, marginBottom: 16 },
-  acceptBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: P.success, borderRadius: 14, height: 50,
-  },
+  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: P.success, borderRadius: 14, height: 50 },
   acceptBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   secondaryRow: { flexDirection: 'row', gap: 8 },
-  outlineBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
-    backgroundColor: P.surface, borderRadius: 12, height: 42, borderWidth: 1, borderColor: P.border,
-  },
+  outlineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: P.surface, borderRadius: 12, height: 42, borderWidth: 1, borderColor: P.border },
   outlineBtnText: { fontSize: 12, fontWeight: '600' },
   btnDisabled: { opacity: 0.5 },
-
-  // Banners
   infoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: P.accentLight, borderRadius: 10, padding: 12, marginBottom: 12 },
   infoBannerText: { flex: 1, fontSize: 11, color: P.textSecondary },
   warningBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: P.dangerLight, borderRadius: 10, padding: 12, marginBottom: 12 },
   warningBannerText: { flex: 1, fontSize: 11, color: P.danger },
-
-  // Quick Links
   quickLinks: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   quickLink: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: P.surface, borderRadius: 12, paddingVertical: 14, borderWidth: 1, borderColor: P.border },
   quickLinkText: { fontSize: 12, fontWeight: '600', color: P.accent },
-
-  // Card
   card: { backgroundColor: P.surface, borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: P.border },
   cardTitle: { fontSize: 14, fontWeight: '700', color: P.text, marginBottom: 10 },
-
-  // Detail Rows
   detailRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: P.border },
   detailIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   detailContent: { flex: 1 },
   detailLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   detailValue: { fontSize: 13, fontWeight: '500', color: P.text, marginTop: 2, lineHeight: 18 },
-
-  // Modal
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   sheet: { backgroundColor: P.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   sheetHandle: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: P.border, marginTop: 12 },

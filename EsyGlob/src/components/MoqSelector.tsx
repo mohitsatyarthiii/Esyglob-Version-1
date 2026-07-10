@@ -29,7 +29,7 @@ export default function MoqSelector({
     <View style={styles.card}>
       <Text style={styles.title}>SELECT QUANTITY</Text>
       <View style={styles.grid}>
-        {tiers.map((tier, i) => {
+        {tiers.slice(0, 3).map((tier, i) => {
           const isActive = selectedQty === tier.minQty;
           const label = tier.maxQty
             ? `${tier.minQty}-${tier.maxQty} ${tier.unit || 'pcs'}`
@@ -79,13 +79,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   grid: {
+    flexDirection: 'row',
     gap: 8,
   },
   tier: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: 10,
     borderRadius: 10,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,

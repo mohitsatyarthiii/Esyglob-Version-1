@@ -24,6 +24,34 @@ class ProductRepository {
     return mongoose.Types.ObjectId.isValid(id);
   }
 
+  static async resolveListingTaxonomy(category, subcategory) {
+    let categoryDoc = null;
+    let subcategoryDoc = null;
+
+    if (category) {
+      const value = String(category).trim();
+      const filter = this.isValidId(value)
+        ? { _id: value, isActive: true }
+        : { isActive: true, $or: [{ slug: value.toLowerCase() }, { name: value }] };
+      categoryDoc = await Category.findOne(filter).select('_id name slug').lean().exec();
+    }
+
+    if (subcategory) {
+      const value = String(subcategory).trim();
+      const filter = this.isValidId(value)
+        ? { _id: value, isActive: true }
+        : { isActive: true, $or: [{ slug: value.toLowerCase() }, { name: value }] };
+
+      if (categoryDoc) {
+        filter.categoryId = categoryDoc._id;
+      }
+
+      subcategoryDoc = await Subcategory.findOne(filter).select('_id categoryId name slug').lean().exec();
+    }
+
+    return { categoryDoc, subcategoryDoc };
+  }
+
   static async getPublicProductCount(filter = {}) {
     const cacheKey = `count:${JSON.stringify(filter)}`;
     const cached = cache.counts[cacheKey];

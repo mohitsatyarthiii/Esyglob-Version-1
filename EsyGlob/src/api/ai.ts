@@ -145,12 +145,12 @@ export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record
 }
 
 export async function fetchAIProviderStatus() {
-  const payload = await apiRequest('/ai-chat/stream', { query: { status: true } });
+  const payload = await apiRequest('/ai-chat/status');
   return unwrapData(payload);
 }
 
 export async function generateMarketInsight(input: MarketInsightInput): Promise<MarketInsightReport> {
-  const payload = await apiRequest('/ai/market-insights', { method: 'POST', body: input });
+  const payload = await apiRequest('/market-insights', { method: 'POST', body: input });
   const data = unwrapData<{ report?: MarketInsightReport } | MarketInsightReport>(payload);
   return (data && typeof data === 'object' && 'report' in data ? data.report : data) as MarketInsightReport;
-}
+} 

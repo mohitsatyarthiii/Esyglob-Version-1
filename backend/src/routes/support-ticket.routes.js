@@ -10,6 +10,9 @@ router.use(requireAuth);
 // GET - List support tickets
 router.get('/', SupportTicketController.list);
 
+// GET - Fetch one ticket owned by the current user
+router.get('/:ticketId', SupportTicketController.getById);
+
 // POST - Create support ticket
 router.post('/', SupportTicketController.create);
 

@@ -130,6 +130,14 @@ const chatSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    buyerDeletedAt: {
+      type: Date,
+      default: null,
+    },
+    sellerDeletedAt: {
+      type: Date,
+      default: null,
+    },
     orderEligibility: [
       {
         productId: {
@@ -161,6 +169,8 @@ chatSchema.index({ buyerId: 1, lastMessageAt: -1 });
 chatSchema.index({ sellerId: 1, lastMessageAt: -1 });
 chatSchema.index({ buyerId: 1, isActive: 1, lastMessageAt: -1 });
 chatSchema.index({ sellerId: 1, isActive: 1, lastMessageAt: -1 });
+chatSchema.index({ buyerId: 1, buyerDeletedAt: 1, lastMessageAt: -1 });
+chatSchema.index({ sellerId: 1, sellerDeletedAt: 1, lastMessageAt: -1 });
 chatSchema.index({ buyerId: 1, buyerArchivedAt: 1, buyerBlockedAt: 1, buyerPinnedAt: -1, lastMessageAt: -1 });
 chatSchema.index({ sellerId: 1, sellerArchivedAt: 1, sellerBlockedAt: 1, sellerPinnedAt: -1, lastMessageAt: -1 });
 chatSchema.index({ rfqId: 1 });

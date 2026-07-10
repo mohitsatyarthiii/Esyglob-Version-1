@@ -10,6 +10,9 @@ class ProductService {
       type,
       category,
       subcategory,
+      seller,
+      minPrice,
+      maxPrice,
       search,
       page: rawPage = 1,
       limit: rawLimit = 12,
@@ -20,19 +23,45 @@ class ProductService {
     // Parse pagination - strict limits
     const page = Math.max(1, parseInt(rawPage) || 1);
     const limit = Math.min(Math.max(1, parseInt(rawLimit) || 12), 60);
+    const sortAliases = {
+      latest: ['createdAt', -1],
+      rating: ['averageRating', -1],
+      price_asc: ['price', 1],
+      price_desc: ['price', -1],
+    };
     const allowedSorts = new Set(['createdAt', 'price', 'averageRating', 'totalOrders', 'minimumOrderQuantity']);
-    const sort = allowedSorts.has(rawSort) ? rawSort : 'createdAt';
-    const order = rawOrder === 'asc' ? 1 : -1;
+    const [sort, aliasOrder] = sortAliases[rawSort] || [allowedSorts.has(rawSort) ? rawSort : 'createdAt', null];
+    const order = aliasOrder ?? (rawOrder === 'asc' ? 1 : -1);
 
     // Build filter - EXACT matches, no regex
     const filter = {};
 
-    if (category && category !== 'undefined' && category !== 'null') {
-      filter.category = category;
+    const validCategory = category && category !== 'undefined' && category !== 'null' ? category : null;
+    const validSubcategory = subcategory && subcategory !== 'undefined' && subcategory !== 'null' ? subcategory : null;
+    if (validCategory || validSubcategory) {
+      const { categoryDoc, subcategoryDoc } = await ProductRepository.resolveListingTaxonomy(
+        validCategory,
+        validSubcategory
+      );
+
+      if (validCategory) {
+        filter[categoryDoc ? 'categoryId' : 'category'] = categoryDoc?._id || validCategory;
+      }
+      if (validSubcategory) {
+        filter[subcategoryDoc ? 'subcategoryId' : 'subcategory'] = subcategoryDoc?._id || validSubcategory;
+      }
     }
 
-    if (subcategory && subcategory !== 'undefined' && subcategory !== 'null') {
-      filter.subcategory = subcategory;
+    if (seller && seller !== 'undefined' && seller !== 'null' && mongoose.Types.ObjectId.isValid(seller)) {
+      filter.sellerId = new mongoose.Types.ObjectId(seller);
+    }
+
+    const parsedMinPrice = Number(minPrice);
+    const parsedMaxPrice = Number(maxPrice);
+    if (Number.isFinite(parsedMinPrice) || Number.isFinite(parsedMaxPrice)) {
+      filter.price = {};
+      if (Number.isFinite(parsedMinPrice)) filter.price.$gte = parsedMinPrice;
+      if (Number.isFinite(parsedMaxPrice)) filter.price.$lte = parsedMaxPrice;
     }
 
     if (search && search.trim()) {

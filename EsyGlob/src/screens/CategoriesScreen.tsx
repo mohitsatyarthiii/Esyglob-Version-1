@@ -76,6 +76,16 @@ const CategoriesScreen = () => {
     });
   }, [navigation]);
 
+  const handleSubcategoryPress = useCallback((subcategory: Category) => {
+    if (!selectedCategory) return;
+    navigation.navigate('ProductListing', {
+      category: selectedCategory.name ?? selectedCategory.slug ?? getId(selectedCategory),
+      categoryName: selectedCategory.name,
+      subcategory: subcategory.name ?? subcategory.slug ?? getId(subcategory),
+      subcategoryName: subcategory.name,
+    });
+  }, [navigation, selectedCategory]);
+
   const handleSidebarItemPress = useCallback((itemId: string) => {
     setSelectedId(itemId);
   }, []);
@@ -195,7 +205,9 @@ const CategoriesScreen = () => {
                   <Text style={styles.sectionTitle}>
                     {selectedCategory?.name || 'All Categories'}
                   </Text>
-                  <Pressable style={styles.viewAllButton}>
+                  <Pressable
+                    onPress={() => selectedCategory && handleCategoryPress(selectedCategory)}
+                    style={styles.viewAllButton}>
                     <Text style={styles.viewAllText}>View All</Text>
                     <Icon name="chevron-right" size={14} color={colors.primary} />
                   </Pressable>
@@ -204,7 +216,9 @@ const CategoriesScreen = () => {
             }
             renderItem={({ item }) => (
               <Pressable
-                onPress={() => handleCategoryPress(item)}
+                onPress={() => selectedCategory?.subcategories?.length
+                  ? handleSubcategoryPress(item)
+                  : handleCategoryPress(item)}
                 style={({ pressed }) => [
                   styles.categoryCard,
                   pressed && styles.categoryCardPressed,

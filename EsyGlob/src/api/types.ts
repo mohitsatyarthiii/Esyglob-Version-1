@@ -13,6 +13,7 @@ export type CurrentUser = {
   buyerId?: string;
   profileImage?: string;
   avatar?: string;
+  avatarUrl?: string;
   image?: string;
 };
 
@@ -21,6 +22,7 @@ export type ApiEnvelope<T> = {
   data?: T;
   user?: CurrentUser;
   message?: string;
+  description?: string;
   error?: string;
   errors?: unknown;
   [key: string]: unknown;
@@ -133,8 +135,8 @@ export type Product = {
   responseRate?: number | string;
   createdAt?: string;
   samplePrice?: number | string;
-  leadTime?: string;
-  deliveryTime?: string;
+  leadTime?: string | { value?: number; unit?: string };
+  deliveryTime?: string | { value?: number; unit?: string };
   orderType?: string;
   productType?: string;
   paymentTerms?: string[] | string;
@@ -145,7 +147,13 @@ export type Product = {
   directOrderEnabled?: boolean;
   orderEnabled?: boolean;
   trustedSellerOnly?: boolean;
-  certifications?: string[] | string;
+  certifications?: Array<string | {
+    name?: string;
+    issuer?: string;
+    certificateNumber?: string;
+    documentUrl?: string;
+    validUntil?: string;
+  }> | string;
   packaging?: Record<string, unknown> | string;
   shipping?: Record<string, unknown> | string;
   manufacturingDetails?: Record<string, unknown> | string;
@@ -268,6 +276,7 @@ export type Quotation = {
   attachments?: string[];
   chatId?: Chat | string;
   orderId?: Order | string;
+  tradeOrderId?: Order | string;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -340,6 +349,7 @@ export type Chat = {
   isPinned?: boolean;
   isMuted?: boolean;
   isDeletedForMe?: boolean;
+  label?: string;
   groupName?: string;
   groupMembers?: Array<CurrentUser | string>;
   groupOwnerId?: CurrentUser | string;
@@ -444,6 +454,7 @@ export type NotificationItem = {
   id?: string;
   title?: string;
   message?: string;
+  description?: string;
   type?: string;
   notificationType?: string;
   category?: string;
@@ -469,10 +480,6 @@ export type NotificationItem = {
 export type ProductDetails = Product & {
   specifications?: Record<string, string>;
   tags?: string[];
-  leadTime?: {
-    value: number;
-    unit: string;
-  };
 };
 
 // MOQ Tier for price selection

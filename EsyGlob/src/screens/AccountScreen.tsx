@@ -211,11 +211,11 @@ function buildBadgeMap(
 
   if (rfqCount > 0) {
     map['My RFQs'] = String(rfqCount);
-    map['RFQs'] = String(rfqCount);
+    map.RFQs = String(rfqCount);
   }
 
   if (chatCount > 0) {
-    map['Messages'] = String(chatCount);
+    map.Messages = String(chatCount);
   }
 
   return map;

@@ -14,6 +14,8 @@ import { logPerf, perfNow } from '../utils/performance';
 type SearchParams = {
   category?: string;
   categoryName?: string;
+  subcategory?: string;
+  subcategoryName?: string;
   q?: string;
   seller?: string;
   sellerName?: string;
@@ -36,6 +38,8 @@ function SearchScreen() {
   const [submittedQuery, setSubmittedQuery] = useState(params.q ?? '');
   const [category, setCategory] = useState(params.category ?? '');
   const [categoryName, setCategoryName] = useState(params.categoryName ?? '');
+  const [subcategory, setSubcategory] = useState(params.subcategory ?? '');
+  const [subcategoryName, setSubcategoryName] = useState(params.subcategoryName ?? '');
   const [seller, setSeller] = useState(params.seller ?? '');
   const [sellerName, setSellerName] = useState(params.sellerName ?? '');
   const [sort, setSort] = useState('latest');
@@ -48,20 +52,23 @@ function SearchScreen() {
   useEffect(() => {
     setCategory(params.category ?? '');
     setCategoryName(params.categoryName ?? '');
+    setSubcategory(params.subcategory ?? '');
+    setSubcategoryName(params.subcategoryName ?? '');
     setSeller(params.seller ?? '');
     setSellerName(params.sellerName ?? '');
     if (params.q !== undefined) {
       setQuery(params.q);
       setSubmittedQuery(params.q);
     }
-  }, [params.category, params.categoryName, params.q, params.seller, params.sellerName]);
+  }, [params.category, params.categoryName, params.q, params.seller, params.sellerName, params.subcategory, params.subcategoryName]);
 
   const products = useInfiniteQuery({
-    queryKey: ['products', submittedQuery, category, seller, sort, verifiedOnly, debouncedMinPrice, debouncedMaxPrice],
+    queryKey: ['products', submittedQuery, category, subcategory, seller, sort, verifiedOnly, debouncedMinPrice, debouncedMaxPrice],
     queryFn: ({ pageParam }) =>
       fetchProducts({
         q: submittedQuery,
         category,
+        subcategory,
         seller,
         sort,
         verifiedOnly,
@@ -103,6 +110,13 @@ function SearchScreen() {
   const clearCategory = () => {
     setCategory('');
     setCategoryName('');
+    setSubcategory('');
+    setSubcategoryName('');
+  };
+
+  const clearSubcategory = () => {
+    setSubcategory('');
+    setSubcategoryName('');
   };
 
   const clearSeller = () => {
@@ -139,6 +153,12 @@ function SearchScreen() {
         {category ? (
           <Pressable onPress={clearCategory} style={styles.activeChip}>
             <Text numberOfLines={1} style={styles.activeChipText}>{categoryName || category}</Text>
+            <Icon name="close" size={16} color="#fff" />
+          </Pressable>
+        ) : null}
+        {subcategory ? (
+          <Pressable onPress={clearSubcategory} style={styles.activeChip}>
+            <Text numberOfLines={1} style={styles.activeChipText}>{subcategoryName || subcategory}</Text>
             <Icon name="close" size={16} color="#fff" />
           </Pressable>
         ) : null}

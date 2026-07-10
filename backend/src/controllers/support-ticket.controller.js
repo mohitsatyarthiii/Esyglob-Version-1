@@ -17,6 +17,22 @@ class SupportTicketController {
     }
   }
 
+  static async getById(req, res) {
+    try {
+      const result = await SupportTicketService.getUserTicket(
+        req.user._id,
+        req.params.ticketId
+      );
+      return res.json(result);
+    } catch (error) {
+      console.error('[SupportTicket-Detail] Error:', error);
+      if (error.statusCode === 404) {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: 'Failed to fetch support ticket' });
+    }
+  }
+
   /**
    * POST - Create support ticket
    */

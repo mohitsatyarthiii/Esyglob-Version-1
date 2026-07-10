@@ -395,7 +395,7 @@ const CategorySlider = React.memo(({ categories, loading, navigation }: any) => 
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
-              navigation.navigate('ProductListing', { category: item.slug ?? item.name, categoryName: item.name })
+              navigation.navigate('ProductListing', { category: item.name ?? item.slug, categoryName: item.name })
             }
             style={styles.categoryItem}>
             <View style={styles.categoryIconWrap}>

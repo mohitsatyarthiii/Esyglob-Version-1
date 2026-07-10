@@ -12,6 +12,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import RazorpayCheckout from 'react-native-razorpay';
 import {
   calculateCheckoutQuote,
   createSampleOrder,
@@ -177,6 +178,7 @@ function OrderCheckoutScreen() {
         productId: resolvedProductId,
         quantity: Number(quantity) || 1,
         destination: { country, city, postalCode },
+        shippingAddress: { country, city, postalCode, zipCode: postalCode },
         logisticsOption,
         notes: notes || undefined,
         termsAccepted,
@@ -198,11 +200,23 @@ function OrderCheckoutScreen() {
       const orderId = getId(order);
       try {
         const payment = await initiateOrderPayment(orderId);
+        if (!payment.keyId || !payment.razorpayOrderId || !payment.amount || !payment.paymentId) {
+          throw new Error('Payment gateway did not return a complete checkout session.');
+        }
+        const gateway = await RazorpayCheckout.open({
+          key: payment.keyId,
+          amount: payment.amount,
+          currency: payment.currency ?? 'INR',
+          name: 'EsyGlob',
+          description: `Payment for ${payment.orderNumber ?? 'order'}`,
+          order_id: payment.razorpayOrderId,
+          theme: { color: colors.primary },
+        });
         await verifyOrderPayment({
           paymentId: payment.paymentId,
-          razorpayPaymentId: `mobile_${Date.now()}`,
-          razorpayOrderId: payment.razorpayOrderId,
-          razorpaySignature: 'mobile-dev',
+          razorpayPaymentId: gateway.razorpay_payment_id,
+          razorpayOrderId: gateway.razorpay_order_id,
+          razorpaySignature: gateway.razorpay_signature,
         });
         Alert.alert('Order Confirmed!', 'Payment verified.', [
           { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
@@ -239,7 +253,6 @@ function OrderCheckoutScreen() {
   const isEligible = chatId ? resolveOrderEligibility(chat.data?.chat, resolvedProductId) : true;
   const quoteData: QuoteData = quote.data?.quote ?? quote.data ?? {};
   const logisticsOptions: LogisticsOption[] = quoteData.logisticsOptions ?? [];
-  const currency = quoteData.currency ?? productData?.currency ?? 'INR';
 
   return (
     <View style={styles.screen}>
@@ -438,7 +451,7 @@ function OrderCheckoutScreen() {
           )}
         </Pressable>
 
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </View>
   );
@@ -471,6 +484,7 @@ function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; val
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  bottomSpacer: { height: 40 },
   screen: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,

@@ -508,7 +508,6 @@ function ChatDetailsScreen() {
             item={item}
             previous={messages[index - 1]}
             currentUserId={senderId}
-            chatId={chatId}
             onRetry={(payload, localId) => {
               setLocalMessages(current =>
                 current.filter(message => message.localId !== localId),
@@ -841,13 +840,11 @@ function MessageBubble({
   item,
   previous,
   currentUserId,
-  chatId,
   onRetry,
 }: {
   item: LocalMessage;
   previous?: MessageItem;
   currentUserId?: string;
-  chatId: string;
   onRetry?: (payload: string | Record<string, unknown>, localId: string) => void;
 }) {
   const sender = typeof item.senderId === 'object' ? (item.senderId as CurrentUser) : undefined;
@@ -873,7 +870,7 @@ function MessageBubble({
       ) : null}
       <View style={[styles.msgRow, mine && styles.msgRowMine]}>
         <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
-          <MessageContent item={item} mine={mine} chatId={chatId} />
+          <MessageContent item={item} mine={mine} />
           <View style={styles.bubbleFooter}>
             {item.localStatus === 'failed' ? (
               <Pressable
@@ -915,11 +912,9 @@ function MessageBubble({
 function MessageContent({
   item,
   mine,
-  chatId,
 }: {
   item: MessageItem;
   mine: boolean;
-  chatId: string;
 }) {
   const navigation = useNavigation<any>();
   const content = item.content ?? item.text ?? '';
@@ -934,7 +929,6 @@ function MessageContent({
         subtitle={content || 'Shared product'}
         icon="package-variant-closed"
         image={firstImage(product.image, product.images)}
-        mine={mine}
         onPress={() => navigation.navigate('ProductDetails', { productId: getId(product) })}
       />
     );
@@ -947,7 +941,6 @@ function MessageContent({
         title={String(rfq.title ?? rfq.productName ?? 'RFQ')}
         subtitle={`Qty ${String(rfq.quantity ?? '-')}`}
         icon="clipboard-list-outline"
-        mine={mine}
         onPress={() => navigation.navigate('RFQDetails', { rfqId: getId(rfq) })}
       />
     );
@@ -960,7 +953,6 @@ function MessageContent({
         title={String(q.title ?? 'Quotation')}
         subtitle={`${q.currency ?? ''} ${q.totalPrice ?? q.unitPrice ?? ''}`}
         icon="cash-multiple"
-        mine={mine}
         onPress={() => navigation.navigate('QuotationDetails', { quotationId: getId(q) })}
       />
     );
@@ -973,7 +965,6 @@ function MessageContent({
         title={String(order.orderNumber ?? 'Order')}
         subtitle={String(order.status ?? '')}
         icon="rocket-launch-outline"
-        mine={mine}
         actionLabel="View Order"
         onPress={() => navigation.navigate('OrderDetails', { orderId: getId(order) })}
       />
@@ -986,7 +977,6 @@ function MessageContent({
         title={sellerProfileName(storeDetails)}
         subtitle="Shared store"
         icon="storefront-outline"
-        mine={mine}
         onPress={() =>
           navigation.navigate('SellerDetails', { sellerId: getId(storeDetails) })
         }
@@ -1063,7 +1053,6 @@ function BusinessCard({
   subtitle,
   icon,
   image,
-  mine,
   actionLabel,
   onPress,
 }: {
@@ -1071,7 +1060,6 @@ function BusinessCard({
   subtitle?: string;
   icon: string;
   image?: string | null;
-  mine: boolean;
   actionLabel?: string;
   onPress: () => void;
 }) {

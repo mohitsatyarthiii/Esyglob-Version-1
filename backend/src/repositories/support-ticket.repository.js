@@ -1,4 +1,5 @@
 import SupportTicket from '../models/SupportTicket.js';
+import mongoose from 'mongoose';
 
 class SupportTicketRepository {
   /**
@@ -9,6 +10,11 @@ class SupportTicketRepository {
       .sort({ createdAt: -1 })
       .limit(Math.min(limit, 50))
       .lean();
+  }
+
+  static async findOwnedById(ticketId, userId) {
+    if (!mongoose.Types.ObjectId.isValid(ticketId)) return null;
+    return SupportTicket.findOne({ _id: ticketId, userId }).lean();
   }
 
   /**

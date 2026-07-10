@@ -40,7 +40,7 @@ export async function findChatByIdPopulated(chatId, after = false) {
 export async function findChatsByUser(userId, query, limit, sort) {
   return Chat.find(query)
     .select(
-      'pairKey buyerId sellerId groupName groupMembers groupCreatedBy productId rfqId quotationId chatType orderEligibility lastMessage lastMessageAt buyerUnreadCount sellerUnreadCount buyerArchivedAt sellerArchivedAt buyerPinnedAt sellerPinnedAt buyerMutedAt sellerMutedAt buyerFavoriteAt sellerFavoriteAt buyerSavedSupplierAt sellerSavedBuyerAt buyerLabel sellerLabel buyerBlockedAt sellerBlockedAt createdAt updatedAt'
+      'pairKey buyerId sellerId groupName groupMembers groupCreatedBy productId rfqId quotationId chatType orderEligibility lastMessage lastMessageAt buyerUnreadCount sellerUnreadCount buyerArchivedAt sellerArchivedAt buyerPinnedAt sellerPinnedAt buyerMutedAt sellerMutedAt buyerFavoriteAt sellerFavoriteAt buyerSavedSupplierAt sellerSavedBuyerAt buyerLabel sellerLabel buyerBlockedAt sellerBlockedAt buyerDeletedAt sellerDeletedAt createdAt updatedAt'
     )
     .populate('buyerId', 'email fullName avatarUrl')
     .populate('sellerId', 'email fullName avatarUrl')

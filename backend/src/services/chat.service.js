@@ -534,7 +534,7 @@ export async function performChatAction(user, chatId, actionData) {
     updates[isBuyer ? 'buyerSavedSupplierAt' : 'sellerSavedBuyerAt'] = setDate;
   else if (action === 'label')
     updates[`${side}Label`] = String(label || '').trim().slice(0, 40);
-  else if (action === 'delete') updates.isActive = false;
+  else if (action === 'delete') updates[`${side}DeletedAt`] = now;
   else if (action === 'mark_read') {
     await chatRepository.markMessagesAsRead(chatId, user.id);
     updates[`${side}UnreadCount`] = 0;
@@ -575,24 +575,30 @@ export async function getChatList(session, options = {}) {
     query.$or = [{ buyerId: session.userId }, { groupMembers: session.userId }];
     if (view === 'archived') query.buyerArchivedAt = { $ne: null };
     else query.buyerArchivedAt = null;
+    query.buyerDeletedAt = null;
     if (view === 'blocked') query.buyerBlockedAt = { $ne: null };
     else query.buyerBlockedAt = null;
     if (unreadOnly) query.buyerUnreadCount = { $gt: 0 };
+    if (view === 'favorites') query.buyerFavoriteAt = { $ne: null };
     if (label) query.buyerLabel = label;
   } else if (requestedRole === USER_ROLES.SELLER && session.roles?.includes(USER_ROLES.SELLER)) {
     query.$or = [{ sellerId: session.userId }, { groupMembers: session.userId }];
     if (view === 'archived') query.sellerArchivedAt = { $ne: null };
     else query.sellerArchivedAt = null;
+    query.sellerDeletedAt = null;
     if (view === 'blocked') query.sellerBlockedAt = { $ne: null };
     else query.sellerBlockedAt = null;
     if (unreadOnly) query.sellerUnreadCount = { $gt: 0 };
+    if (view === 'favorites') query.sellerFavoriteAt = { $ne: null };
     if (label) query.sellerLabel = label;
   } else if (session.primaryRole === USER_ROLES.BUYER) {
     query.buyerArchivedAt = null;
     query.buyerBlockedAt = null;
+    query.buyerDeletedAt = null;
   } else if (session.primaryRole === USER_ROLES.SELLER) {
     query.sellerArchivedAt = null;
     query.sellerBlockedAt = null;
+    query.sellerDeletedAt = null;
   }
 
   if (rfqId && isObjectId(rfqId)) {
@@ -616,7 +622,21 @@ export async function getChatList(session, options = {}) {
       seenPairs.add(pairKey);
       return true;
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map((chat) => {
+      const side = String(chat.sellerId?._id || chat.sellerId) === String(session.userId)
+        ? 'seller'
+        : 'buyer';
+      return {
+        ...chat,
+        isArchived: Boolean(chat[`${side}ArchivedAt`]),
+        isPinned: Boolean(chat[`${side}PinnedAt`]),
+        isMuted: Boolean(chat[`${side}MutedAt`]),
+        isFavorite: Boolean(chat[`${side}FavoriteAt`]),
+        isDeletedForMe: Boolean(chat[`${side}DeletedAt`]),
+        label: chat[`${side}Label`] || '',
+      };
+    });
 
   return { chats };
 }

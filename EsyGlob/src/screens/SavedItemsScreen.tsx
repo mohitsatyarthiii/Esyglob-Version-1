@@ -20,7 +20,6 @@ import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
 import SavedHeartButton from '../components/SavedHeartButton';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, shadow, spacing } from '../theme';
 import { formatProductPrice, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
 

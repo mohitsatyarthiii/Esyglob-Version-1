@@ -38,6 +38,12 @@ export type UploadAttachment = {
   size?: number;
 };
 
+export type EnquiryAttachment = {
+  filename?: string;
+  type?: string;
+  url?: string;
+};
+
 export type EnquiryInput = {
   productId: string;
   sellerUserId: string;
@@ -51,7 +57,7 @@ export type EnquiryInput = {
   deliveryRequirements?: string;
   destinationCountry: string;
   additionalNotes?: string;
-  attachments?: string[];
+  attachments?: EnquiryAttachment[];
 };
 
 // ─── RFQs ───────────────────────────────────────────────────────────────────
@@ -154,7 +160,7 @@ export async function trackProductView(productId: string) {
   return apiRequest('/buyer/recently-viewed', {
     method: 'POST',
     body: { productId },
-  }).catch(() => null); // Silent fail
+  }).catch(() => null);
 }
 
 // ─── Sellers ────────────────────────────────────────────────────────────────
@@ -187,7 +193,6 @@ export async function fetchSellerDetails(sellerId: string): Promise<SellerDetail
     if (!(error instanceof ApiError) || error.status !== 404) throw error;
   }
 
-  // Fallback: search all sellers
   const [sellerPayload, productsPayload, reviewsPayload] = await Promise.all([
     apiRequest('/suppliers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
     apiRequest('/products', {
@@ -412,15 +417,20 @@ export async function createQuotation(input: Record<string, unknown>): Promise<Q
 export async function acceptQuotation(
   quotationId: string,
   input: Record<string, unknown> = {},
-): Promise<Quotation> {
+): Promise<{ quotation?: Quotation; tradeOrder?: Order; reused?: boolean; message?: string }> {
+  return respondToQuotation(quotationId, 'accept', input);
+}
+
+export async function respondToQuotation(
+  quotationId: string,
+  action: 'accept' | 'reject',
+  input: Record<string, unknown> = {},
+): Promise<{ quotation?: Quotation; tradeOrder?: Order; reused?: boolean; message?: string }> {
   const payload = await apiRequest(`/quotations/${quotationId}`, {
     method: 'PUT',
-    body: { action: 'accept', ...input },
+    body: { action, ...input },
   });
-  const data = unwrapData<{ quotation?: Quotation } | Quotation>(payload);
-  return (
-    data && typeof data === 'object' && 'quotation' in data ? data.quotation : data
-  ) as Quotation;
+  return unwrapData(payload);
 }
 
 export async function patchQuotation(
@@ -536,27 +546,19 @@ export async function patchChatAction(
 }
 
 export async function archiveChat(chatId: string, archived: boolean) {
-  return patchChatAction(chatId, {
-    action: archived ? 'archive' : 'unarchive',
-  });
+  return patchChatAction(chatId, { action: archived ? 'archive' : 'unarchive' });
 }
 
 export async function favoriteChat(chatId: string, favorite: boolean) {
-  return patchChatAction(chatId, {
-    action: favorite ? 'favorite' : 'unfavorite',
-  });
+  return patchChatAction(chatId, { action: favorite ? 'favorite' : 'unfavorite' });
 }
 
 export async function pinChat(chatId: string, pinned: boolean) {
-  return patchChatAction(chatId, {
-    action: pinned ? 'pin' : 'unpin',
-  });
+  return patchChatAction(chatId, { action: pinned ? 'pin' : 'unpin' });
 }
 
 export async function muteChat(chatId: string, muted: boolean) {
-  return patchChatAction(chatId, {
-    action: muted ? 'mute' : 'unmute',
-  });
+  return patchChatAction(chatId, { action: muted ? 'mute' : 'unmute' });
 }
 
 export async function deleteChatForMe(chatId: string) {
@@ -667,4 +669,46 @@ export async function verifyOrderPayment(
 export async function fetchNotifications() {
   const payload = await apiRequest('/notifications');
   return normalizeList<NotificationItem>(payload, ['notifications', 'items']);
+}
+
+// ─── Upload Attachment for Enquiry ──────────────────────────────────────────
+
+export async function uploadEnquiryAttachment(file: {
+  uri: string;
+  name: string;
+  type: string;
+}): Promise<EnquiryAttachment> {
+  const form = new FormData();
+  form.append('file', file as unknown as Blob);
+  const payload = await apiRequest('/upload', { method: 'POST', body: form });
+  const data = unwrapData<{ url?: string; filename?: string }>(payload);
+  return {
+    url: data?.url ?? '',
+    filename: data?.filename ?? file.name,
+    type: file.type,
+  };
+}
+
+// ─── Check Direct Order Eligibility ─────────────────────────────────────────
+
+export async function checkDirectOrderEligibility(productId: string): Promise<{
+  canStartOrder: boolean;
+  reason?: string;
+}> {
+  const payload = await apiRequest(`/products/${productId}/eligibility`);
+  const data = unwrapData<{ canStartOrder: boolean; reason?: string }>(payload);
+  return {
+    canStartOrder: data?.canStartOrder ?? false,
+    reason: data?.reason,
+  };
+}
+
+// ─── Check Existing Enquiry (Duplicate Prevention) ─────────────────────────
+
+export async function checkExistingEnquiry(params: {
+  productId: string;
+  sellerUserId: string;
+}): Promise<{ exists: boolean; rfqId?: string; chatId?: string }> {
+  const payload = await apiRequest('/rfqs/check', { query: params });
+  return unwrapData<{ exists: boolean; rfqId?: string; chatId?: string }>(payload);
 }

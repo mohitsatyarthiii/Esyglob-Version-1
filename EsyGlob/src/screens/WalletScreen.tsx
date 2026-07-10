@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,7 +17,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addPaymentMethod, fetchWallet, requestWithdrawal } from '../api/account';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { radii, spacing } from '../theme';
 import { formatCurrency } from '../utils/format';
 
 // ─── Premium Palette ────────────────────────────────────────────────────────
@@ -122,6 +121,7 @@ function WalletScreen() {
   });
   const [withdrawal, setWithdrawal] = useState('');
   const [showAddMethod, setShowAddMethod] = useState(false);
+  const [paymentMethodId, setPaymentMethodId] = useState('');
 
   const wallet = useQuery({
     queryKey: ['wallet', role],
@@ -129,26 +129,38 @@ function WalletScreen() {
   });
 
   const summary: Record<string, number> = (wallet.data?.summary ?? {}) as Record<string, number>;
-  const paymentMethods: Array<Record<string, unknown>> = (wallet.data?.paymentMethods ?? []) as Array<Record<string, unknown>>;
-  const transactions: Array<Record<string, unknown>> = (wallet.data?.transactions ?? []) as Array<Record<string, unknown>>;
-  const withdrawals: Array<Record<string, unknown>> = (wallet.data?.withdrawals ?? []) as Array<Record<string, unknown>>;
-  const payments: Array<Record<string, unknown>> = (wallet.data?.payments ?? []) as Array<Record<string, unknown>>;
+  const paymentMethods = useMemo<Array<Record<string, unknown>>>(
+    () => (wallet.data?.paymentMethods ?? []) as Array<Record<string, unknown>>,
+    [wallet.data?.paymentMethods],
+  );
 
+  useEffect(() => {
+    if (!paymentMethodId && paymentMethods.length) {
+      const preferred = paymentMethods.find(item => item.isDefault) ?? paymentMethods[0];
+      setPaymentMethodId(String(preferred._id ?? preferred.id ?? ''));
+    }
+  }, [paymentMethodId, paymentMethods]);
   const listData: ActivityItem[] = useMemo(
-    () => [
-      ...transactions.map(item => ({ ...item, section: 'Transaction' })),
-      ...withdrawals.map(item => ({ ...item, section: 'Withdrawal' })),
-      ...payments.map(item => ({ ...item, section: 'Payment' })),
-    ] as ActivityItem[],
-    [transactions, withdrawals, payments],
+    () => {
+      const transactions = wallet.data?.transactions ?? [];
+      const withdrawals = wallet.data?.withdrawals ?? [];
+      const payments = wallet.data?.payments ?? [];
+      return [
+        ...transactions.map(item => ({ ...item, section: 'Transaction' })),
+        ...withdrawals.map(item => ({ ...item, section: 'Withdrawal' })),
+        ...payments.map(item => ({ ...item, section: 'Payment' })),
+      ] as ActivityItem[];
+    },
+    [wallet.data?.payments, wallet.data?.transactions, wallet.data?.withdrawals],
   );
 
   const createMethod = useMutation({
     mutationFn: () =>
       addPaymentMethod({
         role,
-        type: method.upiId ? 'upi' : 'bank',
+        type: method.upiId ? 'upi' : 'bank_account',
         ...method,
+        holderName: method.accountHolder,
         label: method.label || method.bankName || 'Payment method',
       }),
     onSuccess: async () => {
@@ -162,7 +174,11 @@ function WalletScreen() {
   });
 
   const createWithdrawal = useMutation({
-    mutationFn: () => requestWithdrawal({ amount: Number(withdrawal), currency: 'INR' }),
+    mutationFn: () => requestWithdrawal({
+      amount: Number(withdrawal),
+      currency: 'INR',
+      paymentMethodId,
+    }),
     onSuccess: async () => {
       setWithdrawal('');
       await queryClient.invalidateQueries({ queryKey: ['wallet', role] });
@@ -249,7 +265,10 @@ function WalletScreen() {
               {paymentMethods.length > 0 && (
                 <View style={styles.methodList}>
                   {paymentMethods.map((item: Record<string, unknown>, i: number) => (
-                    <View key={String(item._id ?? item.id ?? i)} style={styles.methodCard}>
+                    <Pressable
+                      key={String(item._id ?? item.id ?? i)}
+                      onPress={() => setPaymentMethodId(String(item._id ?? item.id ?? ''))}
+                      style={[styles.methodCard, paymentMethodId === String(item._id ?? item.id ?? '') && styles.methodCardSelected]}>
                       <View style={[styles.methodIcon, { backgroundColor: P.accentLight }]}>
                         <Icon
                           name={item.type === 'upi' ? 'cellphone' : 'bank'}
@@ -262,11 +281,15 @@ function WalletScreen() {
                           {String(item.label ?? item.bankName ?? item.upiId ?? 'Method')}
                         </Text>
                         <Text style={styles.methodMeta}>
-                          {String(item.accountHolder ?? item.type ?? '')}
+                          {String(item.holderName ?? item.maskedAccountNumber ?? item.type ?? '')}
                         </Text>
                       </View>
-                      <Icon name="check-circle" size={18} color={P.emerald} />
-                    </View>
+                      <Icon
+                        name={paymentMethodId === String(item._id ?? item.id ?? '') ? 'check-circle' : 'circle-outline'}
+                        size={18}
+                        color={paymentMethodId === String(item._id ?? item.id ?? '') ? P.emerald : P.muted}
+                      />
+                    </Pressable>
                   ))}
                 </View>
               )}
@@ -346,10 +369,10 @@ function WalletScreen() {
                   </View>
                   <Pressable
                     onPress={() => createWithdrawal.mutate()}
-                    disabled={createWithdrawal.isPending || !withdrawal}
+                    disabled={createWithdrawal.isPending || !withdrawal || !paymentMethodId}
                     style={[
                       styles.withdrawBtn,
-                      (createWithdrawal.isPending || !withdrawal) && styles.submitBtnDisabled,
+                      (createWithdrawal.isPending || !withdrawal || !paymentMethodId) && styles.submitBtnDisabled,
                     ]}>
                     {createWithdrawal.isPending ? (
                       <ActivityIndicator size="small" color="#FFF" />
@@ -571,6 +594,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.border,
   },
+  methodCardSelected: { borderColor: P.emerald, borderWidth: 2 },
   methodIcon: {
     width: 40,
     height: 40,
