@@ -1,5 +1,14 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -18,12 +27,84 @@ import { ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
 import { formatProductPrice, getId } from '../utils/format';
 
+// ─── Types ──────────────────────────────────────────────────────────────────
+
 type RouteParams = {
   mode: 'sample' | 'trade';
   productId?: string;
   chatId?: string;
   quotationId?: string;
 };
+
+type LogisticsOption = {
+  key?: string;
+  id?: string;
+  code?: string;
+  label?: string;
+  name?: string;
+  mode?: string;
+  incoterm?: string;
+  eta?: string;
+  estimatedDelivery?: string;
+  amount?: number;
+  price?: number;
+  buyerLabel?: string;
+  available?: boolean;
+  insuranceAmount?: number;
+  warehousingCharges?: number;
+  customsCharges?: number;
+  internalBreakdown?: Record<string, number>;
+  providerLabel?: string;
+};
+
+type QuoteData = {
+  currency?: string;
+  quantity?: number;
+  unitPrice?: number;
+  productTotal?: number;
+  logisticsOptions?: LogisticsOption[];
+  selectedLogistics?: LogisticsOption | null;
+  logisticsCharges?: number;
+  platformFee?: number;
+  platformFeeRate?: number;
+  gstRate?: number;
+  gstAmount?: number;
+  discount?: number;
+  grandTotal?: number;
+  subtotal?: number;
+  totalAmount?: number;
+  automatedServices?: Array<{ key: string; label: string; status: string; amount: number }>;
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function resolveQuotationProductId(quotation: any): string | undefined {
+  if (!quotation) return undefined;
+  if (typeof quotation.productId === 'string') return quotation.productId;
+  return quotation.productId?._id;
+}
+
+function resolveOrderEligibility(chat: any, productId?: string): boolean {
+  if (!chat?.orderEligibility?.length) return true;
+  return chat.orderEligibility.some((item: any) => {
+    const itemProductId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
+    return item.isActive && itemProductId === productId;
+  });
+}
+
+function formatINR(amount: number): string {
+  return `₹${amount.toLocaleString('en-IN')}`;
+}
+
+function getOptionKey(option: LogisticsOption, index: number): string {
+  return String(option.key ?? option.id ?? option.code ?? `option-${index}`);
+}
+
+function getOptionLabel(option: LogisticsOption): string {
+  return String(option.label ?? option.name ?? option.key ?? 'Standard Shipping');
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 function OrderCheckoutScreen() {
   const route = useRoute<any>();
@@ -37,92 +118,83 @@ function OrderCheckoutScreen() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [logisticsOption, setLogisticsOption] = useState('esyglob_standard');
 
+  // ── Queries ────────────────────────────────────────────────────────────
+
   const quotation = useQuery({
     queryKey: ['checkout-quotation', quotationId],
     queryFn: () => fetchQuotationDetails(quotationId as string),
     enabled: Boolean(quotationId),
   });
-  const resolvedProductId = productId ?? (typeof quotation.data?.productId === 'string' ? quotation.data.productId : quotation.data?.productId?._id);
+
+  const resolvedProductId = productId ?? resolveQuotationProductId(quotation.data);
+
   const product = useQuery({
     queryKey: ['checkout-product', resolvedProductId],
     queryFn: () => fetchProductDetails(resolvedProductId as string),
     enabled: Boolean(resolvedProductId),
   });
+
   const chat = useQuery({
     queryKey: ['checkout-chat', chatId],
     queryFn: () => fetchChatDetails(chatId as string, { markRead: false }),
     enabled: Boolean(chatId),
   });
+
+  // ── Quote Input ────────────────────────────────────────────────────────
+
   const quoteInput = useMemo(() => {
-    const selectedProductId = resolvedProductId;
-
-    if (!selectedProductId) {
-      return null;
-    }
-
+    if (!resolvedProductId) return null;
     return {
-      productId: selectedProductId,
+      productId: resolvedProductId,
       quantity: Number(quantity) || 1,
       orderType: mode === 'sample' ? 'sample' : 'bulk',
-      orderSubType: mode === 'sample' ? 'sample_order' : chatId ? 'chat_order' : quotationId ? 'trade_order' : 'direct_order',
+      orderSubType: mode === 'sample'
+        ? 'sample_order'
+        : chatId
+        ? 'chat_order'
+        : quotationId
+        ? 'trade_order'
+        : 'direct_order',
       logisticsOption,
-      destination: {
-        country,
-        city,
-        postalCode,
-      },
+      destination: { country, city, postalCode },
     };
-  }, [chatId, country, city, logisticsOption, mode, postalCode, quantity, quotationId, resolvedProductId]);
+  }, [resolvedProductId, quantity, mode, chatId, quotationId, logisticsOption, country, city, postalCode]);
+
   const quote = useQuery({
     queryKey: ['checkout-quote', quoteInput],
-    queryFn: () => calculateCheckoutQuote(quoteInput as Record<string, unknown>),
-    enabled: Boolean(quoteInput),
+    queryFn: () => calculateCheckoutQuote(quoteInput as any),
+    enabled: Boolean(quoteInput?.productId),
   });
+
+  // ── Create Order ───────────────────────────────────────────────────────
+
   const createOrder = useMutation({
     mutationFn: async () => {
-      if (!resolvedProductId) {
-        throw new Error('Product is required before creating an order.');
-      }
+      if (!resolvedProductId) throw new Error('Product is required.');
+      if (!termsAccepted) throw new Error('Please accept the terms.');
 
-      if (!termsAccepted) {
-        throw new Error('Accept the order terms before continuing.');
-      }
-
-      const base = {
+      const basePayload = {
         productId: resolvedProductId,
         quantity: Number(quantity) || 1,
-        shippingAddress: {
-          country,
-          city,
-          postalCode,
-        },
+        destination: { country, city, postalCode },
         logisticsOption,
+        notes: notes || undefined,
         termsAccepted,
-        notes,
       };
 
       if (mode === 'sample') {
-        return createSampleOrder(base);
+        return createSampleOrder({ ...basePayload, orderType: 'sample', orderSubType: 'sample_order' });
       }
 
       return createTradeOrder({
-        ...base,
-        quotationId,
-        rfqId: typeof quotation.data?.rfqId === 'string' ? quotation.data.rfqId : quotation.data?.rfqId?._id,
-        chatId,
+        ...basePayload,
+        quotationId: quotationId || undefined,
+        chatId: chatId || undefined,
         orderType: 'bulk',
         orderSubType: chatId ? 'chat_order' : quotationId ? 'trade_order' : 'direct_order',
-        buyerCompany: {},
-        sellerCompany: {},
-        tradeInformation: {
-          incoterms: 'FOB',
-          logisticsOption,
-          deliveryTerms: notes,
-        },
-        paymentRequired: true,
       });
     },
-    onSuccess: async order => {
+    onSuccess: async (order: any) => {
       const orderId = getId(order);
       try {
         const payment = await initiateOrderPayment(orderId);
@@ -130,100 +202,249 @@ function OrderCheckoutScreen() {
           paymentId: payment.paymentId,
           razorpayPaymentId: `mobile_${Date.now()}`,
           razorpayOrderId: payment.razorpayOrderId,
-          razorpaySignature: 'mobile-development-verification',
+          razorpaySignature: 'mobile-dev',
         });
-        Alert.alert('Order paid', 'Payment was verified and the order timeline was updated.');
-      } catch (error) {
-        Alert.alert('Order created', error instanceof Error ? error.message : 'Payment initiation needs attention.');
+        Alert.alert('Order Confirmed!', 'Payment verified.', [
+          { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
+        ]);
+      } catch {
+        Alert.alert('Order Created', 'Payment pending.', [
+          { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
+        ]);
       }
-      navigation.replace('OrderDetails', { orderId });
     },
-    onError: error => Alert.alert('Order failed', error instanceof Error ? error.message : 'Unable to create order.'),
+    onError: (error: any) =>
+      Alert.alert('Order Failed', error instanceof Error ? error.message : 'Please try again.'),
   });
 
+  // ── Loading / Error ────────────────────────────────────────────────────
+
   if ((quotationId && quotation.isLoading) || product.isLoading || (chatId && chat.isLoading)) {
-    return <LoadingState label="Preparing checkout" />;
+    return <LoadingState label="Preparing checkout..." />;
   }
 
   if ((quotationId && quotation.isError) || product.isError || (chatId && chat.isError)) {
     const error = quotation.error ?? product.error ?? chat.error;
-    return <ErrorState message={(error as Error)?.message ?? 'Checkout data was not returned.'} onRetry={() => {
-      quotation.refetch();
-      product.refetch();
-      chat.refetch();
-    }} />;
+    return (
+      <ErrorState
+        message={(error as Error)?.message ?? 'Failed to load checkout.'}
+        onRetry={() => { quotation.refetch(); product.refetch(); chat.refetch(); }}
+      />
+    );
   }
 
+  // ── Derived Data ───────────────────────────────────────────────────────
+
   const productData = product.data as Product | undefined;
-  const eligible = !chatId || chat.data?.chat?.orderEligibility?.some(item => {
-    const nextProductId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
-    return item.isActive && nextProductId === resolvedProductId;
-  });
+  const isEligible = chatId ? resolveOrderEligibility(chat.data?.chat, resolvedProductId) : true;
+  const quoteData: QuoteData = quote.data?.quote ?? quote.data ?? {};
+  const logisticsOptions: LogisticsOption[] = quoteData.logisticsOptions ?? [];
+  const currency = quoteData.currency ?? productData?.currency ?? 'INR';
 
   return (
     <View style={styles.screen}>
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.iconButton}>
-          <Icon name="arrow-left" size={24} color={colors.ink} />
+        <Pressable onPress={() => navigation.goBack()} style={styles.iconBtn}>
+          <Icon name="arrow-left" size={22} color={colors.ink} />
         </Pressable>
-        <Text style={styles.headerTitle}>{mode === 'sample' ? 'Sample order' : 'Trade order'}</Text>
-        <View style={styles.iconButton} />
+        <Text style={styles.headerTitle}>{mode === 'sample' ? 'Sample Order' : 'Checkout'}</Text>
+        <View style={styles.iconBtn} />
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
-        {!eligible ? (
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Not Eligible */}
+        {!isEligible && (
           <View style={styles.warning}>
-            <Icon name="lock-alert-outline" size={20} color={colors.rose} />
-            <Text style={styles.warningText}>Start Order is not active for this product in the selected conversation.</Text>
+            <Icon name="lock-alert-outline" size={18} color={colors.rose} />
+            <Text style={styles.warningText}>Order not available for this product.</Text>
           </View>
-        ) : null}
+        )}
+
+        {/* Product Info */}
         <View style={styles.card}>
-          <Text style={styles.title}>{productData?.name ?? productData?.title ?? quotation.data?.title ?? 'Order item'}</Text>
-          <Text style={styles.price}>{productData ? formatProductPrice(productData) : 'Price from quotation'}</Text>
+          <Text style={styles.productTitle}>{productData?.name ?? productData?.title ?? 'Product'}</Text>
+          <Text style={styles.productPrice}>{productData ? formatProductPrice(productData) : ''}</Text>
         </View>
+
+        {/* Order Form */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Order details</Text>
+          <Text style={styles.sectionTitle}>Order Details</Text>
           <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-          <Field label="Destination country" value={country} onChangeText={setCountry} />
+          <Field label="Country" value={country} onChangeText={setCountry} />
           <Field label="City" value={city} onChangeText={setCity} />
-          <Field label="Postal code" value={postalCode} onChangeText={setPostalCode} />
-          <Field label="Notes / delivery terms" value={notes} onChangeText={setNotes} multiline />
-          <Pressable onPress={() => setTermsAccepted(value => !value)} style={styles.checkboxRow}>
-            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={22} color={termsAccepted ? colors.primary : colors.muted} />
-            <Text style={styles.checkboxText}>I accept the order, payment, and trade terms.</Text>
+          <Field label="Postal Code" value={postalCode} onChangeText={setPostalCode} />
+          <Field label="Notes" value={notes} onChangeText={setNotes} multiline />
+
+          <Pressable onPress={() => setTermsAccepted(v => !v)} style={styles.checkboxRow}>
+            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={20} color={termsAccepted ? colors.primary : colors.muted} />
+            <Text style={styles.checkboxText}>I accept the order & payment terms</Text>
           </Pressable>
         </View>
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Checkout quote</Text>
-          {quote.isLoading ? <Text style={styles.meta}>Calculating...</Text> : null}
-          {quote.isError ? <Text style={styles.errorText}>{(quote.error as Error).message}</Text> : null}
-          {quote.data ? (
-            <>
-              <Text style={styles.total}>{quote.data.currency ?? productData?.currency ?? 'INR'} {quote.data.totalAmount ?? quote.data.total ?? quote.data.subtotal ?? 'pending'}</Text>
-              <Text style={styles.meta}>Logistics: {logisticsOption.replace(/_/g, ' ')}</Text>
-              <View style={styles.logisticsList}>
-                {(quote.data.logisticsOptions ?? []).map(option => {
-                  const record = option as typeof option & { key?: string };
-                  const key = option.id ?? option.code ?? record.key ?? option.name ?? 'esyglob_standard';
-                  const amount = option.amount ?? option.price ?? 0;
-                  return (
-                    <Pressable key={String(key)} onPress={() => setLogisticsOption(String(key))} style={[styles.logisticsOption, logisticsOption === key && styles.logisticsOptionActive]}>
-                      <Text style={[styles.logisticsTitle, logisticsOption === key && styles.logisticsTitleActive]}>{String(option.name ?? key).replace(/_/g, ' ')}</Text>
-                      <Text style={[styles.logisticsMeta, logisticsOption === key && styles.logisticsMetaActive]}>{quote.data?.currency ?? productData?.currency ?? 'INR'} {String(amount)}</Text>
-                    </Pressable>
-                  );
-                })}
+
+        {/* Quote */}
+        {quoteInput && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Quote Summary</Text>
+
+            {quote.isLoading && (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.loadingText}>Calculating...</Text>
               </View>
+            )}
+
+            {quote.isError && (
+              <Text style={styles.errorText}>{(quote.error as Error)?.message ?? 'Quote failed'}</Text>
+            )}
+
+            {quoteData.totalAmount != null && (
+              <>
+                {/* Price Breakdown */}
+                <View style={styles.breakdownList}>
+                  <BreakdownRow label="Product Total" value={formatINR(quoteData.productTotal ?? 0)} />
+                  <BreakdownRow label="Logistics" value={formatINR(quoteData.logisticsCharges ?? 0)} />
+                  {quoteData.platformFee ? (
+                    <BreakdownRow
+                      label={`Platform Fee (${((quoteData.platformFeeRate ?? 0) * 100).toFixed(1)}%)`}
+                      value={formatINR(quoteData.platformFee)}
+                    />
+                  ) : null}
+                  {quoteData.gstAmount ? (
+                    <BreakdownRow
+                      label={`GST (${((quoteData.gstRate ?? 0) * 100).toFixed(0)}%)`}
+                      value={formatINR(quoteData.gstAmount)}
+                    />
+                  ) : null}
+                  {quoteData.discount ? (
+                    <BreakdownRow label="Discount" value={`-${formatINR(quoteData.discount)}`} isDiscount />
+                  ) : null}
+                  <View style={styles.divider} />
+                  <BreakdownRow label="Grand Total" value={formatINR(quoteData.grandTotal ?? quoteData.totalAmount ?? 0)} isBold />
+                </View>
+
+                {/* Logistics Options */}
+                {logisticsOptions.length > 0 && (
+                  <View style={styles.logisticsSection}>
+                    <Text style={styles.logisticsSectionTitle}>Shipping Method</Text>
+                    {logisticsOptions.map((option: LogisticsOption, index: number) => {
+                      const key = getOptionKey(option, index);
+                      const isActive = logisticsOption === key;
+                      const amount = option.amount ?? option.price ?? 0;
+                      const breakdown = option.internalBreakdown ?? {};
+
+                      return (
+                        <Pressable
+                          key={key}
+                          onPress={() => setLogisticsOption(key)}
+                          style={[styles.logisticsCard, isActive && styles.logisticsCardActive]}>
+                          {/* Top Row */}
+                          <View style={styles.logisticsTopRow}>
+                            <View style={styles.logisticsTopLeft}>
+                              <Text style={[styles.logisticsName, isActive && styles.logisticsNameActive]}>
+                                {getOptionLabel(option)}
+                              </Text>
+                              {option.incoterm && (
+                                <View style={styles.incotermBadge}>
+                                  <Text style={styles.incotermText}>{option.incoterm}</Text>
+                                </View>
+                              )}
+                            </View>
+                            <View style={styles.logisticsRight}>
+                              <Text style={[styles.logisticsPrice, isActive && styles.logisticsPriceActive]}>
+                                {formatINR(amount)}
+                              </Text>
+                              <Icon
+                                name={isActive ? 'radiobox-marked' : 'radiobox-blank'}
+                                size={20}
+                                color={isActive ? colors.primary : colors.muted}
+                              />
+                            </View>
+                          </View>
+
+                          {/* Shipping Details - 3 Key Metrics */}
+                          <View style={styles.shippingDetails}>
+                            {option.estimatedDelivery && (
+                              <View style={styles.shippingDetail}>
+                                <Icon name="truck-delivery-outline" size={14} color={colors.muted} />
+                                <View>
+                                  <Text style={styles.shippingDetailLabel}>Delivery</Text>
+                                  <Text style={styles.shippingDetailValue}>{option.estimatedDelivery}</Text>
+                                </View>
+                              </View>
+                            )}
+                            {option.insuranceAmount != null && option.insuranceAmount > 0 && (
+                              <View style={styles.shippingDetail}>
+                                <Icon name="shield-check-outline" size={14} color={colors.muted} />
+                                <View>
+                                  <Text style={styles.shippingDetailLabel}>Insurance</Text>
+                                  <Text style={styles.shippingDetailValue}>{formatINR(option.insuranceAmount)}</Text>
+                                </View>
+                              </View>
+                            )}
+                            {(option.warehousingCharges != null && option.warehousingCharges > 0) && (
+                              <View style={styles.shippingDetail}>
+                                <Icon name="warehouse" size={14} color={colors.muted} />
+                                <View>
+                                  <Text style={styles.shippingDetailLabel}>Warehousing</Text>
+                                  <Text style={styles.shippingDetailValue}>{formatINR(option.warehousingCharges)}</Text>
+                                </View>
+                              </View>
+                            )}
+                          </View>
+
+                          {/* Cost Breakdown (Collapsible) */}
+                          {Object.keys(breakdown).length > 0 && isActive && (
+                            <View style={styles.costBreakdown}>
+                              <Text style={styles.costBreakdownTitle}>Cost Breakdown</Text>
+                              {Object.entries(breakdown).map(([costKey, costValue]) => (
+                                <View key={costKey} style={styles.costRow}>
+                                  <Text style={styles.costLabel}>
+                                    {costKey.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
+                                  </Text>
+                                  <Text style={styles.costValue}>{formatINR(costValue)}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+
+                          {option.providerLabel && (
+                            <Text style={styles.providerLabel}>
+                              via {option.providerLabel}
+                            </Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Place Order */}
+        <Pressable
+          disabled={!isEligible || createOrder.isPending}
+          onPress={() => createOrder.mutate()}
+          style={[styles.orderBtn, (!isEligible || createOrder.isPending) && styles.orderBtnDisabled]}>
+          {createOrder.isPending ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Icon name="credit-card-check-outline" size={20} color="#fff" />
+              <Text style={styles.orderBtnText}>Place Order & Pay</Text>
             </>
-          ) : null}
-        </View>
-        <Pressable disabled={!eligible || createOrder.isPending} onPress={() => createOrder.mutate()} style={[styles.primaryAction, (!eligible || createOrder.isPending) && styles.disabled]}>
-          <Icon name="credit-card-check-outline" size={19} color="#fff" />
-          <Text style={styles.primaryActionText}>{createOrder.isPending ? 'Creating order...' : 'Create order and pay'}</Text>
+          )}
         </Pressable>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
+
+// ─── Field Component ────────────────────────────────────────────────────────
 
 function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
   return (
@@ -234,54 +455,124 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
   );
 }
 
+// ─── Breakdown Row ──────────────────────────────────────────────────────────
+
+function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; value: string; isBold?: boolean; isDiscount?: boolean }) {
+  return (
+    <View style={styles.breakdownRow}>
+      <Text style={[styles.breakdownLabel, isBold && styles.breakdownBold]}>{label}</Text>
+      <Text style={[styles.breakdownValue, isBold && styles.breakdownBold, isDiscount && styles.discountText]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  screen: { backgroundColor: colors.background, flex: 1 },
+  screen: { flex: 1, backgroundColor: colors.background },
   header: {
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderBottomColor: colors.faint,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.xxl,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.faint,
+    paddingTop: spacing.xxl, paddingBottom: spacing.sm, paddingHorizontal: spacing.md,
   },
-  iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
-  headerTitle: { color: colors.ink, flex: 1, fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  card: { backgroundColor: colors.card, borderRadius: radii.md, marginBottom: spacing.lg, padding: spacing.lg },
-  title: { color: colors.ink, fontSize: 20, fontWeight: '900', lineHeight: 26 },
-  price: { color: colors.primaryDark, fontSize: 18, fontWeight: '900', marginTop: spacing.sm },
-  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '900', marginBottom: spacing.md },
+  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.ink, textAlign: 'center' },
+  content: { padding: spacing.md },
+
+  // Cards
+  card: {
+    backgroundColor: colors.card, borderRadius: radii.lg, padding: spacing.lg,
+    marginBottom: spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+  },
+  productTitle: { fontSize: 18, fontWeight: '700', color: colors.ink, lineHeight: 24 },
+  productPrice: { fontSize: 22, fontWeight: '800', color: colors.primaryDark, marginTop: spacing.sm },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.ink, marginBottom: spacing.md },
+
+  // Fields
   field: { marginBottom: spacing.md },
-  label: { color: colors.muted, fontSize: 12, fontWeight: '900', marginBottom: spacing.xs },
+  label: { fontSize: 11, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   input: {
-    backgroundColor: colors.cardMuted,
-    borderRadius: radii.md,
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: '800',
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.cardMuted, borderRadius: radii.md, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm, fontSize: 14, fontWeight: '600', color: colors.ink, minHeight: 44,
   },
-  checkboxRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
-  checkboxText: { color: colors.text, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 19 },
-  warning: { alignItems: 'center', backgroundColor: '#fff1f2', borderRadius: radii.md, flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, padding: spacing.md },
-  warningText: { color: colors.rose, flex: 1, fontSize: 13, fontWeight: '900' },
-  meta: { color: colors.muted, fontSize: 13, fontWeight: '800', marginTop: spacing.xs },
-  logisticsList: { gap: spacing.sm, marginTop: spacing.md },
-  logisticsOption: { borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, padding: spacing.md },
-  logisticsOptionActive: { backgroundColor: '#fff8f3', borderColor: colors.primary },
-  logisticsTitle: { color: colors.ink, fontSize: 13, fontWeight: '900', textTransform: 'capitalize' },
-  logisticsTitleActive: { color: colors.primaryDark },
-  logisticsMeta: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: 3 },
-  logisticsMetaActive: { color: colors.primaryDark },
-  total: { color: colors.ink, fontSize: 22, fontWeight: '900' },
-  errorText: { color: colors.rose, fontSize: 13, fontWeight: '800' },
-  primaryAction: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 50 },
-  primaryActionText: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  disabled: { opacity: 0.45 },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  checkboxText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+
+  // Warning
+  warning: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: '#FFF5F5',
+    borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: '#FECACA',
+  },
+  warningText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.rose },
+
+  // Loading
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  loadingText: { fontSize: 13, color: colors.muted },
+  errorText: { fontSize: 13, color: colors.rose, fontWeight: '600', paddingVertical: spacing.md },
+
+  // Breakdown
+  breakdownList: { marginBottom: spacing.md },
+  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  breakdownLabel: { fontSize: 13, color: colors.text, fontWeight: '500' },
+  breakdownValue: { fontSize: 13, color: colors.text, fontWeight: '600' },
+  breakdownBold: { fontSize: 15, fontWeight: '800', color: colors.ink },
+  discountText: { color: '#10B981' },
+  divider: { height: 1, backgroundColor: colors.faint, marginVertical: 8 },
+
+  // Logistics
+  logisticsSection: { marginTop: spacing.md },
+  logisticsSectionTitle: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
+  logisticsCard: {
+    borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md,
+    padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.cardMuted,
+  },
+  logisticsCardActive: { backgroundColor: '#FFF7ED', borderColor: colors.primary },
+  logisticsTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logisticsTopLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
+  logisticsName: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  logisticsNameActive: { color: colors.primaryDark },
+  incotermBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  incotermText: { fontSize: 10, fontWeight: '700', color: colors.primary },
+  logisticsRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  logisticsPrice: { fontSize: 14, fontWeight: '700', color: colors.text },
+  logisticsPriceActive: { color: colors.primaryDark },
+
+  // Shipping Details
+  shippingDetails: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md, flexWrap: 'wrap' },
+  shippingDetail: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, flex: 1, minWidth: 90 },
+  shippingDetailLabel: { fontSize: 9, fontWeight: '600', color: colors.muted, textTransform: 'uppercase' },
+  shippingDetailValue: { fontSize: 12, fontWeight: '700', color: colors.text, marginTop: 1 },
+
+  // Cost Breakdown
+  costBreakdown: {
+    marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1,
+    borderTopColor: colors.faint,
+  },
+  costBreakdownTitle: { fontSize: 11, fontWeight: '700', color: colors.muted, marginBottom: spacing.sm, textTransform: 'uppercase' },
+  costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
+  costLabel: { fontSize: 12, color: colors.text, textTransform: 'capitalize' },
+  costValue: { fontSize: 12, fontWeight: '600', color: colors.text },
+
+  // Provider
+  providerLabel: { fontSize: 10, color: colors.muted, marginTop: spacing.sm, fontStyle: 'italic' },
+
+  // Order Button
+  orderBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    backgroundColor: colors.primary, borderRadius: radii.pill, minHeight: 52,
+    shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  orderBtnDisabled: { opacity: 0.5 },
+  orderBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
 
 export default OrderCheckoutScreen;

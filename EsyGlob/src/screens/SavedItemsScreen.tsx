@@ -1,9 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   FlatList,
   ListRenderItemInfo,
   Pressable,
   RefreshControl,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -36,30 +38,30 @@ type NormalizedSavedItem = {
   createdAt?: string;
 };
 
-// ─── Vibrant Palette ────────────────────────────────────────────────────────
+// ─── Professional Palette ───────────────────────────────────────────────────
 
-const PALETTE = {
-  bg: '#F8F6FE',
-  card: '#FFFFFF',
-  primary: '#6C5CE7',
-  primaryLight: '#EDEAFC',
-  gradient1: '#FF6B6B',
-  gradient2: '#FF8E53',
-  accent: '#00D2FF',
-  accentLight: '#E0F9FF',
-  emerald: '#00D68F',
-  emeraldLight: '#E0FFF5',
-  amber: '#FFA800',
-  amberLight: '#FFF8E6',
-  rose: '#FF3D71',
-  roseLight: '#FFF0F5',
-  violet: '#7B61FF',
-  violetLight: '#F3F0FF',
-  ink: '#1A1A2E',
-  text: '#4A4A68',
-  muted: '#9898B0',
-  faint: '#E8E8F0',
+const P = {
+  bg: '#FAFAFA',
   surface: '#FFFFFF',
+  primary: '#1A1A2E',
+  accent: '#3B82F6',
+  accentLight: '#EFF6FF',
+  emerald: '#059669',
+  emeraldLight: '#ECFDF5',
+  amber: '#D97706',
+  amberLight: '#FFFBEB',
+  rose: '#E11D48',
+  roseLight: '#FFF1F2',
+  violet: '#7C3AED',
+  violetLight: '#F5F3FF',
+  sky: '#0284C7',
+  skyLight: '#F0F9FF',
+  ink: '#0F172A',
+  text: '#334155',
+  textSecondary: '#64748B',
+  muted: '#94A3B8',
+  faint: '#E2E8F0',
+  border: '#F1F5F9',
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -127,6 +129,36 @@ function getRelativeTime(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
+// ─── Animated Entry ─────────────────────────────────────────────────────────
+
+function FadeInView({ children, index }: { children: React.ReactNode; index: number }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 500,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 500,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, opacity, translateY]);
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ translateY }] }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 function SavedItemsScreen() {
@@ -174,18 +206,19 @@ function SavedItemsScreen() {
   if (status !== 'authenticated') {
     return (
       <View style={styles.centerScreen}>
+        <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
         <View style={styles.authIconWrap}>
-          <Icon name="heart-outline" size={40} color={PALETTE.primary} />
+          <Icon name="heart-outline" size={36} color={P.accent} />
         </View>
-        <Text style={styles.authTitle}>Your Wishlist Awaits</Text>
+        <Text style={styles.authTitle}>Your Wishlist</Text>
         <Text style={styles.authSubtitle}>
-          Sign in to save your favourite products and suppliers
+          Sign in to save products and suppliers.
         </Text>
         <Pressable
           onPress={() => navigation.navigate('Auth', { initialMode: 'login' })}
           style={styles.authButton}>
-          <Icon name="login" size={16} color="#FFF" />
           <Text style={styles.authButtonText}>Sign In</Text>
+          <Icon name="arrow-right" size={18} color="#FFF" />
         </Pressable>
       </View>
     );
@@ -194,19 +227,25 @@ function SavedItemsScreen() {
   // ── Loading ───────────────────────────────────────────────────────────
 
   if (savedItems.isLoading) {
-    return <LoadingState label="Loading your wishlist..." />;
+    return (
+      <View style={styles.centerScreen}>
+        <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+        <LoadingState label="Loading..." />
+      </View>
+    );
   }
 
   // ── Error ─────────────────────────────────────────────────────────────
 
   if (savedItems.isError) {
     return (
-      <ErrorState
-        message={
-          (savedItems.error as Error)?.message ?? 'Saved items could not be loaded.'
-        }
-        onRetry={() => savedItems.refetch()}
-      />
+      <View style={styles.centerScreen}>
+        <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+        <ErrorState
+          message={(savedItems.error as Error)?.message ?? 'Failed to load.'}
+          onRetry={() => savedItems.refetch()}
+        />
+      </View>
     );
   }
 
@@ -214,153 +253,118 @@ function SavedItemsScreen() {
 
   const renderItem = ({ item, index }: ListRenderItemInfo<NormalizedSavedItem>) => {
     if (item.type === 'supplier' && item.supplier) {
-      return <SavedSupplierCard item={item} index={index} />;
+      return (
+        <FadeInView index={index}>
+          <SavedSupplierCard item={item} />
+        </FadeInView>
+      );
     }
     if (item.type === 'product' && item.product) {
-      return <SavedProductCard item={item} index={index} />;
+      return (
+        <FadeInView index={index}>
+          <SavedProductCard item={item} />
+        </FadeInView>
+      );
     }
     return null;
   };
 
   return (
     <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+
       <FlatList
-        style={styles.list}
-        contentContainerStyle={styles.content}
         data={visibleItems}
         keyExtractor={item => item._id}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={savedItems.isRefetching}
             onRefresh={handleRefresh}
-            tintColor={PALETTE.primary}
-            colors={[PALETTE.primary, PALETTE.gradient2]}
+            tintColor={P.accent}
+            colors={[P.accent]}
           />
         }
         ListHeaderComponent={
-          <View>
-            {/* Header */}
-            <View style={styles.header}>
+          <View style={styles.headerSection}>
+            {/* Top Bar */}
+            <View style={styles.topBar}>
               <Pressable
                 onPress={() => navigation.goBack()}
-                style={styles.backButton}>
-                <Icon name="arrow-left" size={20} color={PALETTE.ink} />
+                style={styles.backBtn}>
+                <Icon name="arrow-left" size={22} color={P.ink} />
               </Pressable>
-              <View style={styles.headerText}>
-                <Text style={styles.kicker}>Wishlist</Text>
-                <Text style={styles.title}>Saved Items</Text>
-              </View>
+              <Text style={styles.pageTitle}>Saved Items</Text>
               <View style={styles.countBadge}>
-                <Text style={styles.countText}>{counts.all}</Text>
+                <Text style={styles.countBadgeText}>{counts.all}</Text>
               </View>
             </View>
 
-            {/* Segmented Tabs */}
-            <View style={styles.segmentWrap}>
-              <View style={styles.segment}>
-                {(['all', 'product', 'supplier'] as const).map(seg => (
+            {/* Filter Pills */}
+            <View style={styles.filterRow}>
+              {(['all', 'product', 'supplier'] as const).map(seg => {
+                const isActive = filter === seg;
+                const count = seg === 'all' ? counts.all : seg === 'product' ? counts.product : counts.supplier;
+                return (
                   <Pressable
                     key={seg}
                     onPress={() => setFilter(seg)}
-                    style={[
-                      styles.segmentButton,
-                      filter === seg && styles.segmentButtonActive,
-                    ]}>
-                    <Text
-                      style={[
-                        styles.segmentText,
-                        filter === seg && styles.segmentTextActive,
-                      ]}>
+                    style={[styles.filterPill, isActive && styles.filterPillActive]}>
+                    <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
                       {segmentLabel(seg)}
                     </Text>
-                    {filter === seg && (
-                      <View style={styles.segmentDot} />
-                    )}
+                    <View style={[styles.filterCount, isActive && styles.filterCountActive]}>
+                      <Text style={[styles.filterCountText, isActive && styles.filterCountTextActive]}>
+                        {count}
+                      </Text>
+                    </View>
                   </Pressable>
-                ))}
-              </View>
+                );
+              })}
             </View>
-
-            {/* Section Title */}
-            {visibleItems.length > 0 && (
-              <Text style={styles.sectionTitle}>
-                {filter === 'all'
-                  ? 'Recently Saved'
-                  : filter === 'product'
-                  ? 'Saved Products'
-                  : 'Saved Suppliers'}
-              </Text>
-            )}
           </View>
         }
         renderItem={renderItem}
         ListEmptyComponent={
           <EmptyState
-           
-            title="Nothing saved yet"
-            detail="Tap the heart icon on any product or supplier to add it here."
+            title="No items saved yet"
+            detail="Tap the heart icon on products and suppliers to save them here."
           />
         }
+        stickyHeaderIndices={[0]}
       />
     </View>
   );
 }
 
-// ─── Saved Product Card (Compact & Colorful) ───────────────────────────────
+// ─── Saved Product Card ─────────────────────────────────────────────────────
 
-function SavedProductCard({
-  item,
-  index,
-}: {
-  item: NormalizedSavedItem;
-  index: number;
-}) {
+function SavedProductCard({ item }: { item: NormalizedSavedItem }) {
   const product = item.product!;
-  const accentColors = [PALETTE.violetLight, PALETTE.emeraldLight, PALETTE.amberLight, PALETTE.roseLight];
-  const accentColor = accentColors[index % accentColors.length];
 
   return (
-    <View style={[styles.productWrap, { backgroundColor: accentColor }]}>
+    <View style={styles.productCard}>
       <ProductCard product={product} variant="full" />
-      <View style={styles.productFooter}>
-        <View style={styles.productFooterLeft}>
-          <Text style={styles.productPrice}>{formatProductPrice(product)}</Text>
-          {product.category && (
-            <View style={styles.categoryTag}>
-              <Text style={styles.categoryTagText} numberOfLines={1}>
-                {typeof product.category === 'string'
-                  ? product.category
-                  : (product.category as { name?: string })?.name ?? ''}
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.productCardFooter}>
+        <Text style={styles.productPrice}>{formatProductPrice(product)}</Text>
         {item.createdAt && (
-          <Text style={styles.timeAgo}>{getRelativeTime(item.createdAt)}</Text>
+          <Text style={styles.savedTime}>{getRelativeTime(item.createdAt)}</Text>
         )}
       </View>
     </View>
   );
 }
 
-// ─── Saved Supplier Card (Compact & Colorful) ──────────────────────────────
+// ─── Saved Supplier Card ────────────────────────────────────────────────────
 
-function SavedSupplierCard({
-  item,
-  index,
-}: {
-  item: NormalizedSavedItem;
-  index: number;
-}) {
+function SavedSupplierCard({ item }: { item: NormalizedSavedItem }) {
   const navigation = useNavigation<any>();
   const supplier = item.supplier!;
 
   const supplierId = getStableKey(supplier);
   const title =
-    supplier.companyName ??
-    supplier.businessName ??
-    supplier.displayName ??
-    'Supplier';
+    supplier.companyName ?? supplier.businessName ?? supplier.displayName ?? 'Supplier';
   const image = firstImage(
     supplier.logo,
     supplier.companyLogo,
@@ -368,24 +372,12 @@ function SavedSupplierCard({
     supplier.factoryImages,
   );
   const location =
-    [
-      supplier.address?.city,
-      supplier.address?.country ?? supplier.country,
-    ]
+    [supplier.address?.city, supplier.address?.country ?? supplier.country]
       .filter(Boolean)
       .join(', ') || 'Worldwide';
   const isVerified =
     supplier.isVerified === true || supplier.verificationStatus === 'verified';
   const rating = supplier.rating ? Number(supplier.rating).toFixed(1) : null;
-
-  // Rotate through vibrant accent colors
-  const avatarColors = [
-    { bg: PALETTE.violetLight, text: PALETTE.violet },
-    { bg: PALETTE.emeraldLight, text: PALETTE.emerald },
-    { bg: PALETTE.amberLight, text: PALETTE.amber },
-    { bg: PALETTE.roseLight, text: PALETTE.rose },
-  ];
-  const avatarColor = avatarColors[index % avatarColors.length];
 
   const handlePress = () => {
     navigation.navigate('SellerDetails', { sellerId: supplierId, sellerName: title });
@@ -394,82 +386,62 @@ function SavedSupplierCard({
   return (
     <Pressable
       onPress={handlePress}
-      style={({ pressed }) => [
-        styles.supplierCard,
-        pressed && styles.pressed,
-      ]}>
-      {/* Avatar */}
-      {image ? (
-        <RemoteImage
-          uri={image}
-          width={120}
-          height={120}
-          style={styles.supplierLogo}
-        />
-      ) : (
-        <View style={[styles.supplierLogoPlaceholder, { backgroundColor: avatarColor.bg }]}>
-          <Text style={[styles.supplierInitial, { color: avatarColor.text }]}>
-            {title.slice(0, 2).toUpperCase()}
-          </Text>
-        </View>
-      )}
+      style={({ pressed }) => [styles.supplierCard, pressed && styles.pressed]}>
+      {/* Logo */}
+      <View style={styles.logoContainer}>
+        {image ? (
+          <RemoteImage uri={image} width={52} height={52} style={styles.logo} />
+        ) : (
+          <View style={styles.logoPlaceholder}>
+            <Text style={styles.logoText}>{title.slice(0, 1).toUpperCase()}</Text>
+          </View>
+        )}
+        {isVerified && (
+          <View style={styles.verifiedDot}>
+            <Icon name="check" size={8} color="#FFF" />
+          </View>
+        )}
+      </View>
 
-      {/* Content */}
-      <View style={styles.supplierContent}>
-        <View style={styles.supplierTopRow}>
-          <Text numberOfLines={1} style={styles.supplierTitle}>
-            {title}
-          </Text>
-          {isVerified && (
-            <Icon name="check-decagram" size={14} color={PALETTE.emerald} />
-          )}
-        </View>
-
-        <View style={styles.supplierMetaRow}>
-          <Icon name="map-marker-outline" size={11} color={PALETTE.muted} />
-          <Text numberOfLines={1} style={styles.supplierLocation}>
+      {/* Info */}
+      <View style={styles.supplierInfo}>
+        <Text style={styles.supplierName} numberOfLines={1}>
+          {title}
+        </Text>
+        <View style={styles.locationRow}>
+          <Icon name="map-marker-outline" size={11} color={P.muted} />
+          <Text style={styles.supplierLocation} numberOfLines={1}>
             {location}
           </Text>
         </View>
-
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
+        <View style={styles.badgeRow}>
           {rating && (
-            <View style={[styles.statPill, { backgroundColor: PALETTE.amberLight }]}>
-              <Icon name="star" size={10} color={PALETTE.amber} />
-              <Text style={[styles.statPillText, { color: PALETTE.amber }]}>
-                {rating}
-              </Text>
+            <View style={styles.miniBadge}>
+              <Icon name="star" size={9} color={P.amber} />
+              <Text style={styles.miniBadgeText}>{rating}</Text>
             </View>
           )}
           {supplier.productCount ? (
-            <View style={[styles.statPill, { backgroundColor: PALETTE.primaryLight }]}>
-              <Icon name="package-variant-closed" size={10} color={PALETTE.primary} />
-              <Text style={[styles.statPillText, { color: PALETTE.primary }]}>
-                {supplier.productCount}
-              </Text>
+            <View style={styles.miniBadge}>
+              <Icon name="package-variant-closed" size={9} color={P.accent} />
+              <Text style={styles.miniBadgeText}>{supplier.productCount} items</Text>
             </View>
           ) : null}
           {item.createdAt && (
-            <View style={[styles.statPill, { backgroundColor: PALETTE.faint }]}>
-              <Icon name="clock-outline" size={10} color={PALETTE.muted} />
-              <Text style={[styles.statPillText, { color: PALETTE.muted }]}>
-                {getRelativeTime(item.createdAt)}
-              </Text>
-            </View>
+            <Text style={styles.savedTime}>{getRelativeTime(item.createdAt)}</Text>
           )}
         </View>
       </View>
 
-      {/* Heart Button */}
+      {/* Heart */}
       <SavedHeartButton
         type="supplier"
         itemId={supplierId}
         target={supplier}
         size={16}
-        style={styles.supplierHeart}
-        iconColor={PALETTE.muted}
-        savedColor={PALETTE.rose}
+        style={styles.heartBtn}
+        iconColor={P.muted}
+        savedColor={P.rose}
       />
     </Pressable>
   );
@@ -480,293 +452,275 @@ function SavedSupplierCard({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: PALETTE.bg,
-  },
-  list: {
-    flex: 1,
+    backgroundColor: P.bg,
   },
   content: {
-    paddingHorizontal: spacing.md,
     paddingBottom: 100,
-    paddingTop: spacing.xl,
   },
 
-  // ── Center Screen (Unauthenticated) ───────────────────────────────────
-
+  // Center
   centerScreen: {
-    alignItems: 'center',
-    backgroundColor: PALETTE.bg,
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    padding: spacing.xl,
-    gap: spacing.sm,
+    backgroundColor: P.bg,
+    padding: 24,
+    gap: 12,
   },
   authIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: PALETTE.primaryLight,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: P.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 8,
   },
   authTitle: {
     fontSize: 22,
-    fontWeight: '800',
-    color: PALETTE.ink,
+    fontWeight: '700',
+    color: P.ink,
     letterSpacing: -0.3,
   },
   authSubtitle: {
-    fontSize: 13,
-    color: PALETTE.muted,
+    fontSize: 14,
+    color: P.textSecondary,
     textAlign: 'center',
-    lineHeight: 18,
-    maxWidth: 260,
   },
   authButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: PALETTE.primary,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: radii.pill,
-    marginTop: spacing.lg,
-    ...shadow,
+    gap: 8,
+    backgroundColor: P.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 12,
   },
   authButtonText: {
     color: '#FFF',
-    fontWeight: '700',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: 15,
   },
 
-  // ── Header ────────────────────────────────────────────────────────────
-
-  header: {
+  // Header
+  headerSection: {
+    backgroundColor: P.bg,
+    paddingTop: 56,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+  },
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  backButton: {
+  backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: PALETTE.card,
+    borderRadius: 12,
+    backgroundColor: P.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow,
+    borderWidth: 1,
+    borderColor: P.border,
   },
-  headerText: {
-    flex: 1,
-  },
-  kicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: PALETTE.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: PALETTE.ink,
-    letterSpacing: -0.5,
-    marginTop: 1,
+  pageTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: P.ink,
+    letterSpacing: -0.3,
   },
   countBadge: {
-    backgroundColor: PALETTE.primary,
-    borderRadius: 16,
+    backgroundColor: P.primary,
+    borderRadius: 10,
     minWidth: 32,
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 10,
   },
-  countText: {
+  countBadgeText: {
     color: '#FFF',
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 
-  // ── Segmented Tabs ────────────────────────────────────────────────────
-
-  segmentWrap: {
-    marginBottom: spacing.lg,
-  },
-  segment: {
-    backgroundColor: PALETTE.card,
-    borderRadius: radii.lg,
+  // Filter Pills
+  filterRow: {
     flexDirection: 'row',
-    padding: 4,
-    ...shadow,
+    gap: 8,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
   },
-  segmentButton: {
+  filterPill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: radii.md,
-    flex: 1,
-    paddingVertical: spacing.sm + 2,
-    gap: 4,
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: P.surface,
+    borderWidth: 1,
+    borderColor: P.border,
   },
-  segmentButtonActive: {
-    backgroundColor: PALETTE.primaryLight,
+  filterPillActive: {
+    backgroundColor: P.primary,
+    borderColor: P.primary,
   },
-  segmentText: {
-    color: PALETTE.muted,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  segmentTextActive: {
-    color: PALETTE.primary,
-    fontWeight: '800',
-  },
-  segmentDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: PALETTE.primary,
-  },
-
-  // ── Section Title ─────────────────────────────────────────────────────
-
-  sectionTitle: {
+  filterPillText: {
     fontSize: 13,
+    fontWeight: '600',
+    color: P.textSecondary,
+  },
+  filterPillTextActive: {
+    color: '#FFF',
+  },
+  filterCount: {
+    backgroundColor: P.border,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  filterCountActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  filterCountText: {
+    fontSize: 10,
     fontWeight: '700',
-    color: PALETTE.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: spacing.md,
+    color: P.muted,
+  },
+  filterCountTextActive: {
+    color: '#FFF',
   },
 
-  // ── Product Card ──────────────────────────────────────────────────────
-
-  productWrap: {
-    borderRadius: radii.lg,
-    marginBottom: spacing.md,
+  // Product Card
+  productCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: P.surface,
+    borderRadius: 16,
     overflow: 'hidden',
-    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: P.border,
   },
-  productFooter: {
+  productCardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-  },
-  productFooterLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: P.border,
   },
   productPrice: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: PALETTE.ink,
-    letterSpacing: -0.3,
-  },
-  categoryTag: {
-    backgroundColor: 'rgba(255,255,255,0.7)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.pill,
-    maxWidth: 100,
-  },
-  categoryTagText: {
-    fontSize: 9,
+    fontSize: 15,
     fontWeight: '700',
-    color: PALETTE.text,
+    color: P.ink,
   },
-  timeAgo: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: PALETTE.muted,
+  savedTime: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: P.muted,
   },
 
-  // ── Supplier Card ─────────────────────────────────────────────────────
-
+  // Supplier Card
   supplierCard: {
     flexDirection: 'row',
-    backgroundColor: PALETTE.card,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
     alignItems: 'center',
-    gap: spacing.md,
-    ...shadow,
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: P.surface,
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: P.border,
+    gap: 12,
   },
-  supplierLogo: {
+  pressed: {
+    backgroundColor: P.bg,
+  },
+  logoContainer: {
+    position: 'relative',
+  },
+  logo: {
     width: 52,
     height: 52,
-    borderRadius: radii.md,
-    backgroundColor: PALETTE.faint,
+    borderRadius: 14,
+    backgroundColor: P.border,
   },
-  supplierLogoPlaceholder: {
+  logoPlaceholder: {
     width: 52,
     height: 52,
-    borderRadius: radii.md,
+    borderRadius: 14,
+    backgroundColor: P.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  supplierInitial: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+  logoText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: P.accent,
   },
-  supplierContent: {
+  verifiedDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: P.emerald,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: P.surface,
+  },
+  supplierInfo: {
     flex: 1,
     gap: 3,
   },
-  supplierTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  supplierTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: PALETTE.ink,
-    flex: 1,
+  supplierName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: P.ink,
     letterSpacing: -0.2,
   },
-  supplierMetaRow: {
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
   },
   supplierLocation: {
-    fontSize: 11,
-    color: PALETTE.muted,
-    fontWeight: '500',
+    fontSize: 12,
+    color: P.textSecondary,
     flex: 1,
   },
-  statsRow: {
+  badgeRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
+    alignItems: 'center',
+    gap: 6,
     marginTop: 2,
-    flexWrap: 'wrap',
   },
-  statPill: {
+  miniBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: spacing.sm - 1,
-    paddingVertical: 2,
-    borderRadius: radii.pill,
+    backgroundColor: P.border,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  statPillText: {
+  miniBadgeText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: P.textSecondary,
   },
-  supplierHeart: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-  },
-  pressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.98 }],
+  heartBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
   },
 });
 
