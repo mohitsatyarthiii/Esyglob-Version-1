@@ -1,63 +1,180 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { fetchSellerOnboarding, saveSellerOnboarding, uploadSellerDocument } from '../api/marketplace';
+import {
+  fetchSellerOnboarding,
+  saveSellerOnboarding,
+  uploadSellerDocument,
+} from '../api/marketplace';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, spacing } from '../theme';
-import { formatValue } from '../utils/display';
+import { radii, spacing } from '../theme';
 
-const companyTypes = ['manufacturer', 'wholesaler', 'distributor', 'trader', 'exporter', 'other'];
-const documents = [
-  ['gst_certificate', 'GST Certificate'],
-  ['pan_card', 'PAN Card'],
-  ['business_registration', 'Business Registration'],
-  ['address_proof', 'Address Proof'],
-  ['bank_statement', 'Bank Statement'],
-  ['government_id', 'Owner Government ID'],
-] as const;
+// ─── Palette ────────────────────────────────────────────────────────────────
+
+const P = {
+  bg: '#F8FAFC',
+  surface: '#FFFFFF',
+  primary: '#0F172A',
+  accent: '#2563EB',
+  accentLight: '#EFF6FF',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  muted: '#94A3B8',
+  border: '#E2E8F0',
+  inputBg: '#F1F5F9',
+  success: '#059669',
+  successLight: '#ECFDF5',
+  warning: '#D97706',
+  warningLight: '#FFFBEB',
+  danger: '#DC2626',
+  dangerLight: '#FEF2F2',
+};
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const COMPANY_TYPES = [
+  { key: 'manufacturer', label: 'Manufacturer', icon: 'factory' },
+  { key: 'wholesaler', label: 'Wholesaler', icon: 'package-variant' },
+  { key: 'distributor', label: 'Distributor', icon: 'truck-delivery' },
+  { key: 'trader', label: 'Trader', icon: 'handshake' },
+  { key: 'exporter', label: 'Exporter', icon: 'ship' },
+  { key: 'other', label: 'Other', icon: 'dots-horizontal' },
+];
+
+const REQUIRED_DOCUMENTS = [
+  { type: 'gst_certificate', label: 'GST Certificate', icon: 'file-document' },
+  { type: 'pan_card', label: 'PAN Card', icon: 'card-account-details' },
+  { type: 'business_registration', label: 'Business Registration', icon: 'certificate' },
+  { type: 'address_proof', label: 'Address Proof', icon: 'home' },
+  { type: 'bank_statement', label: 'Bank Statement', icon: 'bank' },
+  { type: 'government_id', label: 'Owner ID Proof', icon: 'id-card' },
+];
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type FormData = {
+  companyName: string;
+  companyType: string;
+  businessEmail: string;
+  businessPhone: string;
+  gstNumber: string;
+  panNumber: string;
+  street: string;
+  city: string;
+  state: string;
+  country: string;
+  pincode: string;
+};
+
+const EMPTY_FORM: FormData = {
+  companyName: '',
+  companyType: 'manufacturer',
+  businessEmail: '',
+  businessPhone: '',
+  gstNumber: '',
+  panNumber: '',
+  street: '',
+  city: '',
+  state: '',
+  country: 'India',
+  pincode: '',
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function buildPayload(data: FormData) {
+  return {
+    companyName: data.companyName,
+    companyType: data.companyType,
+    businessEmail: data.businessEmail,
+    businessPhone: data.businessPhone,
+    gstNumber: data.gstNumber,
+    panNumber: data.panNumber,
+    address: {
+      street: data.street,
+      city: data.city,
+      state: data.state,
+      country: data.country,
+      pincode: data.pincode,
+    },
+  };
+}
+
+function getStatusColor(status: string): string {
+  switch (status) {
+    case 'approved':
+    case 'verified':
+      return P.success;
+    case 'pending':
+    case 'document_submitted':
+    case 'under_review':
+      return P.warning;
+    case 'rejected':
+      return P.danger;
+    default:
+      return P.muted;
+  }
+}
+
+function getStatusIcon(status: string): string {
+  switch (status) {
+    case 'approved':
+    case 'verified':
+      return 'check-decagram';
+    case 'rejected':
+      return 'alert-circle';
+    default:
+      return 'clock-outline';
+  }
+}
+
+function getStepStatus(step: number, current: number): 'done' | 'active' | 'pending' {
+  if (step < current) return 'done';
+  if (step === current) return 'active';
+  return 'pending';
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 function SellerOnboardingScreen() {
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
-  const onboarding = useQuery({ queryKey: ['seller-onboarding'], queryFn: fetchSellerOnboarding });
-  const [form, setForm] = useState({
-    companyName: '',
-    companyType: 'manufacturer',
-    businessEmail: '',
-    businessPhone: '',
-    gstNumber: '',
-    panNumber: '',
-    street: '',
-    city: '',
-    state: '',
-    country: 'India',
-    pincode: '',
+  const [form, setForm] = useState<FormData>(EMPTY_FORM);
+  const [uploading, setUploading] = useState<string>('');
+  const [currentStep, setCurrentStep] = useState(1);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const onboarding = useQuery({
+    queryKey: ['seller-onboarding'],
+    queryFn: fetchSellerOnboarding,
   });
-  const [uploading, setUploading] = useState('');
-  const save = useMutation({
-    mutationFn: (draft: boolean) => saveSellerOnboarding(payload(form), draft),
-    onSuccess: (_, draft) => {
-      queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
-      if (!draft) {
-        Alert.alert('Submitted', 'Business setup was submitted for verification.');
-        navigation.goBack();
-      }
-    },
-    onError: error => Alert.alert('Save failed', error instanceof Error ? error.message : 'Unable to save onboarding.'),
-  });
+
+  // ── Populate existing data ─────────────────────────────────────────────
 
   useEffect(() => {
     const seller = onboarding.data?.seller as Record<string, any> | undefined;
     if (!seller) return;
-    setForm(value => ({
-      ...value,
+
+    setForm({
       companyName: seller.companyName ?? seller.businessName ?? '',
       companyType: seller.companyType ?? 'manufacturer',
-      businessEmail: seller.businessEmail ?? '',
-      businessPhone: seller.businessPhone ?? '',
+      businessEmail: seller.businessEmail ?? seller.businessPhone ?? '',
+      businessPhone: seller.businessPhone ?? seller.businessPhone ?? '',
       gstNumber: seller.gstNumber ?? '',
       panNumber: seller.panNumber ?? '',
       street: seller.address?.street ?? '',
@@ -65,154 +182,638 @@ function SellerOnboardingScreen() {
       state: seller.address?.state ?? '',
       country: seller.address?.country ?? 'India',
       pincode: seller.address?.pincode ?? '',
-    }));
-  }, [onboarding.data?.seller]);
+    });
+
+    const completion = onboarding.data?.completion as Record<string, any> | undefined;
+    if (completion) {
+      const pct =
+        (completion.completedFieldCount ?? 0) /
+        Math.max(completion.totalFieldCount ?? 9, 1);
+      if (pct >= 0.9) setCurrentStep(3);
+      else if (pct >= 0.3) setCurrentStep(2);
+      else setCurrentStep(1);
+    }
+  }, [onboarding.data]);
+
+  // ── Fade in ────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (onboarding.data?.seller) {
-        save.mutate(true);
-      }
-    }, 1200);
-    return () => clearTimeout(timer);
-  }, [form, onboarding.data?.seller, save]);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [fadeAnim]);
 
-  if (onboarding.isLoading) return <LoadingState label="Loading seller setup" />;
-  if (onboarding.isError) return <ErrorState message={(onboarding.error as Error).message} onRetry={() => onboarding.refetch()} />;
+  // ── Save mutation ──────────────────────────────────────────────────────
 
-  const verification = onboarding.data?.verification as Record<string, any> | undefined;
-  const completion = onboarding.data?.completion as Record<string, any> | undefined;
-
-  const uploadDocument = async (documentType: string) => {
-    try {
-      const [file] = await pick({ allowMultiSelection: false, type: [documentTypes.pdf, documentTypes.images] });
-      if (!file?.uri) return;
-      setUploading(documentType);
-      await uploadSellerDocument(documentType, { uri: file.uri, name: file.name ?? `${documentType}.pdf`, type: file.type ?? 'application/octet-stream' });
-      await queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
-    } catch (error) {
-      const maybe = error as { code?: string };
-      if (maybe.code !== 'OPERATION_CANCELED') Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload document.');
-    } finally {
-      setUploading('');
+  const save = useMutation({
+  mutationFn: async (_draft: boolean) => {
+    return saveSellerOnboarding(buildPayload(form));
+  },
+  onSuccess: async (_result: unknown, draft: boolean) => {
+    await queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
+    if (!draft) {
+      Alert.alert('✓ Submitted!', 'Your business setup has been submitted for verification.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
     }
-  };
+  },
+  onError: (error: unknown) =>
+    Alert.alert('Save Failed', error instanceof Error ? error.message : 'Unable to save.'),
+});
+  // ── Auto-save draft ────────────────────────────────────────────────────
 
-  return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Header title="Business Setup" onBack={() => navigation.goBack()} />
-      <StatusPanel status={String(verification?.status ?? 'pending')} completion={completion} reason={verification?.rejectionReason ?? verification?.informationRequests} />
-      <Card title="Company Details">
-        <Field label="Company Name" value={form.companyName} onChangeText={companyName => setForm({ ...form, companyName })} />
-        <Text style={styles.label}>Company Type</Text>
-        <View style={styles.chips}>{companyTypes.map(type => <Chip key={type} label={type} active={form.companyType === type} onPress={() => setForm({ ...form, companyType: type })} />)}</View>
-        <Field label="Business Email" value={form.businessEmail} onChangeText={businessEmail => setForm({ ...form, businessEmail })} keyboardType="email-address" />
-        <Field label="Business Phone" value={form.businessPhone} onChangeText={businessPhone => setForm({ ...form, businessPhone })} keyboardType="phone-pad" />
-        <Field label="GST Number" value={form.gstNumber} onChangeText={gstNumber => setForm({ ...form, gstNumber })} />
-        <Field label="PAN Number" value={form.panNumber} onChangeText={panNumber => setForm({ ...form, panNumber })} />
-      </Card>
-      <Card title="Business Address">
-        <Field label="Street Address" value={form.street} onChangeText={street => setForm({ ...form, street })} />
-        <Field label="City" value={form.city} onChangeText={city => setForm({ ...form, city })} />
-        <Field label="State" value={form.state} onChangeText={state => setForm({ ...form, state })} />
-        <Field label="Country" value={form.country} onChangeText={country => setForm({ ...form, country })} />
-        <Field label="Pincode" value={form.pincode} onChangeText={pincode => setForm({ ...form, pincode })} />
-      </Card>
-      <Card title="Documents">
-        {documents.map(([type, label]) => {
-          const existing = verification?.documents?.find?.((doc: Record<string, unknown>) => doc.documentType === type);
-          return (
-            <Pressable key={type} onPress={() => uploadDocument(type)} style={styles.documentRow}>
-              <Icon name={existing ? 'file-check-outline' : 'file-upload-outline'} size={22} color={existing ? colors.green : colors.primary} />
-              <View style={styles.documentBody}>
-                <Text style={styles.documentTitle}>{label}</Text>
-                <Text style={styles.documentMeta}>{uploading === type ? 'Uploading...' : existing ? String(existing.status ?? 'Uploaded') : 'PDF, JPG or PNG up to 5MB'}</Text>
-              </View>
-              <Text style={styles.replace}>{existing ? 'Replace' : 'Upload'}</Text>
-            </Pressable>
+  useEffect(() => {
+    if (!onboarding.data?.seller) return;
+
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current);
+    }
+
+    autoSaveTimer.current = setTimeout(() => {
+      save.mutate(true);
+    }, 1500);
+
+    return () => {
+      if (autoSaveTimer.current) {
+        clearTimeout(autoSaveTimer.current);
+      }
+    };
+  }, [form]);
+
+  // ── Document Upload ────────────────────────────────────────────────────
+
+  const handleUpload = useCallback(
+    async (documentType: string) => {
+      try {
+        const [file] = await pick({
+          allowMultiSelection: false,
+          type: [documentTypes.pdf, documentTypes.images],
+        });
+        if (!file?.uri) return;
+
+        setUploading(documentType);
+        await uploadSellerDocument(documentType, {
+          uri: file.uri,
+          name: file.name ?? `${documentType}.pdf`,
+          type: file.type ?? 'application/octet-stream',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['seller-onboarding'] });
+      } catch (error: unknown) {
+        const err = error as { code?: string };
+        if (err.code !== 'OPERATION_CANCELED') {
+          Alert.alert(
+            'Upload Failed',
+            error instanceof Error ? error.message : 'Unable to upload.',
           );
-        })}
-      </Card>
-      <View style={styles.actions}>
-        <Pressable onPress={() => save.mutate(true)} style={styles.secondary}><Text style={styles.secondaryText}>Save Draft</Text></Pressable>
-        <Pressable onPress={() => save.mutate(false)} style={styles.primary}><Text style={styles.primaryText}>Complete Setup</Text></Pressable>
-      </View>
-    </ScrollView>
+        }
+      } finally {
+        setUploading('');
+      }
+    },
+    [queryClient],
   );
-}
 
-function payload(form: Record<string, string>) {
-  return {
-    companyName: form.companyName,
-    companyType: form.companyType,
-    businessEmail: form.businessEmail,
-    businessPhone: form.businessPhone,
-    gstNumber: form.gstNumber,
-    panNumber: form.panNumber,
-    address: { street: form.street, city: form.city, state: form.state, country: form.country, pincode: form.pincode },
-  };
-}
+  const updateField = useCallback((key: keyof FormData, value: string) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }, []);
 
-export function Header({ title, onBack }: { title: string; onBack: () => void }) {
-  return <View style={styles.header}><Pressable onPress={onBack} style={styles.iconButton}><Icon name="arrow-left" size={24} color={colors.ink} /></Pressable><Text style={styles.headerTitle}>{title}</Text><View style={styles.iconButton} /></View>;
-}
+  // ── Loading / Error ────────────────────────────────────────────────────
 
-function StatusPanel({ status, completion, reason }: { status: string; completion?: Record<string, any>; reason?: unknown }) {
+  if (onboarding.isLoading) return <LoadingState label="Loading setup..." />;
+  if (onboarding.isError)
+    return (
+      <ErrorState
+        message={(onboarding.error as Error)?.message ?? 'Failed to load'}
+        onRetry={() => onboarding.refetch()}
+      />
+    );
+
+  const verification = (onboarding.data?.verification ?? {}) as Record<string, any>;
+  const completion = (onboarding.data?.completion ?? {}) as Record<string, any>;
+  const existingDocs: Array<{ documentType: string; status: string; url?: string }> =
+    verification?.documents ?? [];
+  const verifStatus: string = verification?.status ?? 'pending';
+
   return (
-    <View style={styles.statusPanel}>
-      <Icon name={status === 'approved' ? 'check-decagram' : 'shield-search'} size={28} color={status === 'approved' ? colors.green : colors.primary} />
-      <View style={styles.statusBody}>
-        <Text style={styles.statusTitle}>Verification: {status.replace(/_/g, ' ')}</Text>
-        <Text style={styles.statusMeta}>{completion?.completedFieldCount ?? 0}/{completion?.totalFieldCount ?? 9} required fields completed</Text>
-        {reason ? <Text style={styles.reason}>{formatValue(reason)}</Text> : null}
+    <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={22} color={P.text} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Business Setup</Text>
+        <Pressable
+          onPress={() => save.mutate(true)}
+          disabled={save.isPending}
+          style={styles.headerSaveBtn}>
+          {save.isPending ? (
+            <ActivityIndicator size="small" color={P.accent} />
+          ) : (
+            <Text style={styles.headerSaveText}>Save</Text>
+          )}
+        </Pressable>
       </View>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
+        <Animated.View style={{ opacity: fadeAnim }}>
+          {/* Status Banner */}
+          <View
+            style={[
+              styles.statusBanner,
+              { backgroundColor: getStatusColor(verifStatus) + '15' },
+            ]}>
+            <Icon
+              name={getStatusIcon(verifStatus)}
+              size={24}
+              color={getStatusColor(verifStatus)}
+            />
+            <View style={styles.statusInfo}>
+              <Text
+                style={[styles.statusTitle, { color: getStatusColor(verifStatus) }]}>
+                {verifStatus
+                  .replace(/_/g, ' ')
+                  .replace(/\b\w/g, c => c.toUpperCase())}
+              </Text>
+              <Text style={styles.statusMeta}>
+                {completion?.completedFieldCount ?? 0}/{completion?.totalFieldCount ?? 9}{' '}
+                fields · {existingDocs.length}/{REQUIRED_DOCUMENTS.length} documents
+              </Text>
+            </View>
+            <View style={styles.completionRing}>
+              <Text style={styles.completionPercent}>
+                {Math.round(
+                  ((completion?.completedFieldCount ?? 0) /
+                    Math.max(completion?.totalFieldCount ?? 9, 1)) *
+                    100,
+                )}
+                %
+              </Text>
+            </View>
+          </View>
+
+          {/* Steps Indicator */}
+          <View style={styles.stepsRow}>
+            {['Company', 'Address', 'Documents'].map((label, i) => {
+              const stepNum = i + 1;
+              const status = getStepStatus(stepNum, currentStep);
+              return (
+                <View key={label} style={styles.stepItem}>
+                  <View
+                    style={[
+                      styles.stepCircle,
+                      status === 'done' && styles.stepDone,
+                      status === 'active' && styles.stepActive,
+                    ]}>
+                    {status === 'done' ? (
+                      <Icon name="check" size={14} color="#FFF" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.stepNum,
+                          status === 'active' && styles.stepNumActive,
+                        ]}>
+                        {stepNum}
+                      </Text>
+                    )}
+                  </View>
+                  <Text
+                    style={[
+                      styles.stepLabel,
+                      status === 'active' && styles.stepLabelActive,
+                    ]}>
+                    {label}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Step 1: Company Details */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Company Details</Text>
+
+            <InputField
+              label="Company Name"
+              value={form.companyName}
+              onChangeText={v => updateField('companyName', v)}
+              placeholder="Your registered company name"
+            />
+
+            <Text style={styles.fieldLabel}>Company Type</Text>
+            <View style={styles.typeGrid}>
+              {COMPANY_TYPES.map(type => {
+                const active = form.companyType === type.key;
+                return (
+                  <Pressable
+                    key={type.key}
+                    onPress={() => updateField('companyType', type.key)}
+                    style={[styles.typeCard, active && styles.typeCardActive]}>
+                    <Icon
+                      name={type.icon}
+                      size={20}
+                      color={active ? P.accent : P.muted}
+                    />
+                    <Text
+                      style={[styles.typeLabel, active && styles.typeLabelActive]}>
+                      {type.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <InputField
+              label="Business Email"
+              value={form.businessEmail}
+              onChangeText={v => updateField('businessEmail', v)}
+              keyboardType="email-address"
+              placeholder="business@company.com"
+            />
+            <InputField
+              label="Business Phone"
+              value={form.businessPhone}
+              onChangeText={v => updateField('businessPhone', v)}
+              keyboardType="phone-pad"
+              placeholder="+91 9876543210"
+            />
+            <InputField
+              label="GST Number"
+              value={form.gstNumber}
+              onChangeText={v => updateField('gstNumber', v)}
+              placeholder="22AAAAA0000A1Z5"
+            />
+            <InputField
+              label="PAN Number"
+              value={form.panNumber}
+              onChangeText={v => updateField('panNumber', v)}
+              placeholder="AAAAA0000A"
+            />
+          </View>
+
+          {/* Step 2: Address */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Business Address</Text>
+            <InputField
+              label="Street Address"
+              value={form.street}
+              onChangeText={v => updateField('street', v)}
+              placeholder="Plot 42, Industrial Area"
+            />
+            <View style={styles.row}>
+              <View style={styles.half}>
+                <InputField
+                  label="City"
+                  value={form.city}
+                  onChangeText={v => updateField('city', v)}
+                  placeholder="Mumbai"
+                />
+              </View>
+              <View style={styles.half}>
+                <InputField
+                  label="State"
+                  value={form.state}
+                  onChangeText={v => updateField('state', v)}
+                  placeholder="Maharashtra"
+                />
+              </View>
+            </View>
+            <View style={styles.row}>
+              <View style={styles.half}>
+                <InputField
+                  label="Country"
+                  value={form.country}
+                  onChangeText={v => updateField('country', v)}
+                  placeholder="India"
+                />
+              </View>
+              <View style={styles.half}>
+                <InputField
+                  label="Pincode"
+                  value={form.pincode}
+                  onChangeText={v => updateField('pincode', v)}
+                  keyboardType="numeric"
+                  placeholder="400001"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Step 3: Documents */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Required Documents</Text>
+            <Text style={styles.cardSubtitle}>
+              Upload clear copies. PDF, JPG or PNG up to 5MB.
+            </Text>
+
+            {REQUIRED_DOCUMENTS.map(doc => {
+              const existing = existingDocs.find(
+                (d: Record<string, any>) => d.documentType === doc.type,
+              );
+              const isUploaded = Boolean(existing);
+              const uploadStatus: string = existing?.status ?? 'pending';
+
+              return (
+                <Pressable
+                  key={doc.type}
+                  onPress={() => handleUpload(doc.type)}
+                  disabled={uploading === doc.type}
+                  style={styles.docRow}>
+                  <View
+                    style={[
+                      styles.docIcon,
+                      {
+                        backgroundColor: isUploaded
+                          ? P.successLight
+                          : P.accentLight,
+                      },
+                    ]}>
+                    {uploading === doc.type ? (
+                      <ActivityIndicator size="small" color={P.accent} />
+                    ) : (
+                      <Icon
+                        name={isUploaded ? 'file-check' : doc.icon}
+                        size={20}
+                        color={isUploaded ? P.success : P.accent}
+                      />
+                    )}
+                  </View>
+                  <View style={styles.docInfo}>
+                    <Text style={styles.docLabel}>{doc.label}</Text>
+                    <Text style={styles.docStatus}>
+                      {uploading === doc.type
+                        ? 'Uploading...'
+                        : isUploaded
+                        ? uploadStatus.replace(/_/g, ' ')
+                        : 'Tap to upload'}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.docAction,
+                      {
+                        backgroundColor: isUploaded
+                          ? P.successLight
+                          : P.inputBg,
+                      },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.docActionText,
+                        { color: isUploaded ? P.success : P.accent },
+                      ]}>
+                      {isUploaded ? 'Replace' : 'Upload'}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Actions */}
+          <View style={styles.actions}>
+            <Pressable
+              onPress={() => save.mutate(true)}
+              disabled={save.isPending}
+              style={styles.draftBtn}>
+              <Icon name="content-save-outline" size={16} color={P.textSecondary} />
+              <Text style={styles.draftBtnText}>Save Draft</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => save.mutate(false)}
+              disabled={save.isPending}
+              style={styles.submitBtn}>
+              {save.isPending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Icon name="check-circle" size={16} color="#FFF" />
+                  <Text style={styles.submitBtnText}>Submit for Verification</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+
+          <View style={{ height: 40 }} />
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 }
 
-export function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return <View style={styles.card}><Text style={styles.sectionTitle}>{title}</Text>{children}</View>;
+// ─── Input Field ────────────────────────────────────────────────────────────
+
+function InputField({
+  label,
+  ...props
+}: { label: string } & React.ComponentProps<typeof TextInput>) {
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        placeholderTextColor={P.muted}
+        style={[styles.fieldInput, props.multiline && styles.fieldTextarea]}
+        {...props}
+      />
+    </View>
+  );
 }
 
-export function Field(props: { label: string } & React.ComponentProps<typeof TextInput>) {
-  return <View style={styles.field}><Text style={styles.label}>{props.label}</Text><TextInput placeholderTextColor={colors.muted} style={styles.input} {...props} /></View>;
-}
-
-export function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label.replace(/_/g, ' ')}</Text></Pressable>;
-}
+// ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: colors.background, flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
-  header: { alignItems: 'center', flexDirection: 'row', marginBottom: spacing.lg, paddingTop: spacing.xl },
-  iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
-  headerTitle: { color: colors.ink, flex: 1, fontSize: 19, fontWeight: '900', textAlign: 'center' },
-  statusPanel: { alignItems: 'center', backgroundColor: '#fff8f3', borderRadius: radii.md, flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg, padding: spacing.lg },
-  statusBody: { flex: 1 },
-  statusTitle: { color: colors.ink, fontSize: 16, fontWeight: '900', textTransform: 'capitalize' },
-  statusMeta: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: 3 },
-  reason: { color: colors.rose, fontSize: 12, fontWeight: '800', marginTop: spacing.xs },
-  card: { backgroundColor: colors.card, borderRadius: radii.md, marginBottom: spacing.lg, padding: spacing.lg },
-  sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '900', marginBottom: spacing.md },
-  field: { marginBottom: spacing.md },
-  label: { color: colors.muted, fontSize: 12, fontWeight: '900', marginBottom: spacing.xs, textTransform: 'uppercase' },
-  input: { backgroundColor: colors.cardMuted, borderRadius: radii.md, color: colors.ink, fontSize: 14, fontWeight: '800', minHeight: 44, paddingHorizontal: spacing.md },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  chip: { backgroundColor: colors.cardMuted, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  chipActive: { backgroundColor: colors.primary },
-  chipText: { color: colors.ink, fontSize: 12, fontWeight: '900', textTransform: 'capitalize' },
-  chipTextActive: { color: '#fff' },
-  documentRow: { alignItems: 'center', borderTopColor: colors.faint, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md },
-  documentBody: { flex: 1 },
-  documentTitle: { color: colors.ink, fontSize: 14, fontWeight: '900' },
-  documentMeta: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: 2 },
-  replace: { color: colors.primaryDark, fontSize: 12, fontWeight: '900' },
-  actions: { flexDirection: 'row', gap: spacing.md },
-  primary: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, flex: 1, padding: spacing.md },
-  primaryText: { color: '#fff', fontSize: 14, fontWeight: '900' },
-  secondary: { alignItems: 'center', backgroundColor: colors.card, borderRadius: radii.pill, flex: 1, padding: spacing.md },
-  secondaryText: { color: colors.ink, fontSize: 14, fontWeight: '900' },
+  screen: { flex: 1, backgroundColor: P.bg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 56,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: P.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: P.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: P.text, letterSpacing: -0.3 },
+  headerSaveBtn: { paddingHorizontal: 14, paddingVertical: 8 },
+  headerSaveText: { fontSize: 14, fontWeight: '600', color: P.accent },
+  content: { padding: 16 },
+
+  // Status Banner
+  statusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 16,
+  },
+  statusInfo: { flex: 1 },
+  statusTitle: { fontSize: 15, fontWeight: '700', textTransform: 'capitalize' },
+  statusMeta: { fontSize: 11, color: P.textSecondary, marginTop: 2 },
+  completionRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: P.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completionPercent: { fontSize: 11, fontWeight: '800', color: P.text },
+
+  // Steps
+  stepsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginBottom: 20,
+    paddingVertical: 8,
+  },
+  stepItem: { alignItems: 'center', gap: 6 },
+  stepCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: P.inputBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: P.border,
+  },
+  stepDone: { backgroundColor: P.success, borderColor: P.success },
+  stepActive: { backgroundColor: P.accent, borderColor: P.accent },
+  stepNum: { fontSize: 13, fontWeight: '700', color: P.muted },
+  stepNumActive: { color: '#FFF' },
+  stepLabel: { fontSize: 11, fontWeight: '500', color: P.muted },
+  stepLabelActive: { fontWeight: '700', color: P.accent },
+
+  // Card
+  card: {
+    backgroundColor: P.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: P.border,
+  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: P.text, marginBottom: 14 },
+  cardSubtitle: { fontSize: 11, color: P.muted, marginBottom: 14 },
+
+  // Fields
+  fieldWrap: { marginBottom: 12 },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: P.textSecondary,
+    marginBottom: 4,
+  },
+  fieldInput: {
+    backgroundColor: P.inputBg,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 13,
+    fontWeight: '500',
+    color: P.text,
+    borderWidth: 1,
+    borderColor: P.border,
+  },
+  fieldTextarea: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
+  row: { flexDirection: 'row', gap: 12 },
+  half: { flex: 1 },
+
+  // Company Types
+  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  typeCard: {
+    width: '30%',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: P.inputBg,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: P.border,
+  },
+  typeCardActive: { backgroundColor: P.accentLight, borderColor: P.accent },
+  typeLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: P.muted,
+    textAlign: 'center',
+  },
+  typeLabelActive: { color: P.accent },
+
+  // Documents
+  docRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: P.border,
+  },
+  docIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docInfo: { flex: 1 },
+  docLabel: { fontSize: 13, fontWeight: '600', color: P.text },
+  docStatus: {
+    fontSize: 10,
+    color: P.muted,
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  docAction: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  docActionText: { fontSize: 10, fontWeight: '600' },
+
+  // Actions
+  actions: { flexDirection: 'row', gap: 12, marginTop: 8 },
+  draftBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: P.inputBg,
+    borderRadius: 14,
+    height: 50,
+    borderWidth: 1,
+    borderColor: P.border,
+  },
+  draftBtnText: { fontSize: 13, fontWeight: '600', color: P.textSecondary },
+  submitBtn: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: P.primary,
+    borderRadius: 14,
+    height: 50,
+  },
+  submitBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 });
 
 export default SellerOnboardingScreen;

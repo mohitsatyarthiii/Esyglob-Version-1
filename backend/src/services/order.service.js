@@ -9,7 +9,7 @@ const allowedTransitions = {
   draft: ['pending_approval', 'cancelled'],
   pending_approval: ['awaiting_payment', 'rejected', 'cancelled'],
   awaiting_payment: ['payment_confirmed', 'cancelled'],
-  pending_payment: ['payment_confirmed', 'cancelled'],
+  pending_payment: ['payment_confirmed', 'confirmed', 'processing', 'production', 'preparing_shipment', 'cancelled'],
   payment_success: ['payment_confirmed', 'confirmed', 'cancelled', 'refunded'],
   payment_confirmed: ['confirmed', 'processing', 'preparing_shipment', 'cancelled', 'refunded'],
   confirmed: ['processing', 'preparing_shipment', 'production', 'cancelled'],

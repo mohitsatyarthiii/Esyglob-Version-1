@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -30,43 +31,54 @@ type SSEChunk =
   | { type: 'typing' }
   | { type: 'error'; message?: string };
 
-// ─── Palette ────────────────────────────────────────────────────────────────
+// ─── Light Theme Palette ────────────────────────────────────────────────────
 
 const P = {
-  bg: '#0F172A',
-  card: '#1E293B',
-  cardAlt: '#334155',
+  bg: '#F0F4FF',
+  headerBg: '#FFFFFF',
+  card: '#FFFFFF',
   primary: '#6366F1',
-  primaryLight: '#818CF8',
+  primaryLight: '#EEF2FF',
   accent: '#06B6D4',
+  accentLight: '#ECFEFF',
   userBubble: '#6366F1',
-  aiBubble: '#1E293B',
-  text: '#F1F5F9',
-  muted: '#94A3B8',
-  faint: '#475569',
+  userBubbleText: '#FFFFFF',
+  aiBubble: '#FFFFFF',
+  aiBubbleBorder: '#E8ECF4',
+  text: '#1A1A2E',
+  textSecondary: '#6B7280',
+  muted: '#9CA3AF',
+  faint: '#E5E7EB',
+  inputBg: '#F9FAFB',
+  inputBorder: '#E5E7EB',
+  online: '#10B981',
+  time: '#9CA3AF',
+  suggestionBg: '#FFFFFF',
+  suggestionBorder: '#E8ECF4',
+  suggestionIcon: '#6366F1',
 };
 
+// ─── Quick Prompts ──────────────────────────────────────────────────────────
+
 const QUICK_PROMPTS = [
-  { icon: 'magnify', text: 'Find suppliers for electronics' },
-  { icon: 'calculator', text: 'Calculate import duties' },
-  { icon: 'trending-up', text: 'Trending products this week' },
-  { icon: 'shield-check', text: 'How to verify a supplier?' },
-  { icon: 'truck-delivery', text: 'Shipping options to India' },
-  { icon: 'file-document', text: 'Create an RFQ' },
+  { icon: 'magnify', text: 'Find suppliers for electronics', color: '#6366F1' },
+  { icon: 'calculator-variant', text: 'Calculate import duties', color: '#F59E0B' },
+  { icon: 'trending-up', text: 'Trending products this week', color: '#10B981' },
+  { icon: 'shield-check', text: 'How to verify a supplier?', color: '#3B82F6' },
+  { icon: 'truck-delivery', text: 'Shipping options to India', color: '#8B5CF6' },
+  { icon: 'file-document', text: 'Create an RFQ', color: '#EC4899' },
 ];
 
-// ─── Helper: get base URL & token ───────────────────────────────────────────
+// ─── API Config ─────────────────────────────────────────────────────────────
 
-// NOTE: Replace with your actual API config
-const API_BASE = 'https://api.esyglob.com/api'; // Change to your backend URL
+const API_BASE = 'https://api.esyglob.com/api';
 let AUTH_TOKEN = '';
 
 export function setAIChatToken(token: string) {
   AUTH_TOKEN = token;
 }
 
-
-// ─── Streaming via XMLHttpRequest (React Native compatible) ─────────────────
+// ─── Streaming ──────────────────────────────────────────────────────────────
 
 async function* streamAIResponse(
   message: string,
@@ -121,12 +133,12 @@ async function* streamAIResponse(
     };
 
     xhr.onerror = () => {
-      chunkQueue.push({ type: 'error', message: 'Network error' });
+      chunkQueue.push({ type: 'error', message: 'Network error. Please try again.' });
       reject(new Error('Network error'));
     };
 
     xhr.ontimeout = () => {
-      chunkQueue.push({ type: 'error', message: 'Request timed out' });
+      chunkQueue.push({ type: 'error', message: 'Request timed out.' });
       reject(new Error('Timeout'));
     };
 
@@ -142,12 +154,10 @@ async function* streamAIResponse(
     );
   });
 
-  // Poll queue until done
+  // Poll queue
   while (true) {
-    // Wait 50ms before checking queue
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await new Promise<void>(resolve => setTimeout(resolve, 50));
 
-    // Drain queue
     while (chunkQueue.length > 0) {
       const chunk = chunkQueue.shift()!;
       yield chunk;
@@ -156,7 +166,6 @@ async function* streamAIResponse(
       }
     }
 
-    // Check if XHR is done
     if (xhr.readyState === 4) {
       while (chunkQueue.length > 0) {
         const chunk = chunkQueue.shift()!;
@@ -175,7 +184,7 @@ export default function AIChatBot() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "Hello! I'm your EsyGlob AI assistant. I can help you find products, suppliers, calculate duties, and more. What would you like to explore today?",
+        "👋 Hello! I'm your EsyGlob AI assistant. I can help you find products, suppliers, calculate duties, and more. What would you like to explore today?",
       timestamp: Date.now(),
     },
   ]);
@@ -188,7 +197,7 @@ export default function AIChatBot() {
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 600,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
@@ -239,12 +248,11 @@ export default function AIChatBot() {
 
         for await (const chunk of stream) {
           if (chunk.type === 'error') {
-            fullResponse = chunk.message ?? 'Something went wrong. Please try again.';
+            fullResponse = chunk.message ?? 'Something went wrong.';
             break;
           }
           if (chunk.type === 'token') {
             fullResponse += chunk.content;
-            // update last message
             setMessages(prev => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
@@ -259,11 +267,10 @@ export default function AIChatBot() {
           }
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Network error';
-        fullResponse = `Connection failed: ${message}`;
+        const msg = err instanceof Error ? err.message : 'Network error';
+        fullResponse = `❌ Connection failed: ${msg}`;
       }
 
-      // Finalize
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -284,6 +291,10 @@ export default function AIChatBot() {
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessage }) => {
       const isUser = item.role === 'user';
+      const time = new Date(item.timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
 
       return (
         <Animated.View
@@ -292,26 +303,34 @@ export default function AIChatBot() {
             isUser ? styles.messageRowUser : styles.messageRowAI,
             { opacity: fadeAnim },
           ]}>
+          {/* AI Avatar */}
           {!isUser && (
-            <View style={styles.aiAvatar}>
-              <Icon name="robot" size={16} color={P.primaryLight} />
+            <View style={styles.avatarCircle}>
+              <Icon name="robot-outline" size={18} color={P.primary} />
             </View>
           )}
-          <View style={[styles.bubble, isUser ? styles.userBubble : styles.aiBubble]}>
-            <Text style={[styles.bubbleText, isUser && styles.userBubbleText]}>
+
+          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
               {item.content}
-              {item.isStreaming && <Text style={styles.cursor}> ▌</Text>}
+              {item.isStreaming && (
+                <Text style={styles.typingDots}> ●</Text>
+              )}
             </Text>
-            <Text style={[styles.timestamp, isUser && styles.userTimestamp]}>
-              {new Date(item.timestamp).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Text>
+            <View style={styles.bubbleFooter}>
+              <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
+                {time}
+              </Text>
+              {isUser && (
+                <Icon name="check-all" size={14} color="rgba(255,255,255,0.6)" />
+              )}
+            </View>
           </View>
+
+          {/* User Avatar */}
           {isUser && (
-            <View style={styles.userAvatar}>
-              <Icon name="account" size={16} color={P.primaryLight} />
+            <View style={[styles.avatarCircle, styles.avatarUser]}>
+              <Icon name="account-outline" size={18} color="#FFF" />
             </View>
           )}
         </Animated.View>
@@ -326,35 +345,40 @@ export default function AIChatBot() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 70}>
+      <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <View style={styles.aiBadge}>
-            <Icon name="robot" size={18} color={P.primaryLight} />
+          <View style={styles.aiAvatarCircle}>
+            <Icon name="robot" size={20} color={P.primary} />
           </View>
           <View>
             <Text style={styles.headerTitle}>AI Assistant</Text>
-            <Text style={styles.headerSubtitle}>
-              {isStreaming ? 'Typing...' : 'Online · Powered by AI'}
-            </Text>
+            <View style={styles.statusRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.statusText}>
+                {isStreaming ? 'Typing...' : 'Online'}
+              </Text>
+            </View>
           </View>
         </View>
         <Pressable
-          style={styles.newChatBtn}
           onPress={() => {
             setMessages([
               {
                 id: 'welcome',
                 role: 'assistant',
                 content:
-                  "Hello! I'm your EsyGlob AI assistant. How can I help you today?",
+                  "👋 Hello! I'm your EsyGlob AI assistant. How can I help you today?",
                 timestamp: Date.now(),
               },
             ]);
             setChatId(undefined);
-          }}>
-          <Icon name="plus" size={18} color={P.muted} />
+          }}
+          style={styles.newChatBtn}>
+          <Icon name="plus" size={20} color={P.textSecondary} />
         </Pressable>
       </View>
 
@@ -366,17 +390,23 @@ export default function AIChatBot() {
         renderItem={renderMessage}
         contentContainerStyle={styles.messageList}
         onContentSizeChange={scrollToBottom}
+        showsVerticalScrollIndicator={false}
         ListFooterComponent={
           showSuggestions ? (
-            <View style={styles.suggestions}>
+            <View style={styles.suggestionsWrap}>
               <Text style={styles.suggestionsTitle}>Try asking about</Text>
               <View style={styles.suggestionGrid}>
                 {QUICK_PROMPTS.map((prompt, i) => (
                   <Pressable
                     key={i}
-                    style={styles.suggestionChip}
+                    style={({ pressed }) => [
+                      styles.suggestionChip,
+                      pressed && styles.pressed,
+                    ]}
                     onPress={() => sendMessage(prompt.text)}>
-                    <Icon name={prompt.icon} size={14} color={P.accent} />
+                    <View style={[styles.suggestionIcon, { backgroundColor: prompt.color + '15' }]}>
+                      <Icon name={prompt.icon} size={16} color={prompt.color} />
+                    </View>
                     <Text style={styles.suggestionText} numberOfLines={2}>
                       {prompt.text}
                     </Text>
@@ -386,16 +416,17 @@ export default function AIChatBot() {
             </View>
           ) : null
         }
+        ListFooterComponentStyle={styles.footerComponent}
       />
 
-      {/* Input */}
+      {/* Input Bar */}
       <View style={styles.inputBar}>
         <View style={styles.inputRow}>
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Ask anything about products, suppliers..."
-            placeholderTextColor={P.faint}
+            placeholder="Ask anything..."
+            placeholderTextColor={P.muted}
             style={styles.textInput}
             multiline
             maxLength={500}
@@ -406,14 +437,15 @@ export default function AIChatBot() {
           <Pressable
             onPress={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming}
-            style={[
+            style={({ pressed }) => [
               styles.sendBtn,
               (!input.trim() || isStreaming) && styles.sendBtnDisabled,
+              pressed && styles.sendBtnPressed,
             ]}>
             {isStreaming ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color="#FFF" />
             ) : (
-              <Icon name="send" size={18} color="#fff" />
+              <Icon name="send" size={18} color="#FFF" />
             )}
           </Pressable>
         </View>
@@ -425,119 +457,252 @@ export default function AIChatBot() {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: P.bg },
+  container: {
+    flex: 1,
+    backgroundColor: P.bg,
+  },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: P.headerBg,
     borderBottomWidth: 1,
-    borderBottomColor: P.card,
+    borderBottomColor: P.faint,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  aiBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: P.card,
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  aiAvatarCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: P.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { fontSize: 15, fontWeight: '700', color: P.text, letterSpacing: -0.2 },
-  headerSubtitle: { fontSize: 11, fontWeight: '500', color: P.muted, marginTop: 1 },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: P.text,
+    letterSpacing: -0.2,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 1,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: P.online,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: P.textSecondary,
+  },
   newChatBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: P.card,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: P.inputBg,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: P.faint,
   },
-  messageList: { paddingHorizontal: 12, paddingVertical: 16, flexGrow: 1 },
-  messageRow: { flexDirection: 'row', marginBottom: 16, gap: 8, maxWidth: '88%' },
-  messageRowUser: { alignSelf: 'flex-end' },
-  messageRowAI: { alignSelf: 'flex-start' },
-  aiAvatar: {
-    width: 32,
-    height: 32,
+
+  // Messages
+  messageList: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexGrow: 1,
+  },
+  footerComponent: {
+    paddingBottom: 8,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    gap: 6,
+    maxWidth: '85%',
+  },
+  messageRowUser: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row-reverse',
+  },
+  messageRowAI: {
+    alignSelf: 'flex-start',
+  },
+
+  // Avatars
+  avatarCircle: {
+    width: 30,
+    height: 30,
     borderRadius: 10,
-    backgroundColor: P.card,
+    backgroundColor: P.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
-  userAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: P.primaryLight + '30',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
+  avatarUser: {
+    backgroundColor: P.primary,
   },
-  bubble: { padding: 12, borderRadius: 16, borderBottomLeftRadius: 4 },
-  userBubble: {
+
+  // Bubbles
+  bubble: {
+    padding: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  bubbleAI: {
+    backgroundColor: P.aiBubble,
+    borderWidth: 1,
+    borderColor: P.aiBubbleBorder,
+    borderBottomLeftRadius: 4,
+  },
+  bubbleUser: {
     backgroundColor: P.userBubble,
-    borderBottomLeftRadius: 16,
     borderBottomRightRadius: 4,
   },
-  aiBubble: { backgroundColor: P.aiBubble, borderWidth: 1, borderColor: P.cardAlt },
-  bubbleText: { fontSize: 13, lineHeight: 19, color: P.text },
-  userBubbleText: { color: '#fff' },
-  cursor: { color: P.primaryLight, fontWeight: '300' },
-  timestamp: { fontSize: 9, fontWeight: '500', color: P.faint, marginTop: 4, textAlign: 'right' },
-  userTimestamp: { color: 'rgba(255,255,255,0.5)' },
-  suggestions: { paddingTop: 20 },
+  bubbleText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: P.text,
+  },
+  bubbleTextUser: {
+    color: P.userBubbleText,
+  },
+  typingDots: {
+    color: P.primary,
+    fontWeight: '700',
+  },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 3,
+    marginTop: 4,
+  },
+  bubbleTime: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: P.time,
+  },
+  bubbleTimeUser: {
+    color: 'rgba(255,255,255,0.6)',
+  },
+
+  // Suggestions
+  suggestionsWrap: {
+    paddingTop: 16,
+  },
   suggestionsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: P.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    color: P.textSecondary,
     textAlign: 'center',
     marginBottom: 12,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.2,
   },
-  suggestionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  suggestionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   suggestionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: P.card,
-    borderRadius: 10,
+    gap: 8,
+    backgroundColor: P.suggestionBg,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: P.cardAlt,
+    borderColor: P.suggestionBorder,
     width: '47%',
   },
-  suggestionText: { fontSize: 11, fontWeight: '600', color: P.text, flex: 1, lineHeight: 15 },
+  suggestionIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: P.text,
+    flex: 1,
+    lineHeight: 15,
+  },
+  pressed: {
+    transform: [{ scale: 0.97 }],
+    opacity: 0.9,
+  },
+
+  // Input Bar
   inputBar: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
+    backgroundColor: P.headerBg,
     borderTopWidth: 1,
-    borderTopColor: P.card,
-    backgroundColor: P.bg,
+    borderTopColor: P.faint,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    backgroundColor: P.card,
-    borderRadius: 16,
+    backgroundColor: P.inputBg,
+    borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderWidth: 1,
-    borderColor: P.cardAlt,
+    borderColor: P.inputBorder,
   },
-  textInput: { flex: 1, fontSize: 13, color: P.text, maxHeight: 100, padding: 0 },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    color: P.text,
+    maxHeight: 100,
+    paddingVertical: 4,
+  },
   sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: P.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: P.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  sendBtnDisabled: { backgroundColor: P.cardAlt },
+  sendBtnDisabled: {
+    backgroundColor: P.muted,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  sendBtnPressed: {
+    transform: [{ scale: 0.9 }],
+  },
 });

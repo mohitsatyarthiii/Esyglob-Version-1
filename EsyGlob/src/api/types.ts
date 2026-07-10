@@ -461,3 +461,199 @@ export type NotificationItem = {
   isRead?: boolean;
   createdAt?: string;
 };
+
+
+// ─── Add at the bottom of your types.ts file ───────────────────────────────
+
+// Product Details Screen specific types
+export type ProductDetails = Product & {
+  specifications?: Record<string, string>;
+  tags?: string[];
+  leadTime?: {
+    value: number;
+    unit: string;
+  };
+};
+
+// MOQ Tier for price selection
+export type MoqTier = {
+  minQty: number;
+  maxQty: number | null;
+  price: number;
+  currency?: string;
+  unit?: string;
+};
+
+// RFQ / Enquiry form data
+export type EnquiryFormData = {
+  productId: string;
+  sellerUserId: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  targetPrice?: number;
+  destinationCountry: string;
+  additionalNotes?: string;
+  attachments?: string[];
+};
+
+// Chat start params
+export type StartChatParams = {
+  otherUserId: string;
+  productId: string;
+  role: 'buyer' | 'seller';
+  enquiry: boolean;
+};
+
+// Product Enquiry Response
+export type EnquiryResponse = {
+  rfq?: RFQ;
+  chat?: Chat;
+  message?: string;
+};
+
+// Track Product View Response
+export type TrackViewResponse = {
+  tracked: boolean;
+};
+
+// Sample Order Params
+export type SampleOrderParams = {
+  productId: string;
+  quantity: number;
+  shippingAddress: {
+    country: string;
+    city: string;
+    postalCode: string;
+  };
+  logisticsOption?: string;
+  notes?: string;
+  termsAccepted?: boolean;
+};
+
+// Trade Order Params
+export type TradeOrderParams = {
+  productId: string;
+  quantity: number;
+  destination: {
+    country: string;
+    city: string;
+    postalCode: string;
+  };
+  logisticsOption?: string;
+  quotationId?: string;
+  chatId?: string;
+  orderType: 'bulk' | 'sample';
+  orderSubType: string;
+  notes?: string;
+  termsAccepted?: boolean;
+};
+
+// Upload Response
+export type UploadResponse = {
+  uploads?: UploadAttachment[];
+  files?: UploadAttachment[];
+  data?: UploadAttachment[];
+  urls?: string[];
+};
+
+export type UploadAttachment = {
+  id?: string;
+  url?: string;
+  secure_url?: string;
+  location?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+// Factory Profile types
+export type FactoryProfileData = {
+  name?: string;
+  factoryName?: string;
+  floorArea?: string;
+  factorySize?: string;
+  employeeCount?: number;
+  productionLines?: number;
+  machinery?: string;
+  monthlyCapacity?: string;
+  productionCapacity?: string;
+  annualCapacity?: string;
+  qualityControl?: string;
+  description?: string;
+  capabilities?: string[] | string;
+  images?: string[] | string;
+  videos?: string[] | string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+  };
+  verificationStatus?: string;
+  lastDraftSavedAt?: string;
+};
+
+// Checkout Quote Types
+export type CheckoutQuoteInput = {
+  productId: string;
+  quantity: number;
+  orderType: string;
+  orderSubType: string;
+  logisticsOption?: string;
+  destination?: {
+    country: string;
+    city: string;
+    postalCode: string;
+  };
+};
+
+export type LogisticsOption = {
+  key?: string;
+  id?: string;
+  code?: string;
+  label?: string;
+  name?: string;
+  mode?: string;
+  incoterm?: string;
+  eta?: string;
+  estimatedDelivery?: string;
+  amount?: number;
+  price?: number;
+  buyerLabel?: string;
+  available?: boolean;
+  insuranceAmount?: number;
+  warehousingCharges?: number;
+  customsCharges?: number;
+  internalBreakdown?: Record<string, number>;
+  providerLabel?: string;
+  providerKey?: string;
+};
+
+export type CheckoutQuoteResponse = {
+  success?: boolean;
+  quote?: {
+    currency?: string;
+    quantity?: number;
+    unitPrice?: number;
+    productTotal?: number;
+    logisticsOptions?: LogisticsOption[];
+    selectedLogistics?: LogisticsOption | null;
+    logisticsCharges?: number;
+    platformFee?: number;
+    platformFeeRate?: number;
+    gstRate?: number;
+    gstAmount?: number;
+    discount?: number;
+    grandTotal?: number;
+    subtotal?: number;
+    totalAmount?: number;
+    automatedServices?: Array<{
+      key: string;
+      label: string;
+      status: string;
+      amount: number;
+    }>;
+  };
+};
