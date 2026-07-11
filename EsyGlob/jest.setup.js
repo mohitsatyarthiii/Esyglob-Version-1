@@ -2,6 +2,43 @@
 
 global.__DEV__ = true;
 global.IS_REACT_ACT_ENVIRONMENT = true;
+global.fetch = jest.fn(async () => ({ ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({ data: {} }), text: async () => '{}' }));
+
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  return {
+    GestureHandlerRootView: ({ children }) => React.createElement(React.Fragment, null, children),
+  };
+});
+
+jest.mock('@react-native-community/netinfo', () => ({
+  addEventListener: jest.fn(() => jest.fn()),
+  fetch: jest.fn(async () => ({ isConnected: true, isInternetReachable: true })),
+}));
+
+jest.mock('@shopify/flash-list', () => {
+  const React = require('react');
+  return {
+    FlashList: ({ data = [], renderItem, ListHeaderComponent, ListEmptyComponent }) => React.createElement(
+      React.Fragment,
+      null,
+      typeof ListHeaderComponent === 'function' ? React.createElement(ListHeaderComponent) : ListHeaderComponent,
+      data.length ? data.map((item, index) => React.createElement(React.Fragment, { key: index }, renderItem({ item, index }))) : (typeof ListEmptyComponent === 'function' ? React.createElement(ListEmptyComponent) : ListEmptyComponent),
+    ),
+  };
+});
+
+jest.mock('react-native-image-picker', () => ({ launchCamera: jest.fn(), launchImageLibrary: jest.fn() }));
+jest.mock('@react-native-documents/picker', () => ({ pick: jest.fn(), types: { allFiles: '*/*' } }));
+jest.mock('react-native-nitro-sound', () => ({
+  __esModule: true,
+  default: { startRecorder: jest.fn(), stopRecorder: jest.fn(), pauseRecorder: jest.fn(), resumeRecorder: jest.fn(), startPlayer: jest.fn(), stopPlayer: jest.fn(), addRecordBackListener: jest.fn(), removeRecordBackListener: jest.fn() },
+}));
+jest.mock('react-native-razorpay', () => ({ __esModule: true, default: { open: jest.fn() } }));
+jest.mock('./src/components/AIChatBot', () => {
+  const React = require('react');
+  return { __esModule: true, default: () => React.createElement(React.Fragment) };
+});
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -21,10 +58,13 @@ jest.mock('react-native', () => {
   }
 
   return {
+    ActivityIndicator: createHost('ActivityIndicator'),
+    AppState: { currentState: 'active', addEventListener: jest.fn(() => ({ remove: jest.fn() })) },
     Animated: {
       Value: AnimatedValue,
       loop: () => ({ start: jest.fn(), stop: jest.fn() }),
       sequence: animations => animations,
+      spring: () => ({ start: jest.fn(), stop: jest.fn() }),
       timing: () => ({ start: jest.fn(), stop: jest.fn() }),
       View: createHost('Animated.View'),
     },
@@ -32,12 +72,14 @@ jest.mock('react-native', () => {
       get: () => ({ width: 390, height: 844 }),
     },
     Image: createHost('Image'),
+    FlatList: createHost('FlatList'),
     NativeModules: {},
     Platform: {
       OS: 'ios',
       select: values => values.ios || values.default,
     },
     Pressable: createHost('Pressable'),
+    RefreshControl: createHost('RefreshControl'),
     ScrollView: createHost('ScrollView'),
     StatusBar: createHost('StatusBar'),
     StyleSheet: {

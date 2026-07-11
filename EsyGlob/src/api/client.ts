@@ -217,6 +217,12 @@ export function hasAuthCredentials() {
   return Boolean(appStorage.getString(SESSION_KEY));
 }
 
+export function getSessionToken() {
+  const cookie = appStorage.getString(SESSION_KEY) ?? '';
+  const separator = cookie.indexOf('=');
+  return separator >= 0 ? cookie.slice(separator + 1) : cookie;
+}
+
 function buildRequestCacheKey(method: string, url: string, headers: Record<string, string>) {
   return [
     method,

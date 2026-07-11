@@ -69,7 +69,7 @@ function SellerProductFormScreen() {
     },
     onSuccess: result => {
       queryClient.invalidateQueries({ queryKey: ['seller-products'] });
-      Alert.alert('Product saved', result.message ?? result.visibilityNotice ?? 'Product was saved.');
+      Alert.alert('Product saved', result.visibilityNotice ?? 'Product was saved.');
       navigation.goBack();
     },
     onError: error => Alert.alert('Save failed', error instanceof Error ? error.message : 'Unable to save product.'),

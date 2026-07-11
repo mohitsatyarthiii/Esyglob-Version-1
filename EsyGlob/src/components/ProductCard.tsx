@@ -1,14 +1,10 @@
 import React, { useMemo, useRef } from 'react';
 import {
   Animated,
-  Dimensions,
-  FlatList,
   Pressable,
   StyleSheet,
   Text,
   View,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -80,7 +76,6 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
   const rating = product.averageRating ? Number(product.averageRating).toFixed(1) : null;
   const badge = useMemo(() => getProductBadge(product), [product]);
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const [currentImage, setCurrentImage] = React.useState(0);
 
   const primaryImage = getProductImage(product);
   const gallery = React.useMemo(
@@ -97,11 +92,6 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
     if (productId) {
       navigation.navigate('ProductDetails', { productId });
     }
-  };
-
-  const onImageSwipe = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / CARD_WIDTH);
-    if (index !== currentImage) setCurrentImage(index);
   };
 
   return (
@@ -123,47 +113,16 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
         }}>
         {/* Swipeable Image Gallery */}
         <View style={styles.imageWrap}>
-          <FlatList
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            data={gallery}
-            keyExtractor={(uri, i) => `${uri}-${i}`}
-            onMomentumScrollEnd={onImageSwipe}
-            getItemLayout={(_, index) => ({
-              length: variant === 'carousel' ? CARD_WIDTH : Dimensions.get('window').width,
-              offset: (variant === 'carousel' ? CARD_WIDTH : Dimensions.get('window').width) * index,
-              index,
-            })}
-            renderItem={({ item: uri }) => (
-              <View style={[styles.imageSlide, variant === 'carousel' ? styles.imageSlideCarousel : styles.imageSlideFull]}>
-                <RemoteImage
-                  uri={uri}
-                  width={420}
-                  height={300}
-                  style={styles.image}
-                  fallback={
-                    <View style={styles.imageFallback}>
-                      <Icon name="package-variant-closed" size={28} color={PALETTE.muted} />
-                    </View>
-                  }
-                />
-              </View>
-            )}
+          <RemoteImage
+            uri={primaryImage}
+            width={520}
+            height={390}
+            resizeMode="contain"
+            style={styles.image}
+            fallback={<View style={styles.imageFallback}><Icon name="package-variant-closed" size={28} color={PALETTE.muted} /></View>}
           />
 
           {/* Dot indicators */}
-          {gallery.length > 1 && (
-            <View style={styles.dotRow}>
-              {gallery.map((_, i) => (
-                <View
-                  key={i}
-                  style={[styles.dot, currentImage === i && styles.dotActive]}
-                />
-              ))}
-            </View>
-          )}
-
           {/* Save button - only render if valid ID */}
           {isValidId && (
             <SavedHeartButton
@@ -187,7 +146,7 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
           {/* Image counter */}
           {gallery.length > 1 && (
             <Text style={styles.imageCounter}>
-              {currentImage + 1}/{gallery.length}
+              {gallery.length} images
             </Text>
           )}
         </View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -42,11 +42,17 @@ type Props = {
   targetPrice: string;
   destinationCountry: string;
   additionalNotes: string;
+  customSpecifications: string;
+  packagingRequirements: string;
+  deliveryRequirements: string;
   attachments: Attachment[];
   onQuantityChange: (v: string) => void;
   onTargetPriceChange: (v: string) => void;
   onDestinationChange: (v: string) => void;
   onNotesChange: (v: string) => void;
+  onSpecificationsChange: (v: string) => void;
+  onPackagingChange: (v: string) => void;
+  onDeliveryChange: (v: string) => void;
   onAttachmentsChange: (files: Attachment[]) => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -62,11 +68,17 @@ export default function EnquiryModal({
   targetPrice,
   destinationCountry,
   additionalNotes,
+  customSpecifications,
+  packagingRequirements,
+  deliveryRequirements,
   attachments,
   onQuantityChange,
   onTargetPriceChange,
   onDestinationChange,
   onNotesChange,
+  onSpecificationsChange,
+  onPackagingChange,
+  onDeliveryChange,
   onAttachmentsChange,
   onClose,
   onSubmit,
@@ -90,7 +102,7 @@ export default function EnquiryModal({
       if (files.length > 0) {
         onAttachmentsChange([...attachments, ...files]);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Unable to pick files.');
     }
   };
@@ -167,6 +179,21 @@ export default function EnquiryModal({
               style={styles.input}
             />
 
+            <Text style={styles.label}>Product Specifications</Text>
+            <TextInput value={customSpecifications} onChangeText={onSpecificationsChange} multiline
+              placeholder="Material, size, color, standards, customization..." placeholderTextColor={P.muted}
+              style={[styles.input, styles.textarea]} />
+
+            <Text style={styles.label}>Packaging Requirements</Text>
+            <TextInput value={packagingRequirements} onChangeText={onPackagingChange} multiline
+              placeholder="Packaging type, labeling, carton requirements..." placeholderTextColor={P.muted}
+              style={[styles.input, styles.textarea]} />
+
+            <Text style={styles.label}>Delivery Requirements</Text>
+            <TextInput value={deliveryRequirements} onChangeText={onDeliveryChange} multiline
+              placeholder="Required date, port, shipping terms..." placeholderTextColor={P.muted}
+              style={[styles.input, styles.textarea]} />
+
             {/* Notes */}
             <Text style={styles.label}>Additional Notes</Text>
             <TextInput
@@ -227,7 +254,7 @@ export default function EnquiryModal({
               )}
             </Pressable>
 
-            <View style={{ height: 30 }} />
+            <View style={styles.bottomSpacer} />
           </ScrollView>
         </View>
       </View>
@@ -273,6 +300,7 @@ const styles = StyleSheet.create({
   },
   inputDisabled: { opacity: 0.6 },
   textarea: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
+  bottomSpacer: { height: 30 },
 
   // Attachments
   attachmentList: { gap: 8, marginBottom: 8 },

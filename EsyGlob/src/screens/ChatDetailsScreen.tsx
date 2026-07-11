@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -28,6 +29,8 @@ import {
   sendChatMessage,
   uploadChatAttachment,
   UploadAttachment,
+  blockChatUser,
+  favoriteChat,
 } from '../api/marketplace';
 import { Chat, CurrentUser, MessageItem, Product } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -35,6 +38,7 @@ import RemoteImage from '../components/RemoteImage';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { getId } from '../utils/format';
 import { firstImage, normalizeImageUrl } from '../utils/images';
+import { getRealtimeSocket } from '../realtime/socket';
 
 // ─── WhatsApp Palette ───────────────────────────────────────────────────────
 
@@ -113,6 +117,9 @@ function ChatDetailsScreen() {
   const [olderMessages, setOlderMessages] = useState<MessageItem[]>([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
+  const [profileActionsOpen, setProfileActionsOpen] = useState(false);
+  const [participantTyping, setParticipantTyping] = useState(false);
+  const [participantOnline, setParticipantOnline] = useState(false);
 
   const chat = useQuery({
     queryKey: ['chat-details', chatId],
@@ -142,6 +149,68 @@ function ChatDetailsScreen() {
       image: firstImage(other?.profileImage, other?.avatar, other?.image) as string | undefined,
     };
   }, [chat.data?.chat, senderId, title]);
+
+  const participantId = useMemo(() => {
+    const item = chat.data?.chat;
+    const buyerId = typeof item?.buyerId === 'string' ? item.buyerId : getUserId(item?.buyerId as CurrentUser);
+    const sellerId = typeof item?.sellerId === 'string' ? item.sellerId : getUserId(item?.sellerId as CurrentUser);
+    return buyerId === senderId ? sellerId : buyerId;
+  }, [chat.data?.chat, senderId]);
+
+  useEffect(() => {
+    if (!chatId) return undefined;
+    const socket = getRealtimeSocket();
+    const join = () => socket.emit('join_chat', { chatId });
+    const onMessage = (message: MessageItem) => {
+      if (String(message.chatId ?? '') === String(chatId)) queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
+    };
+    const onTyping = (event: { chatId?: string; userId?: string; typing?: boolean }) => {
+      if (event.chatId === chatId && event.userId !== senderId) setParticipantTyping(Boolean(event.typing));
+    };
+    const onPresence = (event: { userId?: string; online?: boolean }) => {
+      if (event.userId === participantId) setParticipantOnline(Boolean(event.online));
+    };
+    const onUpdate = (event: { chatId?: string }) => {
+      if (!event.chatId || event.chatId === chatId) queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
+    };
+    socket.on('connect', join);
+    socket.on('new_message', onMessage);
+    socket.on('typing_updated', onTyping);
+    socket.on('presence_updated', onPresence);
+    socket.on('messages_read', onUpdate);
+    socket.on('quotation_updated', onUpdate);
+    join();
+    socket.emit('mark_read', { chatId });
+    return () => {
+      socket.emit('typing', { chatId, typing: false });
+      socket.emit('leave_chat', { chatId });
+      socket.off('connect', join);
+      socket.off('new_message', onMessage);
+      socket.off('typing_updated', onTyping);
+      socket.off('presence_updated', onPresence);
+      socket.off('messages_read', onUpdate);
+      socket.off('quotation_updated', onUpdate);
+    };
+  }, [chatId, participantId, queryClient, senderId]);
+
+  useEffect(() => {
+    if (!chatId) return undefined;
+    const socket = getRealtimeSocket();
+    socket.emit('typing', { chatId, typing: draft.trim().length > 0 });
+    const timer = setTimeout(() => socket.emit('typing', { chatId, typing: false }), 1800);
+    return () => clearTimeout(timer);
+  }, [chatId, draft]);
+
+  const contactAction = useMutation({
+    mutationFn: ({ action }: { action: 'favorite' | 'block' }) =>
+      action === 'favorite' ? favoriteChat(chatId, true) : blockChatUser(chatId, true),
+    onSuccess: (_result, variables) => {
+      setProfileActionsOpen(false);
+      Alert.alert(variables.action === 'block' ? 'User blocked' : 'Conversation saved', variables.action === 'block' ? 'This contact can no longer message you.' : 'Added to your favorite conversations.');
+      queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
+    },
+    onError: error => Alert.alert('Action failed', error instanceof Error ? error.message : 'Please try again.'),
+  });
 
   const send = useMutation({
     mutationFn: (content: string | Record<string, unknown>) => sendChatMessage(chatId, content),
@@ -421,27 +490,12 @@ function ChatDetailsScreen() {
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Icon name="arrow-left" size={24} color={WP.headerText} />
         </Pressable>
-        <RemoteImage
-          uri={participant.image}
-          width={80}
-          height={80}
-          style={styles.headerAvatar}
-          fallback={
-            <View style={styles.headerAvatarFallback}>
-              <Text style={styles.headerAvatarText}>
-                {(participant.name[0] ?? '?').toUpperCase()}
-              </Text>
-            </View>
-          }
-        />
-        <View style={styles.headerBody}>
-          <Text numberOfLines={1} style={styles.headerName}>
-            {participant.name}
-          </Text>
-          <Text style={styles.headerStatus}>
-            {activeRole === 'seller' ? 'Seller' : 'Buyer'}
-          </Text>
-        </View>
+        <Pressable onPress={() => setProfileActionsOpen(true)} style={styles.headerContact}>
+          <RemoteImage uri={participant.image} width={80} height={80} style={styles.headerAvatar}
+            fallback={<View style={styles.headerAvatarFallback}><Text style={styles.headerAvatarText}>{(participant.name[0] ?? '?').toUpperCase()}</Text></View>} />
+          <View style={styles.headerBody}><Text numberOfLines={1} style={styles.headerName}>{participant.name}</Text><Text style={styles.headerStatus}>{participantTyping ? 'typing...' : participantOnline ? 'online' : 'Tap for contact actions'}</Text></View>
+          <Icon name="dots-vertical" size={22} color={WP.headerText} />
+        </Pressable>
       </View>
 
       {/* Context Bar */}
@@ -559,6 +613,27 @@ function ChatDetailsScreen() {
       </View>
 
       {/* Action Sheet Modal */}
+      <Modal visible={profileActionsOpen} transparent animationType="slide" onRequestClose={() => setProfileActionsOpen(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setProfileActionsOpen(false)}>
+          <View style={styles.contactSheet}>
+            <Text style={styles.contactSheetTitle}>{participant.name}</Text>
+            {[
+              ['account-outline', 'View Profile', () => chat.data?.sellerProfile?._id && navigation.navigate('SellerDetails', { sellerId: chat.data.sellerProfile._id })],
+              ['clipboard-list-outline', 'Create RFQ', () => navigation.navigate('RFQCreate', { prefill: { sellerId: chat.data?.sellerProfile?._id, supplierName: participant.name, productId: chatProduct ? getId(chatProduct) : undefined } })],
+              ['rocket-launch-outline', 'Start Order', () => chatProduct && navigation.navigate('OrderCheckout', { mode: 'trade', chatId, productId: getId(chatProduct) })],
+              ['package-variant', 'View Product', () => chatProduct && navigation.navigate('ProductDetails', { productId: getId(chatProduct) })],
+              ['heart-outline', 'Favorite', () => contactAction.mutate({ action: 'favorite' })],
+              ['block-helper', 'Block User', () => contactAction.mutate({ action: 'block' })],
+              ['alert-octagon-outline', 'Report', () => Linking.openURL(`mailto:support@esyglob.com?subject=${encodeURIComponent(`Report chat ${chatId}`)}`)],
+              ['share-variant-outline', 'Share Contact', () => Share.share({ message: `${participant.name}${chat.data?.sellerProfile?.companyWebsite ? `\n${chat.data.sellerProfile.companyWebsite}` : ''}` })],
+            ].map(([icon, label, handler]) => (
+              <Pressable key={String(label)} onPress={handler as () => void} style={styles.contactSheetRow}>
+                <Icon name={String(icon)} size={21} color={label === 'Block User' || label === 'Report' ? WP.rose : WP.primaryDark} /><Text style={styles.contactSheetText}>{String(label)}</Text><Icon name="chevron-right" size={18} color={WP.muted} />
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
       <Modal
         transparent
         visible={Boolean(sheetMode)}
@@ -1206,6 +1281,11 @@ const styles = StyleSheet.create({
   },
   headerAvatarText: { color: '#fff', fontSize: 18, fontWeight: '700' },
   headerBody: { flex: 1 },
+  headerContact: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  contactSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: WP.cardBg, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 28 },
+  contactSheetTitle: { fontSize: 18, fontWeight: '700', color: WP.textOther, marginBottom: 10 },
+  contactSheetRow: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
+  contactSheetText: { flex: 1, fontSize: 14, fontWeight: '600', color: WP.textOther },
   headerName: { fontSize: 17, fontWeight: '600', color: WP.headerText },
   headerStatus: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
 

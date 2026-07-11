@@ -4,6 +4,8 @@ import User from '../models/User.js';
 import FactoryProfile from '../models/FactoryProfile.js';
 import SellerVerification from '../models/SellerVerification.js';
 import VerificationAudit from '../models/VerificationAudit.js';
+import Product from '../models/Product.js';
+import Review from '../models/Review.js';
 
 // ─── Seller Listing ────────────────────────────────────────
 export async function findSellersAggregated(query, sortQuery, page, limit) {
@@ -81,10 +83,37 @@ export async function findPublicSellerById(sellerId) {
     isActive: true,
     isSuspended: { $ne: true },
   })
-    .select('userId companyName companyType companyDescription companyLogo logo logoUrl isVerified isTrustedSeller trustedSellerBadge verificationLevel rating reviewCount responseRate trustScore address yearEstablished totalProducts totalOrders certifications productCategories exportMarkets createdAt')
+    .select('userId companyName companyType companyDescription companyLogo logo logoUrl companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone address shippingInfo isVerified isTrustedSeller trustedSellerBadge verificationStatus verificationLevel rating reviewCount responseRate trustScore totalProducts totalOrders certifications productCategories exportMarkets createdAt')
     .populate('userId', 'fullName avatarUrl')
     .lean()
     .exec();
+}
+
+export async function findPublicSellerRelatedData(sellerId) {
+  if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+    return { products: [], factoryProfile: null, reviews: [] };
+  }
+
+  const [products, factoryProfile, reviews] = await Promise.all([
+    Product.find({
+      sellerId,
+      status: { $in: ['active', 'published'] },
+    })
+      .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime createdAt')
+      .sort({ createdAt: -1 })
+      .limit(60)
+      .lean(),
+    FactoryProfile.findOne({ sellerId })
+      .select('name address floorArea description employeeCount productionLines machinery monthlyCapacity annualCapacity capabilities qualityControl images videos certifications verificationStatus inspectedAt')
+      .lean(),
+    Review.find({ sellerId, status: 'published' })
+      .populate('userId', 'fullName avatarUrl')
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean(),
+  ]);
+
+  return { products, factoryProfile, reviews };
 }
 
 // ─── Factory Profile ───────────────────────────────────────

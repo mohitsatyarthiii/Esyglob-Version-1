@@ -8,6 +8,10 @@ type MoqTier = {
   price: number;
   currency?: string;
   unit?: string;
+  discount?: number;
+  savings?: number;
+  leadTime?: string;
+  available?: boolean;
 };
 
 type Props = {
@@ -49,6 +53,8 @@ export default function MoqSelector({
                   {currency}{tier.price.toLocaleString('en-IN')}
                   <Text style={styles.perUnit}> /unit</Text>
                 </Text>
+                {tier.discount ? <Text style={styles.savings}>{tier.discount.toFixed(0)}% off · Save {currency}{(tier.savings ?? 0).toLocaleString('en-IN')}/unit</Text> : null}
+                <Text style={styles.meta}>{tier.available === false ? 'Unavailable' : 'Available'}{tier.leadTime ? ` · ${tier.leadTime}` : ''}</Text>
               </View>
               {isActive && (
                 <Icon name="check-circle" size={20} color="#FF6A00" />
@@ -122,4 +128,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#94A3B8',
   },
+  savings: { fontSize: 9, color: '#059669', fontWeight: '700', marginTop: 2 },
+  meta: { fontSize: 9, color: '#64748B', marginTop: 2 },
 });

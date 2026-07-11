@@ -22,7 +22,6 @@ import { firstImage } from '../utils/images';
 
 const SIDEBAR_WIDTH = 90;
 const COLUMN_COUNT = 3;
-const CARD_MARGIN = 6;
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 

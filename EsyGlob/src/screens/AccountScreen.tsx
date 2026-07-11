@@ -706,7 +706,7 @@ function AccountScreen() {
           <Icon name="chevron-right" size={20} color={PALETTE.faint} />
         </Pressable>
         <Pressable
-          onPress={() => navigation.navigate('Help')}
+          onPress={() => navigation.navigate('Services')}
           style={[styles.actionRow, styles.actionRowLast]}>
           <View style={[styles.actionIcon, styles.redSoftBg]}>
             <Icon name="lifebuoy" size={20} color={PALETTE.red} />

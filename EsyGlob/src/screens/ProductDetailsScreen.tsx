@@ -4,6 +4,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -26,7 +27,6 @@ import {
 } from '../api/marketplace';
 import { Product } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
 import ReviewsPanel from '../components/ReviewsPanel';
 import SavedHeartButton from '../components/SavedHeartButton';
@@ -35,7 +35,6 @@ import QuickInfo from '../components/QuickInfo';
 import MoqSelector from '../components/MoqSelector';
 import EnquiryModal from '../components/EnquiryModal';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { radii, shadow, spacing } from '../theme';
 import {
   formatMoq,
   formatProductPrice,
@@ -54,6 +53,10 @@ type MoqTier = {
   maxQty: number | null;
   price: number;
   unit: string;
+  discount?: number;
+  savings?: number;
+  leadTime?: string;
+  available?: boolean;
 };
 
 type Attachment = {
@@ -63,6 +66,7 @@ type Attachment = {
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GALLERY_WIDTH = SCREEN_WIDTH - 24;
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -86,7 +90,7 @@ const P = {
 
 // ─── DEBUG ──────────────────────────────────────────────────────────────────
 
-const DEBUG = true;
+const DEBUG = __DEV__;
 function log(...args: any[]) {
   if (DEBUG) console.log('[ProductDetails]', ...args);
 }
@@ -131,7 +135,7 @@ function resolveSellerUserId(item: Product): string | undefined {
   const fallback = seller._id ?? seller.id;
   if (fallback) {
     log('  ⚠️ Using fallback seller ID as userId:', fallback);
-    return String(fallback);
+    return undefined;
   }
 
   log('  ❌ Could not resolve sellerUserId');
@@ -140,13 +144,20 @@ function resolveSellerUserId(item: Product): string | undefined {
 
 function buildMoqTiers(item: Product): MoqTier[] {
   const tiers: MoqTier[] = [];
+  const basePrice = Number((item.priceTiers?.[0] as any)?.unitPrice ?? (item.priceTiers?.[0] as any)?.price ?? item.price ?? 0);
+  const leadTime = typeof item.leadTime === 'string' ? item.leadTime : item.leadTime?.value ? `${item.leadTime.value} ${item.leadTime.unit ?? 'days'}` : undefined;
   if (item.priceTiers && item.priceTiers.length > 0) {
     for (const t of item.priceTiers) {
+      const price = Number((t as any).price ?? (t as any).unitPrice ?? item.price ?? 0);
       tiers.push({
         minQty: Number((t as any).minQuantity ?? (t as any).minimumQuantity ?? 1),
         maxQty: (t as any).maxQuantity != null ? Number((t as any).maxQuantity) : null,
-        price: Number((t as any).price ?? (t as any).unitPrice ?? item.price ?? 0),
+        price,
         unit: (t as any).unit ?? (item as any).unit ?? 'pcs',
+        discount: basePrice > price ? ((basePrice - price) / basePrice) * 100 : 0,
+        savings: Math.max(basePrice - price, 0),
+        leadTime,
+        available: Number((item as any).stockQuantity ?? 1) > 0,
       });
     }
   }
@@ -204,7 +215,7 @@ function ProductDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { status, user } = useAuth();
+  const { status, user, activeRole } = useAuth();
   const { productId } = route.params as { productId: string };
   const queryClient = useQueryClient();
 
@@ -218,8 +229,13 @@ function ProductDetailsScreen() {
   const [targetPrice, setTargetPrice] = useState('');
   const [destinationCountry, setDestinationCountry] = useState('India');
   const [additionalNotes, setAdditionalNotes] = useState('');
+  const [customSpecifications, setCustomSpecifications] = useState('');
+  const [packagingRequirements, setPackagingRequirements] = useState('');
+  const [deliveryRequirements, setDeliveryRequirements] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState(0);
   const flatListRef = React.useRef<FlatList>(null);
   const fade = React.useRef(new Animated.Value(0)).current;
 
@@ -256,6 +272,12 @@ function ProductDetailsScreen() {
   }, [item]);
 
   const sellerRouteId = seller?._id ?? seller?.id;
+  const sellerProductsQuery = useQuery({
+    queryKey: ['seller-product-rail', sellerRouteId],
+    queryFn: () => fetchProducts({ seller: sellerRouteId, limit: 8 }),
+    enabled: Boolean(sellerRouteId),
+    staleTime: 90_000,
+  });
   const sellerVerified = item ? isVerifiedProduct(item) : false;
   const location = item ? getProductLocation(item) : '';
 
@@ -268,27 +290,12 @@ function ProductDetailsScreen() {
   );
 
   const isAuth = status === 'authenticated';
-  const canAct = isAuth && Boolean(sellerUserId);
+  const currentUserId = String(user?._id ?? user?.id ?? '');
+  const isBuyer = isAuth && activeRole === 'buyer';
+  const isSelfContact = Boolean(currentUserId && sellerUserId && currentUserId === String(sellerUserId));
+  const canAct = isBuyer && Boolean(sellerUserId) && !isSelfContact;
 
   // ── DEBUG: Button state ─────────────────────────────────────────────────
-
-  React.useEffect(() => {
-    if (item) {
-      log('=== Button State Debug ===');
-      log('  isAuth:', isAuth);
-      log('  sellerUserId:', sellerUserId);
-      log('  canAct (isAuth && sellerUserId):', canAct);
-      log('  sellerRouteId:', sellerRouteId);
-      log('  canStartOrder:', canStartOrder);
-      log('  chatNow.isPending:', chatNow.isPending);
-      log('  sendEnquiry.isPending:', sendEnquiry.isPending);
-      log('');
-      log('  Store btn disabled:', !sellerRouteId);
-      log('  Chat Now btn disabled:', !canAct || chatNow.isPending);
-      log('  Send Enquiry btn disabled:', !canAct);
-      log('  Start Order visible:', canStartOrder);
-    }
-  }, [item, isAuth, sellerUserId, canAct, sellerRouteId, canStartOrder]);
 
   // ── Track view ──────────────────────────────────────────────────────────
 
@@ -303,6 +310,17 @@ function ProductDetailsScreen() {
     return buildMoqTiers(item);
   }, [item]);
 
+  React.useEffect(() => {
+    if (!item || moqTiers.length === 0) return;
+    setQuantity(String(moqTiers[0].minQty));
+    setTargetPrice(moqTiers[0].price > 0 ? String(moqTiers[0].price) : '');
+  }, [item, moqTiers]);
+
+  const selectedTier = useMemo(() => {
+    const qty = Number(quantity) || 0;
+    return [...moqTiers].reverse().find(t => qty >= t.minQty) ?? moqTiers[0];
+  }, [moqTiers, quantity]);
+
   // ── Mutations ──────────────────────────────────────────────────────────
 
   const chatNow = useMutation({
@@ -311,6 +329,8 @@ function ProductDetailsScreen() {
       log('  item:', item ? 'exists' : 'null');
       log('  sellerUserId:', sellerUserId);
       if (!item) throw new Error('Product not loaded.');
+      if (!isBuyer) throw new Error('Switch to buyer mode to contact this supplier.');
+      if (isSelfContact) throw new Error('You cannot start a chat with your own seller account.');
       if (!sellerUserId) throw new Error('Seller contact not available.');
       log('  Calling startProductChat with:', {
         otherUserId: sellerUserId,
@@ -345,6 +365,8 @@ function ProductDetailsScreen() {
       log('  item:', item ? 'exists' : 'null');
       log('  sellerUserId:', sellerUserId);
       if (!item) throw new Error('Product not loaded.');
+      if (!isBuyer) throw new Error('Switch to buyer mode to send an enquiry.');
+      if (isSelfContact) throw new Error('You cannot send an enquiry to your own seller account.');
       if (!sellerUserId) throw new Error('Seller information missing.');
       log('  Calling createProductEnquiry');
       return createProductEnquiry({
@@ -355,6 +377,9 @@ function ProductDetailsScreen() {
         unit: (item as any).unit ?? 'pcs',
         targetPrice: targetPrice ? Number(targetPrice) : undefined,
         destinationCountry: destinationCountry.trim() || 'India',
+        customSpecifications: customSpecifications.trim() || undefined,
+        packagingRequirements: packagingRequirements.trim() || undefined,
+        deliveryRequirements: deliveryRequirements.trim() || undefined,
         additionalNotes: additionalNotes.trim() || undefined,
         attachments: attachments.map(a => ({ filename: a.name, type: a.type })),
       });
@@ -409,9 +434,12 @@ function ProductDetailsScreen() {
   const relatedProducts: Product[] = (relatedQuery.data?.products ?? [])
     .filter((p: Product) => getId(p) !== getId(item))
     .slice(0, 6);
+  const sellerProducts: Product[] = (sellerProductsQuery.data?.products ?? [])
+    .filter((p: Product) => getId(p) !== getId(item))
+    .slice(0, 6);
 
   const onMainImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const index = Math.round(e.nativeEvent.contentOffset.x / GALLERY_WIDTH);
     if (index !== selectedImage) setSelectedImage(index);
   };
 
@@ -448,11 +476,11 @@ function ProductDetailsScreen() {
             ref={flatListRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
             data={gallery} keyExtractor={(uri, i) => `${uri}-${i}`}
             onMomentumScrollEnd={onMainImageScroll}
-            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            getItemLayout={(_, index) => ({ length: GALLERY_WIDTH, offset: GALLERY_WIDTH * index, index })}
             renderItem={({ item: uri }) => (
-              <View style={styles.gallerySlide}>
-                <RemoteImage uri={uri} width={SCREEN_WIDTH} height={SCREEN_WIDTH * 0.75} style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={P.muted} />} />
-              </View>
+              <Pressable onPress={() => setGalleryOpen(true)} style={styles.gallerySlide}>
+                <RemoteImage uri={uri} width={900} height={700} resizeMode="contain" style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={P.muted} />} />
+              </Pressable>
             )}
           />
           <SavedHeartButton type="product" itemId={getId(item) ?? ''} target={item} size={16} style={styles.heartBtn} iconColor={P.ink} />
@@ -461,6 +489,7 @@ function ProductDetailsScreen() {
               {gallery.map((_, i) => (<Pressable key={i} onPress={() => scrollToImage(i)} style={[styles.dot, selectedImage === i && styles.dotActive]} />))}
             </View>
           )}
+          <View style={styles.imageCounter}><Icon name="image-multiple-outline" size={12} color="#FFF" /><Text style={styles.imageCounterText}>{selectedImage + 1}/{gallery.length}</Text></View>
           {sellerVerified && (
             <View style={styles.verifiedTag}><Icon name="check-decagram" size={10} color="#FFF" /><Text style={styles.verifiedTagText}>Verified</Text></View>
           )}
@@ -476,16 +505,49 @@ function ProductDetailsScreen() {
         </View>
 
         {/* MOQ */}
-        <MoqSelector tiers={moqTiers} selectedQty={Number(quantity)} onSelect={(qty: number) => setQuantity(String(qty))} />
+        <MoqSelector tiers={moqTiers} currency={`${(item as any).currency ?? 'INR'} `} selectedQty={Number(quantity)} onSelect={(qty: number) => {
+          setQuantity(String(qty));
+          const tier = [...moqTiers].reverse().find(t => qty >= t.minQty) ?? moqTiers[0];
+          setTargetPrice(tier?.price > 0 ? String(tier.price) : '');
+        }} />
 
         {/* Price */}
         <View style={styles.card}>
-          <View style={styles.priceRow}><Text style={styles.price}>{formatProductPrice(item)}</Text><Text style={styles.moq}>{formatMoq(item)}</Text></View>
+          <View style={styles.priceRow}><Text style={styles.price}>{selectedTier?.price ? `${(item as any).currency ?? 'INR'} ${selectedTier.price.toLocaleString()}` : formatProductPrice(item)}</Text><Text style={styles.moq}>{formatMoq(item)}</Text></View>
           {item.totalOrders ? <Text style={styles.ordersText}>{item.totalOrders} orders</Text> : null}
           {location ? <Text style={styles.locationText}>{location}</Text> : null}
         </View>
 
         <TradeAssurance />
+
+        {item.variants?.length ? (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Available Variants</Text><View style={styles.sectionLine} /></View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.variantRow}>
+              {item.variants.map((variant, index) => {
+                const label = String((variant as any).name ?? (variant as any).label ?? (variant as any).value ?? `Option ${index + 1}`);
+                return <Pressable key={`${label}-${index}`} onPress={() => setSelectedVariant(index)} style={[styles.variantChip, selectedVariant === index && styles.variantChipActive]}><Text style={[styles.variantText, selectedVariant === index && styles.variantTextActive]}>{label}</Text></Pressable>;
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
+        {(item as any).specifications && typeof (item as any).specifications === 'object' && Object.keys((item as any).specifications).length ? (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Specifications</Text><View style={styles.sectionLine} /></View>
+            {Object.entries((item as any).specifications).map(([key, value]) => <View key={key} style={styles.specRow}><Text style={styles.specLabel}>{key.replace(/([A-Z])/g, ' $1')}</Text><Text style={styles.specValue}>{String(value)}</Text></View>)}
+          </View>
+        ) : null}
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Trade Information</Text><View style={styles.sectionLine} /></View>
+          <View style={styles.tradeGrid}>
+            <InfoItem icon="clock-fast" label="Lead time" value={typeof item.leadTime === 'string' ? item.leadTime : item.leadTime?.value ? `${item.leadTime.value} ${item.leadTime.unit ?? 'days'}` : 'Contact supplier'} />
+            <InfoItem icon="cash-check" label="Payment" value={Array.isArray(item.paymentTerms) ? item.paymentTerms.join(', ') : item.paymentTerms ?? 'Negotiable'} />
+            <InfoItem icon="package-variant" label="Packaging" value={typeof item.packaging === 'string' ? item.packaging : item.packaging ? 'Supplier packaging available' : 'Confirm with supplier'} />
+            <InfoItem icon="earth" label="Origin" value={(item.countryOfOrigin ?? item.originCountry ?? location) || 'Supplier location'} />
+          </View>
+        </View>
 
         {/* Seller */}
         {seller && (
@@ -497,7 +559,7 @@ function ProductDetailsScreen() {
                   <View style={styles.sellerNameRow}><Text style={styles.sellerName} numberOfLines={1}>{seller.companyName}</Text>{sellerVerified && <Icon name="check-decagram" size={13} color={P.blue} />}</View>
                   <View style={styles.sellerBadges}>
                     {sellerVerified && <View style={styles.sellerBadge}><Icon name="check-decagram" size={9} color={P.blue} /><Text style={styles.sellerBadgeText}>Verified</Text></View>}
-                    {seller.isTrustedSeller && <View style={[styles.sellerBadge, { backgroundColor: '#FFFBEB' }]}><Icon name="shield-check" size={9} color={P.amber} /><Text style={[styles.sellerBadgeText, { color: '#92400E' }]}>Trusted</Text></View>}
+                    {seller.isTrustedSeller && <View style={[styles.sellerBadge, styles.trustedBadge]}><Icon name="shield-check" size={9} color={P.amber} /><Text style={[styles.sellerBadgeText, styles.trustedBadgeText]}>Trusted</Text></View>}
                   </View>
                   <View style={styles.sellerStats}>
                     {seller.rating ? <View style={styles.sellerStatItem}><Icon name="star" size={10} color={P.amber} /><Text style={styles.sellerStatText}>{Number(seller.rating).toFixed(1)}</Text></View> : null}
@@ -525,11 +587,11 @@ function ProductDetailsScreen() {
         <QuickInfo />
 
         {/* Related */}
-        {relatedProducts.length > 0 && (
+        {sellerProducts.length > 0 && (
           <View style={styles.relatedSection}>
             <View style={styles.relatedHeader}><Text style={styles.relatedTitle}>More from this seller</Text>{sellerRouteId && <Pressable onPress={goToStore}><Text style={styles.viewAllText}>View All →</Text></Pressable>}</View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
-              {relatedProducts.map((p: Product) => (
+              {sellerProducts.map((p: Product) => (
                 <Pressable key={getId(p)} onPress={() => navigation.push('ProductDetails', { productId: getId(p) })} style={styles.relatedCard}>
                   <RemoteImage uri={p.images?.[0] ?? (p as any).image} width={160} height={120} style={styles.relatedImage} fallback={<Icon name="package-variant" size={24} color={P.muted} />} />
                   <View style={styles.relatedInfo}>
@@ -546,6 +608,15 @@ function ProductDetailsScreen() {
           </View>
         )}
 
+        {relatedProducts.length > 0 && (
+          <View style={styles.relatedSection}>
+            <View style={styles.relatedHeader}><Text style={styles.relatedTitle}>Similar Products</Text></View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
+              {relatedProducts.map((product: Product) => <Pressable key={getId(product)} onPress={() => navigation.push('ProductDetails', { productId: getId(product) })} style={styles.relatedCard}><RemoteImage uri={getProductImage(product)} width={160} height={120} resizeMode="contain" style={styles.relatedImage} /><View style={styles.relatedInfo}><Text style={styles.relatedName} numberOfLines={2}>{product.name ?? product.title}</Text><Text style={styles.relatedPrice}>{formatProductPrice(product)}</Text></View></Pressable>)}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Reviews */}
         <View style={styles.reviewsSection}>
           <Text style={styles.reviewsTitle}>Reviews</Text>
@@ -553,7 +624,7 @@ function ProductDetailsScreen() {
           <ReviewsPanel productId={getId(item) ?? ''} sellerId={sellerRouteId} showForm title="" />
         </View>
 
-        <View style={{ height: 120 }} />
+        <View style={styles.bottomSpacer} />
       </Animated.ScrollView>
 
       {/* Bottom Bar */}
@@ -562,10 +633,21 @@ function ProductDetailsScreen() {
           <Pressable onPress={() => navigation.navigate('Auth', { initialMode: 'login' })} style={styles.authBtn}>
             <Icon name="login" size={18} color="#FFF" /><Text style={styles.authBtnText}>Sign In to Continue</Text>
           </Pressable>
+        ) : !isBuyer ? (
+          <Pressable disabled={!sellerRouteId} onPress={goToStore} style={styles.authBtn}>
+            <Icon name="store-outline" size={18} color="#FFF" /><Text style={styles.authBtnText}>View Supplier Store</Text>
+          </Pressable>
+        ) : isSelfContact ? (
+          <Pressable disabled style={[styles.authBtn, styles.disabledBtn]}>
+            <Icon name="account-lock-outline" size={18} color="#FFF" /><Text style={styles.authBtnText}>Your Product</Text>
+          </Pressable>
         ) : (
           <>
             <Pressable disabled={!sellerRouteId} onPress={goToStore} style={styles.storeBtn}>
               <Icon name="store-outline" size={20} color={P.ink} />
+            </Pressable>
+            <Pressable onPress={() => navigation.navigate('OrderCheckout', { mode: 'sample', productId: getId(item) })} style={styles.sampleBtn}>
+              <Icon name="flask-outline" size={16} color={P.primary} /><Text style={styles.sampleBtnText}>Sample</Text>
             </Pressable>
             {canStartOrder && (
               <Pressable onPress={goToStartOrder} style={styles.startOrderBtn}>
@@ -592,31 +674,41 @@ function ProductDetailsScreen() {
         targetPrice={targetPrice}
         destinationCountry={destinationCountry}
         additionalNotes={additionalNotes}
+        customSpecifications={customSpecifications}
+        packagingRequirements={packagingRequirements}
+        deliveryRequirements={deliveryRequirements}
         attachments={attachments}
         onQuantityChange={setQuantity}
         onTargetPriceChange={setTargetPrice}
         onDestinationChange={setDestinationCountry}
         onNotesChange={setAdditionalNotes}
+        onSpecificationsChange={setCustomSpecifications}
+        onPackagingChange={setPackagingRequirements}
+        onDeliveryChange={setDeliveryRequirements}
         onAttachmentsChange={setAttachments}
         onClose={() => setEnquiryOpen(false)}
         onSubmit={() => { log('Enquiry modal submit'); sendEnquiry.mutate(); }}
       />
+      <Modal visible={galleryOpen} animationType="fade" onRequestClose={() => setGalleryOpen(false)}>
+        <View style={styles.lightbox}>
+          <Pressable onPress={() => setGalleryOpen(false)} style={styles.lightboxClose}><Icon name="close" size={26} color="#FFF" /></Pressable>
+          <FlatList horizontal pagingEnabled data={gallery} initialScrollIndex={selectedImage}
+            keyExtractor={(uri, index) => `${uri}-full-${index}`}
+            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            renderItem={({ item: uri }) => <View style={styles.lightboxSlide}><RemoteImage uri={uri} width={1400} height={1400} resizeMode="contain" style={styles.lightboxImage} /></View>} />
+        </View>
+      </Modal>
     </View>
   );
 }
 
 // ─── Detail Chip ────────────────────────────────────────────────────────────
 
-function DetailChip({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.detailChip}>
-      <Text style={styles.detailChipLabel}>{label}</Text>
-      <Text style={styles.detailChipValue}>{value}</Text>
-    </View>
-  );
-}
-
 // ─── Styles ─────────────────────────────────────────────────────────────────
+
+function InfoItem({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return <View style={styles.infoItem}><Icon name={icon} size={18} color={P.primary} /><View style={styles.infoBody}><Text style={styles.infoLabel}>{label}</Text><Text numberOfLines={2} style={styles.infoValue}>{value}</Text></View></View>;
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: P.bg },
@@ -625,8 +717,14 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: P.ink, textAlign: 'center' },
   scrollContent: { paddingBottom: 20 },
   galleryWrap: { position: 'relative', backgroundColor: P.surface, borderRadius: 16, overflow: 'hidden', marginHorizontal: 12, marginTop: 8 },
-  gallerySlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.75 },
-  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.75, backgroundColor: P.cardMuted },
+  gallerySlide: { width: GALLERY_WIDTH, height: GALLERY_WIDTH * 0.82 },
+  galleryImage: { width: GALLERY_WIDTH, height: GALLERY_WIDTH * 0.82, backgroundColor: P.surface },
+  imageCounter: { position: 'absolute', right: 10, bottom: 10, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  imageCounterText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
+  lightbox: { flex: 1, backgroundColor: '#050505', justifyContent: 'center' },
+  lightboxClose: { position: 'absolute', right: 18, top: 46, zIndex: 2, width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  lightboxSlide: { width: SCREEN_WIDTH, flex: 1, alignItems: 'center', justifyContent: 'center' },
+  lightboxImage: { width: SCREEN_WIDTH, height: '80%' },
   heartBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   paginationRow: { position: 'absolute', bottom: 10, alignSelf: 'center', flexDirection: 'row', gap: 5 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
@@ -657,6 +755,8 @@ const styles = StyleSheet.create({
   sellerBadges: { flexDirection: 'row', gap: 5, marginTop: 4 },
   sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   sellerBadgeText: { fontSize: 8, fontWeight: '700', color: P.blue },
+  trustedBadge: { backgroundColor: '#FFFBEB' },
+  trustedBadgeText: { color: '#92400E' },
   sellerStats: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
   sellerStatItem: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   sellerStatText: { fontSize: 10, fontWeight: '600', color: P.textSecondary },
@@ -670,6 +770,19 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '700', color: P.ink },
   sectionLine: { flex: 1, height: 1, backgroundColor: P.border },
   descText: { fontSize: 12, color: P.textSecondary, lineHeight: 18, marginBottom: 12 },
+  variantRow: { gap: 8, paddingRight: 8 },
+  variantChip: { borderWidth: 1, borderColor: P.faint, backgroundColor: P.cardMuted, borderRadius: 9, paddingHorizontal: 13, paddingVertical: 9 },
+  variantChipActive: { borderColor: P.primary, backgroundColor: P.primaryLight },
+  variantText: { color: P.textSecondary, fontSize: 11, fontWeight: '600' },
+  variantTextActive: { color: P.primaryDark, fontWeight: '700' },
+  specRow: { flexDirection: 'row', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: P.faint },
+  specLabel: { width: '42%', color: P.muted, fontSize: 11, textTransform: 'capitalize' },
+  specValue: { flex: 1, color: P.text, fontSize: 11, fontWeight: '600' },
+  tradeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  infoItem: { width: '48%', flexDirection: 'row', gap: 8, padding: 10, backgroundColor: P.cardMuted, borderRadius: 10 },
+  infoBody: { flex: 1 },
+  infoLabel: { color: P.muted, fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  infoValue: { color: P.text, fontSize: 10, fontWeight: '600', marginTop: 2 },
   relatedSection: { marginTop: 16, paddingLeft: 12 },
   relatedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingRight: 12 },
   relatedTitle: { fontSize: 13, fontWeight: '700', color: P.ink },
@@ -694,7 +807,11 @@ const styles = StyleSheet.create({
   bottomBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 8, paddingTop: 8, backgroundColor: P.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: P.faint, alignItems: 'center' },
   authBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: P.primary, borderRadius: 12, height: 44 },
   authBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  disabledBtn: { opacity: 0.55 },
+  bottomSpacer: { height: 120 },
   storeBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.faint },
+  sampleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderWidth: 1, borderColor: P.primary, borderRadius: 12, paddingHorizontal: 10, height: 40 },
+  sampleBtnText: { color: P.primary, fontSize: 11, fontWeight: '700' },
   startOrderBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: P.ink, borderRadius: 12, paddingHorizontal: 14, height: 40 },
   startOrderBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   outlineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1.5, borderColor: P.primary, borderRadius: 12, height: 40 },

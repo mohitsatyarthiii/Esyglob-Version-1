@@ -10,6 +10,7 @@ import {
 } from '../lib/rfq-helpers.js';
 import { validateNoContactInfo } from '../lib/contact-moderation.js';
 import { USER_ROLES } from '../lib/constants.js';
+import { getIO } from '../lib/socket.js';
 
 // ─── Seller Eligibility ────────────────────────────────────
 async function sellerCanQuote(rfq, seller, sellerUserId) {
@@ -286,7 +287,7 @@ export async function createQuotation(session, body) {
   // Send message
   const messageContent = `Quotation submitted: ${quotation.currency} ${quotation.unitPrice} per unit, MOQ ${quotation.minimumOrderQuantity}, lead time ${quotation.leadTime} ${quotation.leadTimeUnit}.`;
 
-  await quotationRepository.createMessage({
+  const chatMessage = await quotationRepository.createMessage({
     chatId: chat._id,
     senderId: session.userId,
     receiverId: rfq.buyerId,
@@ -335,6 +336,13 @@ export async function createQuotation(session, body) {
     },
     priority: 'high',
   });
+
+  const io = getIO();
+  if (io) {
+    io.to(`chat_${chat._id}`).emit('new_message', chatMessage);
+    io.to(`chat_${chat._id}`).emit('quotation_updated', { quotationId: quotation._id, rfqId: rfq._id, status: quotation.status });
+    io.to(`user_${rfq.buyerId}`).emit('new_notification', { type: 'quotation_received', quotationId: quotation._id, rfqId: rfq._id });
+  }
 
   return { quotation, message: 'Quotation created successfully' };
 }
@@ -1005,6 +1013,14 @@ export async function respondToQuotation(session, quotationId, body) {
         actionUrl: `/dashboard/seller/rfqs/${quotation.rfqId._id}`,
       },
     });
+  }
+
+  const io = getIO();
+  if (io) {
+    const event = { quotationId: quotation._id, rfqId: quotation.rfqId?._id || quotation.rfqId, orderId: tradeOrder?._id, status: quotation.status, action };
+    if (tradeOrder?.chatId) io.to(`chat_${tradeOrder.chatId}`).emit('quotation_updated', event);
+    io.to(`user_${quotation.userId?._id || quotation.userId}`).emit('quotation_updated', event);
+    io.to(`user_${session.userId}`).emit('quotation_updated', event);
   }
 
   return { quotation, tradeOrder, message: `Quotation ${action}ed successfully` };

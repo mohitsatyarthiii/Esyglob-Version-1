@@ -322,7 +322,7 @@ function QuotationDetailsScreen() {
           </View>
         )}
 
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
 
       {/* Action Modal */}
@@ -375,6 +375,7 @@ function DetailRow({ icon, label, value, multiline }: { icon: string; label: str
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  bottomSpacer: { height: 40 },
   screen: { flex: 1, backgroundColor: P.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 56, paddingHorizontal: 14, paddingBottom: 10, backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border },
   backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center' },

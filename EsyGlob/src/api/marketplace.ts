@@ -233,10 +233,10 @@ export async function fetchSellerOnboarding(): Promise<{
   return unwrapData(payload);
 }
 
-export async function saveSellerOnboarding(input: Record<string, unknown>) {
+export async function saveSellerOnboarding(input: Record<string, unknown>, submitForVerification = false) {
   const payload = await apiRequest('/suppliers/profile', {
     method: 'PATCH',
-    body: input,
+    body: { ...input, submitForVerification },
   });
   return unwrapData(payload);
 }
@@ -546,19 +546,23 @@ export async function patchChatAction(
 }
 
 export async function archiveChat(chatId: string, archived: boolean) {
-  return patchChatAction(chatId, { action: archived ? 'archive' : 'unarchive' });
+  return patchChatAction(chatId, { action: 'archive', value: archived });
 }
 
 export async function favoriteChat(chatId: string, favorite: boolean) {
-  return patchChatAction(chatId, { action: favorite ? 'favorite' : 'unfavorite' });
+  return patchChatAction(chatId, { action: 'favorite', value: favorite });
 }
 
 export async function pinChat(chatId: string, pinned: boolean) {
-  return patchChatAction(chatId, { action: pinned ? 'pin' : 'unpin' });
+  return patchChatAction(chatId, { action: 'pin', value: pinned });
 }
 
 export async function muteChat(chatId: string, muted: boolean) {
-  return patchChatAction(chatId, { action: muted ? 'mute' : 'unmute' });
+  return patchChatAction(chatId, { action: 'mute', value: muted });
+}
+
+export async function blockChatUser(chatId: string, blocked: boolean) {
+  return patchChatAction(chatId, { action: 'block', value: blocked });
 }
 
 export async function deleteChatForMe(chatId: string) {

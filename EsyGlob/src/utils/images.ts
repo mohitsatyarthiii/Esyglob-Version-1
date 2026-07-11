@@ -6,8 +6,12 @@ type ImageOptions = {
   fit?: 'cover' | 'contain';
 };
 
-export function normalizeImageUrl(value?: string | null, options: ImageOptions = {}) {
-  const raw = typeof value === 'string' ? value.trim() : '';
+export function normalizeImageUrl(value?: unknown, options: ImageOptions = {}) {
+  const candidate = typeof value === 'object' && value
+    ? (value as Record<string, unknown>).url ?? (value as Record<string, unknown>).secure_url ??
+      (value as Record<string, unknown>).location ?? (value as Record<string, unknown>).src
+    : value;
+  const raw = typeof candidate === 'string' ? candidate.trim().replace(/\\/g, '/') : '';
 
   if (!raw) {
     return null;
@@ -34,7 +38,7 @@ export function normalizeImageUrl(value?: string | null, options: ImageOptions =
   return absolute;
 }
 
-export function firstImage(...values: Array<string | string[] | null | undefined>) {
+export function firstImage(...values: unknown[]) {
   for (const value of values) {
     if (Array.isArray(value)) {
       const found = value.map(item => normalizeImageUrl(item)).find(Boolean);

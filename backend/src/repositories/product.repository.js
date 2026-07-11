@@ -98,7 +98,7 @@ class ProductRepository {
       .limit(limit)
       .lean();
 
-    if (!filter.$text && sort === 'createdAt') {
+    if (!filter.$text && !filter.sellerId && sort === 'createdAt') {
       listQuery.hint(filter.subcategory ? 'idx_public_listing_subcat' : 'idx_public_listing');
     }
 
@@ -124,6 +124,7 @@ class ProductRepository {
       subcategory: product.subcategory,
       rating: product.averageRating || 0,
       verified: true,
+      sellerId: product.sellerId,
     }));
 
     const result = {

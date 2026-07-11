@@ -4,6 +4,7 @@ import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
 import mongoose from 'mongoose';
+import { getIO } from '../lib/socket.js';
 
 const allowedTransitions = {
   draft: ['pending_approval', 'cancelled'],
@@ -318,6 +319,14 @@ class OrderService {
       }).catch(error => console.error('Order notification error:', error));
     }
 
+    const io = getIO();
+    if (io) {
+      const event = { orderId: String(order._id), chatId: order.chatId ? String(order.chatId) : undefined, status: order.status };
+      io.to(`user_${userId}`).emit('order_updated', event);
+      if (seller.userId) io.to(`user_${seller.userId}`).emit('order_updated', event);
+      if (order.chatId) io.to(`chat_${order.chatId}`).emit('order_updated', event);
+    }
+
     return { success: true, order };
   }
 
@@ -379,6 +388,14 @@ class OrderService {
     const payload = order.toObject();
     payload.shipment = fulfillment.shipment;
     payload.invoice = fulfillment.invoice;
+
+    const io = getIO();
+    if (io) {
+      const event = { orderId: String(order._id), chatId: order.chatId ? String(order.chatId) : undefined, status: order.status };
+      io.to(`user_${order.userId}`).emit('order_updated', event);
+      if (order.sellerId?.userId) io.to(`user_${order.sellerId.userId}`).emit('order_updated', event);
+      if (order.chatId) io.to(`chat_${order.chatId}`).emit('order_updated', event);
+    }
 
     return { order: payload };
   }

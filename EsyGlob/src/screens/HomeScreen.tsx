@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -15,10 +16,10 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 import { fetchCategories } from '../api/categories';
-import { fetchSellers } from '../api/marketplace';
+import { fetchSellers, startProductChat } from '../api/marketplace';
 import { fetchProducts } from '../api/products';
 import { Category, Product, SellerSummary } from '../api/types';
 import AIChatBot from '../components/AIChatBot';
@@ -458,6 +459,17 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
   const title = seller.companyName ?? seller.businessName ?? seller.displayName ?? 'Supplier';
   const location = [seller.address?.city, seller.address?.country ?? seller.country].filter(Boolean).join(', ') || 'Worldwide';
   const sellerId = getStableKey(seller);
+  const sellerUserId = typeof seller.userId === 'string'
+    ? seller.userId
+    : seller.userId?._id ?? seller.userId?.id;
+  const chat = useMutation({
+    mutationFn: () => {
+      if (!sellerUserId) throw new Error('Supplier contact is unavailable.');
+      return startProductChat({ otherUserId: sellerUserId, productId: '', enquiry: false });
+    },
+    onSuccess: result => navigation.navigate('ChatDetails', { chatId: getId(result.chat!), title }),
+    onError: error => Alert.alert('Chat unavailable', error instanceof Error ? error.message : 'Unable to contact supplier.'),
+  });
   const sellerImage = firstImage(seller.logo, seller.companyLogo, seller.logoUrl, seller.factoryImages);
   const previewImages: string[] = (seller.factoryImages ?? []).filter(Boolean).slice(0, 3);
 
@@ -523,9 +535,9 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
       </View>
 
       <View style={styles.sellerActions}>
-        <Pressable onPress={() => navigation.navigate('Messages')} style={styles.chatBtn}>
+        <Pressable disabled={chat.isPending || !sellerUserId} onPress={() => chat.mutate()} style={styles.chatBtn}>
           <Icon name="message-text-outline" size={14} color="#fff" />
-          <Text style={styles.actionBtnText}>Chat</Text>
+          <Text style={styles.actionBtnText}>{chat.isPending ? 'Opening...' : 'Chat'}</Text>
         </Pressable>
         <Pressable onPress={() => navigation.navigate('RFQCreate', { prefill: { sellerId, supplierName: title } })} style={styles.rfqBtn}>
           <Icon name="bullseye-arrow" size={14} color="#fff" />

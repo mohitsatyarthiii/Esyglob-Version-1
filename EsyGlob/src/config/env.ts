@@ -10,5 +10,6 @@ const env = typeof process === 'undefined' ? undefined : process.env;
 
 export const config = {
   apiBaseUrl: 'https://api.esyglob.in/api',
+  socketBaseUrl: 'https://api.esyglob.in',
   sessionCookieName: env?.ESYGLOB_SESSION_COOKIE_NAME || 'esyglob_session',
 };

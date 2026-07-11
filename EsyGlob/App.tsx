@@ -44,6 +44,7 @@ import { fetchCategories, fetchProducts, fetchSellers } from './src/api/marketpl
 import { ProductListResponse } from './src/api/types';
 import { logPerf } from './src/utils/performance';
 import { readJson, writeJson } from './src/storage/appStorage';
+import RealtimeProvider from './src/realtime/RealtimeProvider';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -58,6 +59,7 @@ export type RootStackParamList = {
   Wallet: undefined;
   ProductDetails: { productId: string };
   ProductListing: { category?: string; categoryName?: string; subcategory?: string; subcategoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
+  Search: { q?: string } | undefined;
   Sellers: undefined;
   SellerDetails: { sellerId: string; sellerName?: string };
   ChatDetails: { chatId: string; title?: string };
@@ -144,6 +146,7 @@ function App() {
       }}
       onSuccess={warmMarketplaceQueries}>
       <AuthProvider>
+        <RealtimeProvider>
         <SafeAreaProvider>
           <StatusBar
             translucent
@@ -164,6 +167,7 @@ function App() {
               <Stack.Screen name="Wallet" component={WalletScreen} />
               <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
               <Stack.Screen name="ProductListing" component={SearchScreen} />
+              <Stack.Screen name="Search" component={SearchScreen} />
               <Stack.Screen name="Sellers" component={SellersScreen} />
               <Stack.Screen name="SellerDetails" component={SellerDetailsScreen} />
               <Stack.Screen name="ChatDetails" component={ChatDetailsScreen} />
@@ -186,6 +190,7 @@ function App() {
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>
+        </RealtimeProvider>
       </AuthProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>

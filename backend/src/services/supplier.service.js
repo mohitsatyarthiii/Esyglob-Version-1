@@ -49,13 +49,16 @@ export async function getSellers(searchParams) {
 }
 
 export async function getSellerDetails(sellerId) {
-  const seller = await supplierRepository.findPublicSellerById(sellerId);
+  const [seller, related] = await Promise.all([
+    supplierRepository.findPublicSellerById(sellerId),
+    supplierRepository.findPublicSellerRelatedData(sellerId),
+  ]);
   if (!seller) {
     const error = new Error('Supplier not found');
     error.statusCode = 404;
     throw error;
   }
-  return { seller };
+  return { seller, ...related };
 }
 
 // ─── Factory Profile ───────────────────────────────────────

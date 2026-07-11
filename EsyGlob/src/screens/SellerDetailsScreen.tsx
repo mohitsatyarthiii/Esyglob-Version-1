@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import {
   Pressable,
+  Alert,
+  Linking,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -9,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { fetchSellerDetails } from '../api/marketplace';
+import { fetchSellerDetails, startProductChat } from '../api/marketplace';
+import { fetchProducts } from '../api/products';
 import { Product, SellerSummary } from '../api/types';
 import ProductCard from '../components/ProductCard';
 import RemoteImage from '../components/RemoteImage';
@@ -24,7 +28,7 @@ import { firstImage } from '../utils/images';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Tab = 'products' | 'company' | 'factory' | 'certificates' | 'reviews';
+type Tab = 'products' | 'company' | 'factory' | 'certificates' | 'reviews' | 'about' | 'contact';
 
 const TABS: Array<{ key: Tab; label: string; icon: string }> = [
   { key: 'products', label: 'Products', icon: 'package-variant' },
@@ -32,6 +36,8 @@ const TABS: Array<{ key: Tab; label: string; icon: string }> = [
   { key: 'factory', label: 'Factory', icon: 'factory' },
   { key: 'certificates', label: 'Certs', icon: 'certificate' },
   { key: 'reviews', label: 'Reviews', icon: 'star' },
+  { key: 'about', label: 'About', icon: 'information-outline' },
+  { key: 'contact', label: 'Contact', icon: 'card-account-phone-outline' },
 ];
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -106,6 +112,7 @@ function SellerDetailsScreen() {
   const [tab, setTab] = useState<Tab>('products');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'latest' | 'rating' | 'price_asc'>('latest');
+  const [certificatePreview, setCertificatePreview] = useState<{ name: string; url: string } | null>(null);
 
   const seller = useQuery({
     queryKey: ['seller-details', sellerId],
@@ -118,7 +125,22 @@ function SellerDetailsScreen() {
   const profile = data?.seller;
   const factory = data?.factoryProfile as Record<string, any> | null;
   const verification = data?.verification as Record<string, any> | null;
-  const allProducts = useMemo<Product[]>(() => data?.products ?? [], [data?.products]);
+  const productPages = useInfiniteQuery({
+    queryKey: ['seller-products-public', sellerId, query, sort],
+    queryFn: ({ pageParam }) => fetchProducts({ seller: sellerId, q: query || undefined, sort, page: pageParam, limit: 12 }),
+    initialPageParam: 1,
+    getNextPageParam: lastPage => {
+      const page = lastPage.pagination?.page ?? 1;
+      const totalPages = lastPage.pagination?.totalPages ?? 1;
+      return page < totalPages ? page + 1 : undefined;
+    },
+    enabled: Boolean(sellerId) && tab === 'products',
+    staleTime: 90_000,
+  });
+  const allProducts = useMemo<Product[]>(() => {
+    const paged = productPages.data?.pages.flatMap(page => page.products) ?? [];
+    return paged.length ? paged : data?.products ?? [];
+  }, [data?.products, productPages.data?.pages]);
 
   const products = useMemo(() => {
     const searched: Product[] = query.trim()
@@ -142,8 +164,24 @@ function SellerDetailsScreen() {
       factory: hasFactory,
       certificates: hasCerts,
       reviews: true,
+      about: true,
+      contact: true,
     };
   }, [profile?.certifications, factory]);
+
+  const title = sellerTitle(profile ?? {}, sellerName);
+  const supplierId = profile ? getStableKey(profile) : sellerId;
+  const sellerUserId = typeof profile?.userId === 'string'
+    ? profile.userId
+    : profile?.userId?._id ?? profile?.userId?.id;
+  const chat = useMutation({
+    mutationFn: () => {
+      if (!sellerUserId) throw new Error('Supplier contact is unavailable.');
+      return startProductChat({ otherUserId: sellerUserId, productId: '', enquiry: false });
+    },
+    onSuccess: result => navigation.navigate('ChatDetails', { chatId: getId(result.chat!), title }),
+    onError: error => Alert.alert('Chat unavailable', error instanceof Error ? error.message : 'Unable to contact supplier.'),
+  });
 
   if (seller.isLoading) return <LoadingState label="Loading supplier..." />;
   if (seller.isError || !profile)
@@ -154,7 +192,6 @@ function SellerDetailsScreen() {
       />
     );
 
-  const title = sellerTitle(profile, sellerName);
   const verified = profile.isVerified || profile.verificationStatus === 'verified';
   const location = [
     profile.address?.city,
@@ -167,7 +204,6 @@ function SellerDetailsScreen() {
     profile.companyLogo,
     profile.logoUrl,
   );
-  const supplierId = getStableKey(profile);
 
   const visibleTabs = TABS.filter(t => tabAvailability[t.key]);
 
@@ -274,10 +310,11 @@ function SellerDetailsScreen() {
           {/* Actions */}
           <View style={styles.actionRow}>
             <Pressable
-              onPress={() => navigation.navigate('Messages')}
+              disabled={chat.isPending || !sellerUserId}
+              onPress={() => chat.mutate()}
               style={styles.chatBtn}>
               <Icon name="message-text-outline" size={16} color="#FFF" />
-              <Text style={styles.chatBtnText}>Chat</Text>
+              <Text style={styles.chatBtnText}>{chat.isPending ? 'Opening...' : 'Chat'}</Text>
             </Pressable>
             <Pressable
               onPress={() =>
@@ -293,7 +330,7 @@ function SellerDetailsScreen() {
         </View>
 
         {/* Tabs */}
-        <View style={styles.tabBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
           {visibleTabs.map(t => {
             const active = tab === t.key;
             return (
@@ -312,7 +349,7 @@ function SellerDetailsScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
 
         {/* Content */}
         {tab === 'products' && (
@@ -357,6 +394,11 @@ function SellerDetailsScreen() {
             ) : (
               <EmptyState title="No products" detail="This supplier has no products yet." />
             )}
+            {productPages.hasNextPage ? (
+              <Pressable disabled={productPages.isFetchingNextPage} onPress={() => productPages.fetchNextPage()} style={styles.loadMoreBtn}>
+                <Text style={styles.loadMoreText}>{productPages.isFetchingNextPage ? 'Loading...' : 'Load more products'}</Text>
+              </Pressable>
+            ) : null}
           </View>
         )}
 
@@ -453,7 +495,7 @@ function SellerDetailsScreen() {
               <Text style={styles.cardTitle}>Certifications</Text>
               {(() => {
                 const certs = profile.certifications ?? factory?.certifications ?? [];
-                const certList: string[] = Array.isArray(certs)
+                const certList: any[] = Array.isArray(certs)
                   ? certs
                   : typeof certs === 'string'
                   ? certs.split(',').map(s => s.trim()).filter(Boolean)
@@ -465,12 +507,15 @@ function SellerDetailsScreen() {
 
                 return (
                   <View style={styles.certList}>
-                    {certList.map((cert: string, i: number) => (
-                      <View key={`${cert}-${i}`} style={styles.certItem}>
+                    {certList.map((cert: any, i: number) => {
+                      const name = typeof cert === 'string' ? cert : cert.name ?? cert.certificateNumber ?? `Certificate ${i + 1}`;
+                      const url = typeof cert === 'object' ? cert.documentUrl ?? cert.url : '';
+                      return <Pressable key={`${name}-${i}`} disabled={!url} onPress={() => setCertificatePreview({ name, url })} style={styles.certItem}>
                         <Icon name="certificate" size={20} color={P.warning} />
-                        <Text style={styles.certText}>{cert}</Text>
-                      </View>
-                    ))}
+                        <Text style={styles.certText}>{name}</Text>
+                        {url ? <Icon name="magnify-plus-outline" size={18} color={P.accent} /> : null}
+                      </Pressable>;
+                    })}
                   </View>
                 );
               })()}
@@ -487,7 +532,43 @@ function SellerDetailsScreen() {
             />
           </View>
         )}
+
+        {tab === 'about' && (
+          <View style={styles.tabContent}>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>About {title}</Text>
+              {profile.companyDescription ? <Text style={styles.aboutText}>{profile.companyDescription}</Text> : <EmptyState title="No company introduction" detail="The supplier has not published an introduction yet." />}
+              <DetailRow label="Established" value={profile.yearEstablished} />
+              <DetailRow label="Employees" value={profile.employeeCount} />
+              <DetailRow label="Main Markets" value={profile.exportMarkets} />
+              <DetailRow label="Product Categories" value={profile.productCategories} />
+            </View>
+          </View>
+        )}
+
+        {tab === 'contact' && (
+          <View style={styles.tabContent}>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Business Contact</Text>
+              <DetailRow label="Email" value={profile.businessEmail} />
+              <DetailRow label="Phone" value={profile.businessPhone} />
+              <DetailRow label="Website" value={profile.companyWebsite} />
+              <DetailRow label="Address" value={profile.address} />
+              <Pressable disabled={chat.isPending || !sellerUserId} onPress={() => chat.mutate()} style={styles.contactAction}>
+                <Icon name="message-text-outline" size={17} color="#FFF" /><Text style={styles.contactActionText}>Contact Supplier</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       </ScrollView>
+      <Modal visible={Boolean(certificatePreview)} animationType="fade" onRequestClose={() => setCertificatePreview(null)}>
+        <View style={styles.certificateViewer}>
+          <View style={styles.certificateViewerHeader}><Pressable onPress={() => setCertificatePreview(null)}><Icon name="close" size={25} color="#FFF" /></Pressable><Text numberOfLines={1} style={styles.certificateViewerTitle}>{certificatePreview?.name}</Text><Pressable onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)}><Icon name="download" size={24} color="#FFF" /></Pressable></View>
+          <ScrollView maximumZoomScale={4} minimumZoomScale={1} contentContainerStyle={styles.certificateZoom}>
+            <RemoteImage uri={certificatePreview?.url} width={1200} height={1600} resizeMode="contain" style={styles.certificateImage} fallback={<View style={styles.certificateFallback}><Icon name="file-document-outline" size={60} color={P.muted} /><Text style={styles.certificateFallbackText}>Open the document to preview or download it.</Text><Pressable onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)} style={styles.contactAction}><Text style={styles.contactActionText}>Open Document</Text></Pressable></View>} />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -664,6 +745,18 @@ const styles = StyleSheet.create({
   rfqBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
 
   // Tabs
+  tabBarContent: { paddingHorizontal: 10 },
+  contactAction: { marginTop: 16, height: 44, borderRadius: 12, backgroundColor: P.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  contactActionText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  loadMoreBtn: { alignSelf: 'center', marginTop: 16, borderRadius: 10, backgroundColor: P.accent, paddingHorizontal: 18, paddingVertical: 11 },
+  loadMoreText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  certificateViewer: { flex: 1, backgroundColor: '#050505' },
+  certificateViewerHeader: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  certificateViewerTitle: { flex: 1, color: '#FFF', fontSize: 15, fontWeight: '700' },
+  certificateZoom: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
+  certificateImage: { width: '100%', height: 620 },
+  certificateFallback: { width: '100%', height: 620, alignItems: 'center', justifyContent: 'center', padding: 30 },
+  certificateFallbackText: { color: '#CBD5E1', textAlign: 'center', marginTop: 12 },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: P.surface,
@@ -674,7 +767,7 @@ const styles = StyleSheet.create({
     borderColor: P.border,
   },
   tab: {
-    flex: 1,
+    minWidth: 105,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

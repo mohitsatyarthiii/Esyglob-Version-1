@@ -113,11 +113,19 @@ function OrderCheckoutScreen() {
   const { mode, productId, chatId, quotationId } = route.params as RouteParams;
   const [quantity, setQuantity] = useState(mode === 'sample' ? '1' : '100');
   const [country, setCountry] = useState('India');
+  const [fullName, setFullName] = useState('');
+  const [company, setCompany] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [logisticsOption, setLogisticsOption] = useState('esyglob_standard');
+  const [paymentMethod, setPaymentMethod] = useState('credit_card');
+  const [incoterm, setIncoterm] = useState('DAP');
 
   // ── Queries ────────────────────────────────────────────────────────────
 
@@ -173,13 +181,21 @@ function OrderCheckoutScreen() {
     mutationFn: async () => {
       if (!resolvedProductId) throw new Error('Product is required.');
       if (!termsAccepted) throw new Error('Please accept the terms.');
+      if (!fullName.trim() || !email.trim() || !phone.trim() || !address.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
+        throw new Error('Please complete all required delivery details.');
+      }
+
+      const shippingAddress = { fullName, name: fullName, company, email, phone, address, country, city, state, postalCode, zipCode: postalCode };
 
       const basePayload = {
         productId: resolvedProductId,
         quantity: Number(quantity) || 1,
         destination: { country, city, postalCode },
-        shippingAddress: { country, city, postalCode, zipCode: postalCode },
+        shippingAddress,
         logisticsOption,
+        paymentMethod,
+        buyerCompany: company ? { companyName: company } : undefined,
+        tradeInformation: { incoterms: incoterm, shippingOption: logisticsOption },
         notes: notes || undefined,
         termsAccepted,
       };
@@ -284,9 +300,17 @@ function OrderCheckoutScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Order Details</Text>
           <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-          <Field label="Country" value={country} onChangeText={setCountry} />
-          <Field label="City" value={city} onChangeText={setCity} />
-          <Field label="Postal Code" value={postalCode} onChangeText={setPostalCode} />
+          <Field label="Full Name *" value={fullName} onChangeText={setFullName} />
+          <Field label="Company" value={company} onChangeText={setCompany} />
+          <Field label="Email *" value={email} onChangeText={setEmail} keyboardType="email-address" />
+          <Field label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          <Field label="Street Address *" value={address} onChangeText={setAddress} multiline />
+          <ChoiceField label="Country *" value={country} options={['India', 'United States', 'United Kingdom', 'UAE', 'China', 'Singapore']} onChange={setCountry} />
+          <Field label="City *" value={city} onChangeText={setCity} />
+          <Field label="State / Province *" value={state} onChangeText={setState} />
+          <Field label="Postal Code *" value={postalCode} onChangeText={setPostalCode} />
+          <ChoiceField label="Payment Method" value={paymentMethod} options={['credit_card', 'bank_transfer', 'escrow', 'letter_of_credit']} onChange={setPaymentMethod} />
+          <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'CIF', 'FOB', 'EXW']} onChange={setIncoterm} />
           <Field label="Notes" value={notes} onChangeText={setNotes} multiline />
 
           <Pressable onPress={() => setTermsAccepted(v => !v)} style={styles.checkboxRow}>
@@ -468,6 +492,21 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
   );
 }
 
+function ChoiceField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow}>
+        {options.map(option => (
+          <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, value === option && styles.choiceActive]}>
+            <Text style={[styles.choiceText, value === option && styles.choiceTextActive]}>{option.replace(/_/g, ' ')}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
 // ─── Breakdown Row ──────────────────────────────────────────────────────────
 
 function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; value: string; isBold?: boolean; isDiscount?: boolean }) {
@@ -484,6 +523,11 @@ function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; val
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  choiceRow: { gap: spacing.sm, paddingVertical: 2 },
+  choice: { borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.card },
+  choiceActive: { borderColor: colors.primary, backgroundColor: colors.cardMuted },
+  choiceText: { color: colors.muted, fontSize: 12, textTransform: 'capitalize' },
+  choiceTextActive: { color: colors.primary, fontWeight: '700' },
   bottomSpacer: { height: 40 },
   screen: { flex: 1, backgroundColor: colors.background },
   header: {

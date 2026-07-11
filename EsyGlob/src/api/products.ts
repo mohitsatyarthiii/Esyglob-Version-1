@@ -34,8 +34,6 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
     cacheTtlMs: params.q ? 45_000 : 90_000,
   });
 
-  console.log('[fetchProducts] Raw payload:', JSON.stringify(payload).substring(0, 200));
-
   const data = unwrapData<ProductListResponse | Product[]>(payload);
 
   return {
@@ -49,13 +47,10 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
 }
 
 export async function fetchProductDetails(productId: string): Promise<Product> {
-  console.log('[fetchProductDetails] Fetching productId:', productId);
-
   const payload = await apiRequest(`/products/${productId}`, {
     cacheTtlMs: 2 * 60_000,
   });
 
-  console.log('[fetchProductDetails] Raw payload:', JSON.stringify(payload).substring(0, 300));
 
   // Try multiple response shapes
   let product: unknown = null;
@@ -90,8 +85,6 @@ export async function fetchProductDetails(productId: string): Promise<Product> {
       product = data;
     }
   }
-
-  console.log('[fetchProductDetails] Extracted product:', product ? 'found' : 'null');
 
   if (!product) {
     throw new Error('Product details were not returned by the backend.');

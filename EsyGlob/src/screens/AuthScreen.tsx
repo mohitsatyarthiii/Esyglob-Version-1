@@ -85,7 +85,7 @@ function AuthScreen({ initialMode = 'login', onClose, onSuccess }: Props) {
       return;
     }
 
-    navigation.navigate('Home');
+    navigation.navigate('MainTabs');
   };
 
   return (

@@ -1,4 +1,5 @@
 import { Product } from '../api/types';
+import { firstImage } from './images';
 
 export function getId(value: { _id?: string; id?: string }) {
   return value._id ?? value.id ?? Math.random().toString(36);
@@ -59,7 +60,7 @@ export function formatMoq(product: Product) {
 }
 
 export function getProductImage(product: Product) {
-  return product.image ?? product.images?.[0] ?? null;
+  return firstImage(product.image, product.images, product.thumbnail, product.mainImage, product.imageUrl);
 }
 
 export function getSellerName(product: Product) {

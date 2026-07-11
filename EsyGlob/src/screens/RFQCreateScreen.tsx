@@ -392,7 +392,7 @@ function RFQCreateScreen() {
             <><Icon name="send" size={18} color="#FFF" /><Text style={styles.submitBtnText}>Publish RFQ</Text></>
           )}
         </Pressable>
-        <View style={{ height: 40 }} />
+        <View style={styles.bottomSpacer} />
       </ScrollView>
     </View>
   );
@@ -415,6 +415,7 @@ function InputField({ label, required, icon, ...props }: { label: string; requir
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  bottomSpacer: { height: 40 },
   screen: { flex: 1, backgroundColor: P.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

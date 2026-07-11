@@ -76,6 +76,13 @@ export type SellerSummary = {
   businessType?: string;
   companyType?: string;
   companyIntroduction?: string;
+  companyDescription?: string;
+  companyWebsite?: string;
+  businessEmail?: string;
+  businessPhone?: string;
+  yearEstablished?: number | string;
+  exportMarkets?: string[];
+  productCategories?: string[];
   description?: string;
   exportCountries?: string[];
   mainMarkets?: string[];

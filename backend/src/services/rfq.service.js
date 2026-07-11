@@ -3,6 +3,7 @@ import * as rfqRepository from '../repositories/rfq.repository.js';
 import { findOrCreateConversation } from '../lib/chat-conversations.js';
 import Chat from '../models/Chat.js';
 import RFQ from '../models/RFQ.js';
+import { getIO } from '../lib/socket.js';
 import {
   BUYER_STATUS_GROUPS,
   OPEN_RFQ_STATUSES,
@@ -635,7 +636,7 @@ export async function createProductEnquiry(session, body) {
 
   const content = buildRfqSummary({ rfq, product, body });
 
-  await Message.create({
+  const initialMessage = await Message.create({
     chatId: chat._id,
     senderId: session.userId,
     receiverId: sellerUserId,
@@ -729,6 +730,13 @@ export async function createProductEnquiry(session, body) {
       priority: 'high',
     }),
   ]);
+
+  const io = getIO();
+  if (io) {
+    io.to(`chat_${chat._id}`).emit('new_message', initialMessage);
+    io.to(`chat_${chat._id}`).emit('rfq_updated', { chatId: String(chat._id), rfqId: String(rfq._id), status: rfq.status });
+    io.to(`user_${sellerUserId}`).emit('new_notification', { type: 'rfq_created', rfqId: String(rfq._id), chatId: String(chat._id) });
+  }
 
   return { rfq, chat, message: 'RFQ enquiry created successfully' };
 }

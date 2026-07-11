@@ -1,6 +1,8 @@
 import app from './app.js';
 import { config } from './config/env.js';
 import { closeDatabase, connectToDatabase, warmupDatabase } from './config/database.js';
+import { createServer } from 'node:http';
+import { initializeSocket } from './lib/socket-server.js';
 
 let server;
 
@@ -11,7 +13,9 @@ async function startServer() {
 
     await warmupDatabase();
 
-    server = app.listen(config.port, () => {
+    server = createServer(app);
+    initializeSocket(server);
+    server.listen(config.port, () => {
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
     });
   } catch (error) {
