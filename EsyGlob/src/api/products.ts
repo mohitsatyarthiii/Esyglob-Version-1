@@ -51,7 +51,6 @@ export async function fetchProductDetails(productId: string): Promise<Product> {
     cacheTtlMs: 2 * 60_000,
   });
 
-
   // Try multiple response shapes
   let product: unknown = null;
 
@@ -88,6 +87,12 @@ export async function fetchProductDetails(productId: string): Promise<Product> {
 
   if (!product) {
     throw new Error('Product details were not returned by the backend.');
+  }
+
+  // ✅ Ensure product has priceTiers array
+  const productObj = product as Record<string, any>;
+  if (!productObj.priceTiers) {
+    productObj.priceTiers = [];
   }
 
   return product as Product;

@@ -11,6 +11,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -35,27 +36,31 @@ import { getId } from '../utils/format';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
 
-// ─── WhatsApp Palette ───────────────────────────────────────────────────────
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const WP = {
-  bg: '#FFFFFF',
-  headerBg: '#075E54',
-  headerText: '#FFFFFF',
-  chatBg: '#FFFFFF',
-  unreadBg: '#25D366',
-  unreadText: '#FFFFFF',
-  title: '#111B21',
-  subtitle: '#667781',
-  muted: '#8696A0',
-  faint: '#E9EDEF',
+// ─── Enhanced Palette ───────────────────────────────────────────────────────
+
+const P = {
+  bg: '#F8F9FA',
+  surface: '#FFFFFF',
+  primary: '#075E54',
+  primaryLight: '#E8F5E9',
+  primaryDark: '#054B44',
+  accent: '#25D366',
+  text: '#1A1A1A',
+  textSecondary: '#667781',
+  textMuted: '#8696A0',
+  border: '#E9EDEF',
   divider: '#F0F2F5',
-  online: '#25D366',
-  pinned: '#E8F5E9',
+  shadow: 'rgba(0,0,0,0.06)',
+  unread: '#25D366',
+  pinned: '#FFF8E7',
   swipeArchive: '#5F66CD',
   swipeRead: '#3B82F6',
   swipeDelete: '#EF4444',
-  menuBg: '#FFFFFF',
-  fab: '#00A884',
+  online: '#25D366',
+  offline: '#94A3B8',
+  gold: '#F59E0B',
 };
 
 type ChatView = 'all' | 'favorites' | 'archived';
@@ -63,7 +68,7 @@ type ChatView = 'all' | 'favorites' | 'archived';
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getUserId(user: CurrentUser): string | undefined {
-  return user.id ?? user._id;
+  return user?.id ?? user?._id;
 }
 
 function resolveChatParticipant(chat: Chat, currentUserId?: string) {
@@ -98,7 +103,7 @@ function formatChatTime(date: Date): string {
 }
 
 function confirmDelete(chatTitle: string, onDelete: () => void) {
-  Alert.alert('Delete chat?', `Remove "${chatTitle}" from your chats?`, [
+  Alert.alert('Delete Chat', `Remove "${chatTitle}" from your chats?`, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Delete', style: 'destructive', onPress: onDelete },
   ]);
@@ -118,7 +123,7 @@ function useChatMutation(
       const previous = queryClient.getQueryData<Chat[]>(queryKey) ?? [];
       queryClient.setQueryData<Chat[]>(
         queryKey,
-        previous.flatMap(chat => {
+        previous.flatMap((chat: Chat) => {
           if (getId(chat) !== chatId) return [chat];
           const updated = updateChat(chat);
           return updated ? [updated] : [];
@@ -166,7 +171,6 @@ function MessagesScreen() {
     const sellerMap = new Map<string, SellerSummary>();
 
     chats.data.forEach((chat: Chat) => {
-      // Get seller from chat
       const seller =
         typeof chat.sellerId === 'object' ? (chat.sellerId as SellerSummary) : undefined;
 
@@ -181,7 +185,6 @@ function MessagesScreen() {
         }
       }
 
-      // Get buyer from chat (for seller role)
       const buyer =
         typeof chat.buyerId === 'object' ? (chat.buyerId as CurrentUser) : undefined;
 
@@ -276,10 +279,13 @@ function MessagesScreen() {
       setSelectedMembers([]);
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       if (result.chat) {
-        navigation.navigate('ChatDetails', {
-          chatId: getId(result.chat),
-          title: result.chat.groupName ?? groupName.trim(),
-        });
+        const chatId = getId(result.chat);
+        if (chatId) {
+          navigation.navigate('ChatDetails', {
+            chatId: chatId,
+            title: result.chat.groupName ?? groupName.trim(),
+          });
+        }
       }
     },
     onError: (error: unknown) =>
@@ -350,6 +356,32 @@ function MessagesScreen() {
     return resolveChatParticipant(menuChat, user?.id ?? user?._id).name;
   }, [menuChat, user]);
 
+  // ─── FIXED: Handle chat navigation with proper error handling ──────────
+
+  const handleChatPress = useCallback((chat: Chat) => {
+    try {
+      const chatId = getId(chat);
+      if (!chatId) {
+        Alert.alert('Error', 'Invalid chat ID. Please try again.');
+        return;
+      }
+
+      const participant = resolveChatParticipant(chat, user?.id ?? user?._id);
+      const title = chat.chatType === 'group' 
+        ? chat.groupName ?? 'Group chat'
+        : participant.name ?? 'Chat';
+
+      // Navigate to chat using root navigation
+      navigation.navigate('ChatDetails', {
+        chatId: chatId,
+        title: title,
+      });
+    } catch (error) {
+      console.error('Navigation error:', error);
+      Alert.alert('Error', 'Unable to open chat. Please try again.');
+    }
+  }, [navigation, user]);
+
   if (status !== 'authenticated') {
     return <AuthScreen onClose={() => navigation.navigate('Home')} />;
   }
@@ -372,7 +404,7 @@ function MessagesScreen() {
       item={item}
       user={user}
       activeRole={activeRole ?? 'buyer'}
-      navigation={navigation}
+      onPress={handleChatPress}
       view={view}
       archiveMutation={archiveMutation}
       markReadMutation={markReadMutation}
@@ -384,95 +416,109 @@ function MessagesScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
+      {/* Enhanced Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           {view === 'archived'
-            ? 'Archived'
+            ? 'Archived Chats'
             : unreadTotal > 0
-            ? `Messages (${unreadTotal})`
-            : 'Messages'}
+            ? `Chats (${unreadTotal})`
+            : 'Chats'}
         </Text>
         <View style={styles.headerActions}>
-          <Pressable onPress={() => setUnreadOnly(v => !v)} style={styles.headerBtn}>
+          <TouchableOpacity 
+            onPress={() => setUnreadOnly(v => !v)} 
+            style={[styles.headerBtn, unreadOnly && styles.headerBtnActive]}
+          >
             <Icon
               name={unreadOnly ? 'filter-check' : 'filter-variant'}
               size={20}
-              color={WP.headerText}
+              color={unreadOnly ? '#FFF' : P.textSecondary}
             />
-          </Pressable>
-          <Pressable onPress={() => setGroupOpen(true)} style={styles.headerBtn}>
-            <Icon name="account-group-outline" size={20} color={WP.headerText} />
-          </Pressable>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => setGroupOpen(true)} 
+            style={styles.headerBtn}
+          >
+            <Icon name="account-group-plus" size={20} color={P.textSecondary} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Search */}
+      {/* Enhanced Search */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBox}>
-          <Icon name="magnify" size={20} color={WP.muted} />
+          <Icon name="magnify" size={20} color={P.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search"
-            placeholderTextColor={WP.muted}
+            placeholder="Search chats..."
+            placeholderTextColor={P.textMuted}
             style={styles.searchInput}
           />
           {query.length > 0 && (
-            <Pressable onPress={() => setQuery('')}>
-              <Icon name="close-circle" size={18} color={WP.muted} />
-            </Pressable>
+            <TouchableOpacity onPress={() => setQuery('')}>
+              <Icon name="close-circle" size={18} color={P.textMuted} />
+            </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.viewTabs}>
-        <Pressable
-          onPress={() => setView('all')}
-          style={[styles.viewTab, view === 'all' && styles.viewTabActive]}>
-          <Text style={[styles.viewTabText, view === 'all' && styles.viewTabTextActive]}>
-            All
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setView('favorites')}
-          style={[styles.viewTab, view === 'favorites' && styles.viewTabActive]}>
-          <Text style={[styles.viewTabText, view === 'favorites' && styles.viewTabTextActive]}>
-            Starred
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setView('archived')}
-          style={[styles.viewTab, view === 'archived' && styles.viewTabActive]}>
-          <Text style={[styles.viewTabText, view === 'archived' && styles.viewTabTextActive]}>
-            Archived
-          </Text>
-        </Pressable>
+      {/* Enhanced Tabs */}
+      <View style={styles.tabContainer}>
+        <View style={styles.tabsWrapper}>
+          {(['all', 'favorites', 'archived'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setView(tab)}
+              style={[
+                styles.tab,
+                view === tab && styles.tabActive,
+              ]}
+            >
+              <Text style={[
+                styles.tabText,
+                view === tab && styles.tabTextActive,
+              ]}>
+                {tab === 'all' ? 'All' : tab === 'favorites' ? 'Starred' : 'Archived'}
+              </Text>
+              {view === tab && <View style={styles.tabIndicator} />}
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       {/* Chat List */}
       <FlatList
         data={allChats}
-        keyExtractor={(item: Chat) => getId(item) ?? ''}
+        keyExtractor={(item: Chat) => getId(item) ?? Math.random().toString()}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={chats.isRefetching}
             onRefresh={() => chats.refetch()}
-            tintColor={WP.online}
+            tintColor={P.primary}
+            colors={[P.primary]}
           />
         }
         ListEmptyComponent={
-          <EmptyState
-            title={view === 'archived' ? 'No archived chats' : 'No conversations'}
-            detail="Your messages will appear here."
-          />
+          <View style={styles.emptyContainer}>
+            <Icon name="chat-outline" size={60} color={P.textMuted} />
+            <Text style={styles.emptyTitle}>
+              {view === 'archived' ? 'No archived chats' : 'No conversations yet'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {view === 'archived' 
+                ? 'Archived chats will appear here' 
+                : 'Start a conversation with a supplier or buyer'}
+            </Text>
+          </View>
         }
         renderItem={renderItem}
+        showsVerticalScrollIndicator={false}
       />
 
-      {/* Menu Modal */}
+      {/* Enhanced Menu Modal */}
       <ChatMenuModal
         visible={menuChatId !== null}
         isPinned={menuChat?.isPinned ?? false}
@@ -520,7 +566,7 @@ function MessagesScreen() {
         }}
       />
 
-      {/* Group Modal */}
+      {/* Enhanced Group Modal */}
       <GroupChatModal
         visible={groupOpen}
         groupName={groupName}
@@ -540,13 +586,13 @@ function MessagesScreen() {
   );
 }
 
-// ─── Chat Row ───────────────────────────────────────────────────────────────
+// ─── Enhanced Chat Row ─────────────────────────────────────────────────────
 
 function ChatRow({
   item,
   user,
   activeRole,
-  navigation,
+  onPress,
   view,
   archiveMutation,
   markReadMutation,
@@ -557,7 +603,7 @@ function ChatRow({
   item: Chat;
   user: CurrentUser | null;
   activeRole?: string;
-  navigation: any;
+  onPress: (chat: Chat) => void;
   view: ChatView;
   archiveMutation: any;
   markReadMutation: any;
@@ -584,33 +630,25 @@ function ChatRow({
   const renderRightActions = () => (
     <View style={styles.swipeActions}>
       <TouchableOpacity
-        style={[styles.swipeBtn, { backgroundColor: WP.swipeArchive }]}
+        style={[styles.swipeBtn, { backgroundColor: P.swipeArchive }]}
         onPress={() => archiveMutation.mutate(getId(item))}>
-        <Icon
-          name={view === 'archived' ? 'archive-arrow-up-outline' : 'archive-outline'}
-          size={20}
-          color="#fff"
-        />
+        <Icon name={view === 'archived' ? 'archive-arrow-up' : 'archive'} size={22} color="#fff" />
         <Text style={styles.swipeLabel}>{view === 'archived' ? 'Unarchive' : 'Archive'}</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.swipeBtn, { backgroundColor: WP.swipeRead }]}
+        style={[styles.swipeBtn, { backgroundColor: P.swipeRead }]}
         onPress={() =>
           unread
             ? markReadMutation.mutate(getId(item))
             : markUnreadMutation.mutate(getId(item))
         }>
-        <Icon
-          name={unread ? 'email-open-outline' : 'email-outline'}
-          size={20}
-          color="#fff"
-        />
+        <Icon name={unread ? 'email-open-outline' : 'email-outline'} size={22} color="#fff" />
         <Text style={styles.swipeLabel}>{unread ? 'Read' : 'Unread'}</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.swipeBtn, { backgroundColor: WP.swipeDelete }]}
+        style={[styles.swipeBtn, { backgroundColor: P.swipeDelete }]}
         onPress={handleDelete}>
-        <Icon name="delete-outline" size={20} color="#fff" />
+        <Icon name="delete-outline" size={22} color="#fff" />
         <Text style={styles.swipeLabel}>Delete</Text>
       </TouchableOpacity>
     </View>
@@ -619,34 +657,37 @@ function ChatRow({
   return (
     <Swipeable renderRightActions={renderRightActions} overshootRight={false}>
       <Pressable
-        onPress={() =>
-          navigation.navigate('ChatDetails', { chatId: getId(item), title })
-        }
+        onPress={() => onPress(item)}
         style={({ pressed }) => [
           styles.chatRow,
-          item.isPinned && styles.pinnedRow,
+          item.isPinned && styles.chatRowPinned,
           pressed && styles.chatRowPressed,
-        ]}>
-        {/* Avatar */}
-        <View style={styles.avatarWrap}>
+        ]}
+      >
+        {/* Avatar with online indicator */}
+        <View style={styles.avatarContainer}>
           {isGroup ? (
             <View style={styles.groupAvatar}>
-              <Icon name="account-group" size={24} color={WP.subtitle} />
+              <Icon name="account-group" size={28} color={P.textMuted} />
             </View>
           ) : (
-            <RemoteImage
-              uri={participant.image}
-              width={100}
-              height={100}
-              style={styles.avatar}
-              fallback={
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarText}>
-                    {(title[0] ?? 'C').toUpperCase()}
-                  </Text>
-                </View>
-              }
-            />
+            <View>
+              <RemoteImage
+                uri={participant.image}
+                width={100}
+                height={100}
+                style={styles.avatar}
+                fallback={
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarText}>
+                      {(title[0] ?? '?').toUpperCase()}
+                    </Text>
+                  </View>
+                }
+              />
+              {/* Online indicator - remove if not needed */}
+              <View style={[styles.onlineDot, { backgroundColor: P.offline }]} />
+            </View>
           )}
         </View>
 
@@ -657,13 +698,13 @@ function ChatRow({
               {title}
             </Text>
             <View style={styles.chatMeta}>
-              {item.isMuted && <Icon name="bell-off-outline" size={12} color={WP.muted} />}
-              {item.isPinned && <Icon name="pin-outline" size={12} color={WP.muted} />}
+              {item.isMuted && <Icon name="bell-off" size={14} color={P.textMuted} />}
+              {item.isPinned && <Icon name="pin" size={14} color={P.textMuted} />}
               <Text style={styles.chatDate}>{date}</Text>
             </View>
           </View>
           <View style={styles.chatBottomRow}>
-            <Text style={styles.chatSubtitle} numberOfLines={1}>
+            <Text style={[styles.chatSubtitle, unread > 0 && styles.chatSubtitleUnread]} numberOfLines={1}>
               {subtitle}
             </Text>
             {unread > 0 && (
@@ -674,19 +715,23 @@ function ChatRow({
           </View>
         </View>
 
-        {/* 3-dot */}
-        <Pressable
-          onPress={() => onOpenMenu(getId(item) ?? '')}
+        {/* Menu button */}
+        <TouchableOpacity
+          onPress={() => {
+            const id = getId(item);
+            if (id) onOpenMenu(id);
+          }}
           style={styles.menuBtn}
-          hitSlop={8}>
-          <Icon name="dots-vertical" size={18} color={WP.muted} />
-        </Pressable>
+          hitSlop={8}
+        >
+          <Icon name="dots-vertical" size={20} color={P.textMuted} />
+        </TouchableOpacity>
       </Pressable>
     </Swipeable>
   );
 }
 
-// ─── Chat Menu Modal ────────────────────────────────────────────────────────
+// ─── Enhanced Chat Menu Modal ─────────────────────────────────────────────
 
 function ChatMenuModal({
   visible,
@@ -717,57 +762,68 @@ function ChatMenuModal({
 }) {
   if (!visible) return null;
 
+  const menuItems = [
+    { 
+      icon: isPinned ? 'pin-off' : 'pin', 
+      label: isPinned ? 'Unpin chat' : 'Pin chat', 
+      onPress: onPin,
+      color: P.text 
+    },
+    { 
+      icon: isMuted ? 'bell-ring' : 'bell-off', 
+      label: isMuted ? 'Unmute' : 'Mute', 
+      onPress: onMute,
+      color: P.text 
+    },
+    { 
+      icon: isFavorite ? 'star-off' : 'star', 
+      label: isFavorite ? 'Remove star' : 'Star chat', 
+      onPress: onFavorite,
+      color: P.text 
+    },
+    { 
+      icon: unread > 0 ? 'email-open-outline' : 'email-outline', 
+      label: unread > 0 ? 'Mark as read' : 'Mark as unread', 
+      onPress: unread > 0 ? onMarkRead : onMarkUnread,
+      color: P.text 
+    },
+    { 
+      icon: 'delete-outline', 
+      label: 'Delete chat', 
+      onPress: onDelete,
+      color: P.swipeDelete 
+    },
+  ];
+
   return (
     <Modal transparent animationType="fade" visible={visible} onRequestClose={onClose}>
       <Pressable style={styles.menuBackdrop} onPress={onClose}>
         <View style={styles.menuSheet}>
-          <Pressable onPress={onPin} style={styles.menuItem}>
-            <Icon
-              name={isPinned ? 'pin-off-outline' : 'pin-outline'}
-              size={20}
-              color={WP.title}
-            />
-            <Text style={styles.menuText}>{isPinned ? 'Unpin chat' : 'Pin chat'}</Text>
-          </Pressable>
-          <Pressable onPress={onMute} style={styles.menuItem}>
-            <Icon
-              name={isMuted ? 'bell-ring-outline' : 'bell-off-outline'}
-              size={20}
-              color={WP.title}
-            />
-            <Text style={styles.menuText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
-          </Pressable>
-          <Pressable onPress={onFavorite} style={styles.menuItem}>
-            <Icon
-              name={isFavorite ? 'star-off-outline' : 'star-outline'}
-              size={20}
-              color={WP.title}
-            />
-            <Text style={styles.menuText}>{isFavorite ? 'Remove star' : 'Star chat'}</Text>
-          </Pressable>
-          {unread > 0 ? (
-            <Pressable onPress={onMarkRead} style={styles.menuItem}>
-              <Icon name="email-open-outline" size={20} color={WP.title} />
-              <Text style={styles.menuText}>Mark as read</Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={onMarkUnread} style={styles.menuItem}>
-              <Icon name="email-outline" size={20} color={WP.title} />
-              <Text style={styles.menuText}>Mark as unread</Text>
-            </Pressable>
-          )}
-          <View style={styles.menuDivider} />
-          <Pressable onPress={onDelete} style={styles.menuItem}>
-            <Icon name="delete-outline" size={20} color="#EF4444" />
-            <Text style={[styles.menuText, styles.menuTextDanger]}>Delete chat</Text>
-          </Pressable>
+          {menuItems.map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              onPress={item.onPress}
+              style={[
+                styles.menuItem,
+                index === menuItems.length - 1 && styles.menuItemLast,
+              ]}
+            >
+              <Icon name={item.icon} size={22} color={item.color} />
+              <Text style={[
+                styles.menuText,
+                item.color === P.swipeDelete && styles.menuTextDanger,
+              ]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </Pressable>
     </Modal>
   );
 }
 
-// ─── Group Chat Modal ───────────────────────────────────────────────────────
+// ─── Enhanced Group Chat Modal ─────────────────────────────────────────────
 
 function GroupChatModal({
   visible,
@@ -795,31 +851,38 @@ function GroupChatModal({
       <Pressable style={styles.modalBackdrop} onPress={onClose} />
       <View style={styles.groupSheet}>
         <View style={styles.sheetHandle} />
-        <Text style={styles.groupTitle}>New group chat</Text>
+        
+        <View style={styles.groupHeader}>
+          <Text style={styles.groupTitle}>New Group Chat</Text>
+          <TouchableOpacity onPress={onClose} style={styles.groupCloseBtn}>
+            <Icon name="close" size={24} color={P.text} />
+          </TouchableOpacity>
+        </View>
 
-        <Text style={styles.fieldLabel}>Group name</Text>
+        <Text style={styles.fieldLabel}>Group Name</Text>
         <TextInput
           value={groupName}
           onChangeText={onChangeName}
-          placeholder="Enter group name"
-          placeholderTextColor={WP.muted}
+          placeholder="Enter group name..."
+          placeholderTextColor={P.textMuted}
           style={styles.groupInput}
         />
 
         <Text style={styles.fieldLabel}>
-          Select from your chats ({selectedMembers.length} selected)
+          Select Members ({selectedMembers.length} selected)
         </Text>
         {suppliers.length === 0 ? (
           <View style={styles.emptySuppliers}>
-            <Icon name="chat-outline" size={24} color={WP.muted} />
+            <Icon name="chat-outline" size={40} color={P.textMuted} />
+            <Text style={styles.emptySuppliersTitle}>No contacts available</Text>
             <Text style={styles.emptySuppliersText}>
-              No chat contacts available. Start a conversation first.
+              Start a conversation first to create a group
             </Text>
           </View>
         ) : (
           <FlatList
             data={suppliers}
-            keyExtractor={(item: SellerSummary) => getId(item) ?? ''}
+            keyExtractor={(item: SellerSummary) => getId(item) ?? Math.random().toString()}
             style={styles.supplierList}
             renderItem={({ item }: { item: SellerSummary }) => {
               const id = getId(item) ?? item._id ?? item.id ?? '';
@@ -827,9 +890,10 @@ function GroupChatModal({
               const name = item.companyName ?? item.businessName ?? item.displayName ?? id;
 
               return (
-                <Pressable
+                <TouchableOpacity
                   onPress={() => onToggleMember(id)}
-                  style={[styles.supplierItem, isSelected && styles.supplierItemSelected]}>
+                  style={[styles.supplierItem, isSelected && styles.supplierItemSelected]}
+                >
                   <View style={styles.supplierAvatar}>
                     <RemoteImage
                       uri={firstImage(item.logo, item.companyLogo, item.logoUrl)}
@@ -853,125 +917,141 @@ function GroupChatModal({
                       {item.address?.country ?? item.country ?? 'Chat contact'}
                     </Text>
                   </View>
-                  <Icon
-                    name={
-                      isSelected ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'
-                    }
-                    size={24}
-                    color={isSelected ? WP.online : WP.muted}
-                  />
-                </Pressable>
+                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected && <Icon name="check" size={16} color="#FFF" />}
+                  </View>
+                </TouchableOpacity>
               );
             }}
           />
         )}
 
-        <Pressable
+        <TouchableOpacity
           disabled={pending || !groupName.trim() || selectedMembers.length === 0}
           onPress={onCreate}
           style={[
             styles.createBtn,
             (pending || !groupName.trim() || selectedMembers.length === 0) &&
               styles.createBtnDisabled,
-          ]}>
+          ]}
+        >
           {pending ? (
             <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <Text style={styles.createBtnText}>Create group</Text>
+            <Text style={styles.createBtnText}>Create Group</Text>
           )}
-        </Pressable>
+        </TouchableOpacity>
       </View>
     </Modal>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Enhanced Styles ───────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  menuTextDanger: { color: '#EF4444' },
   screen: {
     flex: 1,
-    backgroundColor: WP.bg,
+    backgroundColor: P.bg,
   },
 
   // Header
   header: {
-    backgroundColor: WP.headerBg,
+    backgroundColor: P.surface,
     paddingTop: 48,
-    paddingBottom: 10,
-    paddingHorizontal: 14,
+    paddingBottom: 12,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: WP.headerText,
-    letterSpacing: 0.2,
+    fontSize: 22,
+    fontWeight: '700',
+    color: P.text,
+    letterSpacing: -0.3,
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 8,
   },
   headerBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: P.bg,
+  },
+  headerBtnActive: {
+    backgroundColor: P.primary,
   },
 
   // Search
   searchContainer: {
-    backgroundColor: WP.bg,
-    paddingHorizontal: 12,
+    backgroundColor: P.surface,
+    paddingHorizontal: 16,
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: WP.faint,
+    borderBottomColor: P.border,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: WP.faint,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    height: 36,
+    gap: 10,
+    backgroundColor: P.bg,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 42,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: WP.title,
+    fontSize: 15,
+    color: P.text,
     padding: 0,
   },
 
-  // View Tabs
-  viewTabs: {
-    flexDirection: 'row',
-    backgroundColor: WP.bg,
+  // Tabs
+  tabContainer: {
+    backgroundColor: P.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: WP.faint,
+    borderBottomColor: P.border,
   },
-  viewTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 12,
+  tabsWrapper: {
+    flexDirection: 'row',
+    gap: 4,
   },
-  viewTabActive: {
-    borderBottomWidth: 3,
-    borderBottomColor: WP.online,
+  tab: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    position: 'relative',
   },
-  viewTabText: {
+  tabActive: {
+    backgroundColor: P.primaryLight,
+  },
+  tabText: {
     fontSize: 13,
     fontWeight: '600',
-    color: WP.muted,
+    color: P.textSecondary,
   },
-  viewTabTextActive: {
-    color: WP.online,
+  tabTextActive: {
+    color: P.primary,
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: '30%',
+    right: '30%',
+    height: 2,
+    backgroundColor: P.primary,
+    borderRadius: 1,
   },
 
-  // Chat List
+  // List
   listContent: {
     paddingBottom: 80,
   },
@@ -980,61 +1060,75 @@ const styles = StyleSheet.create({
   chatRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: WP.chatBg,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: P.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: P.divider,
   },
-  pinnedRow: {
-    backgroundColor: WP.pinned,
+  chatRowPinned: {
+    backgroundColor: P.pinned,
   },
   chatRowPressed: {
-    backgroundColor: WP.faint,
+    backgroundColor: P.bg,
   },
-  avatarWrap: {
+  avatarContainer: {
     marginRight: 12,
+    position: 'relative',
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: WP.faint,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: P.bg,
   },
   avatarFallback: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: WP.faint,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: P.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    color: WP.subtitle,
+    color: P.primary,
   },
   groupAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: WP.faint,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: P.bg,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: P.border,
+  },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 1,
+    right: 1,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: P.surface,
   },
   chatContent: {
     flex: 1,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: WP.divider,
-    paddingVertical: 8,
+    paddingVertical: 4,
   },
   chatTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   chatTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: WP.title,
+    color: P.text,
     flex: 1,
   },
   chatMeta: {
@@ -1044,36 +1138,38 @@ const styles = StyleSheet.create({
   },
   chatDate: {
     fontSize: 11,
-    color: WP.muted,
+    color: P.textMuted,
+    fontWeight: '500',
   },
   chatBottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 3,
   },
   chatSubtitle: {
     fontSize: 13,
-    color: WP.subtitle,
+    color: P.textSecondary,
     flex: 1,
   },
+  chatSubtitleUnread: {
+    color: P.text,
+    fontWeight: '600',
+  },
   unreadBadge: {
-    backgroundColor: WP.unreadBg,
+    backgroundColor: P.unread,
     borderRadius: 12,
     minWidth: 22,
     height: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 5,
+    paddingHorizontal: 6,
     marginLeft: 8,
   },
   unreadText: {
-    color: WP.unreadText,
+    color: '#FFF',
     fontSize: 11,
     fontWeight: '700',
   },
-
-  // Menu Button
   menuBtn: {
     padding: 8,
     marginLeft: 4,
@@ -1099,14 +1195,14 @@ const styles = StyleSheet.create({
   // Menu Modal
   menuBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   menuSheet: {
-    backgroundColor: WP.menuBg,
-    borderRadius: 14,
-    width: 260,
+    backgroundColor: P.surface,
+    borderRadius: 16,
+    width: SCREEN_WIDTH * 0.85,
     paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1120,16 +1216,19 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: 18,
     paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: P.divider,
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
   },
   menuText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
-    color: WP.title,
+    color: P.text,
   },
-  menuDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: WP.faint,
-    marginVertical: 4,
+  menuTextDanger: {
+    color: P.swipeDelete,
   },
 
   // Group Modal
@@ -1138,49 +1237,58 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   groupSheet: {
-    backgroundColor: WP.bg,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: P.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     bottom: 0,
     left: 0,
     maxHeight: '85%',
     position: 'absolute',
     right: 0,
     padding: 20,
+    paddingBottom: 34,
   },
   sheetHandle: {
     alignSelf: 'center',
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: WP.faint,
+    backgroundColor: P.border,
+    marginBottom: 16,
+  },
+  groupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
   },
   groupTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
-    color: WP.title,
-    marginBottom: 16,
+    color: P.text,
+  },
+  groupCloseBtn: {
+    padding: 4,
   },
   fieldLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: WP.subtitle,
+    color: P.textSecondary,
     marginBottom: 6,
     marginTop: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   groupInput: {
-    backgroundColor: WP.faint,
-    borderRadius: 10,
+    backgroundColor: P.bg,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    height: 44,
-    fontSize: 14,
-    color: WP.title,
+    height: 46,
+    fontSize: 15,
+    color: P.text,
   },
   supplierList: {
-    maxHeight: 280,
+    maxHeight: 300,
     marginTop: 8,
   },
   supplierItem: {
@@ -1189,66 +1297,84 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 10,
     paddingHorizontal: 4,
-    borderRadius: 10,
+    borderRadius: 12,
   },
   supplierItemSelected: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: P.primaryLight,
   },
   supplierAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
-    backgroundColor: WP.faint,
+    backgroundColor: P.bg,
   },
   supplierAvatarImg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
   },
   supplierAvatarFallback: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: WP.faint,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: P.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   supplierAvatarText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '700',
-    color: WP.subtitle,
+    color: P.primary,
   },
   supplierInfo: {
     flex: 1,
   },
   supplierName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: WP.title,
+    color: P.text,
   },
   supplierMeta: {
-    fontSize: 11,
-    color: WP.muted,
+    fontSize: 12,
+    color: P.textMuted,
     marginTop: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: P.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: P.primary,
+    borderColor: P.primary,
   },
   emptySuppliers: {
     alignItems: 'center',
-    padding: 24,
+    padding: 30,
     gap: 8,
   },
+  emptySuppliersTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: P.textSecondary,
+  },
   emptySuppliersText: {
-    fontSize: 12,
-    color: WP.muted,
+    fontSize: 13,
+    color: P.textMuted,
     textAlign: 'center',
     lineHeight: 18,
   },
   createBtn: {
-    backgroundColor: WP.fab,
+    backgroundColor: P.primary,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 48,
+    height: 50,
     marginTop: 20,
   },
   createBtnDisabled: {
@@ -1256,8 +1382,29 @@ const styles = StyleSheet.create({
   },
   createBtnText: {
     color: '#fff',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+  },
+
+  // Empty State
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: P.textSecondary,
+    marginTop: 16,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: P.textMuted,
+    textAlign: 'center',
+    marginTop: 8,
   },
 });
 

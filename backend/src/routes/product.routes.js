@@ -12,9 +12,9 @@ const publicLimiter = rateLimit({
   message: 'Too many requests, please try again later.',
 });
 
-// ===== PUBLIC ROUTES =====
+// ===== PUBLIC ROUTES (authenticate sets req.user if logged in) =====
 
-// GET /api/products - Public listing (optimized for speed)
+// GET /api/products - Public listing
 router.get('/', publicLimiter, authenticate, ProductController.getProducts);
 
 // GET /api/products/:productId - Product detail
@@ -36,6 +36,7 @@ router.patch(
   '/:productId',
   authenticate,
   requireAuth,
+  requireRole('seller'),
   ProductController.updateProduct
 );
 
@@ -44,6 +45,7 @@ router.delete(
   '/:productId',
   authenticate,
   requireAuth,
+  requireRole('seller'),
   ProductController.deleteProduct
 );
 

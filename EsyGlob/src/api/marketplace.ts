@@ -44,6 +44,7 @@ export type EnquiryAttachment = {
   url?: string;
 };
 
+// In marketplace.js or types.ts
 export type EnquiryInput = {
   productId: string;
   sellerUserId: string;
@@ -58,6 +59,9 @@ export type EnquiryInput = {
   destinationCountry: string;
   additionalNotes?: string;
   attachments?: EnquiryAttachment[];
+  currency?: string;
+  deliveryTimeline?: string;
+  incoterms?: string;
 };
 
 // ─── RFQs ───────────────────────────────────────────────────────────────────
@@ -120,19 +124,53 @@ export async function archiveRFQ(rfqId: string) {
 
 // ─── Product Enquiry / Chat ─────────────────────────────────────────────────
 
+// ─── Product Enquiry / Chat ─────────────────────────────────────────────────
+
 export async function createProductEnquiry(input: EnquiryInput) {
-  const payload = await apiRequest('/rfqs/enquiry', {
+  // FIXED: Use the correct endpoint from the backend
+  const payload = await apiRequest('/rfqs/product-enquiry', {
     method: 'POST',
     body: {
-      attachments: [],
-      ...input,
+      productId: input.productId,
+      sellerUserId: input.sellerUserId,
+      productName: input.productName || 'Product',
+      quantity: input.quantity || 1,
+      unit: input.unit || 'pcs',
+      targetPrice: input.targetPrice,
+      customSpecifications: input.customSpecifications,
+      customizationRequirements: input.customizationRequirements,
+      packagingRequirements: input.packagingRequirements,
+      deliveryRequirements: input.deliveryRequirements,
+      destinationCountry: input.destinationCountry || 'India',
+      additionalNotes: input.additionalNotes,
+      attachments: input.attachments || [],
+      currency: input.currency || 'INR',
+      deliveryTimeline: input.deliveryTimeline || 'flexible',
+      incoterms: input.incoterms || 'FOB',
     },
   });
+  
   const data = unwrapData<{ rfq?: RFQ; chat?: Chat; message?: string }>(payload);
-  if (!data?.rfq || !data?.chat) {
-    throw new Error('Enquiry response did not include both RFQ and conversation.');
+  
+  // FIXED: The backend returns { rfq, chat, message }
+  if (!data) {
+    throw new Error('No response from server');
   }
-  return data;
+  
+  // Check if we have the required data
+  if (data.chat || data.rfq) {
+    return data;
+  }
+  
+  // Check if the response is wrapped differently
+  if (payload && typeof payload === 'object') {
+    const p = payload as Record<string, unknown>;
+    if (p.rfq || p.chat || p.success) {
+      return payload as any;
+    }
+  }
+  
+  throw new Error('Enquiry response did not include RFQ or conversation.');
 }
 
 export async function startProductChat(input: {
@@ -141,18 +179,47 @@ export async function startProductChat(input: {
   role?: 'buyer' | 'seller';
   enquiry?: boolean;
 }) {
+  // FIXED: Ensure required fields
+  if (!input.otherUserId) {
+    throw new Error('Seller user ID is required');
+  }
+  if (!input.productId) {
+    throw new Error('Product ID is required');
+  }
+
   const payload = await apiRequest('/chat', {
     method: 'POST',
     body: {
-      role: 'buyer',
-      enquiry: false,
-      ...input,
+      otherUserId: input.otherUserId,
+      productId: input.productId,
+      role: input.role || 'buyer',
+      enquiry: input.enquiry || false,
     },
   });
+  
   const data = unwrapData<{ chat?: Chat; created?: boolean }>(payload);
-  if (!data?.chat) throw new Error('Conversation was not returned by the backend.');
+  
+  if (!data?.chat) {
+    // Check if the response has a chat nested differently
+    if (payload && typeof payload === 'object') {
+      const p = payload as Record<string, unknown>;
+      if (p.chat) {
+        return { chat: p.chat as Chat, created: p.created as boolean || false };
+      }
+      if (p.data && typeof p.data === 'object') {
+        const d = p.data as Record<string, unknown>;
+        if (d.chat) {
+          return { chat: d.chat as Chat, created: d.created as boolean || false };
+        }
+      }
+    }
+    throw new Error('Conversation was not returned by the backend.');
+  }
+  
   return data;
 }
+
+
 
 // ─── Track Product View ─────────────────────────────────────────────────────
 
@@ -187,38 +254,50 @@ export async function fetchSellers(params: {
 
 export async function fetchSellerDetails(sellerId: string): Promise<SellerDetails> {
   try {
-    const payload = await apiRequest(`/suppliers/${sellerId}`, { cacheTtlMs: 2 * 60_000 });
+    // FIXED: Use /suppliers (not /sellers) to match backend
+    const payload = await apiRequest(`/suppliers/${sellerId}`, { 
+      cacheTtlMs: 2 * 60_000 
+    });
     return unwrapData<SellerDetails>(payload);
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) throw error;
   }
 
-  const [sellerPayload, productsPayload, reviewsPayload] = await Promise.all([
-    apiRequest('/suppliers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
-    apiRequest('/products', {
-      query: { type: 'homepage', seller: sellerId, limit: 30 },
-      cacheTtlMs: 2 * 60_000,
-    }),
-    apiRequest('/reviews', {
-      query: { sellerId, limit: 20 },
-      cacheTtlMs: 60_000,
-    }).catch(() => null),
-  ]);
+  // Fallback: Try the list endpoint
+  try {
+    const [sellerPayload, productsPayload, reviewsPayload] = await Promise.all([
+      apiRequest('/suppliers', { query: { limit: 100 }, cacheTtlMs: 2 * 60_000 }),
+      apiRequest('/products', {
+        query: { type: 'homepage', seller: sellerId, limit: 30 },
+        cacheTtlMs: 2 * 60_000,
+      }),
+      apiRequest('/reviews', {
+        query: { sellerId, limit: 20 },
+        cacheTtlMs: 60_000,
+      }).catch(() => null),
+    ]);
 
-  const sellers =
-    unwrapData<{ sellers?: SellerSummary[] }>(sellerPayload)?.sellers ??
-    normalizeList<SellerSummary>(sellerPayload, ['sellers']);
-  const seller = sellers.find(item => item._id === sellerId || item.id === sellerId);
+    const sellers =
+      unwrapData<{ sellers?: SellerSummary[] }>(sellerPayload)?.sellers ??
+      normalizeList<SellerSummary>(sellerPayload, ['sellers']);
+    const seller = sellers.find(item => item._id === sellerId || item.id === sellerId);
 
-  if (!seller) throw new Error('Seller details were not returned by the backend.');
+    if (!seller) throw new Error('Seller details were not returned by the backend.');
 
-  return {
-    seller,
-    products: normalizeList<Product>(productsPayload, ['products']),
-    reviews: reviewsPayload
-      ? normalizeList<Record<string, unknown>>(reviewsPayload, ['reviews'])
-      : [],
-  };
+    return {
+      seller,
+      products: normalizeList<Product>(productsPayload, ['products']),
+      reviews: reviewsPayload
+        ? normalizeList<Record<string, unknown>>(reviewsPayload, ['reviews'])
+        : [],
+    };
+  } catch (error) {
+    // If all fails, try to get just the seller profile
+    const payload = await apiRequest(`/suppliers/${sellerId}`, { 
+      cacheTtlMs: 2 * 60_000 
+    });
+    return unwrapData<SellerDetails>(payload);
+  }
 }
 
 // ─── Seller Onboarding ──────────────────────────────────────────────────────

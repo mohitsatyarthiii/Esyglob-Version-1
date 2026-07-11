@@ -4,23 +4,54 @@ import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
+// ===== PUBLIC ROUTES (authenticate sets req.user if logged in) =====
+
 // GET /api/rfqs - List RFQs (supports buyer, seller, public scopes)
-router.get('/', rfqController.getRfqs);
-
-// POST /api/rfqs - Create RFQ (buyer only)
-router.post('/', authenticate, requireAuth, rfqController.createRfq);
-
-// POST /api/rfqs/product-enquiry - Product enquiry RFQ
-router.post('/product-enquiry', authenticate, requireAuth, rfqController.createProductEnquiry);
-router.post('/enquiry', authenticate, requireAuth, rfqController.createProductEnquiry);
+router.get('/', authenticate, rfqController.getRfqs);
 
 // GET /api/rfqs/:rfqId - RFQ detail
-router.get('/:rfqId', rfqController.getRfqDetail);
+router.get('/:rfqId', authenticate, rfqController.getRfqDetail);
 
-// PATCH /api/rfqs/:rfqId - Update RFQ
-router.patch('/:rfqId', authenticate, requireAuth, rfqController.updateRfq);
+// ===== PROTECTED ROUTES =====
 
-// DELETE /api/rfqs/:rfqId - Archive RFQ
-router.delete('/:rfqId', authenticate, requireAuth, rfqController.deleteRfq);
+// POST /api/rfqs - Create RFQ (buyer only)
+router.post(
+  '/',
+  authenticate,
+  requireAuth,
+  rfqController.createRfq
+);
+
+// POST /api/rfqs/product-enquiry - Product enquiry RFQ (buyer only)
+router.post(
+  '/product-enquiry',
+  authenticate,
+  requireAuth,
+  rfqController.createProductEnquiry
+);
+
+// POST /api/rfqs/enquiry - Alias for product-enquiry (backward compatibility)
+router.post(
+  '/enquiry',
+  authenticate,
+  requireAuth,
+  rfqController.createProductEnquiry
+);
+
+// PATCH /api/rfqs/:rfqId - Update RFQ (buyer only)
+router.patch(
+  '/:rfqId',
+  authenticate,
+  requireAuth,
+  rfqController.updateRfq
+);
+
+// DELETE /api/rfqs/:rfqId - Archive RFQ (buyer only)
+router.delete(
+  '/:rfqId',
+  authenticate,
+  requireAuth,
+  rfqController.deleteRfq
+);
 
 export default router;

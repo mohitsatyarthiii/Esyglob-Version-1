@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 type MoqTier = {
@@ -29,39 +29,79 @@ export default function MoqSelector({
 }: Props) {
   if (!tiers || tiers.length === 0) return null;
 
+  // Find the selected tier based on the selected quantity
+  const selectedTier = tiers.find(t => t.minQty === selectedQty) || tiers[0];
+  const selectedPrice = selectedTier?.price || 0;
+
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>SELECT QUANTITY</Text>
-      <View style={styles.grid}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>SELECT QUANTITY</Text>
+        <Text style={styles.priceSummary}>
+          {currency}{selectedPrice.toLocaleString('en-IN')} / unit
+        </Text>
+      </View>
+
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {tiers.map((tier, i) => {
           const isActive = selectedQty === tier.minQty;
           const hasMax = tier.maxQty != null && tier.maxQty > 0;
           const label = hasMax
-            ? `${tier.minQty}-${tier.maxQty} ${tier.unit || 'pcs'}`
-            : `${tier.minQty}+ ${tier.unit || 'pcs'}`;
+            ? `${tier.minQty}-${tier.maxQty}`
+            : `${tier.minQty}+`;
+          const unitLabel = tier.unit || 'pcs';
 
           return (
             <Pressable
               key={i}
               onPress={() => onSelect(tier.minQty)}
-              style={[styles.tier, isActive && styles.tierActive]}>
-              <View style={styles.tierLeft}>
+              style={[styles.tier, isActive && styles.tierActive]}
+            >
+              <View style={styles.tierContent}>
                 <Text style={[styles.tierQty, isActive && styles.tierQtyActive]}>
                   {label}
                 </Text>
+                <Text style={[styles.tierUnit, isActive && styles.tierUnitActive]}>
+                  {unitLabel}
+                </Text>
                 <Text style={[styles.tierPrice, isActive && styles.tierPriceActive]}>
                   {currency}{tier.price.toLocaleString('en-IN')}
-                  <Text style={styles.perUnit}> /unit</Text>
                 </Text>
-                {tier.discount ? <Text style={styles.savings}>{tier.discount.toFixed(0)}% off · Save {currency}{(tier.savings ?? 0).toLocaleString('en-IN')}/unit</Text> : null}
-                <Text style={styles.meta}>{tier.available === false ? 'Unavailable' : 'Available'}{tier.leadTime ? ` · ${tier.leadTime}` : ''}</Text>
+                {tier.discount ? (
+                  <View style={styles.discountBadge}>
+                    <Text style={styles.discountText}>
+                      {tier.discount.toFixed(0)}% OFF
+                    </Text>
+                  </View>
+                ) : null}
+                {isActive && (
+                  <View style={styles.activeIndicator}>
+                    <Icon name="check-circle" size={16} color="#FF6A00" />
+                  </View>
+                )}
               </View>
-              {isActive && (
-                <Icon name="check-circle" size={20} color="#FF6A00" />
-              )}
             </Pressable>
           );
         })}
+      </ScrollView>
+
+      {selectedTier?.savings ? (
+        <Text style={styles.savingsText}>
+          Save {currency}{selectedTier.savings.toLocaleString('en-IN')}/unit with this tier
+        </Text>
+      ) : null}
+
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          Minimum order: {tiers[0].minQty} {tiers[0].unit || 'pcs'}
+        </Text>
+        {selectedTier?.leadTime ? (
+          <Text style={styles.footerText}>Lead time: {selectedTier.leadTime}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -76,58 +116,115 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1,
     borderColor: '#F1F5F9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   title: {
     fontSize: 10,
     fontWeight: '800',
     color: '#94A3B8',
     letterSpacing: 0.5,
-    marginBottom: 10,
+    textTransform: 'uppercase',
   },
-  grid: {
-    flexDirection: 'row',
+  priceSummary: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FF6A00',
+  },
+  scrollContent: {
     gap: 8,
+    paddingVertical: 4,
   },
   tier: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 10,
+    minWidth: 100,
+    padding: 12,
+    borderRadius: 12,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    position: 'relative',
   },
   tierActive: {
     backgroundColor: '#FFF7ED',
     borderColor: '#FF6A00',
+    borderWidth: 2,
   },
-  tierLeft: {
+  tierContent: {
+    alignItems: 'center',
     gap: 2,
   },
   tierQty: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
   },
   tierQtyActive: {
     color: '#FF6A00',
-    fontWeight: '700',
+  },
+  tierUnit: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#94A3B8',
+    textTransform: 'lowercase',
+  },
+  tierUnitActive: {
+    color: '#FF6A00',
   },
   tierPrice: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#334155',
+    color: '#1E293B',
+    marginTop: 4,
   },
   tierPriceActive: {
     color: '#FF6A00',
   },
-  perUnit: {
-    fontSize: 9,
-    fontWeight: '500',
-    color: '#94A3B8',
+  discountBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginTop: 4,
   },
-  savings: { fontSize: 9, color: '#059669', fontWeight: '700', marginTop: 2 },
-  meta: { fontSize: 9, color: '#64748B', marginTop: 2 },
+  discountText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+  },
+  savingsText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#059669',
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  footerText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
 });
