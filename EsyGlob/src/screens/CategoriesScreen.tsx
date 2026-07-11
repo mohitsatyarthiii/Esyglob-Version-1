@@ -1,12 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
-  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -16,490 +15,477 @@ import { fetchCategories } from '../api/categories';
 import { Category } from '../api/types';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import RemoteImage from '../components/RemoteImage';
-import { colors } from '../theme';
-import { getCategoryIcon, getId, getStableKey } from '../utils/format';
+import { getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
-import { logPerf, perfNow } from '../utils/performance';
 
-const { width } = Dimensions.get('window');
+// ─── Constants ──────────────────────────────────────────────────────────────
 
-// Responsive sizing based on device
-const isTablet = width >= 768;
-const SIDEBAR_WIDTH = isTablet ? width * 0.22 : width * 0.25; // Increased sidebar width
-const COLUMN_COUNT = isTablet ? 4 : 3;
-const CARD_MARGIN = 8;
-const AVAILABLE_WIDTH = width - SIDEBAR_WIDTH - 24;
-const CARD_SIZE = (AVAILABLE_WIDTH - (COLUMN_COUNT - 1) * CARD_MARGIN * 2) / COLUMN_COUNT;
+const SIDEBAR_WIDTH = 90;
+const COLUMN_COUNT = 3;
+const CARD_MARGIN = 6;
 
-const CategoriesScreen = () => {
+// ─── Palette ────────────────────────────────────────────────────────────────
+
+const P = {
+  bg: '#F8FAFC',
+  surface: '#FFFFFF',
+  primary: '#2563EB',
+  primaryLight: '#EFF6FF',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  muted: '#94A3B8',
+  border: '#E2E8F0',
+};
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function getCategoryImage(item: Category): string | null {
+  const record = item as Record<string, unknown>;
+  const metadata = record.metadata as Record<string, unknown> | undefined;
+
+  return firstImage(
+    (record.image as string) ?? null,
+    (record.imageUrl as string) ?? null,
+    (record.thumbnail as string) ?? null,
+    (record.thumbnailUrl as string) ?? null,
+    (record.icon as string) ?? null,
+    (record.coverImage as string) ?? null,
+    (record.bannerImage as string) ?? null,
+    (record.images as string[]) ?? null,
+    metadata ? ((metadata.image as string) ?? null) : null,
+    metadata ? ((metadata.imageUrl as string) ?? null) : null,
+    metadata ? ((metadata.thumbnail as string) ?? null) : null,
+  );
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+function CategoriesScreen() {
   const navigation = useNavigation<any>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const screenStart = useRef(perfNow()).current;
-  const visibleLogged = useRef(false);
 
-  const {
-    data: categoriesData,
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useQuery({
+  const { data: categoriesData, isLoading, isError, error, refetch } = useQuery<Category[]>({
     queryKey: ['categories'],
     queryFn: fetchCategories,
     staleTime: 5 * 60_000,
   });
 
-  const categories = useMemo(() => categoriesData ?? [], [categoriesData]);
+  const categories: Category[] = useMemo(() => categoriesData ?? [], [categoriesData]);
 
-  const selectedCategory = useMemo(() => {
+  const selectedCategory: Category | null = useMemo(() => {
     if (!categories.length) return null;
-    return (
-      categories.find((item) => getStableKey(item) === selectedId) || categories[0]
-    );
+    return categories.find((item: Category) => getStableKey(item) === selectedId) || null;
   }, [categories, selectedId]);
 
-  const recommendationItems = useMemo(() => {
+  const displayItems: Category[] = useMemo(() => {
     if (!selectedCategory) return categories;
-    return selectedCategory.subcategories?.length
-      ? selectedCategory.subcategories
-      : categories;
+    const subs = selectedCategory.subcategories;
+    return subs && subs.length > 0 ? subs : [];
   }, [selectedCategory, categories]);
 
-  const selectedCategoryId = useMemo(() => {
-    return selectedCategory ? getStableKey(selectedCategory) : '';
-  }, [selectedCategory]);
-
-  const handleCategoryPress = useCallback((category: Category) => {
-    navigation.navigate('ProductListing', {
-      category: category.name ?? getId(category),
-      categoryName: category.name,
-    });
-  }, [navigation]);
-
-  const handleSubcategoryPress = useCallback((subcategory: Category) => {
-    if (!selectedCategory) return;
-    navigation.navigate('ProductListing', {
-      category: selectedCategory.name ?? selectedCategory.slug ?? getId(selectedCategory),
-      categoryName: selectedCategory.name,
-      subcategory: subcategory.name ?? subcategory.slug ?? getId(subcategory),
-      subcategoryName: subcategory.name,
-    });
-  }, [navigation, selectedCategory]);
-
-  const handleSidebarItemPress = useCallback((itemId: string) => {
-    setSelectedId(itemId);
-  }, []);
-
-  useEffect(() => {
-    if (!visibleLogged.current && recommendationItems.length) {
-      visibleLogged.current = true;
-      logPerf('screen:categories-visible', {
-        categories: categories.length,
-        visibleItems: recommendationItems.length,
-        ms: Math.round(perfNow() - screenStart),
+  const handleCategoryPress = useCallback(
+    (category: Category) => {
+      const name = category.name ?? category.slug ?? '';
+      navigation.navigate('ProductListing', {
+        category: name,
+        categoryName: name,
       });
-    }
-  }, [categories.length, recommendationItems.length, screenStart]);
+    },
+    [navigation],
+  );
 
-  if (isLoading) {
-    return <LoadingState label="Loading categories" />;
-  }
+  const handleSubcategoryPress = useCallback(
+    (subcategory: Category) => {
+      if (!selectedCategory) return;
+      const catName = selectedCategory.name ?? selectedCategory.slug ?? '';
+      const subName = subcategory.name ?? subcategory.slug ?? '';
+      navigation.navigate('ProductListing', {
+        category: catName,
+        categoryName: catName,
+        subcategory: subName,
+        subcategoryName: subName,
+      });
+    },
+    [navigation, selectedCategory],
+  );
 
-  if (isError) {
+  // ── Loading / Error / Empty ─────────────────────────────────────────────
+
+  if (isLoading) return <LoadingState label="Loading categories..." />;
+  if (isError)
     return (
       <ErrorState
-        message={(error as Error).message}
+        message={(error as Error)?.message ?? 'Failed to load'}
         onRetry={() => refetch()}
       />
     );
-  }
+  if (!categories.length)
+    return <EmptyState title="No categories" detail="Check back later." />;
 
-  if (!categories.length) {
-    return (
-      <EmptyState
-        title="No active categories"
-        detail="The backend returned an empty category list."
-      />
-    );
-  }
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.screen}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Categories</Text>
-          <Pressable style={styles.headerIconButton}>
-            <Icon name="help-box-outline" size={22} color={colors.ink} />
-          </Pressable>
+    <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Categories</Text>
+        <Pressable
+          onPress={() => navigation.navigate('Search')}
+          style={styles.searchBtn}>
+          <Icon name="magnify" size={20} color={P.textSecondary} />
+        </Pressable>
+      </View>
+
+      {/* Body */}
+      <View style={styles.body}>
+        {/* Sidebar */}
+        <View style={styles.sidebar}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.sidebarContent}>
+            {/* All Categories */}
+            <Pressable
+              onPress={() => setSelectedId(null)}
+              style={[
+                styles.sidebarItem,
+                !selectedId && styles.sidebarItemActive,
+              ]}>
+              {!selectedId && <View style={styles.sidebarIndicator} />}
+              <Icon
+                name="view-grid"
+                size={18}
+                color={!selectedId ? P.primary : P.muted}
+              />
+              <Text
+                style={[
+                  styles.sidebarText,
+                  !selectedId && styles.sidebarTextActive,
+                ]}>
+                All
+              </Text>
+            </Pressable>
+
+            {/* Category List */}
+            {categories.map((cat: Category) => {
+              const id = getStableKey(cat);
+              const isActive = id === selectedId;
+              const img = getCategoryImage(cat);
+
+              return (
+                <Pressable
+                  key={id}
+                  onPress={() => setSelectedId(id)}
+                  style={[
+                    styles.sidebarItem,
+                    isActive && styles.sidebarItemActive,
+                  ]}>
+                  {isActive && <View style={styles.sidebarIndicator} />}
+                  <RemoteImage
+                    uri={img}
+                    width={32}
+                    height={32}
+                    style={styles.sidebarIcon}
+                    fallback={
+                      <Icon
+                        name="package-variant"
+                        size={16}
+                        color={isActive ? P.primary : P.muted}
+                      />
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.sidebarText,
+                      isActive && styles.sidebarTextActive,
+                    ]}
+                    numberOfLines={2}>
+                    {cat.name ?? cat.slug ?? 'Category'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </View>
 
-        {/* Body */}
-        <View style={styles.body}>
-          {/* Sidebar - 25% width */}
-          <View style={styles.sidebarContainer}>
-            <ScrollView
-              style={styles.sidebar}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.sidebarContent}
-            >
-              {categories.map((item) => {
-                const isActive = getStableKey(item) === selectedCategoryId;
-                return (
-                  <Pressable
-                    key={getStableKey(item)}
-                    onPress={() => handleSidebarItemPress(getStableKey(item))}
-                    style={({ pressed }) => [
-                      styles.sidebarItem,
-                      isActive && styles.sidebarItemActive,
-                      pressed && styles.sidebarItemPressed,
-                    ]}
-                  >
-                    {isActive && <View style={styles.sidebarIndicator} />}
-                    <Text
-                      numberOfLines={3} // Allow 3 lines for long names
-                      style={[
-                        styles.sidebarItemText,
-                        isActive && styles.sidebarItemTextActive,
-                      ]}
-                    >
-                      {item.name ?? item.slug ?? 'Category'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          {/* Main Content - 75% width */}
+        {/* Main Content */}
+        <View style={styles.mainContent}>
           <FlashList
-            style={styles.mainContent}
-            contentContainerStyle={styles.mainContentContainer}
-            data={recommendationItems}
-            keyExtractor={(item) => getStableKey(item)}
+            data={displayItems}
+            keyExtractor={(item: Category) => getStableKey(item)}
             numColumns={COLUMN_COUNT}
             showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.gridContent}
             ListHeaderComponent={
-              <View style={styles.headerComponent}>
+              <View>
                 {/* Banner */}
-                <Pressable
-                  onPress={() => selectedCategory && handleCategoryPress(selectedCategory)}
-                  style={styles.banner}
-                >
+                <View style={styles.banner}>
                   <View style={styles.bannerContent}>
                     <View style={styles.bannerBadge}>
-                      <Text style={styles.bannerBadgeText}>⚡ Express</Text>
+                      <Icon name="lightning-bolt" size={10} color="#FFF" />
+                      <Text style={styles.bannerBadgeText}>Express</Text>
                     </View>
                     <Text style={styles.bannerTitle}>Fastest Delivery</Text>
-                    <Text style={styles.bannerSubtitle}>
-                      in just 5 days • No import charges
+                    <Text style={styles.bannerSub}>
+                      in just 5 days · No import charges
                     </Text>
                   </View>
-                  <View style={styles.bannerIconContainer}>
-                    <Icon name="truck-fast-outline" size={28} color="#fff" />
+                  <View style={styles.bannerIcon}>
+                    <Icon name="truck-fast" size={26} color="#FFF" />
                   </View>
-                </Pressable>
+                </View>
 
                 {/* Section Header */}
                 <View style={styles.sectionHeader}>
                   <Text style={styles.sectionTitle}>
                     {selectedCategory?.name || 'All Categories'}
                   </Text>
-                  <Pressable
-                    onPress={() => selectedCategory && handleCategoryPress(selectedCategory)}
-                    style={styles.viewAllButton}>
-                    <Text style={styles.viewAllText}>View All</Text>
-                    <Icon name="chevron-right" size={14} color={colors.primary} />
-                  </Pressable>
+                  {selectedCategory && (
+                    <Pressable
+                      onPress={() => handleCategoryPress(selectedCategory)}
+                      style={styles.viewAll}>
+                      <Text style={styles.viewAllText}>View All</Text>
+                      <Icon name="chevron-right" size={14} color={P.primary} />
+                    </Pressable>
+                  )}
                 </View>
               </View>
             }
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => selectedCategory?.subcategories?.length
-                  ? handleSubcategoryPress(item)
-                  : handleCategoryPress(item)}
-                style={({ pressed }) => [
-                  styles.categoryCard,
-                  pressed && styles.categoryCardPressed,
-                ]}
-              >
-                <View style={styles.categoryImageContainer}>
-                  <RemoteImage
-                    uri={getCategoryImage(item)}
-                    width={CARD_SIZE - 16}
-                    height={CARD_SIZE - 16}
-                    resizeMode="cover"
-                    style={styles.categoryImage}
-                    fallback={
-                      <View style={styles.fallbackContainer}>
-                        <Icon
-                          name={getCategoryIcon(item.icon)}
-                          size={28}
-                          color={colors.primary}
-                        />
-                      </View>
-                    }
-                  />
-                </View>
-                <Text numberOfLines={2} style={styles.categoryName}>
-                  {item.name ?? item.slug ?? 'Category'}
-                </Text>
-                {item.productCount !== undefined && (
-                  <Text style={styles.categoryCount}>
-                    {item.productCount} items
+            renderItem={({ item }: { item: Category }) => {
+              const img = getCategoryImage(item);
+              const count =
+                (item as any).productCount ?? (item as any).count ?? 0;
+
+              return (
+                <Pressable
+                  onPress={() =>
+                    selectedCategory
+                      ? handleSubcategoryPress(item)
+                      : handleCategoryPress(item)
+                  }
+                  style={styles.categoryCard}>
+                  <View style={styles.imageContainer}>
+                    <RemoteImage
+                      uri={img}
+                      width={70}
+                      height={70}
+                      style={styles.categoryImage}
+                      fallback={
+                        <View style={styles.fallbackContainer}>
+                          <Icon
+                            name="package-variant"
+                            size={24}
+                            color={P.primary}
+                          />
+                        </View>
+                      }
+                    />
+                  </View>
+                  <Text style={styles.categoryName} numberOfLines={2}>
+                    {item.name ?? item.slug ?? 'Category'}
                   </Text>
-                )}
-              </Pressable>
-            )}
+                  {count > 0 && (
+                    <Text style={styles.productCount}>{count} items</Text>
+                  )}
+                </Pressable>
+              );
+            }}
+            ListEmptyComponent={
+              <EmptyState
+                title="No subcategories"
+                detail="This category has no subcategories yet."
+              />
+            }
           />
         </View>
       </View>
-    </SafeAreaView>
-  );
-};
-
-function getCategoryImage(item: Category) {
-  const record = item as Category & {
-    imageUrl?: string;
-    thumbnail?: string;
-    thumbnailUrl?: string;
-    cloudinaryUrl?: string;
-    coverImage?: string;
-    bannerImage?: string;
-    images?: string[];
-    metadata?: Category['metadata'] & {
-      image?: string;
-      imageUrl?: string;
-      thumbnail?: string;
-      cloudinaryUrl?: string;
-    };
-  };
-
-  return firstImage(
-    record.image,
-    record.imageUrl,
-    record.thumbnail,
-    record.thumbnailUrl,
-    record.cloudinaryUrl,
-    record.coverImage,
-    record.bannerImage,
-    record.images,
-    record.metadata?.image,
-    record.metadata?.imageUrl,
-    record.metadata?.thumbnail,
-    record.metadata?.cloudinaryUrl,
+    </View>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-  },
-  screen: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
+  screen: { flex: 1, backgroundColor: P.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#ffffff',
+    paddingTop: 56,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    backgroundColor: P.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: P.border,
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: colors.ink,
+    color: P.text,
     letterSpacing: -0.3,
   },
-  headerIconButton: {
-    padding: 4,
-  },
-  body: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  sidebarContainer: {
-    width: SIDEBAR_WIDTH,
-    backgroundColor: '#ffffff',
-    borderRightWidth: 1,
-    borderRightColor: '#f0f0f0',
-  },
-  sidebar: {
-    flex: 1,
-  },
-  sidebarContent: {
-    paddingVertical: 6,
-  },
-  sidebarItem: {
+  searchBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: P.bg,
+    alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  },
+
+  body: { flex: 1, flexDirection: 'row' },
+
+  // Sidebar
+  sidebar: {
+    width: SIDEBAR_WIDTH,
+    backgroundColor: P.surface,
+    borderRightWidth: 1,
+    borderRightColor: P.border,
+  },
+  sidebarContent: { paddingVertical: 6 },
+  sidebarItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
     position: 'relative',
+    gap: 3,
   },
-  sidebarItemActive: {
-    backgroundColor: '#f8f9fa',
-  },
-  sidebarItemPressed: {
-    backgroundColor: '#f3f4f6',
-  },
+  sidebarItemActive: { backgroundColor: P.primaryLight },
   sidebarIndicator: {
     position: 'absolute',
     left: 0,
     top: 6,
     bottom: 6,
     width: 3,
-    backgroundColor: colors.primary,
+    backgroundColor: P.primary,
     borderRadius: 2,
   },
-  sidebarItemText: {
-    fontSize: 11, // Reduced font size
+  sidebarIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: P.bg,
+  },
+  sidebarText: {
+    fontSize: 9,
     fontWeight: '500',
-    color: '#6b7280',
-    lineHeight: 14,
-    letterSpacing: 0.2,
+    color: P.muted,
+    textAlign: 'center',
+    lineHeight: 11,
   },
-  sidebarItemTextActive: {
-    color: colors.ink,
-    fontWeight: '700',
-  },
-  mainContent: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  mainContentContainer: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 100,
-  },
-  headerComponent: {
-    marginBottom: 12,
-  },
+  sidebarTextActive: { color: P.primary, fontWeight: '700' },
+
+  // Main Content
+  mainContent: { flex: 1, backgroundColor: P.bg },
+  gridContent: { paddingHorizontal: 8, paddingBottom: 100 },
+
+  // Banner
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#1E1B4B',
     borderRadius: 14,
     padding: 14,
-    minHeight: 72,
-    marginBottom: 16,
+    marginHorizontal: 4,
+    marginTop: 8,
+    marginBottom: 14,
   },
-  bannerContent: {
-    flex: 1,
-  },
+  bannerContent: { flex: 1 },
   bannerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 3,
     alignSelf: 'flex-start',
     marginBottom: 4,
   },
-  bannerBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  bannerTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  bannerSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    fontWeight: '400',
-  },
-  bannerIconContainer: {
+  bannerBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '700' },
+  bannerTitle: { color: '#FFF', fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  bannerSub: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+  bannerIcon: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 28,
-    width: 44,
-    height: 44,
+    borderRadius: 24,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+    marginLeft: 10,
   },
+
+  // Section Header
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.ink,
-    letterSpacing: -0.3,
-  },
-  viewAllButton: {
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: P.text },
+  viewAll: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: P.surface,
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: P.border,
   },
   viewAllText: {
     fontSize: 10,
     fontWeight: '600',
-    color: colors.primary,
+    color: P.primary,
     marginRight: 2,
   },
+
+  // Category Cards
   categoryCard: {
     alignItems: 'center',
     flex: 1,
     marginBottom: 14,
-    paddingHorizontal: 4,
+    paddingHorizontal: 3,
   },
-  categoryCardPressed: {
-    opacity: 0.7,
-  },
-  categoryImageContainer: {
+  imageContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 999,
-    width: CARD_SIZE - 8,
-    height: CARD_SIZE - 8,
+    backgroundColor: P.surface,
+    borderRadius: 40,
+    width: 72,
+    height: 72,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     elevation: 2,
   },
   categoryImage: {
-    borderRadius: 999,
-    height: '100%',
-    width: '100%',
+    borderRadius: 36,
+    width: 72,
+    height: 72,
   },
   fallbackContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
   categoryName: {
-    fontSize: 10, // Reduced font size
+    fontSize: 10,
     fontWeight: '600',
-    color: colors.ink,
+    color: P.text,
     textAlign: 'center',
     marginTop: 6,
     lineHeight: 13,
-    letterSpacing: 0.2,
   },
-  categoryCount: {
-    fontSize: 8, // Reduced font size
+  productCount: {
+    fontSize: 8,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: P.muted,
     marginTop: 2,
   },
 });

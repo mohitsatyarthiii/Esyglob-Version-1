@@ -33,18 +33,65 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
     },
     cacheTtlMs: params.q ? 45_000 : 90_000,
   });
+
+  console.log('[fetchProducts] Raw payload:', JSON.stringify(payload).substring(0, 200));
+
   const data = unwrapData<ProductListResponse | Product[]>(payload);
 
   return {
-    products: Array.isArray(data) ? data : Array.isArray(data?.products) ? data.products : normalizeList<Product>(payload, ['products']),
+    products: Array.isArray(data)
+      ? data
+      : Array.isArray(data?.products)
+      ? data.products
+      : normalizeList<Product>(payload, ['products']),
     pagination: Array.isArray(data) ? undefined : data?.pagination,
   };
 }
 
 export async function fetchProductDetails(productId: string): Promise<Product> {
-  const payload = await apiRequest(`/products/${productId}`, { cacheTtlMs: 2 * 60_000 });
-  const data = unwrapData<{ product?: Product } | Product>(payload);
-  const product = data && typeof data === 'object' && 'product' in data ? data.product : data;
+  console.log('[fetchProductDetails] Fetching productId:', productId);
+
+  const payload = await apiRequest(`/products/${productId}`, {
+    cacheTtlMs: 2 * 60_000,
+  });
+
+  console.log('[fetchProductDetails] Raw payload:', JSON.stringify(payload).substring(0, 300));
+
+  // Try multiple response shapes
+  let product: unknown = null;
+
+  // Shape 1: { success: true, data: { product: {...} } }
+  if (payload && typeof payload === 'object') {
+    const p = payload as Record<string, unknown>;
+    if (p.success && p.data) {
+      const d = p.data as Record<string, unknown>;
+      product = d.product ?? d;
+    }
+  }
+
+  // Shape 2: { product: {...} }
+  if (!product && payload && typeof payload === 'object') {
+    const p = payload as Record<string, unknown>;
+    product = p.product ?? p;
+  }
+
+  // Shape 3: Direct product object
+  if (!product) {
+    product = payload;
+  }
+
+  // Unwrap with normalizer
+  if (!product || (typeof product === 'object' && !('_id' in product) && !('id' in product) && !('name' in product))) {
+    const unwrapped = unwrapData<{ product?: Product } | Product>(payload);
+    const data = unwrapped && typeof unwrapped === 'object' && 'product' in unwrapped
+      ? unwrapped.product
+      : unwrapped;
+    if (data) {
+      product = data;
+    }
+  }
+
+  console.log('[fetchProductDetails] Extracted product:', product ? 'found' : 'null');
 
   if (!product) {
     throw new Error('Product details were not returned by the backend.');

@@ -23,15 +23,16 @@ export default function MoqSelector({
   onSelect,
   currency = '₹',
 }: Props) {
-  if (!tiers.length) return null;
+  if (!tiers || tiers.length === 0) return null;
 
   return (
     <View style={styles.card}>
       <Text style={styles.title}>SELECT QUANTITY</Text>
       <View style={styles.grid}>
-        {tiers.slice(0, 3).map((tier, i) => {
+        {tiers.map((tier, i) => {
           const isActive = selectedQty === tier.minQty;
-          const label = tier.maxQty
+          const hasMax = tier.maxQty != null && tier.maxQty > 0;
+          const label = hasMax
             ? `${tier.minQty}-${tier.maxQty} ${tier.unit || 'pcs'}`
             : `${tier.minQty}+ ${tier.unit || 'pcs'}`;
 
@@ -45,8 +46,7 @@ export default function MoqSelector({
                   {label}
                 </Text>
                 <Text style={[styles.tierPrice, isActive && styles.tierPriceActive]}>
-                  {currency}
-                  {tier.price.toLocaleString('en-IN')}
+                  {currency}{tier.price.toLocaleString('en-IN')}
                   <Text style={styles.perUnit}> /unit</Text>
                 </Text>
               </View>
@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
-    marginHorizontal: 8,
+    marginHorizontal: 12,
     marginTop: 8,
     borderWidth: 1,
     borderColor: '#F1F5F9',
@@ -101,7 +101,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   tierQty: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tierPrice: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: '#334155',
   },
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     color: '#FF6A00',
   },
   perUnit: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '500',
     color: '#94A3B8',
   },

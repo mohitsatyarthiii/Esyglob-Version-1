@@ -45,6 +45,7 @@ import {
   getSellerName,
   isVerifiedProduct,
 } from '../utils/format';
+import { firstImage } from '../utils/images';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,33 +64,78 @@ type Attachment = {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// ─── Palette ────────────────────────────────────────────────────────────────
+
 const P = {
+  bg: '#FAFAFA',
+  surface: '#FFFFFF',
   primary: '#FF6A00',
   primaryLight: '#FFF3E8',
   primaryDark: '#E05500',
   emerald: '#00B578',
   ink: '#1A1A1A',
   text: '#333333',
-  muted: '#8C8C8C',
+  textSecondary: '#666666',
+  muted: '#999999',
   faint: '#E8E8E8',
-  surface: '#FFFFFF',
-  background: '#F5F5F5',
+  border: 'rgba(0,0,0,0.05)',
   cardMuted: '#F8F9FB',
-} as const;
+  amber: '#F59E0B',
+  blue: '#3B82F6',
+};
+
+// ─── DEBUG ──────────────────────────────────────────────────────────────────
+
+const DEBUG = true;
+function log(...args: any[]) {
+  if (DEBUG) console.log('[ProductDetails]', ...args);
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function resolveSellerUserId(item: Product): string | undefined {
-  const seller = (
+  log('resolveSellerUserId called');
+  log('  item.sellerId type:', typeof item.sellerId);
+  log('  item.seller type:', typeof item.seller);
+
+  const sellerObj =
     (typeof item.sellerId === 'object' && item.sellerId ? item.sellerId : null) ??
-    (typeof item.seller === 'object' && item.seller ? item.seller : null)
-  ) as Record<string, any> | null;
-  if (!seller) return undefined;
-  if (typeof seller.userId === 'string') return seller.userId;
-  if (typeof seller.userId === 'object' && seller.userId) {
-    return (seller.userId as Record<string, any>)._id ?? (seller.userId as Record<string, any>).id;
+    (typeof item.seller === 'object' && item.seller ? item.seller : null);
+
+  if (!sellerObj) {
+    log('  ❌ No seller object found on product');
+    return undefined;
   }
-  return seller._id ?? seller.id;
+
+  const seller = sellerObj as Record<string, any>;
+  log('  seller keys:', Object.keys(seller));
+  log('  seller._id:', seller._id);
+  log('  seller.id:', seller.id);
+  log('  seller.userId type:', typeof seller.userId);
+  log('  seller.userId:', seller.userId);
+
+  // Case 1: userId is a string (direct user ID)
+  if (typeof seller.userId === 'string' && seller.userId) {
+    log('  ✅ Found sellerUserId (string):', seller.userId);
+    return seller.userId;
+  }
+
+  // Case 2: userId is a populated object
+  if (typeof seller.userId === 'object' && seller.userId) {
+    const uid = (seller.userId as Record<string, any>)._id ?? (seller.userId as Record<string, any>).id;
+    log('  ✅ Found sellerUserId (populated):', uid);
+    return uid;
+  }
+
+  // Case 3: Fallback to seller._id or seller.id
+  const fallback = seller._id ?? seller.id;
+  if (fallback) {
+    log('  ⚠️ Using fallback seller ID as userId:', fallback);
+    return String(fallback);
+  }
+
+  log('  ❌ Could not resolve sellerUserId');
+  return undefined;
 }
 
 function buildMoqTiers(item: Product): MoqTier[] {
@@ -158,11 +204,14 @@ function ProductDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const { productId } = route.params as { productId: string };
   const queryClient = useQueryClient();
 
-  // ── State ──────────────────────────────────────────────────────────────
+  log('=== ProductDetailsScreen Mount ===');
+  log('  productId:', productId);
+  log('  auth status:', status);
+  log('  user:', user ? `${user._id ?? user.id} (${user.roles?.join(',')})` : 'null');
 
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [quantity, setQuantity] = useState('100');
@@ -178,8 +227,6 @@ function ProductDetailsScreen() {
     Animated.timing(fade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
   }, [fade]);
 
-  // ── Queries ────────────────────────────────────────────────────────────
-
   const productQuery = useQuery({
     queryKey: ['product', productId],
     queryFn: () => fetchProductDetails(productId),
@@ -190,29 +237,27 @@ function ProductDetailsScreen() {
 
   const relatedQuery = useQuery({
     queryKey: ['related-products', (productQuery.data as any)?.category],
-    queryFn: () => fetchProducts({ category: (productQuery.data as any)?.category, limit: 8 }),
+    queryFn: () => fetchProducts({ category: (productQuery.data as any)?.category, limit: 6 }),
     enabled: Boolean((productQuery.data as any)?.category),
   });
 
   const item = productQuery.data as Product | undefined;
-  const sellerUserId = item ? resolveSellerUserId(item) : undefined;
 
-  // ── Track view ─────────────────────────────────────────────────────────
+  // ── Resolve seller info ─────────────────────────────────────────────────
 
-  React.useEffect(() => {
-    if (item && status === 'authenticated') {
-      trackProductView(getId(item) ?? '').catch(() => {});
-    }
-  }, [item, status]);
+  const sellerUserId = useMemo(() => {
+    if (!item) return undefined;
+    return resolveSellerUserId(item);
+  }, [item]);
 
-  // ── Derived data ───────────────────────────────────────────────────────
+  const seller = useMemo(() => {
+    if (!item) return undefined;
+    return typeof item.sellerId === 'object' ? (item.sellerId as Record<string, any>) : undefined;
+  }, [item]);
 
-  const seller: Record<string, any> | undefined =
-    item && typeof item.sellerId === 'object'
-      ? (item.sellerId as Record<string, any>)
-      : undefined;
   const sellerRouteId = seller?._id ?? seller?.id;
   const sellerVerified = item ? isVerifiedProduct(item) : false;
+  const location = item ? getProductLocation(item) : '';
 
   const canStartOrder = Boolean(
     seller?.isTrustedSeller &&
@@ -221,6 +266,37 @@ function ProductDetailsScreen() {
     seller?.isActive !== false &&
     seller?.isSuspended !== true
   );
+
+  const isAuth = status === 'authenticated';
+  const canAct = isAuth && Boolean(sellerUserId);
+
+  // ── DEBUG: Button state ─────────────────────────────────────────────────
+
+  React.useEffect(() => {
+    if (item) {
+      log('=== Button State Debug ===');
+      log('  isAuth:', isAuth);
+      log('  sellerUserId:', sellerUserId);
+      log('  canAct (isAuth && sellerUserId):', canAct);
+      log('  sellerRouteId:', sellerRouteId);
+      log('  canStartOrder:', canStartOrder);
+      log('  chatNow.isPending:', chatNow.isPending);
+      log('  sendEnquiry.isPending:', sendEnquiry.isPending);
+      log('');
+      log('  Store btn disabled:', !sellerRouteId);
+      log('  Chat Now btn disabled:', !canAct || chatNow.isPending);
+      log('  Send Enquiry btn disabled:', !canAct);
+      log('  Start Order visible:', canStartOrder);
+    }
+  }, [item, isAuth, sellerUserId, canAct, sellerRouteId, canStartOrder]);
+
+  // ── Track view ──────────────────────────────────────────────────────────
+
+  React.useEffect(() => {
+    if (item && status === 'authenticated') {
+      trackProductView(getId(item) ?? '').catch(() => {});
+    }
+  }, [item, status]);
 
   const moqTiers: MoqTier[] = useMemo(() => {
     if (!item) return [];
@@ -231,8 +307,16 @@ function ProductDetailsScreen() {
 
   const chatNow = useMutation({
     mutationFn: async () => {
+      log('=== Chat Now Clicked ===');
+      log('  item:', item ? 'exists' : 'null');
+      log('  sellerUserId:', sellerUserId);
       if (!item) throw new Error('Product not loaded.');
       if (!sellerUserId) throw new Error('Seller contact not available.');
+      log('  Calling startProductChat with:', {
+        otherUserId: sellerUserId,
+        productId: getId(item) ?? '',
+        role: 'buyer',
+      });
       return startProductChat({
         otherUserId: sellerUserId,
         productId: getId(item) ?? '',
@@ -241,6 +325,7 @@ function ProductDetailsScreen() {
       });
     },
     onSuccess: (result: any) => {
+      log('  ✅ Chat Now success:', JSON.stringify(result));
       if (result.chat) {
         navigation.navigate('ChatDetails', {
           chatId: getId(result.chat),
@@ -248,14 +333,20 @@ function ProductDetailsScreen() {
         });
       }
     },
-    onError: (error: any) =>
-      Alert.alert('Error', error?.message ?? 'Failed to start chat.'),
+    onError: (error: any) => {
+      log('  ❌ Chat Now error:', error?.message);
+      Alert.alert('Error', error?.message ?? 'Failed to start chat.');
+    },
   });
 
   const sendEnquiry = useMutation({
     mutationFn: async () => {
+      log('=== Send Enquiry Clicked ===');
+      log('  item:', item ? 'exists' : 'null');
+      log('  sellerUserId:', sellerUserId);
       if (!item) throw new Error('Product not loaded.');
       if (!sellerUserId) throw new Error('Seller information missing.');
+      log('  Calling createProductEnquiry');
       return createProductEnquiry({
         productId: getId(item) ?? '',
         sellerUserId,
@@ -265,13 +356,11 @@ function ProductDetailsScreen() {
         targetPrice: targetPrice ? Number(targetPrice) : undefined,
         destinationCountry: destinationCountry.trim() || 'India',
         additionalNotes: additionalNotes.trim() || undefined,
-        attachments: attachments.map(a => ({
-          filename: a.name,
-          type: a.type,
-        })),
+        attachments: attachments.map(a => ({ filename: a.name, type: a.type })),
       });
     },
     onSuccess: (result: any) => {
+      log('  ✅ Enquiry success:', JSON.stringify(result));
       setEnquiryOpen(false);
       setAttachments([]);
       if (result.chat) {
@@ -283,26 +372,25 @@ function ProductDetailsScreen() {
         Alert.alert('✓ Enquiry Sent', 'The supplier will respond shortly.');
       }
     },
-    onError: (error: any) =>
-      Alert.alert('Enquiry Failed', error?.message ?? 'Unable to send enquiry.'),
+    onError: (error: any) => {
+      log('  ❌ Enquiry error:', error?.message);
+      Alert.alert('Enquiry Failed', error?.message ?? 'Unable to send enquiry.');
+    },
   });
 
-  // ── Navigation ─────────────────────────────────────────────────────────
-
   const goToStore = useCallback(() => {
-    if (!sellerRouteId || !item) return;
-    navigation.navigate('SellerDetails', {
-      sellerId: sellerRouteId,
-      sellerName: getSellerName(item),
-    });
+    log('=== Store Clicked ===');
+    log('  sellerRouteId:', sellerRouteId);
+    if (!sellerRouteId || !item) {
+      Alert.alert('Error', 'Seller information not available.');
+      return;
+    }
+    navigation.navigate('SellerDetails', { sellerId: sellerRouteId, sellerName: getSellerName(item) });
   }, [sellerRouteId, item, navigation]);
 
   const goToStartOrder = useCallback(() => {
     if (!item) return;
-    navigation.navigate('OrderCheckout', {
-      mode: 'trade',
-      productId: getId(item),
-    });
+    navigation.navigate('OrderCheckout', { mode: 'trade', productId: getId(item) });
   }, [item, navigation]);
 
   // ── Loading / Error ────────────────────────────────────────────────────
@@ -318,12 +406,9 @@ function ProductDetailsScreen() {
 
   const image = getProductImage(item);
   const gallery: string[] = Array.from(new Set([image, ...(item.images ?? [])].filter(Boolean))) as string[];
-  const location = getProductLocation(item);
   const relatedProducts: Product[] = (relatedQuery.data?.products ?? [])
     .filter((p: Product) => getId(p) !== getId(item))
     .slice(0, 6);
-  const isAuth = status === 'authenticated';
-  const canAct = isAuth && Boolean(sellerUserId);
 
   const onMainImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
@@ -338,12 +423,14 @@ function ProductDetailsScreen() {
   const shareProduct = () =>
     Share.share({ message: `${item.name ?? 'Product'}\n${formatProductPrice(item)}` });
 
+  const sellerLogo = firstImage(seller?.companyLogo, seller?.logo, seller?.logoUrl);
+
   return (
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.xs }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.headerBtn}>
           <Icon name="arrow-left" size={20} color={P.ink} />
         </Pressable>
@@ -353,166 +440,148 @@ function ProductDetailsScreen() {
         </Pressable>
       </View>
 
-      <Animated.ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        style={{ opacity: fade }}>
+      <Animated.ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} style={{ opacity: fade }}>
 
-        {/* ── 1. Gallery ── */}
+        {/* Gallery */}
         <View style={styles.galleryWrap}>
           <FlatList
-            ref={flatListRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            data={gallery}
-            keyExtractor={(uri, i) => `${uri}-${i}`}
+            ref={flatListRef} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
+            data={gallery} keyExtractor={(uri, i) => `${uri}-${i}`}
             onMomentumScrollEnd={onMainImageScroll}
             getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
             renderItem={({ item: uri }) => (
               <View style={styles.gallerySlide}>
-                <RemoteImage uri={uri} width={SCREEN_WIDTH} height={SCREEN_WIDTH} style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={P.muted} />} />
+                <RemoteImage uri={uri} width={SCREEN_WIDTH} height={SCREEN_WIDTH * 0.75} style={styles.galleryImage} fallback={<Icon name="image-off" size={40} color={P.muted} />} />
               </View>
             )}
           />
-          <SavedHeartButton type="product" itemId={getId(item) ?? ''} target={item} size={18} style={styles.heartBtn} iconColor={P.ink} />
+          <SavedHeartButton type="product" itemId={getId(item) ?? ''} target={item} size={16} style={styles.heartBtn} iconColor={P.ink} />
           {gallery.length > 1 && (
             <View style={styles.paginationRow}>
-              {gallery.map((_, i) => (
-                <Pressable key={i} onPress={() => scrollToImage(i)} style={[styles.dot, selectedImage === i && styles.dotActive]} />
-              ))}
+              {gallery.map((_, i) => (<Pressable key={i} onPress={() => scrollToImage(i)} style={[styles.dot, selectedImage === i && styles.dotActive]} />))}
             </View>
           )}
           {sellerVerified && (
-            <View style={styles.verifiedTag}>
-              <Icon name="check-decagram" size={12} color="#FFF" />
-              <Text style={styles.verifiedTagText}>Verified</Text>
-            </View>
+            <View style={styles.verifiedTag}><Icon name="check-decagram" size={10} color="#FFF" /><Text style={styles.verifiedTagText}>Verified</Text></View>
           )}
         </View>
 
-        {/* ── 2. Product Title + Rating ── */}
+        {/* Title Card */}
         <View style={styles.card}>
+          <View style={styles.categoryRow}>
+            {item.category && <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{typeof item.category === 'string' ? item.category : (item.category as any)?.name}</Text></View>}
+            {item.averageRating ? <View style={styles.ratingRow}><Icon name="star" size={11} color={P.amber} /><Text style={styles.ratingText}>{Number(item.averageRating).toFixed(1)}</Text><Text style={styles.reviewCount}>({item.reviewCount ?? 0})</Text></View> : null}
+          </View>
           <Text style={styles.productName}>{item.name ?? item.title}</Text>
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatProductPrice(item)}</Text>
-            <Text style={styles.moq}>{formatMoq(item)}</Text>
-          </View>
-          <View style={styles.metaRow}>
-            {item.averageRating ? <Text style={styles.metaText}>★ {Number(item.averageRating).toFixed(1)} ({item.reviewCount ?? 0})</Text> : null}
-            {item.totalOrders ? <Text style={styles.metaText}>· {item.totalOrders} orders</Text> : null}
-            {location ? <Text style={styles.metaText}>· {location}</Text> : null}
-          </View>
         </View>
 
-        {/* ── 3. MOQ Selector ── */}
+        {/* MOQ */}
         <MoqSelector tiers={moqTiers} selectedQty={Number(quantity)} onSelect={(qty: number) => setQuantity(String(qty))} />
 
-        {/* ── 4. Variants (if any) ── */}
-        {(item as any).variants?.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>VARIANTS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.variantRow}>
-              {((item as any).variants as any[]).map((v: any, i: number) => (
-                <View key={i} style={styles.variantChip}>
-                  <Text style={styles.variantText}>{v.name ?? v.label ?? `Option ${i + 1}`}</Text>
-                  {v.price && <Text style={styles.variantPrice}>+{formatProductPrice(v)}</Text>}
+        {/* Price */}
+        <View style={styles.card}>
+          <View style={styles.priceRow}><Text style={styles.price}>{formatProductPrice(item)}</Text><Text style={styles.moq}>{formatMoq(item)}</Text></View>
+          {item.totalOrders ? <Text style={styles.ordersText}>{item.totalOrders} orders</Text> : null}
+          {location ? <Text style={styles.locationText}>{location}</Text> : null}
+        </View>
+
+        <TradeAssurance />
+
+        {/* Seller */}
+        {seller && (
+          <Pressable onPress={goToStore} style={styles.sellerCard}>
+            <View style={styles.sellerTopRow}>
+              <View style={styles.sellerTopLeft}>
+                <RemoteImage uri={sellerLogo} width={80} height={80} style={styles.sellerLogo} fallback={<Text style={styles.sellerLogoText}>{(seller.companyName ?? 'S')[0]}</Text>} />
+                <View style={styles.sellerMainInfo}>
+                  <View style={styles.sellerNameRow}><Text style={styles.sellerName} numberOfLines={1}>{seller.companyName}</Text>{sellerVerified && <Icon name="check-decagram" size={13} color={P.blue} />}</View>
+                  <View style={styles.sellerBadges}>
+                    {sellerVerified && <View style={styles.sellerBadge}><Icon name="check-decagram" size={9} color={P.blue} /><Text style={styles.sellerBadgeText}>Verified</Text></View>}
+                    {seller.isTrustedSeller && <View style={[styles.sellerBadge, { backgroundColor: '#FFFBEB' }]}><Icon name="shield-check" size={9} color={P.amber} /><Text style={[styles.sellerBadgeText, { color: '#92400E' }]}>Trusted</Text></View>}
+                  </View>
+                  <View style={styles.sellerStats}>
+                    {seller.rating ? <View style={styles.sellerStatItem}><Icon name="star" size={10} color={P.amber} /><Text style={styles.sellerStatText}>{Number(seller.rating).toFixed(1)}</Text></View> : null}
+                    <Text style={styles.sellerStatSep}>·</Text><Text style={styles.sellerStatText}>{seller.totalProducts ?? 0} products</Text>
+                  </View>
                 </View>
+              </View>
+              <Icon name="chevron-right" size={18} color={P.muted} />
+            </View>
+            {seller.verificationLevel > 0 && <View style={styles.verificationLevelBanner}><Icon name="award" size={12} color={P.blue} /><Text style={styles.verificationLevelText}>Level {seller.verificationLevel} Verified Supplier</Text></View>}
+            {location && <View style={styles.sellerLocationRow}><Icon name="map-marker-outline" size={11} color={P.muted} /><Text style={styles.sellerLocationText}>{location}</Text></View>}
+            {seller.trustScore > 0 && <View style={styles.sellerLocationRow}><Icon name="trending-up" size={11} color={P.muted} /><Text style={styles.sellerLocationText}>Trust Score {seller.trustScore}%</Text></View>}
+            <Text style={styles.sellerFooterText}>Contact via chat or RFQ for secure communication</Text>
+          </Pressable>
+        )}
+
+        {/* Description */}
+        {item.description && (
+          <View style={styles.card}>
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Product Details</Text><View style={styles.sectionLine} /></View>
+            <Text style={styles.descText}>{item.description}</Text>
+          </View>
+        )}
+
+        <QuickInfo />
+
+        {/* Related */}
+        {relatedProducts.length > 0 && (
+          <View style={styles.relatedSection}>
+            <View style={styles.relatedHeader}><Text style={styles.relatedTitle}>More from this seller</Text>{sellerRouteId && <Pressable onPress={goToStore}><Text style={styles.viewAllText}>View All →</Text></Pressable>}</View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
+              {relatedProducts.map((p: Product) => (
+                <Pressable key={getId(p)} onPress={() => navigation.push('ProductDetails', { productId: getId(p) })} style={styles.relatedCard}>
+                  <RemoteImage uri={p.images?.[0] ?? (p as any).image} width={160} height={120} style={styles.relatedImage} fallback={<Icon name="package-variant" size={24} color={P.muted} />} />
+                  <View style={styles.relatedInfo}>
+                    <Text style={styles.relatedCategory} numberOfLines={1}>{typeof p.category === 'string' ? p.category : ''}</Text>
+                    <Text style={styles.relatedName} numberOfLines={2}>{p.name ?? p.title}</Text>
+                    <View style={styles.relatedBottom}>
+                      <Text style={styles.relatedPrice}>{formatProductPrice(p)}</Text>
+                      {p.averageRating ? <View style={styles.relatedRating}><Icon name="star" size={9} color={P.amber} /><Text style={styles.relatedRatingText}>{Number(p.averageRating).toFixed(1)}</Text></View> : null}
+                    </View>
+                  </View>
+                </Pressable>
               ))}
             </ScrollView>
           </View>
         )}
 
-        {/* ── 5. Seller Card ── */}
-        {seller && (
-          <Pressable onPress={goToStore} style={styles.sellerCard}>
-            <View style={styles.sellerAvatar}>
-              <Icon name="store-outline" size={22} color={P.primary} />
-            </View>
-            <View style={styles.sellerInfo}>
-              <View style={styles.sellerNameRow}>
-                <Text style={styles.sellerName}>{getSellerName(item)}</Text>
-                {sellerVerified && <Icon name="check-decagram" size={14} color={P.emerald} />}
-              </View>
-              <Text style={styles.sellerMeta}>
-                {sellerVerified ? 'Verified Supplier' : 'Supplier'}
-                {location ? ` · ${location}` : ''}
-                {seller.rating ? ` · ★ ${Number(seller.rating).toFixed(1)}` : ''}
-              </Text>
-              {seller.productCount ? <Text style={styles.sellerProducts}>{seller.productCount} products</Text> : null}
-            </View>
-            <Icon name="chevron-right" size={20} color={P.muted} />
-          </Pressable>
-        )}
-
-        {/* ── 6. Trade Assurance ── */}
-        <TradeAssurance />
-
-        {/* ── 7. Quick Info ── */}
-        <QuickInfo />
-
-        {/* ── 8. Description ── */}
-        {item.description ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>DETAILS</Text>
-            <Text style={styles.descText}>{item.description}</Text>
-          </View>
-        ) : null}
-
-        {/* ── 9. Reviews ── */}
-        <ReviewsPanel productId={getId(item) ?? ''} sellerId={sellerRouteId} showForm title="Reviews" />
-
-        {/* ── 10. Related Products ── */}
-        {relatedProducts.length > 0 && (
-          <View style={styles.relatedWrap}>
-            <Text style={styles.relatedTitle}>Related Products</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>
-              {relatedProducts.map((p: Product) => <ProductCard key={getId(p)} product={p} />)}
-            </ScrollView>
-          </View>
-        )}
+        {/* Reviews */}
+        <View style={styles.reviewsSection}>
+          <Text style={styles.reviewsTitle}>Reviews</Text>
+          <Text style={styles.reviewsSubtitle}>Verified buyer feedback and ratings</Text>
+          <ReviewsPanel productId={getId(item) ?? ''} sellerId={sellerRouteId} showForm title="" />
+        </View>
 
         <View style={{ height: 120 }} />
       </Animated.ScrollView>
 
-      {/* ── BOTTOM BAR ── */}
+      {/* Bottom Bar */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 8 }]}>
         {!isAuth ? (
           <Pressable onPress={() => navigation.navigate('Auth', { initialMode: 'login' })} style={styles.authBtn}>
-            <Icon name="login" size={18} color="#FFF" />
-            <Text style={styles.authBtnText}>Sign In to Continue</Text>
+            <Icon name="login" size={18} color="#FFF" /><Text style={styles.authBtnText}>Sign In to Continue</Text>
           </Pressable>
         ) : (
           <>
-            {/* Store */}
             <Pressable disabled={!sellerRouteId} onPress={goToStore} style={styles.storeBtn}>
               <Icon name="store-outline" size={20} color={P.ink} />
             </Pressable>
-
-            {/* Start Order (conditional) */}
             {canStartOrder && (
               <Pressable onPress={goToStartOrder} style={styles.startOrderBtn}>
-                <Icon name="rocket-launch" size={16} color="#FFF" />
-                <Text style={styles.startOrderBtnText}>Start Order</Text>
+                <Icon name="rocket-launch" size={16} color="#FFF" /><Text style={styles.startOrderBtnText}>Start Order</Text>
               </Pressable>
             )}
-
-            {/* Chat Now */}
-            <Pressable disabled={!canAct || chatNow.isPending} onPress={() => chatNow.mutate()} style={styles.outlineBtn}>
-              <Icon name="message-text-outline" size={18} color={P.primary} />
-              <Text style={styles.outlineBtnText}>{chatNow.isPending ? '...' : 'Chat Now'}</Text>
+            <Pressable disabled={!canAct || chatNow.isPending} onPress={() => { log('Chat Now button pressed'); chatNow.mutate(); }} style={styles.outlineBtn}>
+              <Icon name="message-text-outline" size={18} color={P.primary} /><Text style={styles.outlineBtnText}>{chatNow.isPending ? '...' : 'Chat Now'}</Text>
             </Pressable>
-
-            {/* Send Enquiry */}
-            <Pressable disabled={!canAct} onPress={() => setEnquiryOpen(true)} style={styles.primaryBtn}>
-              <Icon name="send-outline" size={18} color="#FFF" />
-              <Text style={styles.primaryBtnText}>Send Enquiry</Text>
+            <Pressable disabled={!canAct} onPress={() => { log('Send Enquiry button pressed'); setEnquiryOpen(true); }} style={styles.primaryBtn}>
+              <Icon name="send-outline" size={18} color="#FFF" /><Text style={styles.primaryBtnText}>Send Enquiry</Text>
             </Pressable>
           </>
         )}
       </View>
 
-      {/* ── Enquiry Modal ── */}
       <EnquiryModal
         visible={enquiryOpen}
         productName={item.name ?? item.title ?? 'Product'}
@@ -530,8 +599,19 @@ function ProductDetailsScreen() {
         onNotesChange={setAdditionalNotes}
         onAttachmentsChange={setAttachments}
         onClose={() => setEnquiryOpen(false)}
-        onSubmit={() => sendEnquiry.mutate()}
+        onSubmit={() => { log('Enquiry modal submit'); sendEnquiry.mutate(); }}
       />
+    </View>
+  );
+}
+
+// ─── Detail Chip ────────────────────────────────────────────────────────────
+
+function DetailChip({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailChip}>
+      <Text style={styles.detailChipLabel}>{label}</Text>
+      <Text style={styles.detailChipValue}>{value}</Text>
     </View>
   );
 }
@@ -539,74 +619,79 @@ function ProductDetailsScreen() {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: P.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: P.surface,
-    paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, gap: spacing.sm, ...shadow,
-  },
-  headerBtn: {
-    width: 38, height: 38, borderRadius: radii.pill,
-    backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center',
-  },
-  headerTitle: { flex: 1, fontSize: 14, fontWeight: '800', color: P.ink, textAlign: 'center' },
+  screen: { flex: 1, backgroundColor: P.bg },
+  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: P.surface, paddingHorizontal: 12, paddingBottom: 8, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: P.border },
+  headerBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { flex: 1, fontSize: 13, fontWeight: '700', color: P.ink, textAlign: 'center' },
   scrollContent: { paddingBottom: 20 },
-  galleryWrap: { position: 'relative', backgroundColor: P.surface },
-  gallerySlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH },
-  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: P.cardMuted },
-  heartBtn: {
-    position: 'absolute', top: spacing.sm, right: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: radii.pill,
-    width: 34, height: 34, alignItems: 'center', justifyContent: 'center',
-  },
-  paginationRow: { position: 'absolute', bottom: spacing.sm, alignSelf: 'center', flexDirection: 'row', gap: 6 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
-  dotActive: { backgroundColor: P.primary, width: 8, height: 8, borderRadius: 4 },
-  verifiedTag: {
-    position: 'absolute', top: spacing.sm, left: spacing.sm,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(0,181,120,0.9)', borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm, paddingVertical: 3,
-  },
-  verifiedTagText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  card: {
-    backgroundColor: P.surface, marginHorizontal: 8, marginTop: 8,
-    padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#F1F5F9',
-  },
-  productName: { fontSize: 16, fontWeight: '700', color: P.ink, lineHeight: 22 },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, marginTop: 6 },
-  price: { fontSize: 22, fontWeight: '800', color: P.primaryDark },
-  moq: { fontSize: 12, fontWeight: '600', color: P.muted },
-  metaRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
-  metaText: { fontSize: 11, fontWeight: '600', color: P.muted },
-  sectionTitle: { fontSize: 10, fontWeight: '800', color: P.muted, letterSpacing: 0.5, marginBottom: 8 },
-  descText: { fontSize: 13, fontWeight: '400', color: P.text, lineHeight: 20 },
-  variantRow: { gap: 8 },
-  variantChip: {
-    backgroundColor: P.cardMuted, borderRadius: 10, padding: 10,
-    borderWidth: 1, borderColor: P.faint, minWidth: 100, alignItems: 'center',
-  },
-  variantText: { fontSize: 12, fontWeight: '600', color: P.text },
-  variantPrice: { fontSize: 11, fontWeight: '700', color: P.primary, marginTop: 2 },
-  sellerCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: P.surface,
-    marginHorizontal: 8, marginTop: 8, padding: 14, borderRadius: 16,
-    borderWidth: 1, borderColor: '#F1F5F9', gap: 12,
-  },
-  sellerAvatar: { width: 44, height: 44, borderRadius: 12, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center' },
-  sellerInfo: { flex: 1 },
-  sellerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sellerName: { fontSize: 14, fontWeight: '700', color: P.ink },
-  sellerMeta: { fontSize: 11, color: P.muted, marginTop: 2 },
-  sellerProducts: { fontSize: 10, color: P.primary, fontWeight: '600', marginTop: 2 },
-  relatedWrap: { marginTop: 16, paddingLeft: 8 },
-  relatedTitle: { fontSize: 13, fontWeight: '700', color: P.ink, marginBottom: 10 },
-  relatedList: { gap: 10, paddingRight: 8 },
-
-  // Bottom Bar
-  bottomBar: {
-    flexDirection: 'row', gap: 6, paddingHorizontal: 8, paddingTop: 8,
-    backgroundColor: P.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: P.faint, alignItems: 'center',
-  },
+  galleryWrap: { position: 'relative', backgroundColor: P.surface, borderRadius: 16, overflow: 'hidden', marginHorizontal: 12, marginTop: 8 },
+  gallerySlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.75 },
+  galleryImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 0.75, backgroundColor: P.cardMuted },
+  heartBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 16, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  paginationRow: { position: 'absolute', bottom: 10, alignSelf: 'center', flexDirection: 'row', gap: 5 },
+  dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive: { backgroundColor: P.primary, width: 7, height: 7, borderRadius: 4 },
+  verifiedTag: { position: 'absolute', top: 10, left: 10, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,181,120,0.9)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  verifiedTagText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
+  card: { backgroundColor: P.surface, marginHorizontal: 12, marginTop: 8, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: P.border, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 4, elevation: 1 },
+  categoryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  categoryBadge: { backgroundColor: '#F1F5F9', borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2 },
+  categoryBadgeText: { fontSize: 9, fontWeight: '700', color: P.textSecondary, textTransform: 'uppercase' },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  ratingText: { fontSize: 10, fontWeight: '700', color: P.text },
+  reviewCount: { fontSize: 9, color: P.muted },
+  productName: { fontSize: 15, fontWeight: '700', color: P.ink, lineHeight: 20, letterSpacing: -0.2 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10, marginBottom: 4 },
+  price: { fontSize: 20, fontWeight: '800', color: P.primaryDark },
+  moq: { fontSize: 11, fontWeight: '600', color: P.muted },
+  ordersText: { fontSize: 10, color: P.muted, fontWeight: '500' },
+  locationText: { fontSize: 10, color: P.muted, fontWeight: '500', marginTop: 2 },
+  sellerCard: { backgroundColor: P.surface, marginHorizontal: 12, marginTop: 8, padding: 14, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: P.border },
+  sellerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sellerTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  sellerLogo: { width: 40, height: 40, borderRadius: 10, backgroundColor: P.cardMuted },
+  sellerLogoText: { fontSize: 18, fontWeight: '800', color: P.muted },
+  sellerMainInfo: { flex: 1 },
+  sellerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sellerName: { fontSize: 13, fontWeight: '700', color: P.ink, flex: 1 },
+  sellerBadges: { flexDirection: 'row', gap: 5, marginTop: 4 },
+  sellerBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#EFF6FF', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  sellerBadgeText: { fontSize: 8, fontWeight: '700', color: P.blue },
+  sellerStats: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  sellerStatItem: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  sellerStatText: { fontSize: 10, fontWeight: '600', color: P.textSecondary },
+  sellerStatSep: { fontSize: 10, color: P.muted },
+  verificationLevelBanner: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#EFF6FF', borderRadius: 8, padding: 8, marginTop: 10 },
+  verificationLevelText: { fontSize: 10, fontWeight: '700', color: P.blue },
+  sellerLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  sellerLocationText: { fontSize: 10, color: P.muted, fontWeight: '500' },
+  sellerFooterText: { textAlign: 'center', fontSize: 9, color: P.muted, fontWeight: '600', backgroundColor: '#F8FAFC', borderRadius: 8, padding: 8, marginTop: 10 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: P.ink },
+  sectionLine: { flex: 1, height: 1, backgroundColor: P.border },
+  descText: { fontSize: 12, color: P.textSecondary, lineHeight: 18, marginBottom: 12 },
+  relatedSection: { marginTop: 16, paddingLeft: 12 },
+  relatedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingRight: 12 },
+  relatedTitle: { fontSize: 13, fontWeight: '700', color: P.ink },
+  viewAllText: { fontSize: 10, fontWeight: '600', color: P.muted },
+  relatedList: { gap: 10, paddingRight: 12 },
+  relatedCard: { width: 150, backgroundColor: P.surface, borderRadius: 12, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: P.border },
+  relatedImage: { width: 150, height: 100, backgroundColor: P.cardMuted },
+  relatedInfo: { padding: 8 },
+  relatedCategory: { fontSize: 8, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  relatedName: { fontSize: 10, fontWeight: '600', color: P.ink, lineHeight: 14, marginBottom: 6 },
+  relatedBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  relatedPrice: { fontSize: 11, fontWeight: '700', color: P.ink },
+  relatedRating: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  relatedRatingText: { fontSize: 9, fontWeight: '600', color: P.muted },
+  reviewsSection: { marginTop: 20, paddingHorizontal: 12 },
+  reviewsTitle: { fontSize: 13, fontWeight: '700', color: P.ink, marginBottom: 2 },
+  reviewsSubtitle: { fontSize: 10, color: P.muted, marginBottom: 10 },
+  detailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  detailChip: { backgroundColor: '#F8FAFC', borderRadius: 8, padding: 8, paddingHorizontal: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: P.border, minWidth: '45%' },
+  detailChipLabel: { fontSize: 8, fontWeight: '700', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  detailChipValue: { fontSize: 10, fontWeight: '600', color: P.textSecondary, marginTop: 2 },
+  bottomBar: { flexDirection: 'row', gap: 6, paddingHorizontal: 8, paddingTop: 8, backgroundColor: P.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: P.faint, alignItems: 'center' },
   authBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: P.primary, borderRadius: 12, height: 44 },
   authBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   storeBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: P.cardMuted, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: P.faint },
