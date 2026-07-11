@@ -1,188 +1,93 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { 
-  connectRealtime, 
-  disconnectRealtime, 
-  getRealtimeSocket, 
-  safeSocketEmit, 
-  isSocketConnected,
-  safeSocketOn,
-  safeSocketOff
-} from './socket';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../auth/AuthContext';
+import { connectRealtime, disconnectRealtime, safeSocketEmit, safeSocketOff, safeSocketOn } from './socket';
 
-interface RealtimeContextType {
+type Listener = (...args: any[]) => void;
+type RealtimeContextValue = {
   socket: Socket | null;
   isConnected: boolean;
-  connect: () => void;
-  disconnect: () => void;
-  emit: (event: string, data: any) => boolean;
-  on: (event: string, callback: (...args: any[]) => void) => boolean;
-  off: (event: string, callback: (...args: any[]) => void) => boolean;
-}
+  connectionError: string | null;
+  emit: (event: string, data?: unknown) => boolean;
+  on: (event: string, callback: Listener) => boolean;
+  off: (event: string, callback: Listener) => boolean;
+};
 
-interface RealtimeProviderProps {
-  children: ReactNode;
-}
+const fallback: RealtimeContextValue = {
+  socket: null,
+  isConnected: false,
+  connectionError: null,
+  emit: () => false,
+  on: () => false,
+  off: () => false,
+};
+const RealtimeContext = createContext<RealtimeContextValue>(fallback);
 
-const RealtimeContext = createContext<RealtimeContextType | null>(null);
+export function RealtimeProvider({ children }: { children: ReactNode }) {
+  const { status, user } = useAuth();
+  const queryClient = useQueryClient();
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [isConnected, setConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-export function RealtimeProvider({ children }: RealtimeProviderProps) {
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const socketRef = useRef<Socket | null>(null);
-  const listenersRef = useRef<Map<string, Set<(...args: any[]) => void>>>(new Map());
-
-  const connect = useCallback((): void => {
-    try {
-      const socket = connectRealtime();
-      socketRef.current = socket;
-      
-      if (socket && socket.connected) {
-        setIsConnected(true);
-        console.log('✅ Socket already connected');
-      } else if (socket) {
-        // Setup connection listeners
-        const onConnect = () => {
-          setIsConnected(true);
-          console.log('✅ Socket connected');
-        };
-        
-        const onDisconnect = () => {
-          setIsConnected(false);
-          console.log('🔌 Socket disconnected');
-        };
-        
-        const onConnectError = (error: Error) => {
-          console.error('❌ Socket connection error:', error?.message || error);
-        };
-        
-        socket.on('connect', onConnect);
-        socket.on('disconnect', onDisconnect);
-        socket.on('connect_error', onConnectError);
-        
-        // Store cleanup functions
-        (socket as any).__cleanup = () => {
-          socket.off('connect', onConnect);
-          socket.off('disconnect', onDisconnect);
-          socket.off('connect_error', onConnectError);
-        };
-        
-        socket.connect();
-        console.log('🔄 Connecting socket...');
-      }
-    } catch (error) {
-      console.error('❌ Failed to connect socket:', error);
-    }
-  }, []);
-
-  const disconnect = useCallback((): void => {
-    try {
-      // Clean up stored listeners
-      listenersRef.current.clear();
-      
-      if (socketRef.current && (socketRef.current as any).__cleanup) {
-        (socketRef.current as any).__cleanup();
-      }
-      
+  useEffect(() => {
+    if (status !== 'authenticated' || !user) {
       disconnectRealtime();
-      socketRef.current = null;
-      setIsConnected(false);
-      console.log('🔌 Socket disconnected and cleaned up');
-    } catch (error) {
-      console.error('❌ Failed to disconnect socket:', error);
+      setSocket(null);
+      setConnected(false);
+      return undefined;
     }
-  }, []);
 
-  const emit = useCallback((event: string, data: any): boolean => {
-    return safeSocketEmit(event, data);
-  }, []);
-
-  const on = useCallback((event: string, callback: (...args: any[]) => void): boolean => {
-    try {
-      const socket = getRealtimeSocket();
-      if (socket && typeof socket.on === 'function') {
-        socket.on(event, callback);
-        
-        // Store listener for cleanup
-        if (!listenersRef.current.has(event)) {
-          listenersRef.current.set(event, new Set());
-        }
-        listenersRef.current.get(event)?.add(callback);
-        
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.warn(`⚠️ Failed to register listener for "${event}":`, error);
-      return false;
+    const instance = connectRealtime();
+    if (!instance) {
+      setConnectionError('Realtime service is unavailable.');
+      return undefined;
     }
-  }, []);
+    setSocket(instance);
 
-  const off = useCallback((event: string, callback: (...args: any[]) => void): boolean => {
-    try {
-      const socket = getRealtimeSocket();
-      if (socket && typeof socket.off === 'function') {
-        socket.off(event, callback);
-        
-        // Remove from stored listeners
-        const eventListeners = listenersRef.current.get(event);
-        if (eventListeners) {
-          eventListeners.delete(callback);
-          if (eventListeners.size === 0) {
-            listenersRef.current.delete(event);
-          }
-        }
-        
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.warn(`⚠️ Failed to remove listener for "${event}":`, error);
-      return false;
-    }
-  }, []);
+    const connected = () => { setConnected(true); setConnectionError(null); };
+    const disconnected = () => setConnected(false);
+    const failed = (error: Error) => { setConnected(false); setConnectionError(error?.message || 'Unable to connect realtime service.'); };
+    const chats = () => queryClient.invalidateQueries({ queryKey: ['chats'] });
+    const notifications = () => { queryClient.invalidateQueries({ queryKey: ['notification-center'] }); queryClient.invalidateQueries({ queryKey: ['account-notifications'] }); };
+    const quotations = () => { queryClient.invalidateQueries({ queryKey: ['quotations'] }); queryClient.invalidateQueries({ queryKey: ['rfqs'] }); };
+    const orders = () => queryClient.invalidateQueries({ queryKey: ['orders'] });
 
-  // Auto-connect on mount
-  useEffect(() => {
-    connect();
-    
+    instance.on('connect', connected);
+    instance.on('disconnect', disconnected);
+    instance.on('connect_error', failed);
+    instance.on('new_message', chats);
+    instance.on('conversation_updated', chats);
+    instance.on('new_notification', notifications);
+    instance.on('quotation_updated', quotations);
+    instance.on('rfq_updated', quotations);
+    instance.on('order_updated', orders);
+    if (instance.connected) connected();
+
     return () => {
-      disconnect();
+      instance.off('connect', connected);
+      instance.off('disconnect', disconnected);
+      instance.off('connect_error', failed);
+      instance.off('new_message', chats);
+      instance.off('conversation_updated', chats);
+      instance.off('new_notification', notifications);
+      instance.off('quotation_updated', quotations);
+      instance.off('rfq_updated', quotations);
+      instance.off('order_updated', orders);
+      disconnectRealtime();
     };
-  }, []);
+  }, [queryClient, status, user]);
 
-  // Check connection status periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const connected = isSocketConnected();
-      if (connected !== isConnected) {
-        setIsConnected(connected);
-      }
-    }, 5000);
-    
-    return () => clearInterval(interval);
-  }, [isConnected]);
-
-  const value: RealtimeContextType = {
-    socket: socketRef.current,
-    isConnected,
-    connect,
-    disconnect,
-    emit,
-    on,
-    off,
-  };
-
-  return (
-    <RealtimeContext.Provider value={value}>
-      {children}
-    </RealtimeContext.Provider>
-  );
+  const emit = useCallback((event: string, data?: unknown) => safeSocketEmit(event, data), []);
+  const on = useCallback((event: string, callback: Listener) => safeSocketOn(event, callback), []);
+  const off = useCallback((event: string, callback: Listener) => safeSocketOff(event, callback), []);
+  const value = useMemo(() => ({ socket, isConnected, connectionError, emit, on, off }), [connectionError, emit, isConnected, off, on, socket]);
+  return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }
 
-export function useRealtime(): RealtimeContextType {
-  const context = useContext(RealtimeContext);
-  if (!context) {
-    throw new Error('useRealtime must be used within a RealtimeProvider');
-  }
-  return context;
+export function useRealtime() {
+  return useContext(RealtimeContext);
 }
+
+export default RealtimeProvider;

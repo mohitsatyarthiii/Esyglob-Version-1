@@ -7,7 +7,7 @@ import { readJson, writeJson } from '../storage/appStorage';
 const USER_KEY = 'auth.user';
 
 type AuthStatus = 'checking' | 'guest' | 'authenticated';
-
+ 
 type AuthContextValue = {
   user: CurrentUser | null;
   status: AuthStatus;
@@ -128,3 +128,5 @@ export function useAuth() {
 
   return context;
 }
+
+export default AuthProvider;

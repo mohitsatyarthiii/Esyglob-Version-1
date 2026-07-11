@@ -31,7 +31,7 @@ import {
 import { Chat, CurrentUser, Product, SellerSummary } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
-import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
+import { ErrorState, LoadingState } from '../components/StateViews';
 import { getId } from '../utils/format';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';

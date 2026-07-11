@@ -291,7 +291,7 @@ export async function fetchSellerDetails(sellerId: string): Promise<SellerDetail
         ? normalizeList<Record<string, unknown>>(reviewsPayload, ['reviews'])
         : [],
     };
-  } catch (error) {
+  } catch {
     // If all fails, try to get just the seller profile
     const payload = await apiRequest(`/suppliers/${sellerId}`, { 
       cacheTtlMs: 2 * 60_000 

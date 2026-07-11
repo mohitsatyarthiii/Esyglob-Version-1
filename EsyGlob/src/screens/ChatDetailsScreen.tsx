@@ -160,6 +160,7 @@ function ChatDetailsScreen() {
   useEffect(() => {
     if (!chatId) return undefined;
     const socket = getRealtimeSocket();
+    if (!socket) return undefined;
     const join = () => socket.emit('join_chat', { chatId });
     const onMessage = (message: MessageItem) => {
       if (String(message.chatId ?? '') === String(chatId)) queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
@@ -196,6 +197,7 @@ function ChatDetailsScreen() {
   useEffect(() => {
     if (!chatId) return undefined;
     const socket = getRealtimeSocket();
+    if (!socket) return undefined;
     socket.emit('typing', { chatId, typing: draft.trim().length > 0 });
     const timer = setTimeout(() => socket.emit('typing', { chatId, typing: false }), 1800);
     return () => clearTimeout(timer);

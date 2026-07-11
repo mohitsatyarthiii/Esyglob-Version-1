@@ -1,10 +1,16 @@
 import { createMMKV, MMKV } from 'react-native-mmkv';
 
 let storage: MMKV | null = null;
+const memoryFallback = new Map<string, string>();
+let nativeStorageUnavailable = false;
 
 function getStorage() {
-  if (!storage) {
-    storage = createMMKV({ id: 'esyglob.mobile' });
+  if (!storage && !nativeStorageUnavailable) {
+    try {
+      storage = createMMKV({ id: 'esyglob.mobile' });
+    } catch {
+      nativeStorageUnavailable = true;
+    }
   }
 
   return storage;
@@ -12,13 +18,28 @@ function getStorage() {
 
 export const appStorage = {
   getString(key: string) {
-    return getStorage().getString(key);
+    try {
+      return getStorage()?.getString(key) ?? memoryFallback.get(key);
+    } catch {
+      return memoryFallback.get(key);
+    }
   },
   set(key: string, value: string | number | boolean | ArrayBuffer) {
-    getStorage().set(key, value);
+    try {
+      const native = getStorage();
+      if (native) native.set(key, value);
+      else memoryFallback.set(key, String(value));
+    } catch {
+      memoryFallback.set(key, String(value));
+    }
   },
   remove(key: string) {
-    getStorage().remove(key);
+    memoryFallback.delete(key);
+    try {
+      getStorage()?.remove(key);
+    } catch {
+      // Storage cleanup must never prevent logout or app startup.
+    }
   },
 };
 

@@ -102,7 +102,7 @@ export function disconnectRealtime(): void {
 export function isSocketConnected(): boolean {
   try {
     return !!(socket && socket.connected);
-  } catch (error) {
+  } catch {
     return false;
   }
 }

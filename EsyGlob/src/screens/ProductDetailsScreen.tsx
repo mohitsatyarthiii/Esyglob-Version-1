@@ -18,30 +18,22 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchProductDetails, fetchProducts } from '../api/products';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { fetchProductDetails } from '../api/products';
 import {
   createProductEnquiry,
   startProductChat,
   trackProductView,
 } from '../api/marketplace';
-import { Product } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
-import ReviewsPanel from '../components/ReviewsPanel';
+import EnquiryModal from '../components/EnquiryModal';
 import SavedHeartButton from '../components/SavedHeartButton';
 import TradeAssurance from '../components/TradeAssurance';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import {
-  formatMoq,
   formatProductPrice,
-  getId,
-  getProductImage,
-  getProductLocation,
-  getSellerName,
-  isVerifiedProduct,
 } from '../utils/format';
-import { firstImage } from '../utils/images';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -263,7 +255,6 @@ function ProductDetailsScreen() {
   const insets = useSafeAreaInsets();
   const { status, user, activeRole } = useAuth();
   const { productId } = route.params as { productId: string };
-  const queryClient = useQueryClient();
   const flatListRef = useRef<FlatList>(null);
 
   const [enquiryOpen, setEnquiryOpen] = useState(false);
@@ -347,12 +338,12 @@ function ProductDetailsScreen() {
       if (isSelfContact) throw new Error('You cannot start a chat with your own seller account.');
       if (!sellerUserId) throw new Error('Seller contact not available.');
       
-      const productId = product._id || product.id;
-      if (!productId) throw new Error('Product ID not available.');
+      const selectedProductId = product._id || product.id;
+      if (!selectedProductId) throw new Error('Product ID not available.');
 
       return startProductChat({
         otherUserId: sellerUserId,
-        productId: productId,
+        productId: selectedProductId,
         role: 'buyer',
         enquiry: false,
       });
@@ -378,11 +369,11 @@ function ProductDetailsScreen() {
       if (isSelfContact) throw new Error('You cannot send an enquiry to your own seller account.');
       if (!sellerUserId) throw new Error('Seller information missing.');
       
-      const productId = product._id || product.id;
-      if (!productId) throw new Error('Product ID not available.');
+      const selectedProductId = product._id || product.id;
+      if (!selectedProductId) throw new Error('Product ID not available.');
 
       return createProductEnquiry({
-        productId: productId,
+        productId: selectedProductId,
         sellerUserId: sellerUserId,
         productName: product.name || product.title || 'Product',
         quantity: quantity || 1,
@@ -639,7 +630,7 @@ function ProductDetailsScreen() {
               <Text style={styles.statLabel}>RATING</Text>
               <View style={styles.ratingRow}>
                 <Icon name="star" size={14} color={P.amber} />
-                <Text style={styles.statValue}>{rating.toFixed(1)}</Text>
+                <Text style={styles.statValue}>{rating.toFixed(1)} ({reviewCount})</Text>
               </View>
             </View>
           </View>
@@ -669,8 +660,8 @@ function ProductDetailsScreen() {
               }
               chatNow.mutate();
             }}
-            style={[styles.chatBtn, (!isAuth || !isBuyer || chatNow.isPending) && styles.disabledBtn]}
-            disabled={chatNow.isPending}
+            style={[styles.chatBtn, (!canAct || chatNow.isPending) && styles.disabledBtn]}
+            disabled={!canAct || chatNow.isPending}
           >
             <Icon name="message-text-outline" size={18} color="#FFF" />
             <Text style={styles.btnText}>{chatNow.isPending ? '...' : 'Chat'}</Text>
@@ -688,13 +679,17 @@ function ProductDetailsScreen() {
               }
               setEnquiryOpen(true);
             }}
-            style={[styles.inquiryBtn, (!isAuth || !isBuyer || sendEnquiry.isPending) && styles.disabledBtn]}
-            disabled={sendEnquiry.isPending}
+            style={[styles.inquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]}
+            disabled={!canAct || sendEnquiry.isPending}
           >
             <Icon name="send-outline" size={18} color={P.primary} />
             <Text style={styles.inquiryBtnText}>{sendEnquiry.isPending ? '...' : 'Inquiry'}</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity disabled={!sellerRouteId} onPress={goToStore} style={styles.storeAction}>
+          <Icon name="storefront-outline" size={18} color={P.primary} /><Text style={styles.storeActionText}>View Supplier Store</Text>
+        </TouchableOpacity>
 
         {/* Trust Badges */}
         <View style={styles.trustRow}>
@@ -746,8 +741,7 @@ function ProductDetailsScreen() {
         </View>
       </Modal>
 
-      {/* Enquiry Modal - To be implemented */}
-      {/* <EnquiryModal ... /> */}
+      <EnquiryModal visible={enquiryOpen} productName={product.name || product.title || 'Product'} defaultQuantity={String(quantity)} defaultUnit={product.unit || 'piece'} pending={sendEnquiry.isPending} quantity={String(quantity)} targetPrice={targetPrice} destinationCountry={destinationCountry} additionalNotes={additionalNotes} customSpecifications={customSpecifications} packagingRequirements={packagingRequirements} deliveryRequirements={deliveryRequirements} attachments={attachments} onQuantityChange={value => setQuantity(Math.max(1, Number(value) || 1))} onTargetPriceChange={setTargetPrice} onDestinationChange={setDestinationCountry} onNotesChange={setAdditionalNotes} onSpecificationsChange={setCustomSpecifications} onPackagingChange={setPackagingRequirements} onDeliveryChange={setDeliveryRequirements} onAttachmentsChange={setAttachments} onClose={() => setEnquiryOpen(false)} onSubmit={() => sendEnquiry.mutate()} />
     </View>
   );
 }
@@ -1108,6 +1102,8 @@ const styles = StyleSheet.create({
   disabledBtn: {
     opacity: 0.5,
   },
+  storeAction: { marginHorizontal: 16, marginBottom: 8, height: 42, borderRadius: 8, borderWidth: 1, borderColor: P.primary, backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  storeActionText: { color: P.primary, fontSize: 13, fontWeight: '700' },
 
   // Trust Row
   trustRow: {

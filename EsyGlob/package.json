@@ -2,6 +2,10 @@
   "name": "EsyGlob",
   "version": "0.0.1",
   "private": true,
+  "exports": {
+    "./*": "./*",
+    "./socket.io": "./node_modules/socket.io/build/index.js"
+  },
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",

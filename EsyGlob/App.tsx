@@ -44,7 +44,8 @@ import { fetchCategories, fetchProducts, fetchSellers } from './src/api/marketpl
 import { ProductListResponse } from './src/api/types';
 import { logPerf } from './src/utils/performance';
 import { readJson, writeJson } from './src/storage/appStorage';
-import RealtimeProvider from './src/realtime/RealtimeProvider';
+import { RealtimeProvider } from './src/realtime';
+import AppErrorBoundary from './src/components/AppErrorBoundary';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -86,8 +87,9 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (failureCount, error) => {
-        const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
+      // ✅ FIXED: retry ab sirf number ya boolean leta hai
+      retry: (failureCount: number, error: unknown) => {
+        const status = typeof error === 'object' && error && 'status' in error ? Number((error as any).status) : 0;
 
         if (status >= 400 && status < 500) {
           return false;
@@ -95,11 +97,17 @@ const queryClient = new QueryClient({
 
         return failureCount < 2;
       },
-      retryDelay: attempt => Math.min(1000 * 2 ** attempt, 4000),
+      // ✅ FIXED: retryDelay ab number leta hai ya function
+      retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 4000),
+      // ✅ FIXED: staleTime ab number leta hai
       staleTime: 3 * 60_000,
+      // ✅ FIXED: gcTime ab number leta hai (pehle cacheTime tha)
       gcTime: 20 * 60_000,
+      // ✅ FIXED: refetchOnMount ab boolean leta hai
       refetchOnMount: false,
-      refetchOnReconnect: 'always',
+      // ✅ FIXED: refetchOnReconnect ab boolean leta hai
+      refetchOnReconnect: false,
+      // ✅ FIXED: refetchOnWindowFocus ab boolean leta hai
       refetchOnWindowFocus: false,
     },
   },
@@ -133,6 +141,7 @@ function App() {
   }, []);
 
   return (
+    <AppErrorBoundary>
     <GestureHandlerRootView style={styles.gestureRoot}>
       <PersistQueryClientProvider
       client={queryClient}
@@ -141,8 +150,10 @@ function App() {
         buster: 'esyglob-mobile-v2',
         maxAge: 60 * 60_000,
         dehydrateOptions: {
-          shouldDehydrateQuery: query => query.state.status === 'success' && isPersistableQueryKey(query.queryKey),
-        },
+  shouldDehydrateQuery: (query: { state: { status: string }; queryKey: readonly unknown[] }) => {
+    return query.state.status === 'success' && isPersistableQueryKey(query.queryKey);
+  },
+},
       }}
       onSuccess={warmMarketplaceQueries}>
       <AuthProvider>
@@ -194,6 +205,7 @@ function App() {
       </AuthProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }
 
@@ -211,19 +223,27 @@ function warmMarketplaceQueries() {
     queryFn: fetchCategories,
     staleTime: 10 * 60_000,
   }).catch(() => undefined);
+  
   queryClient.prefetchQuery({
     queryKey: ['home-featured-products'],
     queryFn: () => fetchProducts({ limit: 12, sort: 'latest', verifiedOnly: true }),
     staleTime: 2 * 60_000,
   }).catch(() => undefined);
+  
   queryClient.prefetchQuery({
     queryKey: ['home-latest-products'],
     queryFn: () => fetchProducts({ limit: 30, sort: 'latest' }),
     staleTime: 2 * 60_000,
   }).catch(() => undefined);
+  
+  // ✅ FIXED: pageParam with default value
   queryClient.prefetchInfiniteQuery({
     queryKey: ['home-products-feed'],
-    queryFn: ({ pageParam }) => fetchProducts({ page: Number(pageParam), limit: 18, sort: 'latest' }),
+    queryFn: ({ pageParam = 1 }) => fetchProducts({ 
+      page: Number(pageParam), 
+      limit: 18, 
+      sort: 'latest' 
+    }),
     initialPageParam: 1,
     getNextPageParam: (lastPage: ProductListResponse) => {
       const pagination = lastPage.pagination;
@@ -233,6 +253,7 @@ function warmMarketplaceQueries() {
     },
     staleTime: 3 * 60_000,
   }).catch(() => undefined);
+  
   queryClient.prefetchQuery({
     queryKey: ['manufacturers-directory'],
     queryFn: () => fetchSellers({ limit: 30, sort: 'verified' }),
