@@ -28,16 +28,14 @@ import { firstImage } from '../utils/images';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type Tab = 'products' | 'company' | 'factory' | 'certificates' | 'reviews' | 'about' | 'contact';
+type Tab = 'company' | 'products' | 'factory' | 'certificates' | 'reviews';
 
 const TABS: Array<{ key: Tab; label: string; icon: string }> = [
-  { key: 'products', label: 'Products', icon: 'package-variant' },
   { key: 'company', label: 'Company', icon: 'office-building' },
+  { key: 'products', label: 'Products', icon: 'package-variant' },
   { key: 'factory', label: 'Factory', icon: 'factory' },
   { key: 'certificates', label: 'Certs', icon: 'certificate' },
   { key: 'reviews', label: 'Reviews', icon: 'star' },
-  { key: 'about', label: 'About', icon: 'information-outline' },
-  { key: 'contact', label: 'Contact', icon: 'card-account-phone-outline' },
 ];
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -109,7 +107,7 @@ function SellerDetailsScreen() {
     sellerId: string;
     sellerName?: string;
   };
-  const [tab, setTab] = useState<Tab>('products');
+  const [tab, setTab] = useState<Tab>('company');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<'latest' | 'rating' | 'price_asc'>('latest');
   const [certificatePreview, setCertificatePreview] = useState<{ name: string; url: string } | null>(null);
@@ -159,13 +157,11 @@ function SellerDetailsScreen() {
     const hasFactory = hasData(factory);
 
     return {
-      products: true,
       company: true,
+      products: true,
       factory: hasFactory,
       certificates: hasCerts,
       reviews: true,
-      about: true,
-      contact: true,
     };
   }, [profile?.certifications, factory]);
 
@@ -351,7 +347,65 @@ function SellerDetailsScreen() {
           })}
         </ScrollView>
 
-        {/* Content */}
+        {/* ── Company Tab (About → Contact → Business Info) ── */}
+        {tab === 'company' && (
+          <View style={styles.tabContent}>
+            {/* About Section */}
+            {(profile.companyIntroduction || profile.description || profile.companyDescription) ? (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>About {title}</Text>
+                <Text style={styles.aboutText}>
+                  {profile.companyIntroduction ?? profile.description ?? profile.companyDescription}
+                </Text>
+                <View style={styles.aboutDetails}>
+                  <DetailRow label="Established" value={profile.yearEstablished} />
+                  <DetailRow label="Employees" value={profile.employeeCount} />
+                  <DetailRow label="Main Markets" value={profile.exportMarkets ?? profile.mainMarkets} />
+                  <DetailRow label="Product Categories" value={profile.productCategories} />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>About {title}</Text>
+                <EmptyState title="No company introduction" detail="The supplier has not published an introduction yet." />
+              </View>
+            )}
+
+            {/* Business Information */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Business Information</Text>
+              <DetailRow label="Company Name" value={profile.companyName} />
+              <DetailRow label="Business Type" value={profile.businessType ?? profile.companyType} />
+              <DetailRow label="Location" value={location} />
+              <DetailRow label="Years in Business" value={profile.yearsInBusiness} />
+              <DetailRow label="Response Rate" value={profile.responseRate} />
+              <DetailRow label="Response Time" value={profile.responseTime} />
+              <DetailRow label="Annual Revenue" value={profile.annualRevenue} />
+              <DetailRow label="GST" value={profile.gst} />
+              <DetailRow label="Business License" value={profile.businessLicense } />
+              <DetailRow label="Verification Status" value={profile.verificationStatus ?? verification?.status} />
+            </View>
+          
+
+            {/* Contact Section */}
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Contact Information</Text>
+              <DetailRow label="Contact Person" value={profile.contactPerson ?? profile.fullName ?? profile.displayName} />
+              <DetailRow label="Email" value={profile.businessEmail ?? profile.email} />
+              <DetailRow label="Phone" value={profile.businessPhone ?? profile.phone} />
+              <DetailRow label="Website" value={profile.companyWebsite} />
+              <DetailRow label="Address" value={profile.address ? `${profile.address.street ?? ''} ${profile.address.city ?? ''} ${profile.address.state ?? ''} ${profile.address.country ?? ''} ${profile.address.zipCode ?? ''}`.trim() : undefined} />
+              <Pressable disabled={chat.isPending || !sellerUserId} onPress={() => chat.mutate()} style={styles.contactBtn}>
+                <Icon name="message-text-outline" size={17} color="#FFF" />
+                <Text style={styles.contactBtnText}>Contact Supplier</Text>
+              </Pressable>
+            </View>
+            </View>
+
+            
+        )}
+
+        {/* ── Products Tab ── */}
         {tab === 'products' && (
           <View style={styles.tabContent}>
             <View style={styles.searchRow}>
@@ -402,34 +456,7 @@ function SellerDetailsScreen() {
           </View>
         )}
 
-        {tab === 'company' && (
-          <View style={styles.tabContent}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Business Information</Text>
-              <DetailRow label="Company Name" value={profile.companyName} />
-              <DetailRow label="Business Type" value={profile.businessType ?? profile.companyType} />
-              <DetailRow label="Location" value={location} />
-              <DetailRow label="Years in Business" value={profile.yearsInBusiness} />
-              <DetailRow label="Response Rate" value={profile.responseRate} />
-              <DetailRow label="Response Time" value={profile.responseTime} />
-              <DetailRow label="Main Markets" value={profile.mainMarkets ?? profile.exportCountries} />
-              <DetailRow label="Annual Revenue" value={profile.annualRevenue} />
-              <DetailRow label="GST" value={profile.gst} />
-              <DetailRow label="Business License" value={profile.businessLicense} />
-              <DetailRow label="Verification Status" value={profile.verificationStatus ?? verification?.status} />
-            </View>
-
-            {profile.companyIntroduction || profile.description ? (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>About</Text>
-                <Text style={styles.aboutText}>
-                  {profile.companyIntroduction ?? profile.description}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-        )}
-
+        {/* ── Factory Tab ── */}
         {tab === 'factory' && (
           <View style={styles.tabContent}>
             {factory ? (
@@ -489,6 +516,7 @@ function SellerDetailsScreen() {
           </View>
         )}
 
+        {/* ── Certificates Tab ── */}
         {tab === 'certificates' && (
           <View style={styles.tabContent}>
             <View style={styles.card}>
@@ -523,6 +551,7 @@ function SellerDetailsScreen() {
           </View>
         )}
 
+        {/* ── Reviews Tab ── */}
         {tab === 'reviews' && (
           <View style={styles.tabContent}>
             <ReviewsPanel
@@ -532,40 +561,43 @@ function SellerDetailsScreen() {
             />
           </View>
         )}
-
-        {tab === 'about' && (
-          <View style={styles.tabContent}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>About {title}</Text>
-              {profile.companyDescription ? <Text style={styles.aboutText}>{profile.companyDescription}</Text> : <EmptyState title="No company introduction" detail="The supplier has not published an introduction yet." />}
-              <DetailRow label="Established" value={profile.yearEstablished} />
-              <DetailRow label="Employees" value={profile.employeeCount} />
-              <DetailRow label="Main Markets" value={profile.exportMarkets} />
-              <DetailRow label="Product Categories" value={profile.productCategories} />
-            </View>
-          </View>
-        )}
-
-        {tab === 'contact' && (
-          <View style={styles.tabContent}>
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Business Contact</Text>
-              <DetailRow label="Email" value={profile.businessEmail} />
-              <DetailRow label="Phone" value={profile.businessPhone} />
-              <DetailRow label="Website" value={profile.companyWebsite} />
-              <DetailRow label="Address" value={profile.address} />
-              <Pressable disabled={chat.isPending || !sellerUserId} onPress={() => chat.mutate()} style={styles.contactAction}>
-                <Icon name="message-text-outline" size={17} color="#FFF" /><Text style={styles.contactActionText}>Contact Supplier</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
       </ScrollView>
+
+      {/* Certificate Preview Modal */}
       <Modal visible={Boolean(certificatePreview)} animationType="fade" onRequestClose={() => setCertificatePreview(null)}>
         <View style={styles.certificateViewer}>
-          <View style={styles.certificateViewerHeader}><Pressable onPress={() => setCertificatePreview(null)}><Icon name="close" size={25} color="#FFF" /></Pressable><Text numberOfLines={1} style={styles.certificateViewerTitle}>{certificatePreview?.name}</Text><Pressable onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)}><Icon name="download" size={24} color="#FFF" /></Pressable></View>
+          <View style={styles.certificateViewerHeader}>
+            <Pressable onPress={() => setCertificatePreview(null)}>
+              <Icon name="close" size={25} color="#FFF" />
+            </Pressable>
+            <Text numberOfLines={1} style={styles.certificateViewerTitle}>
+              {certificatePreview?.name}
+            </Text>
+            <Pressable onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)}>
+              <Icon name="download" size={24} color="#FFF" />
+            </Pressable>
+          </View>
           <ScrollView maximumZoomScale={4} minimumZoomScale={1} contentContainerStyle={styles.certificateZoom}>
-            <RemoteImage uri={certificatePreview?.url} width={1200} height={1600} resizeMode="contain" style={styles.certificateImage} fallback={<View style={styles.certificateFallback}><Icon name="file-document-outline" size={60} color={P.muted} /><Text style={styles.certificateFallbackText}>Open the document to preview or download it.</Text><Pressable onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)} style={styles.contactAction}><Text style={styles.contactActionText}>Open Document</Text></Pressable></View>} />
+            <RemoteImage
+              uri={certificatePreview?.url}
+              width={1200}
+              height={1600}
+              resizeMode="contain"
+              style={styles.certificateImage}
+              fallback={
+                <View style={styles.certificateFallback}>
+                  <Icon name="file-document-outline" size={60} color={P.muted} />
+                  <Text style={styles.certificateFallbackText}>
+                    Open the document to preview or download it.
+                  </Text>
+                  <Pressable
+                    onPress={() => certificatePreview?.url && Linking.openURL(certificatePreview.url)}
+                    style={styles.downloadBtn}>
+                    <Text style={styles.downloadBtnText}>Open Document</Text>
+                  </Pressable>
+                </View>
+              }
+            />
           </ScrollView>
         </View>
       </Modal>
@@ -745,18 +777,6 @@ const styles = StyleSheet.create({
   rfqBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
 
   // Tabs
-  tabBarContent: { paddingHorizontal: 10 },
-  contactAction: { marginTop: 16, height: 44, borderRadius: 12, backgroundColor: P.accent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  contactActionText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  loadMoreBtn: { alignSelf: 'center', marginTop: 16, borderRadius: 10, backgroundColor: P.accent, paddingHorizontal: 18, paddingVertical: 11 },
-  loadMoreText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-  certificateViewer: { flex: 1, backgroundColor: '#050505' },
-  certificateViewerHeader: { paddingTop: 50, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  certificateViewerTitle: { flex: 1, color: '#FFF', fontSize: 15, fontWeight: '700' },
-  certificateZoom: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
-  certificateImage: { width: '100%', height: 620 },
-  certificateFallback: { width: '100%', height: 620, alignItems: 'center', justifyContent: 'center', padding: 30 },
-  certificateFallbackText: { color: '#CBD5E1', textAlign: 'center', marginTop: 12 },
   tabBar: {
     flexDirection: 'row',
     backgroundColor: P.surface,
@@ -766,14 +786,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.border,
   },
+  tabBarContent: { paddingHorizontal: 10 },
   tab: {
-    minWidth: 105,
+    minWidth: 90,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     paddingVertical: 10,
     borderRadius: 10,
+    paddingHorizontal: 12,
   },
   tabActive: { backgroundColor: P.accentLight },
   tabText: { fontSize: 11, fontWeight: '600', color: P.muted },
@@ -810,7 +832,25 @@ const styles = StyleSheet.create({
   detailValue: { fontSize: 12, fontWeight: '600', color: P.text, flex: 1, textAlign: 'right' },
 
   // About
-  aboutText: { fontSize: 13, lineHeight: 20, color: P.textSecondary },
+  aboutText: { fontSize: 13, lineHeight: 20, color: P.textSecondary, marginBottom: 12 },
+  aboutDetails: {
+    borderTopWidth: 1,
+    borderTopColor: P.border,
+    paddingTop: 8,
+  },
+
+  // Contact
+  contactBtn: {
+    marginTop: 16,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: P.accent,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  contactBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 
   // Search
   searchRow: { marginBottom: 12, gap: 8 },
@@ -850,6 +890,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
 
+  // Load More
+  loadMoreBtn: {
+    alignSelf: 'center',
+    marginTop: 16,
+    borderRadius: 10,
+    backgroundColor: P.accent,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  loadMoreText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+
   // Factory Images
   imageRow: { gap: 10 },
   factoryImg: {
@@ -881,7 +932,41 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 10,
   },
-  certText: { fontSize: 12, fontWeight: '600', color: P.text },
+  certText: { flex: 1, fontSize: 12, fontWeight: '600', color: P.text },
+
+  // Certificate Viewer
+  certificateViewer: { flex: 1, backgroundColor: '#050505' },
+  certificateViewerHeader: {
+    paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  certificateViewerTitle: { flex: 1, color: '#FFF', fontSize: 15, fontWeight: '700' },
+  certificateZoom: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
+  certificateImage: { width: '100%', height: 620 },
+  certificateFallback: {
+    width: '100%',
+    height: 620,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  certificateFallbackText: {
+    color: '#CBD5E1',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  downloadBtn: {
+    backgroundColor: P.accent,
+    borderRadius: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  downloadBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
 });
 
 export default SellerDetailsScreen;

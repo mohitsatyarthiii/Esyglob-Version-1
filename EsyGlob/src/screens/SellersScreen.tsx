@@ -161,29 +161,25 @@ function SellerDirectoryCard({ seller }: { seller: SellerSummary }) {
         <View style={styles.cardBody}>
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={styles.sellerName}>{title}</Text>
-            {trusted ? <Icon name="check-decagram" size={19} color={colors.primary} /> : null}
+            {trusted ? <Icon name="check-decagram" size={19} color={colors.blue} /> : null}
             <SavedHeartButton type="supplier" itemId={sellerId} target={seller} size={15} style={styles.saveButton} iconColor={colors.muted} />
           </View>
           <Text numberOfLines={1} style={styles.sellerMeta}>{type}</Text>
           <Text numberOfLines={1} style={styles.location}>{location}</Text>
           <View style={styles.badges}>
             {verified ? <MiniBadge icon="shield-check-outline" label="Business verified" color={colors.green} /> : null}
+            {seller.trustedBadgeActive ? <MiniBadge icon="check-decagram" label="Esyglob Trusted" color={colors.blue} /> : null}
             {seller.factoryVerified ? <MiniBadge icon="factory" label="Factory checked" color={colors.secondary} /> : null}
             {trusted ? <MiniBadge icon="star-circle-outline" label="Trusted" color={colors.primary} /> : null}
           </View>
         </View>
       </View>
 
-      <Text numberOfLines={2} style={styles.description}>
-        {seller.companyIntroduction ?? seller.description ?? 'Verified B2B supplier with marketplace-ready products and sourcing support.'}
+      <Text numberOfLines={4} style={styles.description}>
+        {seller.companyDescription ?? seller.companyIntroduction ?? 'Verified B2B supplier with marketplace-ready products and sourcing support.'}
       </Text>
 
-      <View style={styles.statGrid}>
-        <SellerStat label="Years" value={seller.yearsInBusiness ?? '-'} icon="calendar-check-outline" />
-        <SellerStat label="Response" value={seller.responseRate ?? seller.responseTime ?? '-'} icon="timer-outline" />
-        <SellerStat label="Products" value={seller.productCount ?? '-'} icon="package-variant-closed" />
-        <SellerStat label="Rating" value={seller.rating ?? '-'} icon="star-outline" />
-      </View>
+      
 
       {categories.length ? (
         <View style={styles.tags}>

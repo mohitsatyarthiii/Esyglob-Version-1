@@ -46,6 +46,7 @@ import { logPerf } from './src/utils/performance';
 import { readJson, writeJson } from './src/storage/appStorage';
 import { RealtimeProvider } from './src/realtime';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import LocationScreen from './src/screens/LocationScreen';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -198,6 +199,7 @@ function App() {
               <Stack.Screen name="ServiceBooking" component={ServiceBookingScreen} />
               <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
+              <Stack.Screen name="Location" component={LocationScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>

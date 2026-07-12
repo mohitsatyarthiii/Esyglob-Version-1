@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
@@ -11,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { createProductEnquiry, createRFQ } from '../api/marketplace';
+import { fetchCategories } from '../api/categories';
 import { getId } from '../utils/format';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -38,9 +40,15 @@ const P = {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const UNITS = ['pcs', 'kg', 'boxes', 'tons', 'liters', 'meters', 'rolls', 'sheets', 'other'];
-const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'CNY'];
 const TIMELINES = ['flexible', '1week', '2weeks', '1month', '2months', '3months', 'immediate'];
 const INCOTERMS = ['FOB', 'CIF', 'CFR', 'EXW', 'DDP', 'DAP', 'FAS', 'CPT', 'CIP', 'other'];
+
+const DEFAULT_CURRENCIES = [
+  'INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'CNY', 'JPY', 'KRW', 'AUD',
+  'CAD', 'CHF', 'HKD', 'MYR', 'THB', 'VND', 'IDR', 'PHP', 'BRL', 'MXN',
+  'SAR', 'QAR', 'OMR', 'KWD', 'BHD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN',
+  'TRY', 'RUB', 'ZAR', 'NGN', 'EGP', 'PKR', 'BDT', 'LKR', 'NPR', 'MMK',
+];
 
 const contactPattern =
   /(\+?\d[\d\s().-]{7,}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|https?:\/\/|www\.)/i;
@@ -73,7 +81,6 @@ type RFQForm = {
   deliveryPort: string;
   deliveryTimeline: string;
   incoterms: string;
-  visibility: string;
   isVerifiedSuppliersOnly: boolean;
   items: LineItem[];
   imageUrls: string;
@@ -85,6 +92,77 @@ const emptyItem: LineItem = {
   name: '', category: '', subcategory: '', quantity: '1',
   unit: 'pcs', targetPrice: '', specifications: '', imageUrl: '',
 };
+
+// ─── Dropdown Component ─────────────────────────────────────────────────────
+
+function Dropdown({ label, value, options, onSelect, required, icon, loading }: {
+  label: string;
+  value: string;
+  options: string[];
+  onSelect: (value: string) => void;
+  required?: boolean;
+  icon?: string;
+  loading?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>
+        {icon && <Icon name={icon} size={14} color={P.muted} />}  {label}
+        {required && <Text style={styles.requiredStar}> *</Text>}
+      </Text>
+      <Pressable onPress={() => setVisible(true)} style={styles.dropdown}>
+        <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
+          {value || `Select ${label.toLowerCase()}`}
+        </Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={P.primary} />
+        ) : (
+          <Icon name="chevron-down" size={18} color={P.muted} />
+        )}
+      </Pressable>
+
+      <Modal visible={visible} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setVisible(false)}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select {label}</Text>
+              <Pressable onPress={() => setVisible(false)}>
+                <Icon name="close" size={22} color={P.text} />
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {loading ? (
+                <View style={styles.loadingState}>
+                  <ActivityIndicator size="large" color={P.primary} />
+                  <Text style={styles.loadingText}>Loading options...</Text>
+                </View>
+              ) : options.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Icon name="alert-circle-outline" size={40} color={P.muted} />
+                  <Text style={styles.emptyText}>No options available</Text>
+                </View>
+              ) : (
+                options.map((option, index) => (
+                  <Pressable
+                    key={index}
+                    onPress={() => { onSelect(option); setVisible(false); }}
+                    style={[styles.modalOption, value === option && styles.modalOptionActive]}>
+                    <Text style={[styles.modalOptionText, value === option && styles.modalOptionTextActive]}>
+                      {option}
+                    </Text>
+                    {value === option && <Icon name="check" size={18} color={P.primary} />}
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -109,7 +187,6 @@ function RFQCreateScreen() {
     deliveryPort: String(prefill.deliveryPort ?? ''),
     deliveryTimeline: String(prefill.deliveryTimeline ?? 'flexible'),
     incoterms: String(prefill.incoterms ?? 'FOB'),
-    visibility: String(prefill.visibility ?? 'public'),
     isVerifiedSuppliersOnly: false,
     items: [{ ...emptyItem, name: String(prefill.productName ?? ''), quantity: String(prefill.quantity ?? '1') }],
     imageUrls: '',
@@ -117,14 +194,58 @@ function RFQCreateScreen() {
     attachmentUrls: '',
   });
 
+  // Fetch categories from backend - API returns direct array
+  const { data: categoriesData, isLoading: categoriesLoading } = useQuery({
+    queryKey: ['categories'],
+    queryFn: fetchCategories,
+  });
+
+  // categoriesData is direct array: [{ name: "Agriculture", subcategories: [...] }, ...]
+  const categories = categoriesData ?? [];
+
+  // Get category names for dropdown
+  const categoryNames = useMemo(() => {
+    return categories.map((cat: any) => cat.name);
+  }, [categories]);
+
+  // Get subcategories based on selected category
+  const subcategories = useMemo(() => {
+    if (!form.category || !categories.length) return [];
+    const selectedCategory = categories.find(
+      (cat: any) => cat.name === form.category
+    );
+    return selectedCategory?.subcategories?.map((sub: any) => sub.name) ?? [];
+  }, [form.category, categories]);
+
+  // Get subcategories for a specific item
+  const getItemSubcategories = (itemCategory: string) => {
+    if (!itemCategory || !categories.length) return [];
+    const selectedCategory = categories.find(
+      (cat: any) => cat.name === itemCategory
+    );
+    return selectedCategory?.subcategories?.map((sub: any) => sub.name) ?? [];
+  };
+
+  const currencies = DEFAULT_CURRENCIES;
+
   const updateField = (key: keyof RFQForm, value: string | boolean) => {
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm(prev => {
+      const updated = { ...prev, [key]: value };
+      if (key === 'category') {
+        updated.subcategory = '';
+      }
+      return updated;
+    });
   };
 
   const updateItem = (index: number, field: keyof LineItem, value: string) => {
     setForm(prev => {
       const items = [...prev.items];
       items[index] = { ...items[index], [field]: value };
+      // Reset subcategory when category changes for item
+      if (field === 'category') {
+        items[index].subcategory = '';
+      }
       const first = items[0] || emptyItem;
       return {
         ...prev,
@@ -186,7 +307,7 @@ function RFQCreateScreen() {
         deliveryPort: form.deliveryPort.trim() || undefined,
         deliveryTimeline: form.deliveryTimeline || 'flexible',
         incoterms: form.incoterms || 'FOB',
-        visibility: form.visibility,
+        visibility: 'public',
         isVerifiedSuppliersOnly: form.isVerifiedSuppliersOnly,
         items: form.items.filter(i => i.name.trim()),
         rfqType: form.items.length > 1 ? 'multi_product' : 'custom',
@@ -250,18 +371,24 @@ function RFQCreateScreen() {
           <Text style={styles.sectionTitle}>RFQ details</Text>
           <View style={styles.card}>
             <InputField label="RFQ Title" value={form.title} onChangeText={v => updateField('title', v)} placeholder="Stainless steel bottles with logo" required icon="file-document" />
-            <InputField label="Category" value={form.category} onChangeText={v => updateField('category', v)} placeholder="Kitchenware" required icon="layers" />
-            <InputField label="Subcategory" value={form.subcategory} onChangeText={v => updateField('subcategory', v)} placeholder="Drinkware" icon="layers" />
-
-            <Text style={styles.fieldLabel}>Visibility</Text>
-            <View style={styles.chipRow}>
-              {['public', 'private'].map(v => (
-                <Pressable key={v} onPress={() => updateField('visibility', v)} style={[styles.chip, form.visibility === v && styles.chipActive]}>
-                  <Icon name={v === 'public' ? 'earth' : 'lock'} size={14} color={form.visibility === v ? '#FFF' : P.textSecondary} />
-                  <Text style={[styles.chipText, form.visibility === v && styles.chipTextActive]}>{v === 'public' ? 'Public' : 'Private'}</Text>
-                </Pressable>
-              ))}
-            </View>
+            
+            <Dropdown
+              label="Category"
+              value={form.category}
+              options={categoryNames}
+              onSelect={v => updateField('category', v)}
+              required
+              icon="layers"
+              loading={categoriesLoading}
+            />
+            
+            <Dropdown
+              label="Subcategory"
+              value={form.subcategory}
+              options={subcategories}
+              onSelect={v => updateField('subcategory', v)}
+              icon="layers"
+            />
 
             <InputField label="Specifications & Requirements" value={form.description} onChangeText={v => updateField('description', v)} multiline placeholder="Material, grade, dimensions, color, packaging..." required icon="package-variant" />
             <InputField label="Detailed Specifications" value={form.specifications} onChangeText={v => updateField('specifications', v)} multiline placeholder="Technical specs, tolerances, quality standards..." icon="file-document" />
@@ -293,8 +420,23 @@ function RFQCreateScreen() {
               </View>
               <InputField label="Product Name" value={item.name} onChangeText={v => updateItem(index, 'name', v)} placeholder="Product name" />
               <View style={styles.row}>
-                <View style={styles.half}><InputField label="Category" value={item.category} onChangeText={v => updateItem(index, 'category', v)} placeholder="Category" /></View>
-                <View style={styles.half}><InputField label="Subcategory" value={item.subcategory} onChangeText={v => updateItem(index, 'subcategory', v)} placeholder="Subcategory" /></View>
+                <View style={styles.half}>
+                  <Dropdown
+                    label="Category"
+                    value={item.category}
+                    options={categoryNames}
+                    onSelect={v => updateItem(index, 'category', v)}
+                    loading={categoriesLoading}
+                  />
+                </View>
+                <View style={styles.half}>
+                  <Dropdown
+                    label="Subcategory"
+                    value={item.subcategory}
+                    options={getItemSubcategories(item.category)}
+                    onSelect={v => updateItem(index, 'subcategory', v)}
+                  />
+                </View>
               </View>
               <View style={styles.row}>
                 <View style={styles.half}><InputField label="Quantity" value={item.quantity} onChangeText={v => updateItem(index, 'quantity', v)} keyboardType="numeric" placeholder="1" /></View>
@@ -322,14 +464,13 @@ function RFQCreateScreen() {
             </View>
             <View style={styles.row}>
               <View style={styles.half}>
-                <Text style={styles.fieldLabel}>Currency</Text>
-                <View style={styles.chipRow}>
-                  {CURRENCIES.slice(0, 3).map(c => (
-                    <Pressable key={c} onPress={() => updateField('currency', c)} style={[styles.chip, form.currency === c && styles.chipActive]}>
-                      <Text style={[styles.chipText, form.currency === c && styles.chipTextActive]}>{c}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <Dropdown
+                  label="Currency"
+                  value={form.currency}
+                  options={currencies}
+                  onSelect={v => updateField('currency', v)}
+                  icon="currency-inr"
+                />
               </View>
               <View style={styles.half}><InputField label="Target Price/Unit" value={form.targetPrice} onChangeText={v => updateField('targetPrice', v)} keyboardType="numeric" /></View>
             </View>
@@ -440,6 +581,78 @@ const styles = StyleSheet.create({
   requiredStar: { color: P.danger },
   fieldInput: { backgroundColor: P.inputBg, borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 13, fontWeight: '500', color: P.text, borderWidth: 1, borderColor: P.border },
   fieldTextarea: { height: 80, paddingTop: 12, textAlignVertical: 'top' },
+
+  // Dropdown
+  dropdown: {
+    backgroundColor: P.inputBg,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 44,
+    borderWidth: 1,
+    borderColor: P.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dropdownText: { fontSize: 13, fontWeight: '500', color: P.text, flex: 1 },
+  dropdownPlaceholder: { color: P.muted },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: P.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: P.text },
+  modalOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: P.border,
+  },
+  modalOptionActive: { backgroundColor: P.primaryLight },
+  modalOptionText: { fontSize: 14, fontWeight: '500', color: P.text },
+  modalOptionTextActive: { color: P.primary, fontWeight: '600' },
+
+  // States
+  loadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: P.muted,
+    marginTop: 8,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: P.muted,
+    marginTop: 8,
+  },
 
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },

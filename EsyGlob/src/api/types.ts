@@ -671,3 +671,21 @@ export type CheckoutQuoteResponse = {
     }>;
   };
 };
+
+
+export interface AddressBookItem {
+  _id?: string;
+  fullName: string;
+  companyName?: string;
+  phone: string;
+  country: string;
+  state: string;
+  city: string;
+  postalCode: string;
+  address: string;
+  landmark?: string;
+  isDefault: boolean;
+  userId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
