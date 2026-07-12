@@ -147,13 +147,16 @@ class AIChatController {
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       });
+      res.flushHeaders?.();
 
       const sendSSE = (event) => {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       };
 
       sendSSE({ type: 'start', chatId: String(chat._id) });
+      sendSSE({ type: 'typing' });
 
       try {
         // Build platform context
@@ -175,8 +178,6 @@ class AIChatController {
 
         // Try AI if not simple greeting
         if (!isSimpleGreeting && smartResponse.shouldUseAI !== false) {
-          sendSSE({ type: 'typing' });
-
           try {
             if (OLLAMA_ENABLED) {
               const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
@@ -184,6 +185,7 @@ class AIChatController {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   model: OLLAMA_MODEL,
+                  keep_alive: '30m',
                   messages: [{ role: 'user', content: message }],
                   stream: true,
                   options: {

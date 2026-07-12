@@ -92,14 +92,18 @@ export async function postAIChat(input: AIStreamInput) {
 }
 
 export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record<string, unknown>) => void) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
   const response = await fetch(buildApiUrl('/ai-chat/stream'), {
     method: 'POST',
     headers: getApiHeaders({ Accept: 'text/event-stream', 'Content-Type': 'application/json' }),
     credentials: 'include',
     body: JSON.stringify(input),
+    signal: controller.signal,
   });
 
   if (!response.ok) {
+    clearTimeout(timeout);
     throw new ApiError(`AI stream failed with status ${response.status}`, response.status);
   }
 
@@ -110,6 +114,7 @@ export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record
     const fallback = await postAIChat(input);
     onEvent({ type: 'token', content: fallback.response?.message ?? '' });
     onEvent({ type: 'done', chatId: fallback.chat?._id ?? fallback.chat?.id, provider: fallback.response?.provider, model: fallback.response?.model });
+    clearTimeout(timeout);
     return;
   }
 
@@ -142,6 +147,7 @@ export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record
       });
     });
   }
+  clearTimeout(timeout);
 }
 
 export async function fetchAIProviderStatus() {

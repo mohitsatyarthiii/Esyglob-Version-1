@@ -489,7 +489,7 @@ function AccountScreen() {
         <View style={styles.secCard}>
           <Pressable onPress={() => nav.navigate('ProfileSettings')} style={styles.actRow}><Icon name="cog-outline" size={16} color={P.primary} /><Text style={styles.actText}>Settings</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
           <Pressable onPress={() => nav.navigate('Security')} style={styles.actRow}><Icon name="shield-lock-outline" size={16} color={P.emerald} /><Text style={styles.actText}>Security & Privacy</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
-          <Pressable onPress={() => nav.navigate('Services')} style={[styles.actRow, { borderBottomWidth: 0 }]}><Icon name="lifebuoy" size={16} color={P.red} /><Text style={styles.actText}>Help & Support</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
+          <Pressable onPress={() => nav.navigate('HelpSupport')} style={[styles.actRow, { borderBottomWidth: 0 }]}><Icon name="lifebuoy" size={16} color={P.red} /><Text style={styles.actText}>Help & Support</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
         </View>
 
         {/* Logout */}

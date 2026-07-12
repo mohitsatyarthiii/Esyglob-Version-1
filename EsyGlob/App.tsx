@@ -48,11 +48,13 @@ import { RealtimeProvider } from './src/realtime';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import CurrencyProvider from './src/currency/CurrencyContext';
 import LocationScreen from './src/screens/LocationScreen';
+import HelpSupportScreen from './src/screens/HelpSupportScreen';
 
 export type RootStackParamList = {
   MainTabs: undefined;
   Auth: { initialMode?: 'login' | 'signup' | 'forgot' } | undefined;
   AIChat: undefined;
+  HelpSupport: undefined;
   MarketInsights: undefined;
   Addresses: undefined;
   Notifications: undefined;
@@ -173,6 +175,7 @@ function App() {
               <Stack.Screen name="MainTabs" component={AppTabs} />
               <Stack.Screen name="Auth" component={AuthScreen} />
               <Stack.Screen name="AIChat" component={AIChatScreen} />
+              <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
               <Stack.Screen name="MarketInsights" component={MarketInsightsScreen} />
               <Stack.Screen name="Addresses" component={AddressesScreen} />
               <Stack.Screen name="Notifications" component={NotificationCenterScreen} />

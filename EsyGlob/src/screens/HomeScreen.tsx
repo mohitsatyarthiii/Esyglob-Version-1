@@ -37,6 +37,7 @@ import { EmptyState, LoadingState } from '../components/StateViews';
 import { spacing } from '../theme';
 import { getId, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
+import { streamAIChat } from '../api/ai';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -116,7 +117,7 @@ export function setAIChatToken(token: string) {
 
 // ─── AI Streaming ───────────────────────────────────────────────────────────
 
-async function* streamAIResponse(message: string, chatId?: string): AsyncGenerator<SSEChunk> {
+export async function* streamAIResponse(message: string, chatId?: string): AsyncGenerator<SSEChunk> {
   const xhr = new XMLHttpRequest();
   let lastIndex = 0;
   let buffer = '';
@@ -186,7 +187,7 @@ function HomeScreen() {
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
 
-  const [activeTab, setActiveTab] = useState<HomeTab>('AI');
+  const [activeTab, setActiveTab] = useState<HomeTab>('Products');
   const [showSearch, setShowSearch] = useState(false);
   const tabPosition = useRef(new Animated.Value(0)).current;
   const [tabWidths, setTabWidths] = useState<number[]>([]);
@@ -277,14 +278,11 @@ function HomeScreen() {
     let full = '';
 
     try {
-      for await (const chunk of streamAIResponse(trimmed, chatId)) {
-        if (chunk.type === 'error') { full = chunk.message ?? 'Error.'; break; }
-        if (chunk.type === 'token') {
-          full += chunk.content;
-          setMessages(prev => { const u = [...prev]; const l = u[u.length - 1]; if (l?.isStreaming) u[u.length - 1] = { ...l, content: full }; return u; });
-        }
-        if (chunk.type === 'done' && chunk.chatId) setChatId(chunk.chatId);
-      }
+      await streamAIChat({ message: trimmed, displayMessage: trimmed, chatId, role: 'buyer', conversationType: 'assistant', context: { feature: 'Home AI', sourcePath: '/mobile/home/ai' } }, chunk => {
+        if (chunk.type === 'token') { full += String(chunk.content ?? ''); setMessages(prev => { const u = [...prev]; const l = u[u.length - 1]; if (l?.isStreaming) u[u.length - 1] = { ...l, content: full }; return u; }); }
+        if ((chunk.type === 'start' || chunk.type === 'done') && typeof chunk.chatId === 'string') setChatId(chunk.chatId);
+        if (chunk.type === 'error') full = String(chunk.message ?? 'AI response failed.');
+      });
     } catch (e: any) { full = `❌ ${e.message}`; }
 
     setMessages(prev => { const u = [...prev]; const l = u[u.length - 1]; if (l?.isStreaming) u[u.length - 1] = { ...l, content: full || 'No response.', isStreaming: false }; return u; });
