@@ -81,6 +81,17 @@ type QuoteData = {
   automatedServices?: Array<{ key: string; label: string; status: string; amount: number }>;
 };
 
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const CHARGE_LABELS: Record<string, string> = {
+  logistics: 'Logistics',
+  insurance: 'Insurance',
+  warehousing: 'Warehousing',
+  taxation: 'Taxes & Duties',
+  handling: 'Safety & Handling',
+  documentation: 'Documentation',
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function resolveQuotationProductId(quotation: any): string | undefined {
@@ -230,7 +241,7 @@ function OrderCheckoutScreen() {
           name: 'EsyGlob',
           description: `Payment for ${payment.orderNumber ?? 'order'}`,
           order_id: payment.razorpayOrderId,
-          theme: { color: '#FF6B35' },
+          theme: { color: '#2563EB' },
         });
         await verifyOrderPayment({
           paymentId: payment.paymentId,
@@ -289,12 +300,12 @@ function OrderCheckoutScreen() {
         {/* Not Eligible */}
         {!isEligible && (
           <View style={styles.warning}>
-            <Icon name="lock-alert-outline" size={16} color="#EF4444" />
+            <Icon name="alert-circle-outline" size={16} color="#EF4444" />
             <Text style={styles.warningText}>Order not available for this product.</Text>
           </View>
         )}
 
-        {/* Product Info - Enhanced */}
+        {/* Product Card */}
         <View style={styles.productCard}>
           <View style={styles.productHeader}>
             {productData?.image && (
@@ -313,55 +324,60 @@ function OrderCheckoutScreen() {
             </View>
           </View>
           {productData?.description && (
-            <Text style={styles.productDescription} numberOfLines={3}>
+            <Text style={styles.productDescription} numberOfLines={2}>
               {productData.description}
             </Text>
           )}
-          {productData?.specifications && (
-            <View style={styles.specs}>
-              {Object.entries(productData.specifications).slice(0, 3).map(([key, value]) => (
-                <View key={key} style={styles.specItem}>
-                  <Text style={styles.specLabel}>{key}</Text>
-                  <Text style={styles.specValue}>{String(value)}</Text>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
 
-        {/* Order Form */}
+        {/* Delivery Details */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Delivery Details</Text>
-          <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
           <Field label="Full Name *" value={fullName} onChangeText={setFullName} />
           <Field label="Company" value={company} onChangeText={setCompany} />
           <Field label="Email *" value={email} onChangeText={setEmail} keyboardType="email-address" />
           <Field label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-          <Field label="Street Address *" value={address} onChangeText={setAddress} multiline />
-          <ChoiceField label="Country *" value={country} options={['India', 'United States', 'United Kingdom', 'UAE', 'China', 'Singapore']} onChange={setCountry} />
-          <Field label="City *" value={city} onChangeText={setCity} />
-          <Field label="State / Province *" value={state} onChangeText={setState} />
-          <Field label="Postal Code *" value={postalCode} onChangeText={setPostalCode} />
+          <Field label="Address *" value={address} onChangeText={setAddress} multiline />
+          <View style={styles.row}>
+            <View style={styles.flex1}>
+              <Field label="City *" value={city} onChangeText={setCity} />
+            </View>
+            <View style={styles.flex1}>
+              <Field label="State *" value={state} onChangeText={setState} />
+            </View>
+          </View>
+          <View style={styles.row}>
+            <View style={styles.flex1}>
+              <Field label="Postal Code *" value={postalCode} onChangeText={setPostalCode} />
+            </View>
+            <View style={styles.flex1}>
+              <ChoiceField label="Country *" value={country} options={['India', 'USA', 'UK', 'UAE', 'China', 'Singapore']} onChange={setCountry} />
+            </View>
+          </View>
           
+          <View style={styles.divider} />
+          
+          <Text style={styles.sectionTitle}>Order Settings</Text>
+          <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
           <ChoiceField label="Payment Method" value={paymentMethod} options={['credit_card', 'bank_transfer', 'escrow', 'letter_of_credit']} onChange={setPaymentMethod} />
           <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'CIF', 'FOB', 'EXW']} onChange={setIncoterm} />
-          <Field label="Notes" value={notes} onChangeText={setNotes} multiline />
+          <Field label="Notes (Optional)" value={notes} onChangeText={setNotes} multiline />
 
           <Pressable onPress={() => setTermsAccepted(v => !v)} style={styles.checkboxRow}>
-            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={18} color={termsAccepted ? '#FF6B35' : '#9CA3AF'} />
+            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={18} color={termsAccepted ? '#2563EB' : '#9CA3AF'} />
             <Text style={styles.checkboxText}>I accept the order & payment terms</Text>
           </Pressable>
         </View>
 
-        {/* Quote */}
+        {/* Quote Summary */}
         {quoteInput && (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Quote Summary</Text>
 
             {quote.isLoading && (
               <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color="#FF6B35" />
-                <Text style={styles.loadingText}>Calculating...</Text>
+                <ActivityIndicator size="small" color="#2563EB" />
+                <Text style={styles.loadingText}>Calculating quote...</Text>
               </View>
             )}
 
@@ -374,10 +390,10 @@ function OrderCheckoutScreen() {
                 {/* Price Breakdown */}
                 <View style={styles.breakdownList}>
                   <BreakdownRow label="Product Total" value={formatINR(quoteData.productTotal ?? 0)} />
-                  <BreakdownRow label="Logistics" value={formatINR(quoteData.logisticsCharges ?? 0)} />
+                  <BreakdownRow label="Shipping" value={formatINR(quoteData.logisticsCharges ?? 0)} />
                   {quoteData.platformFee ? (
                     <BreakdownRow
-                      label={`Payment Processing Fee (${((quoteData.platformFeeRate ?? 0) * 100).toFixed(1)}%)`}
+                      label="Payment Processing Fee"
                       value={formatINR(quoteData.platformFee)}
                     />
                   ) : null}
@@ -390,14 +406,15 @@ function OrderCheckoutScreen() {
                   {quoteData.discount ? (
                     <BreakdownRow label="Discount" value={`-${formatINR(quoteData.discount)}`} isDiscount />
                   ) : null}
-                  <View style={styles.divider} />
+                  <View style={styles.totalDivider} />
                   <BreakdownRow label="Grand Total" value={formatINR(quoteData.grandTotal ?? quoteData.totalAmount ?? 0)} isBold />
                 </View>
 
-                {/* Logistics Options */}
+                {/* Shipping Methods */}
                 {logisticsOptions.length > 0 && (
-                  <View style={styles.logisticsSection}>
-                    <Text style={styles.logisticsSectionTitle}>Shipping Method</Text>
+                  <View style={styles.shippingSection}>
+                    <Text style={styles.shippingSectionTitle}>Shipping Method</Text>
+                    
                     {logisticsOptions.map((option: LogisticsOption, index: number) => {
                       const key = getOptionKey(option, index);
                       const isActive = logisticsOption === key;
@@ -408,109 +425,61 @@ function OrderCheckoutScreen() {
                         <Pressable
                           key={key}
                           onPress={() => setLogisticsOption(key)}
-                          style={[styles.logisticsCard, isActive && styles.logisticsCardActive]}>
-                          {/* Top Row */}
-                          <View style={styles.logisticsTopRow}>
-                            <View style={styles.logisticsTopLeft}>
-                              <Text style={[styles.logisticsName, isActive && styles.logisticsNameActive]}>
+                          style={[styles.shippingCard, isActive && styles.shippingCardActive]}>
+                          
+                          {/* Header */}
+                          <View style={styles.shippingHeader}>
+                            <View style={styles.shippingInfo}>
+                              <Text style={[styles.shippingName, isActive && styles.shippingNameActive]}>
                                 {getOptionLabel(option)}
                               </Text>
-                              {option.incoterm && (
-                                <View style={styles.incotermBadge}>
-                                  <Text style={styles.incotermText}>{option.incoterm}</Text>
+                              <View style={styles.tags}>
+                                <View style={styles.tag}>
+                                  <Text style={styles.tagText}>{option.incoterm}</Text>
                                 </View>
-                              )}
+                                <View style={styles.tag}>
+                                  <Icon name="clock-outline" size={10} color="#6B7280" />
+                                  <Text style={styles.tagText}>{option.eta}</Text>
+                                </View>
+                              </View>
                             </View>
-                            <View style={styles.logisticsRight}>
-                              <Text style={[styles.logisticsPrice, isActive && styles.logisticsPriceActive]}>
+                            <View style={styles.shippingPriceBlock}>
+                              <Text style={[styles.shippingPrice, isActive && styles.shippingPriceActive]}>
                                 {formatINR(amount)}
                               </Text>
                               <Icon
                                 name={isActive ? 'radiobox-marked' : 'radiobox-blank'}
                                 size={18}
-                                color={isActive ? '#FF6B35' : '#9CA3AF'}
+                                color={isActive ? '#2563EB' : '#D1D5DB'}
                               />
                             </View>
                           </View>
 
-                          {/* Shipping Details */}
-                          <View style={styles.shippingDetails}>
-                            {option.estimatedDelivery && (
-                              <View style={styles.shippingDetail}>
-                                <Icon name="truck-delivery-outline" size={12} color="#6B7280" />
-                                <View>
-                                  <Text style={styles.shippingDetailLabel}>Delivery</Text>
-                                  <Text style={styles.shippingDetailValue}>{option.estimatedDelivery}</Text>
-                                </View>
+                          {/* Charges Grid - B2B Style */}
+                          {isActive && Object.keys(breakdown).length > 0 && (
+                            <View style={styles.chargesGrid}>
+                              <Text style={styles.chargesTitle}>Cost Breakdown</Text>
+                              <View style={styles.chargesList}>
+                                {Object.entries(breakdown).map(([costKey, costValue]) => (
+                                  <View key={costKey} style={styles.chargeItem}>
+                                    <Text style={styles.chargeLabel}>
+                                      {CHARGE_LABELS[costKey] || costKey}
+                                    </Text>
+                                    <Text style={styles.chargeValue}>
+                                      {formatINR(Number(costValue))}
+                                    </Text>
+                                  </View>
+                                ))}
                               </View>
-                            )}
-                            {option.insuranceAmount != null && option.insuranceAmount > 0 && (
-                              <View style={styles.shippingDetail}>
-                                <Icon name="shield-check-outline" size={12} color="#6B7280" />
-                                <View>
-                                  <Text style={styles.shippingDetailLabel}>Insurance</Text>
-                                  <Text style={styles.shippingDetailValue}>{formatINR(option.insuranceAmount)}</Text>
-                                </View>
+                              <View style={styles.chargeTotal}>
+                                <Text style={styles.chargeTotalLabel}>Total</Text>
+                                <Text style={styles.chargeTotalValue}>{formatINR(amount)}</Text>
                               </View>
-                            )}
-                            {(option.warehousingCharges != null && option.warehousingCharges > 0) && (
-                              <View style={styles.shippingDetail}>
-                                <Icon name="warehouse" size={12} color="#6B7280" />
-                                <View>
-                                  <Text style={styles.shippingDetailLabel}>Warehousing</Text>
-                                  <Text style={styles.shippingDetailValue}>{formatINR(option.warehousingCharges)}</Text>
-                                </View>
-                              </View>
-                            )}
-                          </View>
-
-                          {/* Complete Logistics Breakdown - Shows when active */}
-                          {isActive && (
-                            <View style={styles.costBreakdown}>
-                              <Text style={styles.costBreakdownTitle}>Logistics Breakdown</Text>
-                              
-                              {/* Show all logistics items from internal breakdown */}
-                              {Object.entries(breakdown).map(([costKey, costValue]) => (
-                                <View key={costKey} style={styles.costRow}>
-                                  <Text style={styles.costLabel}>
-                                    {costKey.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase())}
-                                  </Text>
-                                  <Text style={styles.costValue}>{formatINR(costValue)}</Text>
-                                </View>
-                              ))}
-                              
-                              {/* Show all additional charges */}
-                              {option.handlingCharges != null && option.handlingCharges > 0 && (
-                                <View style={styles.costRow}>
-                                  <Text style={styles.costLabel}>Handling</Text>
-                                  <Text style={styles.costValue}>{formatINR(option.handlingCharges)}</Text>
-                                </View>
-                              )}
-                              {option.documentationCharges != null && option.documentationCharges > 0 && (
-                                <View style={styles.costRow}>
-                                  <Text style={styles.costLabel}>Documentation</Text>
-                                  <Text style={styles.costValue}>{formatINR(option.documentationCharges)}</Text>
-                                </View>
-                              )}
-                              {option.customsCharges != null && option.customsCharges > 0 && (
-                                <View style={styles.costRow}>
-                                  <Text style={styles.costLabel}>Customs</Text>
-                                  <Text style={styles.costValue}>{formatINR(option.customsCharges)}</Text>
-                                </View>
-                              )}
-                              {option.variableCharges != null && option.variableCharges > 0 && (
-                                <View style={styles.costRow}>
-                                  <Text style={styles.costLabel}>Variable Charges</Text>
-                                  <Text style={styles.costValue}>{formatINR(option.variableCharges)}</Text>
-                                </View>
-                              )}
                             </View>
                           )}
 
                           {option.providerLabel && (
-                            <Text style={styles.providerLabel}>
-                              via {option.providerLabel}
-                            </Text>
+                            <Text style={styles.providerText}>{option.providerLabel}</Text>
                           )}
                         </Pressable>
                       );
@@ -531,8 +500,8 @@ function OrderCheckoutScreen() {
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <>
-              <Icon name="credit-card-check-outline" size={18} color="#fff" />
-              <Text style={styles.orderBtnText}>Place Order & Pay</Text>
+              <Icon name="shield-check-outline" size={18} color="#fff" />
+              <Text style={styles.orderBtnText}>Confirm & Pay Securely</Text>
             </>
           )}
         </Pressable>
@@ -543,7 +512,7 @@ function OrderCheckoutScreen() {
   );
 }
 
-// ─── Field Component ────────────────────────────────────────────────────────
+// ─── Field Components ───────────────────────────────────────────────────────
 
 function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
   return (
@@ -561,15 +530,15 @@ function ChoiceField({ label, value, options, onChange }: { label: string; value
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow}>
         {options.map(option => (
           <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, value === option && styles.choiceActive]}>
-            <Text style={[styles.choiceText, value === option && styles.choiceTextActive]}>{option.replace(/_/g, ' ')}</Text>
+            <Text style={[styles.choiceText, value === option && styles.choiceTextActive]}>
+              {option.replace(/_/g, ' ')}
+            </Text>
           </Pressable>
         ))}
       </ScrollView>
     </View>
   );
 }
-
-// ─── Breakdown Row ──────────────────────────────────────────────────────────
 
 function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; value: string; isBold?: boolean; isDiscount?: boolean }) {
   return (
@@ -585,71 +554,51 @@ function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; val
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  choiceRow: { gap: spacing.sm, paddingVertical: 2 },
-  choice: { 
-    borderWidth: 1, 
-    borderColor: '#D1D5DB', 
-    borderRadius: radii.sm, 
-    paddingHorizontal: spacing.sm, 
-    paddingVertical: spacing.xs, 
-    backgroundColor: '#F9FAFB' 
-  },
-  choiceActive: { 
-    borderColor: '#FF6B35', 
-    backgroundColor: '#FFF7ED' 
-  },
-  choiceText: { 
-    color: '#6B7280', 
-    fontSize: 11, 
-    textTransform: 'capitalize',
-    fontWeight: '500'
-  },
-  choiceTextActive: { 
-    color: '#FF6B35', 
-    fontWeight: '600' 
-  },
-  bottomSpacer: { height: 40 },
+  // Layout
   screen: { flex: 1, backgroundColor: '#F3F4F6' },
+  content: { padding: 12 },
+  bottomSpacer: { height: 40 },
+  row: { flexDirection: 'row', gap: 12 },
+  flex1: { flex: 1 },
+
+  // Header
   header: {
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: '#FFFFFF',
-    borderBottomWidth: StyleSheet.hairlineWidth, 
+    borderBottomWidth: 1, 
     borderBottomColor: '#E5E7EB',
-    paddingTop: spacing.xxl, 
-    paddingBottom: spacing.sm, 
-    paddingHorizontal: spacing.md,
+    paddingTop: 48, 
+    paddingBottom: 12, 
+    paddingHorizontal: 16,
   },
   iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { 
     flex: 1, 
-    fontSize: 15, 
+    fontSize: 16, 
     fontWeight: '600', 
     color: '#111827', 
-    textAlign: 'center' 
+    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  content: { padding: spacing.md },
 
-  // Product Card - Enhanced
+  // Product Card
   productCard: {
     backgroundColor: '#FFFFFF', 
-    borderRadius: radii.md, 
-    padding: spacing.md,
-    marginBottom: spacing.md, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, 
-    shadowRadius: 3, 
-    elevation: 2,
+    borderRadius: 10, 
+    padding: 14,
+    marginBottom: 10, 
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   productHeader: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: 12,
   },
   productImage: {
-    width: 80,
-    height: 80,
-    borderRadius: radii.sm,
+    width: 72,
+    height: 72,
+    borderRadius: 8,
     backgroundColor: '#F3F4F6',
   },
   productInfo: {
@@ -667,284 +616,297 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#6B7280',
     fontWeight: '500',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   productPrice: { 
-    fontSize: 18, 
+    fontSize: 20, 
     fontWeight: '700', 
-    color: '#FF6B35',
+    color: '#2563EB',
   },
   productDescription: {
     fontSize: 12,
-    color: '#4B5563',
+    color: '#6B7280',
     lineHeight: 16,
-    marginTop: spacing.sm,
-  },
-  specs: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
-  },
-  specItem: {
-    flex: 1,
-  },
-  specLabel: {
-    fontSize: 10,
-    color: '#9CA3AF',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-  },
-  specValue: {
-    fontSize: 11,
-    color: '#374151',
-    fontWeight: '600',
-    marginTop: 1,
   },
 
   // Cards
   card: {
     backgroundColor: '#FFFFFF', 
-    borderRadius: radii.md, 
-    padding: spacing.md,
-    marginBottom: spacing.md, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, 
-    shadowRadius: 3, 
-    elevation: 2,
+    borderRadius: 10, 
+    padding: 14,
+    marginBottom: 10, 
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   sectionTitle: { 
     fontSize: 13, 
     fontWeight: '600', 
     color: '#111827', 
-    marginBottom: spacing.sm 
+    marginBottom: 12,
+    letterSpacing: -0.2,
   },
 
   // Fields
-  field: { marginBottom: spacing.sm },
+  field: { marginBottom: 10 },
   label: { 
-    fontSize: 10, 
+    fontSize: 11, 
     fontWeight: '600', 
-    color: '#6B7280', 
-    textTransform: 'uppercase', 
-    letterSpacing: 0.5, 
-    marginBottom: 3 
+    color: '#374151', 
+    marginBottom: 4,
   },
   input: {
     backgroundColor: '#F9FAFB', 
-    borderRadius: radii.sm, 
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm, 
+    borderRadius: 8, 
+    paddingHorizontal: 12,
+    paddingVertical: 10, 
     fontSize: 13, 
     fontWeight: '500', 
     color: '#111827', 
-    minHeight: 40,
+    minHeight: 42,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+  },
+  choiceRow: { gap: 6, paddingVertical: 2 },
+  choice: { 
+    borderWidth: 1, 
+    borderColor: '#D1D5DB', 
+    borderRadius: 6, 
+    paddingHorizontal: 10, 
+    paddingVertical: 6, 
+    backgroundColor: '#F9FAFB',
+  },
+  choiceActive: { 
+    borderColor: '#2563EB', 
+    backgroundColor: '#EFF6FF',
+  },
+  choiceText: { 
+    color: '#6B7280', 
+    fontSize: 11, 
+    textTransform: 'capitalize',
+    fontWeight: '500',
+  },
+  choiceTextActive: { 
+    color: '#2563EB', 
+    fontWeight: '600',
   },
   checkboxRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: spacing.sm, 
-    marginTop: spacing.xs 
+    gap: 8, 
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
   },
   checkboxText: { 
     flex: 1, 
     fontSize: 12, 
     fontWeight: '500', 
-    color: '#4B5563' 
+    color: '#374151',
   },
 
   // Warning
   warning: {
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: spacing.sm, 
+    gap: 8, 
     backgroundColor: '#FEF2F2',
-    borderRadius: radii.sm, 
-    padding: spacing.sm, 
-    marginBottom: spacing.md, 
+    borderRadius: 8, 
+    padding: 10, 
+    marginBottom: 10, 
     borderWidth: 1, 
     borderColor: '#FECACA',
   },
   warningText: { 
     flex: 1, 
-    fontSize: 11, 
+    fontSize: 12, 
     fontWeight: '500', 
-    color: '#DC2626' 
+    color: '#DC2626',
   },
 
   // Loading
   loadingRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: spacing.sm, 
-    paddingVertical: spacing.sm 
+    gap: 8, 
+    paddingVertical: 12,
   },
   loadingText: { fontSize: 12, color: '#6B7280' },
   errorText: { 
     fontSize: 12, 
     color: '#EF4444', 
-    fontWeight: '600', 
-    paddingVertical: spacing.sm 
+    fontWeight: '500', 
+    paddingVertical: 8,
   },
 
   // Breakdown
-  breakdownList: { marginBottom: spacing.sm },
+  breakdownList: { marginBottom: 14 },
   breakdownRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    paddingVertical: 4 
+    paddingVertical: 5,
   },
   breakdownLabel: { 
     fontSize: 12, 
     color: '#4B5563', 
-    fontWeight: '500' 
+    fontWeight: '500',
   },
   breakdownValue: { 
     fontSize: 12, 
-    color: '#374151', 
-    fontWeight: '600' 
+    color: '#111827', 
+    fontWeight: '600',
   },
   breakdownBold: { 
     fontSize: 14, 
     fontWeight: '700', 
-    color: '#111827' 
+    color: '#111827',
   },
   discountText: { color: '#059669' },
   divider: { 
     height: 1, 
     backgroundColor: '#E5E7EB', 
-    marginVertical: 6 
+    marginVertical: 10,
+  },
+  totalDivider: { 
+    height: 1, 
+    backgroundColor: '#D1D5DB', 
+    marginVertical: 8,
   },
 
-  // Logistics
-  logisticsSection: { marginTop: spacing.sm },
-  logisticsSectionTitle: { 
+  // Shipping Section
+  shippingSection: { marginTop: 14 },
+  shippingSectionTitle: { 
     fontSize: 12, 
     fontWeight: '600', 
     color: '#374151', 
-    marginBottom: spacing.xs 
+    marginBottom: 8,
   },
-  logisticsCard: {
+  shippingCard: {
     borderWidth: 1, 
     borderColor: '#E5E7EB', 
-    borderRadius: radii.sm,
-    padding: spacing.sm, 
-    marginBottom: spacing.xs, 
-    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 12, 
+    marginBottom: 8, 
+    backgroundColor: '#FFFFFF',
   },
-  logisticsCardActive: { 
-    backgroundColor: '#FFF7ED', 
-    borderColor: '#FF6B35' 
+  shippingCardActive: { 
+    backgroundColor: '#EFF6FF', 
+    borderColor: '#2563EB',
+    borderWidth: 1.5,
   },
-  logisticsTopRow: { 
+  shippingHeader: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
-    alignItems: 'center' 
+    alignItems: 'flex-start',
   },
-  logisticsTopLeft: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: spacing.xs, 
-    flex: 1 
-  },
-  logisticsName: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: '#111827' 
-  },
-  logisticsNameActive: { color: '#FF6B35' },
-  incotermBadge: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-  },
-  incotermText: { 
-    fontSize: 9, 
-    fontWeight: '600', 
-    color: '#3B82F6' 
-  },
-  logisticsRight: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: spacing.xs 
-  },
-  logisticsPrice: { 
-    fontSize: 13, 
-    fontWeight: '600', 
-    color: '#374151' 
-  },
-  logisticsPriceActive: { color: '#FF6B35' },
-
-  // Shipping Details
-  shippingDetails: { 
-    flexDirection: 'row', 
-    gap: spacing.sm, 
-    marginTop: spacing.sm, 
-    flexWrap: 'wrap' 
-  },
-  shippingDetail: { 
-    flexDirection: 'row', 
-    alignItems: 'flex-start', 
-    gap: spacing.xs, 
+  shippingInfo: { 
     flex: 1, 
-    minWidth: 80 
+    marginRight: 12,
   },
-  shippingDetailLabel: { 
-    fontSize: 9, 
+  shippingName: { 
+    fontSize: 13, 
     fontWeight: '600', 
-    color: '#9CA3AF', 
-    textTransform: 'uppercase' 
+    color: '#111827',
+    marginBottom: 4,
   },
-  shippingDetailValue: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: '#374151', 
-    marginTop: 1 
+  shippingNameActive: { 
+    color: '#1E40AF',
+  },
+  tags: {
+    flexDirection: 'row',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  tagText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  shippingPriceBlock: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 8,
+  },
+  shippingPrice: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#111827',
+  },
+  shippingPriceActive: { 
+    color: '#1E40AF',
   },
 
-  // Cost Breakdown - Complete logistics breakdown
-  costBreakdown: {
-    marginTop: spacing.sm, 
-    paddingTop: spacing.sm, 
+  // Charges Grid
+  chargesGrid: {
+    marginTop: 10,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-  costBreakdownTitle: { 
+  chargesTitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  chargesList: {
+    gap: 4,
+  },
+  chargeItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  chargeLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#4B5563',
+  },
+  chargeValue: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  chargeTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 6,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  chargeTotalLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  chargeTotalValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  providerText: { 
     fontSize: 10, 
-    fontWeight: '600', 
-    color: '#6B7280', 
-    marginBottom: spacing.xs, 
-    textTransform: 'uppercase' 
-  },
-  costRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    paddingVertical: 3 
-  },
-  costLabel: { 
-    fontSize: 11, 
-    color: '#4B5563', 
-    textTransform: 'capitalize',
-    fontWeight: '500'
-  },
-  costValue: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: '#374151' 
-  },
-
-  // Provider
-  providerLabel: { 
-    fontSize: 9, 
     color: '#9CA3AF', 
-    marginTop: spacing.xs, 
-    fontStyle: 'italic' 
+    marginTop: 8,
+    textAlign: 'right',
   },
 
   // Order Button
@@ -952,21 +914,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: spacing.xs,
-    backgroundColor: '#FF6B35', 
-    borderRadius: radii.pill, 
-    minHeight: 48,
-    shadowColor: '#FF6B35', 
+    gap: 8,
+    backgroundColor: '#2563EB', 
+    borderRadius: 10, 
+    minHeight: 50,
+    shadowColor: '#2563EB', 
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, 
+    shadowOpacity: 0.2, 
     shadowRadius: 8, 
     elevation: 4,
+    marginTop: 4,
   },
-  orderBtnDisabled: { opacity: 0.5 },
+  orderBtnDisabled: { opacity: 0.6 },
   orderBtnText: { 
-    color: '#fff', 
-    fontSize: 14, 
-    fontWeight: '600' 
+    color: '#FFFFFF', 
+    fontSize: 15, 
+    fontWeight: '600',
+    letterSpacing: -0.2,
   },
 });
 

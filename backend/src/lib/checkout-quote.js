@@ -5,7 +5,7 @@ import { getNormalizedLogisticsRates } from '../lib/integrations/logistics.js';
 export const DEFAULT_LOGISTICS_RULES = [
   {
     key: 'esyglob_standard',
-    label: 'Economy',
+    label: 'Esyglob Standard',
     mode: 'standard',
     incoterm: 'CIF',
     eta: '21-35 days',
@@ -23,7 +23,7 @@ export const DEFAULT_LOGISTICS_RULES = [
   },
   {
     key: 'esyglob_premium',
-    label: 'Priority',
+    label: 'Esyglob Premium',
     mode: 'premium',
     incoterm: 'DAP',
     eta: '10-16 days',
@@ -41,7 +41,7 @@ export const DEFAULT_LOGISTICS_RULES = [
   },
   {
     key: 'esyglob_express',
-    label: 'Express',
+    label: 'Esyglob Express',
     mode: 'express',
     incoterm: 'DDP',
     eta: '3-5 days',
