@@ -61,7 +61,7 @@ class AIChatRepository {
     return AIChat.findOneAndUpdate(
       { _id: chatId, userId },
       { $set: { status: 'archived' } },
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 
@@ -99,7 +99,7 @@ class AIChatRepository {
     return AIChat.findOneAndUpdate(
       { _id: chatId, userId },
       updateOps,
-      { new: true }
+      { returnDocument: 'after' }
     );
   }
 

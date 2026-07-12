@@ -143,8 +143,10 @@ class AIChatService {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(Number(process.env.OLLAMA_REQUEST_TIMEOUT_MS || 45000)),
         body: JSON.stringify({
           model: OLLAMA_MODEL,
+          keep_alive: '30m',
           messages: ollamaMessages,
           stream: false,
           options: {
@@ -156,8 +158,7 @@ class AIChatService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Ollama API error ${response.status}: ${errorText}`);
+        throw new Error(`Ollama API returned ${response.status}${response.status === 504 ? ' (gateway timeout)' : ''}`);
       }
 
       const data = await response.json();
