@@ -65,13 +65,19 @@ const P = {
 
 type ChatView = 'all' | 'favorites' | 'archived';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Safe Helpers ──────────────────────────────────────────────────────────
 
-function getUserId(user: CurrentUser): string | undefined {
-  return user?.id ?? user?._id;
+// ✅ FIXED: Safe getUserId with null check
+function getUserId(user: CurrentUser | null | undefined): string | undefined {
+  if (!user) return undefined;
+  return user.id ?? user._id;
 }
 
-function resolveChatParticipant(chat: Chat, currentUserId?: string) {
+// ✅ FIXED: Safe resolveChatParticipant with null check
+function resolveChatParticipant(chat: Chat | null | undefined, currentUserId?: string) {
+  if (!chat) {
+    return { name: 'User', image: undefined };
+  }
   const buyer = typeof chat.buyerId === 'object' ? (chat.buyerId as CurrentUser) : undefined;
   const seller = typeof chat.sellerId === 'object' ? (chat.sellerId as CurrentUser) : undefined;
   const current = currentUserId;
@@ -281,10 +287,16 @@ function MessagesScreen() {
       if (result.chat) {
         const chatId = getId(result.chat);
         if (chatId) {
-          navigation.navigate('ChatDetails', {
-            chatId: chatId,
-            title: result.chat.groupName ?? groupName.trim(),
-          });
+          // ✅ FIXED: Safe navigation with null check
+          try {
+            navigation.navigate('ChatDetails', {
+              chatId: chatId,
+              title: result.chat.groupName ?? groupName.trim(),
+            });
+          } catch (e) {
+            console.error('Navigation error:', e);
+            Alert.alert('Error', 'Unable to open chat.');
+          }
         }
       }
     },
@@ -301,10 +313,13 @@ function MessagesScreen() {
     );
   }, []);
 
+  // ✅ FIXED: Safe user ID with null check
+  const currentUserId = useMemo(() => getUserId(user), [user]);
+
   const chatItems = useMemo(
     () =>
       (chats.data ?? []).filter((item: Chat) => {
-        const participant = resolveChatParticipant(item, user?.id ?? user?._id);
+        const participant = resolveChatParticipant(item, currentUserId);
         const product =
           typeof item.productId === 'object' ? (item.productId as Product) : undefined;
         const haystack = [
@@ -324,7 +339,7 @@ function MessagesScreen() {
           (!query.trim() || haystack.includes(query.trim().toLowerCase()))
         );
       }),
-    [activeRole, chats.data, query, unreadOnly, user],
+    [activeRole, chats.data, query, unreadOnly, currentUserId],
   );
 
   const { pinnedChats, unpinnedChats } = useMemo(() => {
@@ -353,23 +368,30 @@ function MessagesScreen() {
 
   const menuTitle = useMemo(() => {
     if (!menuChat) return 'Conversation';
-    return resolveChatParticipant(menuChat, user?.id ?? user?._id).name;
-  }, [menuChat, user]);
+    return resolveChatParticipant(menuChat, currentUserId).name;
+  }, [menuChat, currentUserId]);
 
   // ─── FIXED: Handle chat navigation with proper error handling ──────────
 
   const handleChatPress = useCallback((chat: Chat) => {
     try {
+      if (!navigation) {
+        Alert.alert('Error', 'Navigation not available');
+        return;
+      }
+
       const chatId = getId(chat);
       if (!chatId) {
         Alert.alert('Error', 'Invalid chat ID. Please try again.');
         return;
       }
 
-      const participant = resolveChatParticipant(chat, user?.id ?? user?._id);
+      const participant = resolveChatParticipant(chat, currentUserId);
       const title = chat.chatType === 'group' 
         ? chat.groupName ?? 'Group chat'
         : participant.name ?? 'Chat';
+
+      console.log('🔄 Navigating to ChatDetails:', { chatId, title });
 
       // Navigate to chat using root navigation
       navigation.navigate('ChatDetails', {
@@ -380,7 +402,9 @@ function MessagesScreen() {
       console.error('Navigation error:', error);
       Alert.alert('Error', 'Unable to open chat. Please try again.');
     }
-  }, [navigation, user]);
+  }, [navigation, currentUserId]);
+
+  // ─── Render ──────────────────────────────────────────────────────────────
 
   if (status !== 'authenticated') {
     return <AuthScreen onClose={() => navigation.navigate('Home')} />;
@@ -416,7 +440,7 @@ function MessagesScreen() {
 
   return (
     <View style={styles.screen}>
-      {/* Enhanced Header */}
+      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           {view === 'archived'
@@ -445,7 +469,7 @@ function MessagesScreen() {
         </View>
       </View>
 
-      {/* Enhanced Search */}
+      {/* Search */}
       <View style={styles.searchContainer}>
         <View style={styles.searchBox}>
           <Icon name="magnify" size={20} color={P.textMuted} />
@@ -464,7 +488,7 @@ function MessagesScreen() {
         </View>
       </View>
 
-      {/* Enhanced Tabs */}
+      {/* Tabs */}
       <View style={styles.tabContainer}>
         <View style={styles.tabsWrapper}>
           {(['all', 'favorites', 'archived'] as const).map((tab) => (
@@ -491,7 +515,7 @@ function MessagesScreen() {
       {/* Chat List */}
       <FlatList
         data={allChats}
-        keyExtractor={(item: Chat) => getId(item) ?? Math.random().toString()}
+        keyExtractor={(item: Chat) => getId(item) || Math.random().toString()}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -518,7 +542,7 @@ function MessagesScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Enhanced Menu Modal */}
+      {/* Menu Modal */}
       <ChatMenuModal
         visible={menuChatId !== null}
         isPinned={menuChat?.isPinned ?? false}
@@ -566,7 +590,7 @@ function MessagesScreen() {
         }}
       />
 
-      {/* Enhanced Group Modal */}
+      {/* Group Modal */}
       <GroupChatModal
         visible={groupOpen}
         groupName={groupName}
@@ -586,7 +610,7 @@ function MessagesScreen() {
   );
 }
 
-// ─── Enhanced Chat Row ─────────────────────────────────────────────────────
+// ─── Chat Row ─────────────────────────────────────────────────────────────
 
 function ChatRow({
   item,
@@ -611,9 +635,12 @@ function ChatRow({
   deleteMutation: any;
   onOpenMenu: (id: string) => void;
 }) {
+  // ✅ FIXED: Safe user ID
+  const currentUserId = useMemo(() => getUserId(user), [user]);
+  
   const role = activeRole ?? 'buyer';
   const unread = role === 'seller' ? (item.sellerUnreadCount ?? 0) : (item.buyerUnreadCount ?? 0);
-  const participant = resolveChatParticipant(item, user?.id ?? user?._id);
+  const participant = resolveChatParticipant(item, currentUserId);
   const product =
     typeof item.productId === 'object' ? (item.productId as Product) : undefined;
   const isGroup = item.chatType === 'group';
@@ -624,24 +651,41 @@ function ChatRow({
   const date = item.lastMessageAt ? formatChatTime(new Date(item.lastMessageAt)) : '';
 
   const handleDelete = () => {
-    confirmDelete(title, () => deleteMutation.mutate(getId(item)));
+    const id = getId(item);
+    if (id) {
+      confirmDelete(title, () => deleteMutation.mutate(id));
+    }
+  };
+
+  const handleArchive = () => {
+    const id = getId(item);
+    if (id) {
+      archiveMutation.mutate(id);
+    }
+  };
+
+  const handleMarkRead = () => {
+    const id = getId(item);
+    if (id) {
+      if (unread) {
+        markReadMutation.mutate(id);
+      } else {
+        markUnreadMutation.mutate(id);
+      }
+    }
   };
 
   const renderRightActions = () => (
     <View style={styles.swipeActions}>
       <TouchableOpacity
         style={[styles.swipeBtn, { backgroundColor: P.swipeArchive }]}
-        onPress={() => archiveMutation.mutate(getId(item))}>
+        onPress={handleArchive}>
         <Icon name={view === 'archived' ? 'archive-arrow-up' : 'archive'} size={22} color="#fff" />
         <Text style={styles.swipeLabel}>{view === 'archived' ? 'Unarchive' : 'Archive'}</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.swipeBtn, { backgroundColor: P.swipeRead }]}
-        onPress={() =>
-          unread
-            ? markReadMutation.mutate(getId(item))
-            : markUnreadMutation.mutate(getId(item))
-        }>
+        onPress={handleMarkRead}>
         <Icon name={unread ? 'email-open-outline' : 'email-outline'} size={22} color="#fff" />
         <Text style={styles.swipeLabel}>{unread ? 'Read' : 'Unread'}</Text>
       </TouchableOpacity>
@@ -664,7 +708,7 @@ function ChatRow({
           pressed && styles.chatRowPressed,
         ]}
       >
-        {/* Avatar with online indicator */}
+        {/* Avatar */}
         <View style={styles.avatarContainer}>
           {isGroup ? (
             <View style={styles.groupAvatar}>
@@ -685,7 +729,6 @@ function ChatRow({
                   </View>
                 }
               />
-              {/* Online indicator - remove if not needed */}
               <View style={[styles.onlineDot, { backgroundColor: P.offline }]} />
             </View>
           )}
@@ -731,7 +774,7 @@ function ChatRow({
   );
 }
 
-// ─── Enhanced Chat Menu Modal ─────────────────────────────────────────────
+// ─── Chat Menu Modal ────────────────────────────────────────────────────────
 
 function ChatMenuModal({
   visible,
@@ -823,7 +866,7 @@ function ChatMenuModal({
   );
 }
 
-// ─── Enhanced Group Chat Modal ─────────────────────────────────────────────
+// ─── Group Chat Modal ──────────────────────────────────────────────────────
 
 function GroupChatModal({
   visible,
@@ -882,7 +925,7 @@ function GroupChatModal({
         ) : (
           <FlatList
             data={suppliers}
-            keyExtractor={(item: SellerSummary) => getId(item) ?? Math.random().toString()}
+            keyExtractor={(item: SellerSummary) => getId(item) || Math.random().toString()}
             style={styles.supplierList}
             renderItem={({ item }: { item: SellerSummary }) => {
               const id = getId(item) ?? item._id ?? item.id ?? '';
@@ -946,15 +989,13 @@ function GroupChatModal({
   );
 }
 
-// ─── Enhanced Styles ───────────────────────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: P.bg,
   },
-
-  // Header
   header: {
     backgroundColor: P.surface,
     paddingTop: 48,
@@ -987,8 +1028,6 @@ const styles = StyleSheet.create({
   headerBtnActive: {
     backgroundColor: P.primary,
   },
-
-  // Search
   searchContainer: {
     backgroundColor: P.surface,
     paddingHorizontal: 16,
@@ -1011,8 +1050,6 @@ const styles = StyleSheet.create({
     color: P.text,
     padding: 0,
   },
-
-  // Tabs
   tabContainer: {
     backgroundColor: P.surface,
     paddingHorizontal: 16,
@@ -1050,13 +1087,9 @@ const styles = StyleSheet.create({
     backgroundColor: P.primary,
     borderRadius: 1,
   },
-
-  // List
   listContent: {
     paddingBottom: 80,
   },
-
-  // Chat Row
   chatRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1174,8 +1207,6 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 4,
   },
-
-  // Swipe
   swipeActions: {
     flexDirection: 'row',
     height: '100%',
@@ -1191,8 +1222,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
-
-  // Menu Modal
   menuBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -1230,8 +1259,6 @@ const styles = StyleSheet.create({
   menuTextDanger: {
     color: P.swipeDelete,
   },
-
-  // Group Modal
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1385,8 +1412,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-
-  // Empty State
   emptyContainer: {
     flex: 1,
     alignItems: 'center',

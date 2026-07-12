@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -54,6 +55,9 @@ type LogisticsOption = {
   insuranceAmount?: number;
   warehousingCharges?: number;
   customsCharges?: number;
+  handlingCharges?: number;
+  documentationCharges?: number;
+  variableCharges?: number;
   internalBreakdown?: Record<string, number>;
   providerLabel?: string;
 };
@@ -226,7 +230,7 @@ function OrderCheckoutScreen() {
           name: 'EsyGlob',
           description: `Payment for ${payment.orderNumber ?? 'order'}`,
           order_id: payment.razorpayOrderId,
-          theme: { color: colors.primary },
+          theme: { color: '#FF6B35' },
         });
         await verifyOrderPayment({
           paymentId: payment.paymentId,
@@ -275,7 +279,7 @@ function OrderCheckoutScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} style={styles.iconBtn}>
-          <Icon name="arrow-left" size={22} color={colors.ink} />
+          <Icon name="arrow-left" size={20} color="#1F2937" />
         </Pressable>
         <Text style={styles.headerTitle}>{mode === 'sample' ? 'Sample Order' : 'Checkout'}</Text>
         <View style={styles.iconBtn} />
@@ -285,20 +289,49 @@ function OrderCheckoutScreen() {
         {/* Not Eligible */}
         {!isEligible && (
           <View style={styles.warning}>
-            <Icon name="lock-alert-outline" size={18} color={colors.rose} />
+            <Icon name="lock-alert-outline" size={16} color="#EF4444" />
             <Text style={styles.warningText}>Order not available for this product.</Text>
           </View>
         )}
 
-        {/* Product Info */}
-        <View style={styles.card}>
-          <Text style={styles.productTitle}>{productData?.name ?? productData?.title ?? 'Product'}</Text>
-          <Text style={styles.productPrice}>{productData ? formatProductPrice(productData) : ''}</Text>
+        {/* Product Info - Enhanced */}
+        <View style={styles.productCard}>
+          <View style={styles.productHeader}>
+            {productData?.image && (
+              <Image source={{ uri: productData.image }} style={styles.productImage} />
+            )}
+            <View style={styles.productInfo}>
+              <Text style={styles.productTitle} numberOfLines={2}>
+                {productData?.name ?? productData?.title ?? 'Product'}
+              </Text>
+              <Text style={styles.productCategory}>
+                {productData?.category ?? 'Industrial Supply'}
+              </Text>
+              <Text style={styles.productPrice}>
+                {productData ? formatProductPrice(productData) : ''}
+              </Text>
+            </View>
+          </View>
+          {productData?.description && (
+            <Text style={styles.productDescription} numberOfLines={3}>
+              {productData.description}
+            </Text>
+          )}
+          {productData?.specifications && (
+            <View style={styles.specs}>
+              {Object.entries(productData.specifications).slice(0, 3).map(([key, value]) => (
+                <View key={key} style={styles.specItem}>
+                  <Text style={styles.specLabel}>{key}</Text>
+                  <Text style={styles.specValue}>{String(value)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Order Form */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Order Details</Text>
+          <Text style={styles.sectionTitle}>Delivery Details</Text>
           <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
           <Field label="Full Name *" value={fullName} onChangeText={setFullName} />
           <Field label="Company" value={company} onChangeText={setCompany} />
@@ -309,12 +342,13 @@ function OrderCheckoutScreen() {
           <Field label="City *" value={city} onChangeText={setCity} />
           <Field label="State / Province *" value={state} onChangeText={setState} />
           <Field label="Postal Code *" value={postalCode} onChangeText={setPostalCode} />
+          
           <ChoiceField label="Payment Method" value={paymentMethod} options={['credit_card', 'bank_transfer', 'escrow', 'letter_of_credit']} onChange={setPaymentMethod} />
           <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'CIF', 'FOB', 'EXW']} onChange={setIncoterm} />
           <Field label="Notes" value={notes} onChangeText={setNotes} multiline />
 
           <Pressable onPress={() => setTermsAccepted(v => !v)} style={styles.checkboxRow}>
-            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={20} color={termsAccepted ? colors.primary : colors.muted} />
+            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={18} color={termsAccepted ? '#FF6B35' : '#9CA3AF'} />
             <Text style={styles.checkboxText}>I accept the order & payment terms</Text>
           </Pressable>
         </View>
@@ -326,7 +360,7 @@ function OrderCheckoutScreen() {
 
             {quote.isLoading && (
               <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color="#FF6B35" />
                 <Text style={styles.loadingText}>Calculating...</Text>
               </View>
             )}
@@ -343,7 +377,7 @@ function OrderCheckoutScreen() {
                   <BreakdownRow label="Logistics" value={formatINR(quoteData.logisticsCharges ?? 0)} />
                   {quoteData.platformFee ? (
                     <BreakdownRow
-                      label={`Platform Fee (${((quoteData.platformFeeRate ?? 0) * 100).toFixed(1)}%)`}
+                      label={`Payment Processing Fee (${((quoteData.platformFeeRate ?? 0) * 100).toFixed(1)}%)`}
                       value={formatINR(quoteData.platformFee)}
                     />
                   ) : null}
@@ -393,17 +427,17 @@ function OrderCheckoutScreen() {
                               </Text>
                               <Icon
                                 name={isActive ? 'radiobox-marked' : 'radiobox-blank'}
-                                size={20}
-                                color={isActive ? colors.primary : colors.muted}
+                                size={18}
+                                color={isActive ? '#FF6B35' : '#9CA3AF'}
                               />
                             </View>
                           </View>
 
-                          {/* Shipping Details - 3 Key Metrics */}
+                          {/* Shipping Details */}
                           <View style={styles.shippingDetails}>
                             {option.estimatedDelivery && (
                               <View style={styles.shippingDetail}>
-                                <Icon name="truck-delivery-outline" size={14} color={colors.muted} />
+                                <Icon name="truck-delivery-outline" size={12} color="#6B7280" />
                                 <View>
                                   <Text style={styles.shippingDetailLabel}>Delivery</Text>
                                   <Text style={styles.shippingDetailValue}>{option.estimatedDelivery}</Text>
@@ -412,7 +446,7 @@ function OrderCheckoutScreen() {
                             )}
                             {option.insuranceAmount != null && option.insuranceAmount > 0 && (
                               <View style={styles.shippingDetail}>
-                                <Icon name="shield-check-outline" size={14} color={colors.muted} />
+                                <Icon name="shield-check-outline" size={12} color="#6B7280" />
                                 <View>
                                   <Text style={styles.shippingDetailLabel}>Insurance</Text>
                                   <Text style={styles.shippingDetailValue}>{formatINR(option.insuranceAmount)}</Text>
@@ -421,7 +455,7 @@ function OrderCheckoutScreen() {
                             )}
                             {(option.warehousingCharges != null && option.warehousingCharges > 0) && (
                               <View style={styles.shippingDetail}>
-                                <Icon name="warehouse" size={14} color={colors.muted} />
+                                <Icon name="warehouse" size={12} color="#6B7280" />
                                 <View>
                                   <Text style={styles.shippingDetailLabel}>Warehousing</Text>
                                   <Text style={styles.shippingDetailValue}>{formatINR(option.warehousingCharges)}</Text>
@@ -430,10 +464,12 @@ function OrderCheckoutScreen() {
                             )}
                           </View>
 
-                          {/* Cost Breakdown (Collapsible) */}
-                          {Object.keys(breakdown).length > 0 && isActive && (
+                          {/* Complete Logistics Breakdown - Shows when active */}
+                          {isActive && (
                             <View style={styles.costBreakdown}>
-                              <Text style={styles.costBreakdownTitle}>Cost Breakdown</Text>
+                              <Text style={styles.costBreakdownTitle}>Logistics Breakdown</Text>
+                              
+                              {/* Show all logistics items from internal breakdown */}
                               {Object.entries(breakdown).map(([costKey, costValue]) => (
                                 <View key={costKey} style={styles.costRow}>
                                   <Text style={styles.costLabel}>
@@ -442,6 +478,32 @@ function OrderCheckoutScreen() {
                                   <Text style={styles.costValue}>{formatINR(costValue)}</Text>
                                 </View>
                               ))}
+                              
+                              {/* Show all additional charges */}
+                              {option.handlingCharges != null && option.handlingCharges > 0 && (
+                                <View style={styles.costRow}>
+                                  <Text style={styles.costLabel}>Handling</Text>
+                                  <Text style={styles.costValue}>{formatINR(option.handlingCharges)}</Text>
+                                </View>
+                              )}
+                              {option.documentationCharges != null && option.documentationCharges > 0 && (
+                                <View style={styles.costRow}>
+                                  <Text style={styles.costLabel}>Documentation</Text>
+                                  <Text style={styles.costValue}>{formatINR(option.documentationCharges)}</Text>
+                                </View>
+                              )}
+                              {option.customsCharges != null && option.customsCharges > 0 && (
+                                <View style={styles.costRow}>
+                                  <Text style={styles.costLabel}>Customs</Text>
+                                  <Text style={styles.costValue}>{formatINR(option.customsCharges)}</Text>
+                                </View>
+                              )}
+                              {option.variableCharges != null && option.variableCharges > 0 && (
+                                <View style={styles.costRow}>
+                                  <Text style={styles.costLabel}>Variable Charges</Text>
+                                  <Text style={styles.costValue}>{formatINR(option.variableCharges)}</Text>
+                                </View>
+                              )}
                             </View>
                           )}
 
@@ -469,7 +531,7 @@ function OrderCheckoutScreen() {
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <>
-              <Icon name="credit-card-check-outline" size={20} color="#fff" />
+              <Icon name="credit-card-check-outline" size={18} color="#fff" />
               <Text style={styles.orderBtnText}>Place Order & Pay</Text>
             </>
           )}
@@ -487,7 +549,7 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.muted} style={styles.input} {...props} />
+      <TextInput placeholderTextColor="#9CA3AF" style={styles.input} {...props} />
     </View>
   );
 }
@@ -524,113 +586,388 @@ function BreakdownRow({ label, value, isBold, isDiscount }: { label: string; val
 
 const styles = StyleSheet.create({
   choiceRow: { gap: spacing.sm, paddingVertical: 2 },
-  choice: { borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.card },
-  choiceActive: { borderColor: colors.primary, backgroundColor: colors.cardMuted },
-  choiceText: { color: colors.muted, fontSize: 12, textTransform: 'capitalize' },
-  choiceTextActive: { color: colors.primary, fontWeight: '700' },
-  bottomSpacer: { height: 40 },
-  screen: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.faint,
-    paddingTop: spacing.xxl, paddingBottom: spacing.sm, paddingHorizontal: spacing.md,
+  choice: { 
+    borderWidth: 1, 
+    borderColor: '#D1D5DB', 
+    borderRadius: radii.sm, 
+    paddingHorizontal: spacing.sm, 
+    paddingVertical: spacing.xs, 
+    backgroundColor: '#F9FAFB' 
   },
-  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.ink, textAlign: 'center' },
+  choiceActive: { 
+    borderColor: '#FF6B35', 
+    backgroundColor: '#FFF7ED' 
+  },
+  choiceText: { 
+    color: '#6B7280', 
+    fontSize: 11, 
+    textTransform: 'capitalize',
+    fontWeight: '500'
+  },
+  choiceTextActive: { 
+    color: '#FF6B35', 
+    fontWeight: '600' 
+  },
+  bottomSpacer: { height: 40 },
+  screen: { flex: 1, backgroundColor: '#F3F4F6' },
+  header: {
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth, 
+    borderBottomColor: '#E5E7EB',
+    paddingTop: spacing.xxl, 
+    paddingBottom: spacing.sm, 
+    paddingHorizontal: spacing.md,
+  },
+  iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { 
+    flex: 1, 
+    fontSize: 15, 
+    fontWeight: '600', 
+    color: '#111827', 
+    textAlign: 'center' 
+  },
   content: { padding: spacing.md },
+
+  // Product Card - Enhanced
+  productCard: {
+    backgroundColor: '#FFFFFF', 
+    borderRadius: radii.md, 
+    padding: spacing.md,
+    marginBottom: spacing.md, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, 
+    shadowRadius: 3, 
+    elevation: 2,
+  },
+  productHeader: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  productImage: {
+    width: 80,
+    height: 80,
+    borderRadius: radii.sm,
+    backgroundColor: '#F3F4F6',
+  },
+  productInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  productTitle: { 
+    fontSize: 14, 
+    fontWeight: '600', 
+    color: '#111827', 
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  productCategory: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  productPrice: { 
+    fontSize: 18, 
+    fontWeight: '700', 
+    color: '#FF6B35',
+  },
+  productDescription: {
+    fontSize: 12,
+    color: '#4B5563',
+    lineHeight: 16,
+    marginTop: spacing.sm,
+  },
+  specs: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  specItem: {
+    flex: 1,
+  },
+  specLabel: {
+    fontSize: 10,
+    color: '#9CA3AF',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  specValue: {
+    fontSize: 11,
+    color: '#374151',
+    fontWeight: '600',
+    marginTop: 1,
+  },
 
   // Cards
   card: {
-    backgroundColor: colors.card, borderRadius: radii.lg, padding: spacing.lg,
-    marginBottom: spacing.md, shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+    backgroundColor: '#FFFFFF', 
+    borderRadius: radii.md, 
+    padding: spacing.md,
+    marginBottom: spacing.md, 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, 
+    shadowRadius: 3, 
+    elevation: 2,
   },
-  productTitle: { fontSize: 18, fontWeight: '700', color: colors.ink, lineHeight: 24 },
-  productPrice: { fontSize: 22, fontWeight: '800', color: colors.primaryDark, marginTop: spacing.sm },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.ink, marginBottom: spacing.md },
+  sectionTitle: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: '#111827', 
+    marginBottom: spacing.sm 
+  },
 
   // Fields
-  field: { marginBottom: spacing.md },
-  label: { fontSize: 11, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
-  input: {
-    backgroundColor: colors.cardMuted, borderRadius: radii.md, paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm, fontSize: 14, fontWeight: '600', color: colors.ink, minHeight: 44,
+  field: { marginBottom: spacing.sm },
+  label: { 
+    fontSize: 10, 
+    fontWeight: '600', 
+    color: '#6B7280', 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.5, 
+    marginBottom: 3 
   },
-  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  checkboxText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+  input: {
+    backgroundColor: '#F9FAFB', 
+    borderRadius: radii.sm, 
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm, 
+    fontSize: 13, 
+    fontWeight: '500', 
+    color: '#111827', 
+    minHeight: 40,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  checkboxRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: spacing.sm, 
+    marginTop: spacing.xs 
+  },
+  checkboxText: { 
+    flex: 1, 
+    fontSize: 12, 
+    fontWeight: '500', 
+    color: '#4B5563' 
+  },
 
   // Warning
   warning: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: '#FFF5F5',
-    borderRadius: radii.md, padding: spacing.md, marginBottom: spacing.md, borderWidth: 1, borderColor: '#FECACA',
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: spacing.sm, 
+    backgroundColor: '#FEF2F2',
+    borderRadius: radii.sm, 
+    padding: spacing.sm, 
+    marginBottom: spacing.md, 
+    borderWidth: 1, 
+    borderColor: '#FECACA',
   },
-  warningText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.rose },
+  warningText: { 
+    flex: 1, 
+    fontSize: 11, 
+    fontWeight: '500', 
+    color: '#DC2626' 
+  },
 
   // Loading
-  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
-  loadingText: { fontSize: 13, color: colors.muted },
-  errorText: { fontSize: 13, color: colors.rose, fontWeight: '600', paddingVertical: spacing.md },
+  loadingRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: spacing.sm, 
+    paddingVertical: spacing.sm 
+  },
+  loadingText: { fontSize: 12, color: '#6B7280' },
+  errorText: { 
+    fontSize: 12, 
+    color: '#EF4444', 
+    fontWeight: '600', 
+    paddingVertical: spacing.sm 
+  },
 
   // Breakdown
-  breakdownList: { marginBottom: spacing.md },
-  breakdownRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  breakdownLabel: { fontSize: 13, color: colors.text, fontWeight: '500' },
-  breakdownValue: { fontSize: 13, color: colors.text, fontWeight: '600' },
-  breakdownBold: { fontSize: 15, fontWeight: '800', color: colors.ink },
-  discountText: { color: '#10B981' },
-  divider: { height: 1, backgroundColor: colors.faint, marginVertical: 8 },
+  breakdownList: { marginBottom: spacing.sm },
+  breakdownRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    paddingVertical: 4 
+  },
+  breakdownLabel: { 
+    fontSize: 12, 
+    color: '#4B5563', 
+    fontWeight: '500' 
+  },
+  breakdownValue: { 
+    fontSize: 12, 
+    color: '#374151', 
+    fontWeight: '600' 
+  },
+  breakdownBold: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#111827' 
+  },
+  discountText: { color: '#059669' },
+  divider: { 
+    height: 1, 
+    backgroundColor: '#E5E7EB', 
+    marginVertical: 6 
+  },
 
   // Logistics
-  logisticsSection: { marginTop: spacing.md },
-  logisticsSectionTitle: { fontSize: 13, fontWeight: '700', color: colors.text, marginBottom: spacing.sm },
-  logisticsCard: {
-    borderWidth: 1, borderColor: colors.faint, borderRadius: radii.md,
-    padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.cardMuted,
+  logisticsSection: { marginTop: spacing.sm },
+  logisticsSectionTitle: { 
+    fontSize: 12, 
+    fontWeight: '600', 
+    color: '#374151', 
+    marginBottom: spacing.xs 
   },
-  logisticsCardActive: { backgroundColor: '#FFF7ED', borderColor: colors.primary },
-  logisticsTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  logisticsTopLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flex: 1 },
-  logisticsName: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  logisticsNameActive: { color: colors.primaryDark },
+  logisticsCard: {
+    borderWidth: 1, 
+    borderColor: '#E5E7EB', 
+    borderRadius: radii.sm,
+    padding: spacing.sm, 
+    marginBottom: spacing.xs, 
+    backgroundColor: '#F9FAFB',
+  },
+  logisticsCardActive: { 
+    backgroundColor: '#FFF7ED', 
+    borderColor: '#FF6B35' 
+  },
+  logisticsTopRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center' 
+  },
+  logisticsTopLeft: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: spacing.xs, 
+    flex: 1 
+  },
+  logisticsName: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: '#111827' 
+  },
+  logisticsNameActive: { color: '#FF6B35' },
   incotermBadge: {
     backgroundColor: '#EFF6FF',
     borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
   },
-  incotermText: { fontSize: 10, fontWeight: '700', color: colors.primary },
-  logisticsRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  logisticsPrice: { fontSize: 14, fontWeight: '700', color: colors.text },
-  logisticsPriceActive: { color: colors.primaryDark },
+  incotermText: { 
+    fontSize: 9, 
+    fontWeight: '600', 
+    color: '#3B82F6' 
+  },
+  logisticsRight: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: spacing.xs 
+  },
+  logisticsPrice: { 
+    fontSize: 13, 
+    fontWeight: '600', 
+    color: '#374151' 
+  },
+  logisticsPriceActive: { color: '#FF6B35' },
 
   // Shipping Details
-  shippingDetails: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md, flexWrap: 'wrap' },
-  shippingDetail: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xs, flex: 1, minWidth: 90 },
-  shippingDetailLabel: { fontSize: 9, fontWeight: '600', color: colors.muted, textTransform: 'uppercase' },
-  shippingDetailValue: { fontSize: 12, fontWeight: '700', color: colors.text, marginTop: 1 },
-
-  // Cost Breakdown
-  costBreakdown: {
-    marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1,
-    borderTopColor: colors.faint,
+  shippingDetails: { 
+    flexDirection: 'row', 
+    gap: spacing.sm, 
+    marginTop: spacing.sm, 
+    flexWrap: 'wrap' 
   },
-  costBreakdownTitle: { fontSize: 11, fontWeight: '700', color: colors.muted, marginBottom: spacing.sm, textTransform: 'uppercase' },
-  costRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 },
-  costLabel: { fontSize: 12, color: colors.text, textTransform: 'capitalize' },
-  costValue: { fontSize: 12, fontWeight: '600', color: colors.text },
+  shippingDetail: { 
+    flexDirection: 'row', 
+    alignItems: 'flex-start', 
+    gap: spacing.xs, 
+    flex: 1, 
+    minWidth: 80 
+  },
+  shippingDetailLabel: { 
+    fontSize: 9, 
+    fontWeight: '600', 
+    color: '#9CA3AF', 
+    textTransform: 'uppercase' 
+  },
+  shippingDetailValue: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: '#374151', 
+    marginTop: 1 
+  },
+
+  // Cost Breakdown - Complete logistics breakdown
+  costBreakdown: {
+    marginTop: spacing.sm, 
+    paddingTop: spacing.sm, 
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  costBreakdownTitle: { 
+    fontSize: 10, 
+    fontWeight: '600', 
+    color: '#6B7280', 
+    marginBottom: spacing.xs, 
+    textTransform: 'uppercase' 
+  },
+  costRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    paddingVertical: 3 
+  },
+  costLabel: { 
+    fontSize: 11, 
+    color: '#4B5563', 
+    textTransform: 'capitalize',
+    fontWeight: '500'
+  },
+  costValue: { 
+    fontSize: 11, 
+    fontWeight: '600', 
+    color: '#374151' 
+  },
 
   // Provider
-  providerLabel: { fontSize: 10, color: colors.muted, marginTop: spacing.sm, fontStyle: 'italic' },
+  providerLabel: { 
+    fontSize: 9, 
+    color: '#9CA3AF', 
+    marginTop: spacing.xs, 
+    fontStyle: 'italic' 
+  },
 
   // Order Button
   orderBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
-    backgroundColor: colors.primary, borderRadius: radii.pill, minHeight: 52,
-    shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: spacing.xs,
+    backgroundColor: '#FF6B35', 
+    borderRadius: radii.pill, 
+    minHeight: 48,
+    shadowColor: '#FF6B35', 
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, 
+    shadowRadius: 8, 
+    elevation: 4,
   },
   orderBtnDisabled: { opacity: 0.5 },
-  orderBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  orderBtnText: { 
+    color: '#fff', 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
 });
 
 export default OrderCheckoutScreen;

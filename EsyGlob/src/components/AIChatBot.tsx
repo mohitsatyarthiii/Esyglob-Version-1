@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,6 +10,8 @@ import {
   Text,
   TextInput,
   View,
+  ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -31,42 +32,28 @@ type SSEChunk =
   | { type: 'typing' }
   | { type: 'error'; message?: string };
 
-// ─── Light Theme Palette ────────────────────────────────────────────────────
+// ─── Color Palette (Exact Match for AI Mode) ──────────────────────────────
 
-const P = {
-  bg: '#F0F4FF',
-  headerBg: '#FFFFFF',
-  card: '#FFFFFF',
-  primary: '#6366F1',
-  primaryLight: '#EEF2FF',
-  accent: '#06B6D4',
-  accentLight: '#ECFEFF',
-  userBubble: '#6366F1',
-  userBubbleText: '#FFFFFF',
-  aiBubble: '#FFFFFF',
-  aiBubbleBorder: '#E8ECF4',
-  text: '#1A1A2E',
-  textSecondary: '#6B7280',
-  muted: '#9CA3AF',
-  faint: '#E5E7EB',
-  inputBg: '#F9FAFB',
-  inputBorder: '#E5E7EB',
-  online: '#10B981',
-  time: '#9CA3AF',
-  suggestionBg: '#FFFFFF',
-  suggestionBorder: '#E8ECF4',
-  suggestionIcon: '#6366F1',
+const COLORS = {
+  bgTop: '#FFF5F5',
+  bgBottom: '#FFF0F5',
+  text: '#1A1A1A',
+  textGray: '#7A7A7A',
+  orange: '#FF6B00',
+  white: '#FFFFFF',
+  black: '#000000',
+  border: '#E8E8E8',
 };
 
-// ─── Quick Prompts ──────────────────────────────────────────────────────────
+// ─── Quick Actions Data ─────────────────────────────────────────────────────
 
-const QUICK_PROMPTS = [
-  { icon: 'magnify', text: 'Find suppliers for electronics', color: '#6366F1' },
-  { icon: 'calculator-variant', text: 'Calculate import duties', color: '#F59E0B' },
-  { icon: 'trending-up', text: 'Trending products this week', color: '#10B981' },
-  { icon: 'shield-check', text: 'How to verify a supplier?', color: '#3B82F6' },
-  { icon: 'truck-delivery', text: 'Shipping options to India', color: '#8B5CF6' },
-  { icon: 'file-document', text: 'Create an RFQ', color: '#EC4899' },
+const QUICK_ACTIONS = [
+  'Verified manufacturer search',
+  'Design with AI',
+  'Product search',
+  'Analyze bestsellers',
+  'Evaluate market potential',
+  'Discover trends',
 ];
 
 // ─── API Config ─────────────────────────────────────────────────────────────
@@ -78,7 +65,7 @@ export function setAIChatToken(token: string) {
   AUTH_TOKEN = token;
 }
 
-// ─── Streaming ──────────────────────────────────────────────────────────────
+// ─── Streaming (Your Exact Logic) ──────────────────────────────────────────
 
 async function* streamAIResponse(
   message: string,
@@ -177,7 +164,7 @@ async function* streamAIResponse(
   }
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
+// ─── Main AI Component ──────────────────────────────────────────────────────
 
 export default function AIChatBot() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -189,23 +176,16 @@ export default function AIChatBot() {
       timestamp: Date.now(),
     },
   ]);
-  const [input, setInput] = useState('');
+  const [inputText, setInputText] = useState('');
   const [chatId, setChatId] = useState<string | undefined>();
   const [isStreaming, setIsStreaming] = useState(false);
-  const flatListRef = useRef<FlatList<ChatMessage>>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, [fadeAnim]);
+  // ─── Chat Logic ──────────────────────────────────────────────────────────
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
+      scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []);
 
@@ -222,7 +202,7 @@ export default function AIChatBot() {
       const trimmed = text.trim();
       if (!trimmed || isStreaming) return;
 
-      setInput('');
+      setInputText('');
 
       const userMsg: ChatMessage = {
         id: `user-${Date.now()}`,
@@ -289,169 +269,206 @@ export default function AIChatBot() {
     [isStreaming, chatId, addMessage],
   );
 
-  const renderMessage = useCallback(
-    ({ item }: { item: ChatMessage }) => {
-      const isUser = item.role === 'user';
-      const time = new Date(item.timestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+  // ─── Reset Chat ──────────────────────────────────────────────────────────
 
-      return (
-        <Animated.View
-          style={[
-            styles.messageRow,
-            isUser ? styles.messageRowUser : styles.messageRowAI,
-            { opacity: fadeAnim },
-          ]}>
-          {/* AI Avatar */}
-          {!isUser && (
-            <View style={styles.avatarCircle}>
-              <Icon name="robot-outline" size={18} color={P.primary} />
-            </View>
-          )}
+  const resetChat = useCallback(() => {
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: "👋 Hello! I'm your EsyGlob AI assistant. How can I help you today?",
+        timestamp: Date.now(),
+      },
+    ]);
+    setChatId(undefined);
+  }, []);
 
-          <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-            <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
-              {item.content}
-              {item.isStreaming && (
-                <Text style={styles.typingDots}> ●</Text>
-              )}
-            </Text>
-            <View style={styles.bubbleFooter}>
-              <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
-                {time}
-              </Text>
-              {isUser && (
-                <Icon name="check-all" size={14} color="rgba(255,255,255,0.6)" />
-              )}
-            </View>
-          </View>
+  // ─── UI Render (Chat Mode vs Dashboard Mode) ────────────────────────────
 
-          {/* User Avatar */}
-          {isUser && (
-            <View style={[styles.avatarCircle, styles.avatarUser]}>
-              <Icon name="account-outline" size={18} color="#FFF" />
-            </View>
-          )}
-        </Animated.View>
-      );
-    },
-    [fadeAnim],
-  );
-
-  const showSuggestions = messages.length === 1 && !isStreaming;
+  // If user has sent a message, switch to chat view
+  const isChatActive = messages.length > 1 || isStreaming;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 70}>
-      <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.aiAvatarCircle}>
-            <Icon name="robot" size={20} color={P.primary} />
+    <View style={styles.container}>
+      {/* AI Mode Top Bar (Same as Screenshot) */}
+      <View style={styles.topNav}>
+        <View style={styles.tabsContainer}>
+          <View style={styles.activeTabWrapper}>
+            <Text style={styles.activeTabText}>AI Mode</Text>
+            <View style={styles.activeTabLine} />
           </View>
-          <View>
-            <Text style={styles.headerTitle}>AI Assistant</Text>
-            <View style={styles.statusRow}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.statusText}>
-                {isStreaming ? 'Typing...' : 'Online'}
-              </Text>
-            </View>
+          <Text style={styles.inactiveTabText}>Products</Text>
+          <Text style={styles.inactiveTabText}>Manufacturers</Text>
+          <Text style={styles.inactiveTabText}>Worldwide</Text>
+        </View>
+        
+        <View style={styles.topIcons}>
+          <TouchableOpacity onPress={resetChat}>
+            <Icon name="history" size={22} color={COLORS.black} />
+          </TouchableOpacity>
+          <View style={styles.creditBadge}>
+            <Icon name="file-document-outline" size={14} color={COLORS.black} />
+            <Text style={styles.creditText}>20</Text>
+            <View style={styles.creditDivider} />
+            <Icon name="star" size={14} color={COLORS.orange} />
+            <Text style={[styles.creditText, { color: COLORS.orange }]}>Free</Text>
           </View>
         </View>
-        <Pressable
-          onPress={() => {
-            setMessages([
-              {
-                id: 'welcome',
-                role: 'assistant',
-                content:
-                  "👋 Hello! I'm your EsyGlob AI assistant. How can I help you today?",
-                timestamp: Date.now(),
-              },
-            ]);
-            setChatId(undefined);
-          }}
-          style={styles.newChatBtn}>
-          <Icon name="plus" size={20} color={P.textSecondary} />
-        </Pressable>
       </View>
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={item => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.messageList}
-        onContentSizeChange={scrollToBottom}
-        showsVerticalScrollIndicator={false}
-        ListFooterComponent={
-          showSuggestions ? (
-            <View style={styles.suggestionsWrap}>
-              <Text style={styles.suggestionsTitle}>Try asking about</Text>
-              <View style={styles.suggestionGrid}>
-                {QUICK_PROMPTS.map((prompt, i) => (
-                  <Pressable
-                    key={i}
-                    style={({ pressed }) => [
-                      styles.suggestionChip,
-                      pressed && styles.pressed,
-                    ]}
-                    onPress={() => sendMessage(prompt.text)}>
-                    <View style={[styles.suggestionIcon, { backgroundColor: prompt.color + '15' }]}>
-                      <Icon name={prompt.icon} size={16} color={prompt.color} />
+      <KeyboardAvoidingView
+        style={styles.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0} // Adjust this if needed based on your tab bar height
+      >
+        
+        {/* ─── Scrollable Content ─── */}
+        <ScrollView
+          ref={scrollViewRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {isChatActive ? (
+            // ─── Chat View ──────────────────────────────────────────────
+            <View style={styles.chatContainer}>
+              {messages.map((item) => {
+                const isUser = item.role === 'user';
+                const time = new Date(item.timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.messageRow,
+                      isUser ? styles.messageRowUser : styles.messageRowAI,
+                    ]}>
+                    {!isUser && (
+                      <View style={styles.avatarCircle}>
+                        <Icon name="robot-outline" size={18} color={COLORS.orange} />
+                      </View>
+                    )}
+
+                    <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+                      <Text style={[styles.bubbleText, isUser && styles.bubbleTextUser]}>
+                        {item.content}
+                        {item.isStreaming && (
+                          <Text style={styles.typingDots}> ●</Text>
+                        )}
+                      </Text>
+                      <View style={styles.bubbleFooter}>
+                        <Text style={[styles.bubbleTime, isUser && styles.bubbleTimeUser]}>
+                          {time}
+                        </Text>
+                        {isUser && (
+                          <Icon name="check-all" size={14} color="rgba(255,255,255,0.6)" />
+                        )}
+                      </View>
                     </View>
-                    <Text style={styles.suggestionText} numberOfLines={2}>
-                      {prompt.text}
-                    </Text>
-                  </Pressable>
+
+                    {isUser && (
+                      <View style={[styles.avatarCircle, styles.avatarUser]}>
+                        <Icon name="account-outline" size={18} color="#FFF" />
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            // ─── Dashboard View (Screenshot Look) ──────────────────────
+            <View style={styles.dashboardContainer}>
+              <Text style={styles.mainHeading}>
+                Smart sourcing with <Text style={styles.highlightText}>AI Mode</Text>
+              </Text>
+
+              {/* Suggestion Card 1 */}
+              <TouchableOpacity style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Icon name="magnify" size={20} color={COLORS.orange} />
+                  <View style={styles.cardIconBg}>
+                    <Icon name="star-outline" size={14} color={COLORS.orange} />
+                  </View>
+                  <Text style={styles.cardTitle}>Your Next Best Supplier Is Here</Text>
+                  <Icon name="chevron-right" size={20} color={COLORS.textGray} style={styles.arrowIcon} />
+                </View>
+                <Text style={styles.cardSubtitle}>
+                  Looking for custom cash register paper factory
+                </Text>
+              </TouchableOpacity>
+
+              {/* Suggestion Card 2 */}
+              <TouchableOpacity style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Icon name="magnify" size={20} color={COLORS.orange} />
+                  <View style={styles.cardIconBg}>
+                    <Icon name="star-outline" size={14} color={COLORS.orange} />
+                  </View>
+                  <Text style={styles.cardTitle}>See What's Trending in Your Market</Text>
+                  <Icon name="chevron-right" size={20} color={COLORS.textGray} style={styles.arrowIcon} />
+                </View>
+                <Text style={styles.cardSubtitle}>
+                  How have the best-selling cash register paper chan...
+                </Text>
+              </TouchableOpacity>
+
+              {/* Quick Action Chips */}
+              <View style={styles.chipsGrid}>
+                {QUICK_ACTIONS.map((item, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    style={styles.chip}
+                    onPress={() => sendMessage(item)}
+                  >
+                    <Text style={styles.chipText}>{item}</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
-          ) : null
-        }
-        ListFooterComponentStyle={styles.footerComponent}
-      />
+          )}
+        </ScrollView>
 
-      {/* Input Bar */}
-      <View style={styles.inputBar}>
-        <View style={styles.inputRow}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Ask anything..."
-            placeholderTextColor={P.muted}
-            style={styles.textInput}
-            multiline
-            maxLength={500}
-            returnKeyType="send"
-            blurOnSubmit
-            onSubmitEditing={() => sendMessage(input)}
-          />
-          <Pressable
-            onPress={() => sendMessage(input)}
-            disabled={!input.trim() || isStreaming}
-            style={({ pressed }) => [
-              styles.sendBtn,
-              (!input.trim() || isStreaming) && styles.sendBtnDisabled,
-              pressed && styles.sendBtnPressed,
-            ]}>
-            {isStreaming ? (
-              <ActivityIndicator size="small" color="#FFF" />
-            ) : (
-              <Icon name="send" size={18} color="#FFF" />
-            )}
-          </Pressable>
+        {/* ─── Bottom Input Area ──────────────────────────────────────── */}
+        <View style={styles.bottomArea}>
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Describe your needs..."
+              placeholderTextColor="#A0A0A0"
+              multiline
+              value={inputText}
+              onChangeText={setInputText}
+              returnKeyType="send"
+              onSubmitEditing={() => sendMessage(inputText)}
+            />
+            <View style={styles.inputIcons}>
+              <TouchableOpacity style={styles.iconBtn}>
+                <Icon name="camera-outline" size={24} color={COLORS.black} />
+              </TouchableOpacity>
+              
+              {isStreaming ? (
+                <ActivityIndicator size="small" color={COLORS.orange} style={{ padding: 4 }} />
+              ) : (
+                <TouchableOpacity 
+                  style={styles.iconBtn} 
+                  onPress={() => sendMessage(inputText)}
+                  disabled={!inputText.trim()}
+                >
+                  <Icon 
+                    name="microphone-outline" 
+                    size={24} 
+                    color={!inputText.trim() ? COLORS.textGray : COLORS.black} 
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -460,75 +477,161 @@ export default function AIChatBot() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: P.bg,
+    backgroundColor: COLORS.bgTop,
+  },
+  keyboardView: {
+    flex: 1,
   },
 
-  // Header
-  header: {
+  // --- Top Nav ---
+  topNav: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 15,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: P.headerBg,
-    borderBottomWidth: 1,
-    borderBottomColor: P.faint,
+    alignItems: 'center',
+    backgroundColor: COLORS.bgTop,
   },
-  headerLeft: {
+  tabsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 20,
   },
-  aiAvatarCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: P.primaryLight,
+  activeTabWrapper: {
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
   },
-  headerTitle: {
+  activeTabText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.black,
+  },
+  activeTabLine: {
+    width: 40,
+    height: 3,
+    backgroundColor: COLORS.orange,
+    borderRadius: 2,
+  },
+  inactiveTabText: {
     fontSize: 16,
-    fontWeight: '700',
-    color: P.text,
-    letterSpacing: -0.2,
+    fontWeight: '600',
+    color: COLORS.textGray,
   },
-  statusRow: {
+  topIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 1,
+    gap: 12,
   },
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: P.online,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: P.textSecondary,
-  },
-  newChatBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: P.inputBg,
+  creditBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: P.faint,
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  creditText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.black,
+  },
+  creditDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: '#E0E0E0',
   },
 
-  // Messages
-  messageList: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+  // --- Scroll Content ---
+  scrollContent: {
+    paddingBottom: 20,
     flexGrow: 1,
   },
-  footerComponent: {
-    paddingBottom: 8,
+  
+  // --- Dashboard ---
+  dashboardContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  mainHeading: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: COLORS.black,
+    marginBottom: 20,
+    letterSpacing: -0.5,
+  },
+  highlightText: {
+    color: COLORS.orange,
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cardIconBg: {
+    marginRight: 8,
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.black,
+  },
+  arrowIcon: {
+    marginLeft: 4,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: COLORS.textGray,
+    lineHeight: 20,
+    paddingLeft: 30,
+  },
+  chipsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  chip: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  chipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.black,
+  },
+
+  // --- Chat View ---
+  chatContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
   messageRow: {
     flexDirection: 'row',
@@ -543,22 +646,18 @@ const styles = StyleSheet.create({
   messageRowAI: {
     alignSelf: 'flex-start',
   },
-
-  // Avatars
   avatarCircle: {
     width: 30,
     height: 30,
     borderRadius: 10,
-    backgroundColor: P.primaryLight,
+    backgroundColor: '#FFF7ED',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
   },
   avatarUser: {
-    backgroundColor: P.primary,
+    backgroundColor: COLORS.orange,
   },
-
-  // Bubbles
   bubble: {
     padding: 10,
     paddingHorizontal: 12,
@@ -570,25 +669,25 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   bubbleAI: {
-    backgroundColor: P.aiBubble,
+    backgroundColor: COLORS.white,
     borderWidth: 1,
-    borderColor: P.aiBubbleBorder,
+    borderColor: '#F0F0F0',
     borderBottomLeftRadius: 4,
   },
   bubbleUser: {
-    backgroundColor: P.userBubble,
+    backgroundColor: COLORS.orange,
     borderBottomRightRadius: 4,
   },
   bubbleText: {
     fontSize: 14,
     lineHeight: 20,
-    color: P.text,
+    color: COLORS.black,
   },
   bubbleTextUser: {
-    color: P.userBubbleText,
+    color: COLORS.white,
   },
   typingDots: {
-    color: P.primary,
+    color: COLORS.orange,
     fontWeight: '700',
   },
   bubbleFooter: {
@@ -601,109 +700,48 @@ const styles = StyleSheet.create({
   bubbleTime: {
     fontSize: 10,
     fontWeight: '500',
-    color: P.time,
+    color: '#9CA3AF',
   },
   bubbleTimeUser: {
     color: 'rgba(255,255,255,0.6)',
   },
 
-  // Suggestions
-  suggestionsWrap: {
-    paddingTop: 16,
+  // --- Bottom Input ---
+  bottomArea: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Adjust for safe area
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  suggestionsTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: P.textSecondary,
-    textAlign: 'center',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  suggestionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  suggestionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: P.suggestionBg,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: P.suggestionBorder,
-    width: '47%',
-  },
-  suggestionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  suggestionText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: P.text,
-    flex: 1,
-    lineHeight: 15,
-  },
-  pressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.9,
-  },
-
-  // Input Bar
-  inputBar: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
-    backgroundColor: P.headerBg,
-    borderTopWidth: 1,
-    borderTopColor: P.faint,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    backgroundColor: P.inputBg,
+  inputContainer: {
+    flexDirection: 'column',
+    backgroundColor: '#F8F8F8',
     borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    padding: 16,
+    minHeight: 100,
     borderWidth: 1,
-    borderColor: P.inputBorder,
+    borderColor: '#EEEEEE',
   },
   textInput: {
-    flex: 1,
-    fontSize: 14,
-    color: P.text,
-    maxHeight: 100,
-    paddingVertical: 4,
+    fontSize: 16,
+    color: COLORS.black,
+    textAlignVertical: 'top',
+    minHeight: 40,
+    marginBottom: 10,
   },
-  sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: P.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: P.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+  inputIcons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 10,
   },
-  sendBtnDisabled: {
-    backgroundColor: P.muted,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  sendBtnPressed: {
-    transform: [{ scale: 0.9 }],
+  iconBtn: {
+    padding: 4,
   },
 });

@@ -12,7 +12,7 @@ import {
   Share,
   StyleSheet,
   Text,
-  TextInput,
+  TextInput,  
   View,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -96,6 +96,30 @@ const sellerActions = [
   ['rocket-launch-outline', 'Order', 'start_order'],
 ] as const;
 
+// ─── Safe Helper Functions ────────────────────────────────────────────────
+
+function getUserId(user: CurrentUser | null | undefined): string | undefined {
+  if (!user) return undefined;
+  return user.id ?? user._id;
+}
+
+function resolveChatParticipant(chat: Chat, currentUserId?: string) {
+  const buyer = typeof chat.buyerId === 'object' ? (chat.buyerId as CurrentUser) : undefined;
+  const seller = typeof chat.sellerId === 'object' ? (chat.sellerId as CurrentUser) : undefined;
+  const current = currentUserId;
+  const other =
+    current && buyer && getUserId(buyer) === current
+      ? seller
+      : current && seller && getUserId(seller) === current
+      ? buyer
+      : seller ?? buyer;
+
+  return {
+    name: other?.name ?? other?.fullName ?? other?.email ?? 'User',
+    image: firstImage(other?.profileImage, other?.avatarUrl, other?.avatar, other?.image),
+  };
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 function ChatDetailsScreen() {
@@ -104,6 +128,9 @@ function ChatDetailsScreen() {
   const queryClient = useQueryClient();
   const { activeRole, user } = useAuth();
   const { chatId, title } = route.params as { chatId: string; title?: string };
+  
+  // ─── State ──────────────────────────────────────────────────────────────
+  
   const [draft, setDraft] = useState('');
   const [sheetMode, setSheetMode] = useState<SheetMode>(null);
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -121,6 +148,8 @@ function ChatDetailsScreen() {
   const [participantTyping, setParticipantTyping] = useState(false);
   const [participantOnline, setParticipantOnline] = useState(false);
 
+  // ─── Queries ─────────────────────────────────────────────────────────────
+
   const chat = useQuery({
     queryKey: ['chat-details', chatId],
     queryFn: () => fetchChatDetails(chatId),
@@ -128,10 +157,17 @@ function ChatDetailsScreen() {
     refetchInterval: 5000,
   });
 
-  const senderId = user?.id ?? user?._id;
+  // ─── Safe Sender ID ────────────────────────────────────────────────────
+
+  const senderId = useMemo(() => getUserId(user), [user]);
+
+  // ─── Safe Participant ──────────────────────────────────────────────────
 
   const participant = useMemo(() => {
     const item = chat.data?.chat;
+    if (!item) {
+      return { name: title ?? 'Chat', image: undefined as string | undefined };
+    }
     if (item?.chatType === 'group') {
       return { name: item.groupName ?? title ?? 'Group', image: undefined as string | undefined };
     }
@@ -150,65 +186,143 @@ function ChatDetailsScreen() {
     };
   }, [chat.data?.chat, senderId, title]);
 
+  // ─── Safe Participant ID ───────────────────────────────────────────────
+
   const participantId = useMemo(() => {
     const item = chat.data?.chat;
-    const buyerId = typeof item?.buyerId === 'string' ? item.buyerId : getUserId(item?.buyerId as CurrentUser);
-    const sellerId = typeof item?.sellerId === 'string' ? item.sellerId : getUserId(item?.sellerId as CurrentUser);
+    if (!item) return undefined;
+    const buyerId = typeof item?.buyerId === 'string' 
+      ? item.buyerId 
+      : getUserId(item?.buyerId as CurrentUser);
+    const sellerId = typeof item?.sellerId === 'string' 
+      ? item.sellerId 
+      : getUserId(item?.sellerId as CurrentUser);
+    if (!buyerId || !sellerId) return undefined;
     return buyerId === senderId ? sellerId : buyerId;
   }, [chat.data?.chat, senderId]);
 
+  // ─── Socket Effects ────────────────────────────────────────────────────
+
+  // Main Socket Effect
   useEffect(() => {
-    if (!chatId) return undefined;
-    const socket = getRealtimeSocket();
-    if (!socket) return undefined;
-    const join = () => socket.emit('join_chat', { chatId });
-    const onMessage = (message: MessageItem) => {
-      if (String(message.chatId ?? '') === String(chatId)) queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
-    };
-    const onTyping = (event: { chatId?: string; userId?: string; typing?: boolean }) => {
-      if (event.chatId === chatId && event.userId !== senderId) setParticipantTyping(Boolean(event.typing));
-    };
-    const onPresence = (event: { userId?: string; online?: boolean }) => {
-      if (event.userId === participantId) setParticipantOnline(Boolean(event.online));
-    };
-    const onUpdate = (event: { chatId?: string }) => {
-      if (!event.chatId || event.chatId === chatId) queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
-    };
-    socket.on('connect', join);
-    socket.on('new_message', onMessage);
-    socket.on('typing_updated', onTyping);
-    socket.on('presence_updated', onPresence);
-    socket.on('messages_read', onUpdate);
-    socket.on('quotation_updated', onUpdate);
-    join();
-    socket.emit('mark_read', { chatId });
-    return () => {
-      socket.emit('typing', { chatId, typing: false });
-      socket.emit('leave_chat', { chatId });
-      socket.off('connect', join);
-      socket.off('new_message', onMessage);
-      socket.off('typing_updated', onTyping);
-      socket.off('presence_updated', onPresence);
-      socket.off('messages_read', onUpdate);
-      socket.off('quotation_updated', onUpdate);
-    };
+    if (!chatId || !participantId || !senderId) {
+      console.warn('⚠️ Chat not ready for socket connection');
+      return undefined;
+    }
+    
+    try {
+      const socket = getRealtimeSocket();
+      if (!socket) {
+        console.warn('⚠️ Socket not available');
+        return undefined;
+      }
+      
+      const join = () => {
+        try {
+          socket.emit('join_chat', { chatId });
+          socket.emit('mark_read', { chatId });
+        } catch (e) {
+          console.warn('Failed to join chat:', e);
+        }
+      };
+      
+      const onMessage = (message: MessageItem) => {
+        if (String(message.chatId ?? '') === String(chatId)) {
+          queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
+        }
+      };
+      
+      const onTyping = (event: { chatId?: string; userId?: string; typing?: boolean }) => {
+        if (event.chatId === chatId && event.userId !== senderId) {
+          setParticipantTyping(Boolean(event.typing));
+        }
+      };
+      
+      const onPresence = (event: { userId?: string; online?: boolean }) => {
+        if (event.userId === participantId) {
+          setParticipantOnline(Boolean(event.online));
+        }
+      };
+      
+      const onUpdate = (event: { chatId?: string }) => {
+        if (!event.chatId || event.chatId === chatId) {
+          queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
+        }
+      };
+      
+      socket.on('connect', join);
+      socket.on('new_message', onMessage);
+      socket.on('typing_updated', onTyping);
+      socket.on('presence_updated', onPresence);
+      socket.on('messages_read', onUpdate);
+      socket.on('quotation_updated', onUpdate);
+      
+      join();
+      
+      return () => {
+        try {
+          socket.emit('typing', { chatId, typing: false });
+          socket.emit('leave_chat', { chatId });
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        socket.off('connect', join);
+        socket.off('new_message', onMessage);
+        socket.off('typing_updated', onTyping);
+        socket.off('presence_updated', onPresence);
+        socket.off('messages_read', onUpdate);
+        socket.off('quotation_updated', onUpdate);
+      };
+    } catch (error) {
+      console.error('Socket setup error:', error);
+      return undefined;
+    }
   }, [chatId, participantId, queryClient, senderId]);
 
+  // Typing Effect
   useEffect(() => {
     if (!chatId) return undefined;
-    const socket = getRealtimeSocket();
-    if (!socket) return undefined;
-    socket.emit('typing', { chatId, typing: draft.trim().length > 0 });
-    const timer = setTimeout(() => socket.emit('typing', { chatId, typing: false }), 1800);
-    return () => clearTimeout(timer);
+    
+    try {
+      const socket = getRealtimeSocket();
+      if (!socket) return undefined;
+      
+      const typing = draft.trim().length > 0;
+      socket.emit('typing', { chatId, typing });
+      
+      const timer = setTimeout(() => {
+        try {
+          socket.emit('typing', { chatId, typing: false });
+        } catch (e) {
+          // Ignore
+        }
+      }, 1800);
+      
+      return () => {
+        clearTimeout(timer);
+        try {
+          socket.emit('typing', { chatId, typing: false });
+        } catch (e) {
+          // Ignore
+        }
+      };
+    } catch (error) {
+      console.warn('Typing effect error:', error);
+      return undefined;
+    }
   }, [chatId, draft]);
+
+  // ─── Mutations ──────────────────────────────────────────────────────────
 
   const contactAction = useMutation({
     mutationFn: ({ action }: { action: 'favorite' | 'block' }) =>
       action === 'favorite' ? favoriteChat(chatId, true) : blockChatUser(chatId, true),
     onSuccess: (_result, variables) => {
       setProfileActionsOpen(false);
-      Alert.alert(variables.action === 'block' ? 'User blocked' : 'Conversation saved', variables.action === 'block' ? 'This contact can no longer message you.' : 'Added to your favorite conversations.');
+      Alert.alert(
+        variables.action === 'block' ? 'User blocked' : 'Conversation saved', 
+        variables.action === 'block' ? 'This contact can no longer message you.' : 'Added to your favorite conversations.'
+      );
       queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
     },
     onError: error => Alert.alert('Action failed', error instanceof Error ? error.message : 'Please try again.'),
@@ -316,6 +430,8 @@ function ChatDetailsScreen() {
       Alert.alert('Failed', error instanceof Error ? error.message : 'Action rejected.'),
   });
 
+  // ─── Handlers ───────────────────────────────────────────────────────────
+
   const submit = () => {
     const content = draft.trim();
     if (content && !send.isPending) send.mutate(content);
@@ -353,6 +469,8 @@ function ChatDetailsScreen() {
     if (action === 'voice') { setSheetMode('voice'); return; }
     setSheetMode(action as SheetMode);
   };
+
+  // ─── File/Media Handlers ───────────────────────────────────────────────
 
   const uploadAndSend = async (
     file: { uri: string; name: string; type: string },
@@ -418,6 +536,8 @@ function ChatDetailsScreen() {
     }
   };
 
+  // ─── Voice Recording ────────────────────────────────────────────────────
+
   const startRecording = async () => {
     try {
       if (!(await ensureAndroidPermission(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO))) {
@@ -466,6 +586,8 @@ function ChatDetailsScreen() {
     setSheetMode(null);
   };
 
+  // ─── Render ─────────────────────────────────────────────────────────────
+
   if (chat.isLoading) return <LoadingState label="Loading messages" />;
   if (chat.isError || !chat.data?.chat)
     return (
@@ -493,9 +615,25 @@ function ChatDetailsScreen() {
           <Icon name="arrow-left" size={24} color={WP.headerText} />
         </Pressable>
         <Pressable onPress={() => setProfileActionsOpen(true)} style={styles.headerContact}>
-          <RemoteImage uri={participant.image} width={80} height={80} style={styles.headerAvatar}
-            fallback={<View style={styles.headerAvatarFallback}><Text style={styles.headerAvatarText}>{(participant.name[0] ?? '?').toUpperCase()}</Text></View>} />
-          <View style={styles.headerBody}><Text numberOfLines={1} style={styles.headerName}>{participant.name}</Text><Text style={styles.headerStatus}>{participantTyping ? 'typing...' : participantOnline ? 'online' : 'Tap for contact actions'}</Text></View>
+          <RemoteImage 
+            uri={participant.image} 
+            width={80} 
+            height={80} 
+            style={styles.headerAvatar}
+            fallback={
+              <View style={styles.headerAvatarFallback}>
+                <Text style={styles.headerAvatarText}>
+                  {(participant.name[0] ?? '?').toUpperCase()}
+                </Text>
+              </View>
+            } 
+          />
+          <View style={styles.headerBody}>
+            <Text numberOfLines={1} style={styles.headerName}>{participant.name}</Text>
+            <Text style={styles.headerStatus}>
+              {participantTyping ? 'typing...' : participantOnline ? 'online' : 'Tap for contact actions'}
+            </Text>
+          </View>
           <Icon name="dots-vertical" size={22} color={WP.headerText} />
         </Pressable>
       </View>
@@ -541,7 +679,7 @@ function ChatDetailsScreen() {
       {/* Messages */}
       <FlatList
         data={messages}
-        keyExtractor={item => getId(item)}
+        keyExtractor={item => getId(item) || Math.random().toString()}
         contentContainerStyle={styles.messages}
         inverted={false}
         ListHeaderComponent={
@@ -615,7 +753,12 @@ function ChatDetailsScreen() {
       </View>
 
       {/* Action Sheet Modal */}
-      <Modal visible={profileActionsOpen} transparent animationType="slide" onRequestClose={() => setProfileActionsOpen(false)}>
+      <Modal 
+        visible={profileActionsOpen} 
+        transparent 
+        animationType="slide" 
+        onRequestClose={() => setProfileActionsOpen(false)}
+      >
         <Pressable style={styles.sheetBackdrop} onPress={() => setProfileActionsOpen(false)}>
           <View style={styles.contactSheet}>
             <Text style={styles.contactSheetTitle}>{participant.name}</Text>
@@ -630,12 +773,15 @@ function ChatDetailsScreen() {
               ['share-variant-outline', 'Share Contact', () => Share.share({ message: `${participant.name}${chat.data?.sellerProfile?.companyWebsite ? `\n${chat.data.sellerProfile.companyWebsite}` : ''}` })],
             ].map(([icon, label, handler]) => (
               <Pressable key={String(label)} onPress={handler as () => void} style={styles.contactSheetRow}>
-                <Icon name={String(icon)} size={21} color={label === 'Block User' || label === 'Report' ? WP.rose : WP.primaryDark} /><Text style={styles.contactSheetText}>{String(label)}</Text><Icon name="chevron-right" size={18} color={WP.muted} />
+                <Icon name={String(icon)} size={21} color={label === 'Block User' || label === 'Report' ? WP.rose : WP.primaryDark} />
+                <Text style={styles.contactSheetText}>{String(label)}</Text>
+                <Icon name="chevron-right" size={18} color={WP.muted} />
               </Pressable>
             ))}
           </View>
         </Pressable>
       </Modal>
+      
       <Modal
         transparent
         visible={Boolean(sheetMode)}
@@ -1242,10 +1388,6 @@ function sellerProfileName(profile?: Record<string, unknown>) {
 function invalidateChat(queryClient: ReturnType<typeof useQueryClient>, chatId: string) {
   queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
   queryClient.invalidateQueries({ queryKey: ['chats'] });
-}
-
-function getUserId(user: CurrentUser): string | undefined {
-  return user.id ?? user._id;
 }
 
 async function ensureAndroidPermission(permission: Parameters<typeof PermissionsAndroid.check>[0]) {
