@@ -81,6 +81,7 @@ class ProfileRepository {
         address: seller?.address?.street || user.metadata?.address || '',
         businessType: seller?.companyType || user.metadata?.businessType || '',
         companyDescription: seller?.companyDescription || user.metadata?.companyDescription || '',
+        preferredCurrency: user.metadata?.preferredCurrency || 'INR',
         roles: user.roles || [],
         primaryRole: user.primaryRole || 'buyer',
       },

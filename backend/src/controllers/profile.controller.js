@@ -41,6 +41,15 @@ class ProfileController {
     }
   }
 
+  static async updateCurrency(req, res) {
+    try {
+      const result = await ProfileService.updatePreferredCurrency(req.user._id, req.body?.currency);
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to update currency' });
+    }
+  }
+
   /**
    * PATCH - Change password
    */

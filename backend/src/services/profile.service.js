@@ -12,6 +12,14 @@ function splitName(fullName) {
 }
 
 class ProfileService {
+  static async updatePreferredCurrency(userId, currency) {
+    const allowed = new Set(['INR', 'USD', 'EUR', 'GBP', 'AED', 'JPY', 'CAD', 'AUD', 'SGD']);
+    const normalized = String(currency || '').toUpperCase();
+    if (!allowed.has(normalized)) throw Object.assign(new Error('Unsupported currency'), { statusCode: 422 });
+    const user = await ProfileRepository.updateUser(userId, { 'metadata.preferredCurrency': normalized });
+    if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+    return { success: true, preferredCurrency: normalized };
+  }
   /**
    * Get user profile
    */

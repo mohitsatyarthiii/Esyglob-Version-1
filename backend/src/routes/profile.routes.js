@@ -13,6 +13,7 @@ router.get('/', ProfileController.get);
 
 // PATCH - Update profile
 router.patch('/', ProfileController.update);
+router.patch('/currency', ProfileController.updateCurrency);
 
 // PATCH - Change password
 router.patch('/password', ProfileController.changePassword);
