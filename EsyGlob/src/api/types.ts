@@ -52,11 +52,18 @@ export type SellerSummary = {
   companyName?: string;
   businessName?: string;
   displayName?: string;
+  contactPerson?: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
   country?: string;
   address?: {
     country?: string;
     state?: string;
     city?: string;
+    street?: string;
+    zipCode?: string;
+    pincode?: string;
   };
   verificationStatus?: string;
   isVerified?: boolean;

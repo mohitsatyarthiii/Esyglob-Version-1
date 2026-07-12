@@ -222,16 +222,6 @@ function MiniBadge({ icon, label, color }: { icon: string; label: string; color:
   );
 }
 
-function SellerStat({ icon, label, value }: { icon: string; label: string; value: unknown }) {
-  return (
-    <View style={styles.statBox}>
-      <Icon name={icon} size={13} color={colors.primary} />
-      <Text numberOfLines={1} style={styles.statValue}>{String(value)}</Text>
-      <Text numberOfLines={1} style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function getSellerImage(seller: SellerSummary) {
   const record = seller as SellerSummary & {
     profileImage?: string;

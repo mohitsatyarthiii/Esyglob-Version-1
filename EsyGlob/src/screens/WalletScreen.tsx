@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addPaymentMethod, fetchWallet, requestWithdrawal } from '../api/account';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import { formatCurrency } from '../utils/format';
+import { useCurrency } from '../currency/CurrencyContext';
 
 // ─── Premium Palette ────────────────────────────────────────────────────────
 
@@ -106,6 +106,7 @@ function getActivityStatus(item: ActivityItem): string {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 function WalletScreen() {
+  const { formatPrice, currencySymbol } = useCurrency();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const { activeRole } = useAuth();
@@ -229,12 +230,12 @@ function WalletScreen() {
               <View style={styles.balanceGlow} />
               <Text style={styles.balanceLabel}>Total Balance</Text>
               <Text style={styles.balanceAmount}>
-                {formatCurrency(summary.balance ?? 0, 'INR')}
+                {formatPrice(summary.balance ?? 0, 'INR')}
               </Text>
               <View style={styles.balanceGrid}>
                 <View style={styles.balanceItem}>
                   <Text style={styles.balanceItemValue}>
-                    {formatCurrency(summary.escrowBalance ?? 0, 'INR')}
+                    {formatPrice(summary.escrowBalance ?? 0, 'INR')}
                   </Text>
                   <Text style={styles.balanceItemLabel}>In Escrow</Text>
                 </View>
@@ -242,8 +243,8 @@ function WalletScreen() {
                 <View style={styles.balanceItem}>
                   <Text style={styles.balanceItemValue}>
                     {role === 'seller'
-                      ? formatCurrency(summary.withdrawableAmount ?? 0, 'INR')
-                      : formatCurrency(summary.orderPaymentTotal ?? 0, 'INR')}
+                      ? formatPrice(summary.withdrawableAmount ?? 0, 'INR')
+                      : formatPrice(summary.orderPaymentTotal ?? 0, 'INR')}
                   </Text>
                   <Text style={styles.balanceItemLabel}>
                     {role === 'seller' ? 'Withdrawable' : 'Orders'}
@@ -357,7 +358,7 @@ function WalletScreen() {
                 <Text style={styles.sectionTitle}>Quick Withdraw</Text>
                 <View style={styles.withdrawCard}>
                   <View style={styles.withdrawInput}>
-                    <Text style={styles.currencySymbol}>₹</Text>
+                    <Text style={styles.currencySymbol}>{currencySymbol}</Text>
                     <TextInput
                       value={withdrawal}
                       onChangeText={setWithdrawal}
@@ -418,7 +419,7 @@ function WalletScreen() {
                   { color: item.section === 'Withdrawal' ? P.rose : P.text },
                 ]}>
                 {item.section === 'Withdrawal' ? '-' : '+'}
-                {formatCurrency(amount, currency)}
+                {formatPrice(amount, currency)}
               </Text>
             </View>
           );

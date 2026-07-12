@@ -1,11 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -449,7 +446,7 @@ export default function AIChatBot() {
               </TouchableOpacity>
               
               {isStreaming ? (
-                <ActivityIndicator size="small" color={COLORS.orange} style={{ padding: 4 }} />
+                <ActivityIndicator size="small" color={COLORS.orange} style={styles.loaderPadding} />
               ) : (
                 <TouchableOpacity 
                   style={styles.iconBtn} 
@@ -475,6 +472,7 @@ export default function AIChatBot() {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  loaderPadding: { padding: 4 },
   container: {
     flex: 1,
     backgroundColor: COLORS.bgTop,

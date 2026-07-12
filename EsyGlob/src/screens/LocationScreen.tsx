@@ -11,9 +11,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
 import { useLocationTracking } from '../hooks/useLocationTracking';
-import { useAuth } from '../auth/AuthContext';
 import { formatDistanceToNow } from '../utils/date';
 
 // ─── Palette ────────────────────────────────────────────────────────────
@@ -43,11 +41,8 @@ const P = {
 
 function LocationScreen() {
   const navigation = useNavigation<any>();
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
   const {
     currentLocation,
-    isLocationEnabled,
     isTracking,
     startTracking,
     stopTracking,

@@ -11,10 +11,9 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useQuery } from '@tanstack/react-query';
 import { searchMarketplace } from '../api/search';
-import { Product, SellerSummary } from '../api/types';
 import RemoteImage from './RemoteImage';
 import { getId, getStableKey } from '../utils/format';
-import { firstImage } from '../utils/images';
+import { useCurrency } from '../currency/CurrencyContext';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -66,6 +65,7 @@ type Props = {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function LiveSearchDropdown({ visible, onClose, navigation }: Props) {
+  const { formatPrice } = useCurrency();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,7 +242,7 @@ export default function LiveSearchDropdown({ visible, onClose, navigation }: Pro
                           ? category
                           : (category as any)?.name || ''}
                         {price
-                          ? ` · ₹${Number(price).toLocaleString('en-IN')}`
+                          ? ` · ${formatPrice(Number(price), String(product.currency ?? 'INR'))}`
                           : ''}
                       </Text>
                     </View>

@@ -1,7 +1,7 @@
+/* eslint-disable react-native/no-inline-styles */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -21,11 +21,11 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchCategories } from '../api/categories';
-import { fetchSellers, startProductChat } from '../api/marketplace';
+import { fetchSellers } from '../api/marketplace';
 import { fetchProducts } from '../api/products';
 import { Category, Product, SellerSummary } from '../api/types';
 import LiveSearchDropdown from '../components/LiveSearchDropdown';
@@ -481,7 +481,6 @@ const renderAI = () => (
             data={productFeed}
             keyExtractor={(item: Product) => getId(item) || Math.random().toString()}
             numColumns={2}
-            estimatedItemSize={260}
             contentContainerStyle={styles.gridContent}
             refreshControl={<RefreshControl refreshing={products.isRefetching && !products.isFetchingNextPage} onRefresh={() => products.refetch()} tintColor={P.primary} />}
             onEndReachedThreshold={0.4}
@@ -504,7 +503,6 @@ const renderAI = () => (
           <FlashList
             data={manufacturers}
             keyExtractor={(item: SellerSummary) => getStableKey(item)}
-            estimatedItemSize={220}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={sellers.isRefetching} onRefresh={refreshAll} tintColor={P.primary} />}
             ListHeaderComponent={<SectionHeader title="Verified Manufacturers" />}
@@ -594,7 +592,7 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
     ['#A18CD1', '#FBC2EB'], // Lavender
   ];
   const hash = sellerId.split('').reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
-  const [grad1, grad2] = gradients[hash % gradients.length];
+  const [grad1] = gradients[hash % gradients.length];
 
   return (
     <Pressable

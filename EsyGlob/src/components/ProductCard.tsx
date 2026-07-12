@@ -10,11 +10,11 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { Product } from '../api/types';
 import { spacing } from '../theme';
+import { useCurrency } from '../currency/CurrencyContext';
 import RemoteImage from './RemoteImage';
 import SavedHeartButton from './SavedHeartButton';
 import {
   formatMoq,
-  formatProductPrice,
   getId,
   getProductImage,
   getProductLocation,
@@ -70,6 +70,7 @@ function getProductBadge(product: Product) {
 }
 
 function ProductCard({ product, variant = 'carousel' }: Props) {
+  const { formatPrice } = useCurrency();
   const navigation = useNavigation<any>();
   const location = getProductLocation(product);
   const verified = isVerifiedProduct(product);
@@ -165,7 +166,7 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
             {product.name ?? product.title}
           </Text>
 
-          <Text style={styles.price}>{formatProductPrice(product)}</Text>
+          <Text style={styles.price}>{formatPrice(Number(product.price ?? product.minPrice ?? 0), product.currency ?? 'INR')}</Text>
 
           <Text style={styles.moq} numberOfLines={1}>
             {formatMoq(product)}

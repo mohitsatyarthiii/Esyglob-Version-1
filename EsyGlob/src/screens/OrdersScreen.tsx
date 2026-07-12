@@ -12,6 +12,7 @@ import { colors, radii, spacing } from '../theme';
 import { formatValue } from '../utils/display';
 import { getId } from '../utils/format';
 import { firstImage } from '../utils/images';
+import { useCurrency } from '../currency/CurrencyContext';
 
 const buyerFilters = [
   { label: 'All', status: undefined, orderType: undefined },
@@ -122,6 +123,7 @@ function FilterRow({ items, value, onChange }: { items: string[]; value: string;
 }
 
 function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
+  const { formatPrice } = useCurrency();
   const product = getOrderProduct(order);
   const productRecord = isRecord(product) ? product : null;
   const productName = String(productRecord?.name ?? productRecord?.title ?? 'Order item');
@@ -150,7 +152,7 @@ function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
         </View>
       </View>
       <View style={styles.cardBottom}>
-        <Text style={styles.total}>{order.currency ?? 'INR'} {String(order.totalAmount ?? order.totalPrice ?? 'pending')}</Text>
+        <Text style={styles.total}>{formatPrice(Number(order.totalAmount ?? order.totalPrice ?? 0), order.currency ?? 'INR')}</Text>
         <Icon name="chevron-right" size={22} color={colors.muted} />
       </View>
     </Pressable>

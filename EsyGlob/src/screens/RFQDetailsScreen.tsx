@@ -19,6 +19,7 @@ import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { getId } from '../utils/format';
+import { useCurrency } from '../currency/CurrencyContext';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ function resolveBuyerUserId(item: any): string | undefined {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 function RFQDetailsScreen() {
+  const { formatPrice, selectedCurrency } = useCurrency();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -250,7 +252,7 @@ function RFQDetailsScreen() {
         <View style={styles.specsGrid}>
           <SpecBadge icon="cube-outline" label="Quantity" value={`${item.quantity ?? '—'} ${item.unit ?? ''}`} />
           <SpecBadge icon="shape-outline" label="Category" value={item.category ?? 'General'} />
-          {item.targetPrice && <SpecBadge icon="currency-inr" label="Target Price" value={`${item.currency ?? '₹'} ${Number(item.targetPrice).toLocaleString('en-IN')}`} />}
+          {item.targetPrice && <SpecBadge icon="currency-inr" label="Target Price" value={formatPrice(Number(item.targetPrice), item.currency ?? 'INR')} />}
           {destination && <SpecBadge icon="map-marker" label="Destination" value={destination} />}
           {timeline && <SpecBadge icon="clock-outline" label="Timeline" value={String(timeline)} />}
         </View>
@@ -334,7 +336,7 @@ function RFQDetailsScreen() {
                     </View>
                     {q.totalPrice && (
                       <Text style={styles.quotePrice}>
-                        {q.currency ?? '₹'} {Number(q.totalPrice).toLocaleString('en-IN')}
+                        {formatPrice(Number(q.totalPrice), q.currency ?? 'INR')}
                       </Text>
                     )}
                   </View>
@@ -364,7 +366,7 @@ function RFQDetailsScreen() {
             <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
               <View style={styles.formRow}>
                 <FormField label="Quantity" value={quoteForm.suppliedQuantity || String(item.quantity ?? '')} onChangeText={v => setQuoteForm({ ...quoteForm, suppliedQuantity: v })} keyboardType="numeric" compact />
-                <FormField label="Unit Price (₹)" value={quoteForm.unitPrice} onChangeText={v => setQuoteForm({ ...quoteForm, unitPrice: v })} keyboardType="numeric" compact />
+                <FormField label={`Unit Price (${selectedCurrency})`} value={quoteForm.unitPrice} onChangeText={v => setQuoteForm({ ...quoteForm, unitPrice: v })} keyboardType="numeric" compact />
               </View>
               <View style={styles.formRow}>
                 <FormField label="Currency" value={quoteForm.currency} onChangeText={v => setQuoteForm({ ...quoteForm, currency: v })} compact />
@@ -379,7 +381,7 @@ function RFQDetailsScreen() {
                 <View style={styles.pricePreview}>
                   <Text style={styles.pricePreviewLabel}>Total Value</Text>
                   <Text style={styles.pricePreviewValue}>
-                    {quoteForm.currency} {(Number(quoteForm.unitPrice) * (Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1))).toLocaleString('en-IN')}
+                    {formatPrice(Number(quoteForm.unitPrice) * (Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1)), quoteForm.currency)}
                   </Text>
                 </View>
               )}

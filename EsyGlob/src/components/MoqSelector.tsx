@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View, ScrollView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useCurrency } from '../currency/CurrencyContext';
 
 type MoqTier = {
   minQty: number;
@@ -27,6 +28,7 @@ export default function MoqSelector({
   onSelect,
   currency = '₹',
 }: Props) {
+  const { formatPrice } = useCurrency();
   if (!tiers || tiers.length === 0) return null;
 
   // Find the selected tier based on the selected quantity
@@ -38,7 +40,7 @@ export default function MoqSelector({
       <View style={styles.headerRow}>
         <Text style={styles.title}>SELECT QUANTITY</Text>
         <Text style={styles.priceSummary}>
-          {currency}{selectedPrice.toLocaleString('en-IN')} / unit
+          {formatPrice(selectedPrice, currency === '₹' ? 'INR' : currency)} / unit
         </Text>
       </View>
 
@@ -69,7 +71,7 @@ export default function MoqSelector({
                   {unitLabel}
                 </Text>
                 <Text style={[styles.tierPrice, isActive && styles.tierPriceActive]}>
-                  {currency}{tier.price.toLocaleString('en-IN')}
+                  {formatPrice(tier.price, tier.currency ?? (currency === '₹' ? 'INR' : currency))}
                 </Text>
                 {tier.discount ? (
                   <View style={styles.discountBadge}>
@@ -91,7 +93,7 @@ export default function MoqSelector({
 
       {selectedTier?.savings ? (
         <Text style={styles.savingsText}>
-          Save {currency}{selectedTier.savings.toLocaleString('en-IN')}/unit with this tier
+          Save {formatPrice(selectedTier.savings, selectedTier.currency ?? (currency === '₹' ? 'INR' : currency))}/unit with this tier
         </Text>
       ) : null}
 

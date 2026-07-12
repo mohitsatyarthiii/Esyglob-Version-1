@@ -1,13 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/* eslint-disable react-native/no-inline-styles */
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  FlatList,
+  TextInput,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -16,13 +21,11 @@ import { fetchChats, fetchNotifications, fetchRFQs } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { LoadingState } from '../components/StateViews';
-import { radii, shadow, spacing, type as typography } from '../theme';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
+import { CURRENCIES, CurrencyCode, useCurrency } from '../currency/CurrencyContext';
 
-// ──────────────────────────────────────
-// Types
-// ──────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────
 type AuthMode = 'login' | 'signup';
 type Role = 'buyer' | 'seller';
 
@@ -38,396 +41,293 @@ interface DashboardSection {
   items: DashboardItem[];
 }
 
-// ──────────────────────────────────────
-// Navigation map
-// ──────────────────────────────────────
-const NAVIGATION_MAP: Record<string, string> = {
-  'All Orders': 'Orders',
-  Pending: 'Orders',
-  Shipped: 'Orders',
-  Completed: 'Orders',
-  Messages: 'Messages',
-  Profile: 'ProfileSettings',
-  Settings: 'ProfileSettings',
-  Security: 'Security',
-  Wallet: 'Wallet',
-  Addresses: 'Addresses',
-  Orders: 'Orders',
-  Services: 'Services',
-  'Find Suppliers': 'Sellers',
-  Suppliers: 'Sellers',
-  'AI Assistant': 'AIChat',
-  'AI Sourcing': 'AIChat',
-  'Market Insights': 'MarketInsights',
-  Analytics: 'MarketInsights',
-  'Saved Items': 'SavedItems',
-  'Shipping & Logistics': 'ShippingLogistics',
-  'My Reviews': 'ReviewsDashboard',
-  Reviews: 'ReviewsDashboard',
-  'My RFQs': 'RFQ',
-  RFQs: 'RFQ',
-  Quotations: 'RFQ',
-  Dashboard: 'SellerOnboarding',
-  Verification: 'SellerOnboarding',
-  'Factory Profile': 'SellerFactory',
-  Factory: 'SellerFactory',
-  Products: 'SellerProducts',
-  Wishlist: 'ProductListing',
-  'Recently Viewed': 'ProductListing',
-  Notifications: 'Notifications',
-  'Trade Assurance': 'Services',
-  'Payment Methods': 'Wallet',
-  'Add Card': 'Wallet',
-};
+interface CurrencyData {
+  code: string;
+  symbol: string;
+  name: string;
+  country: string;
+  flag: string;
+}
 
-// ──────────────────────────────────────
-// Alibaba-inspired color palette
-// ──────────────────────────────────────
-const PALETTE = {
+// ─── Palette ───────────────────────────────────────────
+const P = {
+  bg: '#F5F5F5',
+  surface: '#FFFFFF',
   primary: '#FF6A00',
   primaryLight: '#FFF3E8',
-  primaryDark: '#E05500',
-  amber: '#FF9500',
+  ink: '#1A1A1A',
+  text: '#333333',
+  muted: '#999999',
+  faint: '#E8E8E8',
+  border: '#F0F0F0',
   emerald: '#00B578',
   sky: '#3B9CFF',
   violet: '#7B61FF',
   rose: '#FF3B6E',
-  teal: '#00A8A8',
-  ink: '#1A1A1A',
-  text: '#333333',
-  muted: '#8C8C8C',
-  faint: '#E8E8E8',
-  surface: '#FFFFFF',
-  background: '#F5F5F5',
-  successBg: '#E8F8EE',
-  successBorder: '#B7EBCE',
-  successText: '#006C3D',
+  amber: '#FF9500',
   red: '#FF3B30',
-  logoutBorder: '#FFCCCC',
-} as const;
+  inputBg: '#F8F8F8',
+};
 
-// ──────────────────────────────────────
-// Section templates
-// ──────────────────────────────────────
-const BUYER_SECTIONS_TEMPLATE: {
-  title: string;
-  items: Omit<DashboardItem, 'badge'>[];
-}[] = [
+const STATUSBAR_H = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
+const BOTTOM_TAB_HEIGHT = 80; // Bottom tab navigation height
+
+// ─── Navigation Map ────────────────────────────────────
+const NAV: Record<string, string> = {
+  'All Orders': 'Orders', Pending: 'Orders', Shipped: 'Orders', Completed: 'Orders',
+  Messages: 'Messages', Profile: 'ProfileSettings', Settings: 'ProfileSettings',
+  Security: 'Security', Wallet: 'Wallet', Addresses: 'Addresses', Orders: 'Orders',
+  Services: 'Services', 'Find Suppliers': 'Sellers', Suppliers: 'Sellers',
+  'AI Assistant': 'AIChat', 'AI Sourcing': 'AIChat',
+  'Market Insights': 'MarketInsights', Analytics: 'MarketInsights',
+  'Saved Items': 'SavedItems', 'Shipping & Logistics': 'ShippingLogistics',
+  'My Reviews': 'ReviewsDashboard', Reviews: 'ReviewsDashboard',
+  'My RFQs': 'RFQ', RFQs: 'RFQ', Quotations: 'RFQ',
+  Dashboard: 'SellerOnboarding', Verification: 'SellerOnboarding',
+  'Factory Profile': 'SellerFactory', Factory: 'SellerFactory',
+  Products: 'SellerProducts', Wishlist: 'ProductListing',
+  'Recently Viewed': 'ProductListing', Notifications: 'Notifications',
+  'Trade Assurance': 'Services', 'Payment Methods': 'Wallet', 'Add Card': 'Wallet',
+  'Location': 'Location',
+};
+
+// ─── Currency Data ─────────────────────────────────────
+function getCurrencyData(code: string): CurrencyData {
+  const map: Record<string, CurrencyData> = {
+    USD: { code:'USD', symbol:'$', name:'US Dollar', country:'United States', flag:'🇺🇸' },
+    EUR: { code:'EUR', symbol:'€', name:'Euro', country:'European Union', flag:'🇪🇺' },
+    GBP: { code:'GBP', symbol:'£', name:'British Pound', country:'United Kingdom', flag:'🇬🇧' },
+    INR: { code:'INR', symbol:'₹', name:'Indian Rupee', country:'India', flag:'🇮🇳' },
+    CNY: { code:'CNY', symbol:'¥', name:'Chinese Yuan', country:'China', flag:'🇨🇳' },
+    JPY: { code:'JPY', symbol:'¥', name:'Japanese Yen', country:'Japan', flag:'🇯🇵' },
+    KRW: { code:'KRW', symbol:'₩', name:'South Korean Won', country:'South Korea', flag:'🇰🇷' },
+    AUD: { code:'AUD', symbol:'A$', name:'Australian Dollar', country:'Australia', flag:'🇦🇺' },
+    CAD: { code:'CAD', symbol:'C$', name:'Canadian Dollar', country:'Canada', flag:'🇨🇦' },
+    AED: { code:'AED', symbol:'د.إ', name:'UAE Dirham', country:'UAE', flag:'🇦🇪' },
+    SAR: { code:'SAR', symbol:'﷼', name:'Saudi Riyal', country:'Saudi Arabia', flag:'🇸🇦' },
+    MYR: { code:'MYR', symbol:'RM', name:'Malaysian Ringgit', country:'Malaysia', flag:'🇲🇾' },
+    SGD: { code:'SGD', symbol:'S$', name:'Singapore Dollar', country:'Singapore', flag:'🇸🇬' },
+    PKR: { code:'PKR', symbol:'₨', name:'Pakistani Rupee', country:'Pakistan', flag:'🇵🇰' },
+    BDT: { code:'BDT', symbol:'৳', name:'Bangladeshi Taka', country:'Bangladesh', flag:'🇧🇩' },
+  };
+  return map[code] || { code, symbol: code, name: code, country: 'Unknown', flag: '🌐' };
+}
+
+// ─── Section Templates ─────────────────────────────────
+const BUYER_SECTIONS = [
   {
     title: 'My Orders',
     items: [
-      { icon: 'clipboard-list-outline', label: 'All Orders', color: PALETTE.violet },
-      { icon: 'clock-outline', label: 'Pending', color: PALETTE.amber },
-      { icon: 'truck-fast-outline', label: 'Shipped', color: PALETTE.sky },
-      { icon: 'check-circle-outline', label: 'Completed', color: PALETTE.emerald },
+      { icon: 'clipboard-list-outline', label: 'All Orders', color: P.violet },
+      { icon: 'clock-outline', label: 'Pending', color: P.amber },
+      { icon: 'truck-fast-outline', label: 'Shipped', color: P.sky },
+      { icon: 'check-circle-outline', label: 'Completed', color: P.emerald },
     ],
   },
   {
     title: 'Buying Services',
     items: [
-      { icon: 'bullseye-arrow', label: 'My RFQs', color: PALETTE.amber },
-      { icon: 'robot-outline', label: 'AI Sourcing', color: PALETTE.violet },
-      { icon: 'account-search-outline', label: 'Find Suppliers', color: PALETTE.emerald },
-      { icon: 'shield-check-outline', label: 'Trade Assurance', color: PALETTE.sky },
+      { icon: 'bullseye-arrow', label: 'My RFQs', color: P.amber },
+      { icon: 'robot-outline', label: 'AI Sourcing', color: P.violet },
+      { icon: 'account-search-outline', label: 'Find Suppliers', color: P.emerald },
+      { icon: 'shield-check-outline', label: 'Trade Assurance', color: P.sky },
     ],
   },
   {
     title: 'Tools & Insights',
     items: [
-      { icon: 'chart-line', label: 'Market Insights', color: PALETTE.violet },
-      { icon: 'heart-outline', label: 'Saved Items', color: PALETTE.rose },
-      { icon: 'wallet-outline', label: 'Wallet', color: PALETTE.emerald },
-      { icon: 'star-outline', label: 'My Reviews', color: PALETTE.amber },
+      { icon: 'chart-line', label: 'Market Insights', color: P.violet },
+      { icon: 'heart-outline', label: 'Saved Items', color: P.rose },
+      { icon: 'wallet-outline', label: 'Wallet', color: P.emerald },
+      { icon: 'star-outline', label: 'My Reviews', color: P.amber },
     ],
   },
 ];
 
-const SELLER_SECTIONS_TEMPLATE: {
-  title: string;
-  items: Omit<DashboardItem, 'badge'>[];
-}[] = [
+const SELLER_SECTIONS = [
   {
     title: 'Store Management',
     items: [
-      { icon: 'view-dashboard-outline', label: 'Dashboard', color: PALETTE.violet },
-      { icon: 'package-variant-closed', label: 'Products', color: PALETTE.violet },
-      { icon: 'clipboard-list-outline', label: 'Orders', color: PALETTE.emerald },
-      { icon: 'factory', label: 'Factory Profile', color: PALETTE.red },
+      { icon: 'view-dashboard-outline', label: 'Dashboard', color: P.violet },
+      { icon: 'package-variant-closed', label: 'Products', color: P.violet },
+      { icon: 'clipboard-list-outline', label: 'Orders', color: P.emerald },
+      { icon: 'factory', label: 'Factory', color: P.red },
     ],
   },
   {
     title: 'Sales Services',
     items: [
-      { icon: 'file-document-edit-outline', label: 'Quotations', color: PALETTE.emerald },
-      { icon: 'bullseye-arrow', label: 'RFQs', color: PALETTE.amber },
-      { icon: 'robot-outline', label: 'AI Assistant', color: PALETTE.violet },
-      { icon: 'check-decagram-outline', label: 'Verification', color: PALETTE.sky },
+      { icon: 'file-document-edit-outline', label: 'Quotations', color: P.emerald },
+      { icon: 'bullseye-arrow', label: 'RFQs', color: P.amber },
+      { icon: 'robot-outline', label: 'AI Assistant', color: P.violet },
+      { icon: 'check-decagram-outline', label: 'Verification', color: P.sky },
     ],
   },
   {
     title: 'Analytics & Tools',
     items: [
-      { icon: 'chart-line', label: 'Analytics', color: PALETTE.violet },
-      { icon: 'heart-outline', label: 'Saved Items', color: PALETTE.rose },
-      { icon: 'wallet-outline', label: 'Wallet', color: PALETTE.emerald },
-      { icon: 'message-text-outline', label: 'Messages', color: PALETTE.violet },
-      { icon: 'star-check-outline', label: 'Reviews', color: PALETTE.amber },
+      { icon: 'chart-line', label: 'Analytics', color: P.violet },
+      { icon: 'heart-outline', label: 'Saved Items', color: P.rose },
+      { icon: 'wallet-outline', label: 'Wallet', color: P.emerald },
+      { icon: 'message-text-outline', label: 'Messages', color: P.violet },
+      { icon: 'star-check-outline', label: 'Reviews', color: P.amber },
     ],
   },
 ];
 
-// ──────────────────────────────────────
-// Query configuration
-// ──────────────────────────────────────
-const DASHBOARD_QUERY_OPTIONS = {
-  staleTime: 60_000,
-  gcTime: 5 * 60_000,
-  refetchOnWindowFocus: false,
-  retry: 2,
-  retryDelay: (attempt: number) => Math.min(1000 * 2 ** attempt, 10_000),
-} as const;
+// ─── Query Options ─────────────────────────────────────
+const QO = { staleTime: 60_000, gcTime: 300_000, refetchOnWindowFocus: false, retry: 2 } as const;
 
-// ──────────────────────────────────────
-// Badge map builder
-// ──────────────────────────────────────
-interface BadgeMap {
-  'All Orders': string;
-  Pending: string;
-  Shipped: string;
-  Completed: string;
-  'My RFQs': string;
-  RFQs: string;
-  Messages: string;
-  Wallet: string;
-  Products: string;
-  Orders: string;
+// ─── Badge Builder ─────────────────────────────────────
+function buildBadges(rfq: number, chat: number): Record<string, string> {
+  const m: Record<string, string> = {};
+  if (rfq > 0) { m['My RFQs'] = String(rfq); m.RFQs = String(rfq); }
+  if (chat > 0) m.Messages = String(chat);
+  return m;
 }
 
-function buildBadgeMap(rfqCount: number, chatCount: number): Partial<BadgeMap> {
-  const map: Partial<BadgeMap> = {};
-  if (rfqCount > 0) {
-    map['My RFQs'] = String(rfqCount);
-    map.RFQs = String(rfqCount);
-  }
-  if (chatCount > 0) {
-    map.Messages = String(chatCount);
-  }
-  return map;
+function applyBadges(sections: typeof BUYER_SECTIONS, badges: Record<string, string>): DashboardSection[] {
+  return sections.map(s => ({ ...s, items: s.items.map(i => ({ ...i, badge: badges[i.label] })) }));
 }
 
-function applyBadges(
-  sections: typeof BUYER_SECTIONS_TEMPLATE,
-  badgeMap: Partial<BadgeMap>,
-): DashboardSection[] {
-  return sections.map(section => ({
-    ...section,
-    items: section.items.map(item => ({
-      ...item,
-      badge: badgeMap[item.label as keyof BadgeMap],
-    })),
-  }));
-}
+// ─── Currency Dropdown ─────────────────────────────────
+function CurrencyDropdown({ selected, onSelect, loading }: { selected: string; onSelect: (c: CurrencyCode) => void; loading: boolean }) {
+  const [show, setShow] = useState(false);
+  const [q, setQ] = useState('');
+  const all = useMemo(() => CURRENCIES.map(getCurrencyData), []);
+  const curr = getCurrencyData(selected);
+  const filtered = useMemo(() => {
+    if (!q.trim()) return all;
+    const lq = q.toLowerCase();
+    return all.filter(c => c.code.toLowerCase().includes(lq) || c.name.toLowerCase().includes(lq) || c.country.toLowerCase().includes(lq));
+  }, [all, q]);
 
-// ──────────────────────────────────────
-// Sub-components
-// ──────────────────────────────────────
-
-function Benefit({ icon, title, subtitle, color }: { icon: string; title: string; subtitle: string; color: string }) {
   return (
-    <View style={styles.benefitRow}>
-      <View style={[styles.benefitIcon, { backgroundColor: `${color}15` }]}>
-        <Icon name={icon} size={20} color={color} />
-      </View>
-      <View style={styles.benefitInfo}>
-        <Text style={styles.benefitTitle}>{title}</Text>
-        <Text style={styles.benefitSubtitle}>{subtitle}</Text>
-      </View>
+    <View>
+      <Pressable onPress={() => { setShow(true); setQ(''); }} style={styles.curTrigger}>
+        <Text style={styles.curFlag}>{curr.flag}</Text>
+        <Text style={styles.curCode}>{curr.code}</Text>
+        {loading ? <ActivityIndicator size="small" color={P.primary} /> : <Icon name="chevron-down" size={14} color={P.muted} />}
+      </Pressable>
+
+      <Modal visible={show} transparent animationType="slide" onRequestClose={() => setShow(false)}>
+        <View style={styles.modalWrap}>
+          <Pressable style={styles.modalBack} onPress={() => setShow(false)} />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHead}>
+              <Text style={styles.modalTitle}>Select Currency</Text>
+              <Pressable onPress={() => setShow(false)} style={styles.modalClose}><Icon name="close" size={20} color={P.ink} /></Pressable>
+            </View>
+            <View style={styles.searchWrap}>
+              <Icon name="magnify" size={16} color={P.muted} />
+              <TextInput style={styles.searchInp} placeholder="Search currency..." placeholderTextColor={P.muted} value={q} onChangeText={setQ} />
+              {q ? <Pressable onPress={() => setQ('')}><Icon name="close-circle" size={14} color={P.muted} /></Pressable> : null}
+            </View>
+            <FlatList
+              data={filtered}
+              keyExtractor={i => i.code}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 30 }}
+              renderItem={({ item }) => {
+                const active = selected === item.code;
+                return (
+                  <Pressable style={[styles.curItem, active && styles.curItemActive]} onPress={() => { onSelect(item.code as CurrencyCode); setShow(false); }}>
+                    <Text style={styles.curItemFlag}>{item.flag}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.curItemCode, active && { color: P.primary }]}>{item.code} <Text style={styles.curItemSym}>{item.symbol}</Text></Text>
+                      <Text style={styles.curItemName}>{item.name} • {item.country}</Text>
+                    </View>
+                    {active && <Icon name="check-circle" size={20} color={P.primary} />}
+                  </Pressable>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// ─── Sub Components ────────────────────────────────────
+function Benefit({ icon, title, sub, color }: { icon: string; title: string; sub: string; color: string }) {
+  return (
+    <View style={styles.benRow}>
+      <View style={[styles.benIcon, { backgroundColor: `${color}15` }]}><Icon name={icon} size={16} color={color} /></View>
+      <View><Text style={styles.benTitle}>{title}</Text><Text style={styles.benSub}>{sub}</Text></View>
     </View>
   );
 }
 
 function LockedRow({ icon, title }: { icon: string; title: string }) {
   return (
-    <View style={styles.lockedRow}>
-      <View style={styles.lockedIcon}>
-        <Icon name={icon} size={20} color={PALETTE.muted} />
-      </View>
-      <Text style={styles.lockedTitle}>{title}</Text>
-      <Icon name="lock-outline" size={14} color={PALETTE.faint} />
+    <View style={styles.lockRow}>
+      <Icon name={icon} size={16} color={P.muted} />
+      <Text style={styles.lockText}>{title}</Text>
+      <Icon name="lock-outline" size={12} color={P.faint} />
     </View>
   );
 }
 
-function StatCard({ icon, iconBgColor, iconColor, value, label, isLoading }: {
-  icon: string; iconBgColor: string; iconColor: string; value: string | number; label: string; isLoading: boolean;
-}) {
-  return (
-    <View style={styles.statItem}>
-      <View style={[styles.statIconWrap, { backgroundColor: iconBgColor }]}>
-        <Icon name={icon} size={20} color={iconColor} />
-      </View>
-      {isLoading ? (
-        <ActivityIndicator size="small" color={PALETTE.muted} style={styles.statLoader} />
-      ) : (
-        <Text style={styles.statValue}>{value}</Text>
-      )}
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-// ──────────────────────────────────────
-// Main Component
-// ──────────────────────────────────────
-
+// ─── Main Component ────────────────────────────────────
 function AccountScreen() {
-  const navigation = useNavigation<any>();
-  const queryClient = useQueryClient();
+  const { selectedCurrency, setCurrency, isLoading: curLoading } = useCurrency();
+  const nav = useNavigation<any>();
+  const qc = useQueryClient();
   const { activeRole, setActiveRole, signOut, status, user } = useAuth();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
-  const [welcomeVisible, setWelcomeVisible] = useState(false);
-  const [previousAuthMode, setPreviousAuthMode] = useState<AuthMode | null>(null);
+  const [welcome, setWelcome] = useState(false);
+  const [prevMode, setPrevMode] = useState<AuthMode | null>(null);
 
-  const mobileRoles = useMemo(
-    () => user?.roles?.filter(r => r === 'buyer' || r === 'seller') ?? [],
-    [user?.roles],
-  );
-
+  const roles = useMemo(() => user?.roles?.filter(r => r === 'buyer' || r === 'seller') ?? [], [user]);
   const role: Role = activeRole === 'seller' ? 'seller' : 'buyer';
 
-  // ── Queries ──
-  const notificationsQuery = useQuery({
-    queryKey: ['account-notifications', role],
-    queryFn: fetchNotifications,
-    enabled: status === 'authenticated',
-    ...DASHBOARD_QUERY_OPTIONS,
-    select: (data: any) => ({
-      unreadCount: Array.isArray(data) ? data.filter((item: any) => !item.isRead).length : 0,
-    }),
-  });
+  const notifQ = useQuery({ queryKey: ['acc-notif', role], queryFn: fetchNotifications, enabled: status === 'authenticated', ...QO, select: (d: any) => ({ unread: Array.isArray(d) ? d.filter((i: any) => !i.isRead).length : 0 }) });
+  const rfqQ = useQuery({ queryKey: ['acc-rfq', role], queryFn: () => fetchRFQs({ scope: role, limit: 1 }), enabled: status === 'authenticated', ...QO, select: (d: any) => ({ count: d?.pagination?.total ?? d?.rfqs?.length ?? 0 }) });
+  const chatQ = useQuery({ queryKey: ['acc-chat', role], queryFn: () => fetchChats(role), enabled: status === 'authenticated', ...QO, select: (d: any) => ({ count: Array.isArray(d) ? d.length : 0 }) });
 
-  const rfqsQuery = useQuery({
-    queryKey: ['account-rfqs', role],
-    queryFn: () => fetchRFQs({ scope: role, limit: 1 }),
-    enabled: status === 'authenticated',
-    ...DASHBOARD_QUERY_OPTIONS,
-    select: (data: any) => ({
-      count: data?.pagination?.total ?? data?.rfqs?.length ?? 0,
-    }),
-  });
+  const unread = notifQ.data?.unread ?? 0;
+  const rfqs = rfqQ.data?.count ?? 0;
+  const chats = chatQ.data?.count ?? 0;
+  const badges = useMemo(() => buildBadges(rfqs, chats), [rfqs, chats]);
+  const buyerSec = useMemo(() => applyBadges(BUYER_SECTIONS, badges), [badges]);
+  const sellerSec = useMemo(() => applyBadges(SELLER_SECTIONS, badges), [badges]);
 
-  const chatsQuery = useQuery({
-    queryKey: ['account-chats', role],
-    queryFn: () => fetchChats(role),
-    enabled: status === 'authenticated',
-    ...DASHBOARD_QUERY_OPTIONS,
-    select: (data: any) => ({
-      count: Array.isArray(data) ? data.length : 0,
-    }),
-  });
+  useEffect(() => { if (status === 'authenticated' && prevMode) { setAuthMode(null); setWelcome(true); setPrevMode(null); } }, [status, prevMode]);
 
-  const unreadCount = notificationsQuery.data?.unreadCount ?? 0;
-  const rfqCount = rfqsQuery.data?.count ?? 0;
-  const chatCount = chatsQuery.data?.count ?? 0;
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['acc-notif'] }); qc.invalidateQueries({ queryKey: ['acc-rfq'] }); qc.invalidateQueries({ queryKey: ['acc-chat'] }); };
+  const go = (label: string) => nav.navigate(NAV[label] || 'Home');
 
-  const badgeMap = useMemo(() => buildBadgeMap(rfqCount, chatCount), [rfqCount, chatCount]);
-  const buyerSections = useMemo(() => applyBadges(BUYER_SECTIONS_TEMPLATE, badgeMap), [badgeMap]);
-  const sellerSections = useMemo(() => applyBadges(SELLER_SECTIONS_TEMPLATE, badgeMap), [badgeMap]);
+  if (authMode) return <AuthScreen initialMode={authMode} onClose={() => setAuthMode(null)} onSuccess={() => { setAuthMode(null); setWelcome(true); }} />;
+  if (status === 'checking') return <LoadingState label="Restoring session" />;
 
-  useEffect(() => {
-    if (status === 'authenticated' && previousAuthMode) {
-      setAuthMode(null);
-      setWelcomeVisible(true);
-      setPreviousAuthMode(null);
-    }
-  }, [status, previousAuthMode]);
-
-  const handleSetAuthMode = useCallback((mode: AuthMode | null) => {
-    if (mode) setPreviousAuthMode(mode);
-    setAuthMode(mode);
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['account-notifications'] });
-    queryClient.invalidateQueries({ queryKey: ['account-rfqs'] });
-    queryClient.invalidateQueries({ queryKey: ['account-chats'] });
-  }, [queryClient]);
-
-  const isRefreshing = notificationsQuery.isFetching || rfqsQuery.isFetching || chatsQuery.isFetching;
-
-  const openDashboardItem = useCallback((label: string) => {
-    const route = NAVIGATION_MAP[label];
-    if (route) {
-      navigation.navigate(route);
-    } else {
-      navigation.navigate('Home');
-    }
-  }, [navigation]);
-
-  const hasQueryError = notificationsQuery.isError || rfqsQuery.isError || chatsQuery.isError;
-
-  // ══════════════════════════════════════
-  // RENDER: Auth mode
-  // ══════════════════════════════════════
-  if (authMode) {
-    return (
-      <AuthScreen
-        initialMode={authMode}
-        onClose={() => handleSetAuthMode(null)}
-        onSuccess={() => {
-          setAuthMode(null);
-          setWelcomeVisible(true);
-        }}
-      />
-    );
-  }
-
-  // ══════════════════════════════════════
-  // RENDER: Session checking
-  // ══════════════════════════════════════
-  if (status === 'checking') {
-    return <LoadingState label="Restoring session" />;
-  }
-
-  // ══════════════════════════════════════
-  // RENDER: Guest
-  // ══════════════════════════════════════
+  // ─── GUEST ───────────────────────────────────────────
   if (status !== 'authenticated') {
     return (
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.screen} 
+        contentContainerStyle={styles.guestContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.guestTop}>
-          <Pressable onPress={() => navigation.navigate('Home')} hitSlop={10} style={styles.closeButton}>
-            <Icon name="close" size={20} color={PALETTE.muted} />
-          </Pressable>
+          <Pressable onPress={() => nav.navigate('Home')} style={styles.closeBtn}><Icon name="close" size={18} color={P.muted} /></Pressable>
         </View>
-
-        <View style={styles.guestHeader}>
-          <View style={styles.guestAvatar}>
-            <Icon name="account-outline" size={32} color={PALETTE.muted} />
-          </View>
-          <View style={styles.guestTextWrap}>
-            <Text style={styles.guestTitle}>Welcome to EsyGlob</Text>
-            <Text style={styles.guestText}>Sign in to manage orders, RFQs, wishlist, and supplier messages.</Text>
+        <View style={styles.guestCard}>
+          <View style={styles.guestAvatar}><Icon name="account-outline" size={28} color={P.muted} /></View>
+          <Text style={styles.guestTitle}>Welcome to EsyGlob</Text>
+          <Text style={styles.guestSub}>Sign in to manage orders, RFQs, and supplier messages.</Text>
+          <View style={styles.guestBtns}>
+            <Pressable onPress={() => setAuthMode('login')} style={styles.guestBtnPri}><Text style={styles.guestBtnPriText}>Login</Text></Pressable>
+            <Pressable onPress={() => setAuthMode('signup')} style={styles.guestBtnSec}><Text style={styles.guestBtnSecText}>Sign up</Text></Pressable>
           </View>
         </View>
-
-        <View style={styles.authActions}>
-          <Pressable onPress={() => handleSetAuthMode('login')} style={styles.loginButton}>
-            <Text style={styles.loginButtonText}>Login</Text>
-          </Pressable>
-          <Pressable onPress={() => handleSetAuthMode('signup')} style={styles.signupButton}>
-            <Text style={styles.signupButtonText}>Sign up</Text>
-          </Pressable>
+        <View style={styles.guestCard}>
+          <Text style={styles.secTitle}>Member Benefits</Text>
+          <Benefit icon="shield-check-outline" title="Verified identity" sub="Build trust with partners" color={P.emerald} />
+          <Benefit icon="message-text-outline" title="Buyer-seller messaging" sub="Real-time communication" color={P.violet} />
+          <Benefit icon="heart-outline" title="Wishlist & history" sub="Save and track products" color={P.rose} />
         </View>
-
-        <View style={styles.benefitsCard}>
-          <Text style={styles.sectionTitle}>Member Benefits</Text>
-          <Benefit icon="shield-check-outline" title="Verified trade identity" subtitle="Build trust with partners" color={PALETTE.emerald} />
-          <Benefit icon="message-text-outline" title="Buyer-seller messaging" subtitle="Real-time communication" color={PALETTE.violet} />
-          <Benefit icon="heart-outline" title="Wishlist & history" subtitle="Save and track products" color={PALETTE.rose} />
-        </View>
-
-        <Text style={styles.sectionTitle}>Locked Features</Text>
+        <Text style={styles.secTitle}>Locked Features</Text>
         <LockedRow icon="eye-outline" title="Recently viewed" />
         <LockedRow icon="heart-outline" title="Wishlist" />
         <LockedRow icon="clipboard-list-outline" title="Orders" />
@@ -435,409 +335,300 @@ function AccountScreen() {
     );
   }
 
-  // ══════════════════════════════════════
-  // RENDER: Authenticated
-  // ══════════════════════════════════════
-  const displayName = user?.name ?? user?.fullName ?? user?.email ?? 'EsyGlob account';
-  const profileImage = firstImage(user?.profileImage, user?.avatarUrl);
-  const sections = role === 'seller' ? sellerSections : buyerSections;
+  // ─── AUTHENTICATED ───────────────────────────────────
+  const name = user?.name ?? user?.fullName ?? user?.email ?? 'Account';
+  const img = firstImage(user?.profileImage, user?.avatarUrl);
+  const sections = role === 'seller' ? sellerSec : buyerSec;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={PALETTE.primary} colors={[PALETTE.primary]} />}>
-
-      {/* ── Profile Header Card ── */}
-      <View style={styles.profileCard}>
-        <View style={styles.profileTop}>
-          <RemoteImage
-            uri={profileImage}
-            width={72}
-            height={72}
-            style={styles.avatar}
-            fallback={
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarText}>{displayName.slice(0, 1).toUpperCase()}</Text>
-              </View>
-            }
-          />
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
-            <Text style={styles.profileEmail} numberOfLines={1}>{user?.email}</Text>
-            <View style={styles.profileBadge}>
-              <Icon name="check-decagram" size={12} color={PALETTE.emerald} />
-              <Text style={styles.profileBadgeText}>Verified Account</Text>
-            </View>
-          </View>
-          <Pressable onPress={() => navigation.navigate('ProfileSettings')} style={styles.editButton} hitSlop={8}>
-            <Icon name="chevron-right" size={20} color={PALETTE.muted} />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* ── Welcome Banner ── */}
-      {welcomeVisible ? (
-        <View style={styles.welcomeBanner}>
-          <Icon name="check-circle-outline" size={18} color={PALETTE.emerald} />
-          <Text style={styles.welcomeText}>Welcome back! Your {role} dashboard is ready.</Text>
-          <Pressable onPress={() => setWelcomeVisible(false)} hitSlop={10}>
-            <Icon name="close" size={16} color={PALETTE.muted} />
-          </Pressable>
-        </View>
-      ) : null}
-
-      {/* ── Role Switcher ── */}
-      {mobileRoles.length > 1 ? (
-        <View style={styles.roleRow}>
-          {mobileRoles.map(item => (
-            <Pressable key={item} onPress={() => setActiveRole(item)} style={[styles.roleButton, role === item && styles.roleButtonActive]}>
-              <Icon name={item === 'buyer' ? 'account-outline' : 'store-outline'} size={16} color={role === item ? PALETTE.primary : PALETTE.muted} />
-              <Text style={[styles.roleText, role === item && styles.roleTextActive]}>{item === 'buyer' ? 'Buyer' : 'Seller'}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      {/* ── Error Banner ── */}
-      {hasQueryError && !isRefreshing ? (
-        <View style={styles.errorBanner}>
-          <Icon name="alert-circle-outline" size={16} color={PALETTE.red} />
-          <Text style={styles.errorBannerText}>Some data couldn't load. Pull to refresh.</Text>
-        </View>
-      ) : null}
-
-      {/* ── Quick Actions Row ── */}
-      <View style={styles.quickActionsRow}>
-        <Pressable onPress={() => navigation.navigate('Wallet')} style={styles.quickActionCard}>
-          <View style={[styles.quickActionIcon, { backgroundColor: '#FFF3E8' }]}>
-            <Icon name="credit-card-plus-outline" size={22} color={PALETTE.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Add Payment{'\n'}Card</Text>
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Addresses')} style={styles.quickActionCard}>
-          <View style={[styles.quickActionIcon, { backgroundColor: '#E8F8EE' }]}>
-            <Icon name="map-marker-plus-outline" size={22} color={PALETTE.emerald} />
-          </View>
-          <Text style={styles.quickActionLabel}>Manage{'\n'}Addresses</Text>
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Orders')} style={styles.quickActionCard}>
-          <View style={[styles.quickActionIcon, { backgroundColor: '#EFF6FF' }]}>
-            <Icon name="truck-fast-outline" size={22} color={PALETTE.sky} />
-          </View>
-          <Text style={styles.quickActionLabel}>Track{'\n'}Orders</Text>
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.quickActionCard}>
-          <View style={[styles.quickActionIcon, { backgroundColor: '#FFF0F0' }]}>
-            <Icon name="bell-badge-outline" size={22} color={PALETTE.rose} />
-          </View>
-          <Text style={styles.quickActionLabel}>View{'\n'}Alerts</Text>
+    <View style={styles.screen}>
+      <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
+      
+      {/* Fixed Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>My Account</Text>
+        <Pressable onPress={() => nav.navigate('Notifications')} style={styles.headerBtn}>
+          <Icon name="bell-outline" size={20} color={P.ink} />
+          {unread > 0 && <View style={styles.headerBadge}><Text style={styles.headerBadgeText}>{unread}</Text></View>}
         </Pressable>
       </View>
 
-      {/* ── Stats Overview ── */}
-      <View style={styles.statsCard}>
-        <StatCard icon="file-document-outline" iconBgColor="#FFF3E8" iconColor={PALETTE.primary} value={rfqCount} label="Active RFQs" isLoading={rfqsQuery.isLoading} />
-        <View style={styles.statDivider} />
-        <StatCard icon="message-text-outline" iconBgColor="#E8F8EE" iconColor={PALETTE.emerald} value={chatCount} label="Messages" isLoading={chatsQuery.isLoading} />
-        <View style={styles.statDivider} />
-        <StatCard icon="bell-outline" iconBgColor="#FFF0F0" iconColor={PALETTE.red} value={unreadCount} label="Alerts" isLoading={notificationsQuery.isLoading} />
-      </View>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.authContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={notifQ.isFetching || rfqQ.isFetching || chatQ.isFetching} onRefresh={refresh} tintColor={P.primary} />}
+      >
+        {/* Profile Mini */}
+        <Pressable onPress={() => nav.navigate('ProfileSettings')} style={styles.profCard}>
+          <RemoteImage uri={img} width={44} height={44} style={styles.profImg} fallback={<View style={styles.profFall}><Text style={styles.profFallText}>{name.slice(0,1).toUpperCase()}</Text></View>} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.profName} numberOfLines={1}>{name}</Text>
+            <Text style={styles.profEmail} numberOfLines={1}>{user?.email}</Text>
+          </View>
+          <Icon name="chevron-right" size={16} color={P.muted} />
+        </Pressable>
 
-      <View style={styles.sectionCard}>
-  <View style={styles.addressHeader}>
-    <View style={styles.sectionTitleRow}>
-      <Icon name="map-marker-outline" size={18} color={PALETTE.primary} />
-      <Text style={styles.sectionTitle}>My Location</Text>
-    </View>
-    <Pressable onPress={() => navigation.navigate('Location')} style={styles.viewAllBtn}>
-      <Text style={styles.viewAllText}>Manage</Text>
-      <Icon name="chevron-right" size={16} color={PALETTE.primary} />
-    </Pressable>
-  </View>
-  
-  <Pressable onPress={() => navigation.navigate('Location')} style={styles.locationCard}>
-    <View style={styles.locationMapPreview}>
-      <Icon name="map" size={32} color={PALETTE.primary} />
-    </View>
-    <View style={styles.locationInfo}>
-      <Text style={styles.locationTitle}>Location Tracking</Text>
-      <Text style={styles.locationDesc}>
-        Enable GPS for nearby suppliers, accurate shipping & better delivery estimates
-      </Text>
-      <View style={styles.locationStatus}>
-        <View style={[styles.locationDot, { backgroundColor: PALETTE.emerald }]} />
-        <Text style={styles.locationStatusText}>Tap to manage</Text>
-      </View>
-    </View>
-  </Pressable>
-</View>
+        {/* Welcome */}
+        {welcome && (
+          <View style={styles.welcome}>
+            <Icon name="check-circle-outline" size={14} color={P.emerald} />
+            <Text style={styles.welcomeText}>Welcome back! Your {role} dashboard is ready.</Text>
+            <Pressable onPress={() => setWelcome(false)}><Icon name="close" size={12} color={P.muted} /></Pressable>
+          </View>
+        )}
 
-      {/* ── Dashboard Sections ── */}
-      {sections.map(section => (
-        <View key={section.title} style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-          <View style={styles.sectionGrid}>
-            {section.items.map(item => (
-              <Pressable key={item.label} onPress={() => openDashboardItem(item.label)} style={styles.sectionItem}>
-                <View style={[styles.sectionIconWrap, { backgroundColor: `${item.color}12` }]}>
-                  <Icon name={item.icon} size={20} color={item.color} />
-                  {item.badge ? (
-                    <View style={[styles.itemBadge, { backgroundColor: item.color }]}>
-                      <Text style={styles.itemBadgeText} numberOfLines={1}>{item.badge}</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Text style={styles.sectionItemLabel} numberOfLines={1}>{item.label}</Text>
+        {/* Role Switcher */}
+        {roles.length > 1 && (
+          <View style={styles.roleRow}>
+            {roles.map(r => (
+              <Pressable key={r} onPress={() => setActiveRole(r)} style={[styles.roleBtn, role === r && styles.roleBtnActive]}>
+                <Text style={[styles.roleText, role === r && styles.roleTextActive]}>{r === 'buyer' ? 'Buyer' : 'Seller'}</Text>
               </Pressable>
             ))}
           </View>
+        )}
+
+        {/* Stats Row */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Icon name="file-document-outline" size={18} color={P.primary} />
+            {rfqQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{rfqs}</Text>}
+            <Text style={styles.statLbl}>Active RFQs</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Icon name="message-text-outline" size={18} color={P.emerald} />
+            {chatQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{chats}</Text>}
+            <Text style={styles.statLbl}>Messages</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Icon name="bell-outline" size={18} color={P.red} />
+            {notifQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{unread}</Text>}
+            <Text style={styles.statLbl}>Alerts</Text>
+          </View>
         </View>
-      ))}
 
-      {/* ── Address Section ── */}
-      <View style={styles.sectionCard}>
-        <View style={styles.addressHeader}>
-          <Text style={styles.sectionTitle}>Saved Addresses</Text>
-          <Pressable onPress={() => navigation.navigate('Addresses')} style={styles.addAddressBtn}>
-            <Icon name="plus" size={16} color={PALETTE.primary} />
-            <Text style={styles.addAddressText}>Add New</Text>
-          </Pressable>
+        {/* Quick Actions */}
+        <View style={styles.quickRow}>
+          {[
+            { icon: 'credit-card-plus-outline', label: 'Add Card', color: P.primary, bg: '#FFF3E8', route: 'Wallet' },
+            { icon: 'map-marker-plus-outline', label: 'Address', color: P.emerald, bg: '#E8F8EE', route: 'Addresses' },
+            { icon: 'truck-fast-outline', label: 'Orders', color: P.sky, bg: '#EFF6FF', route: 'Orders' },
+            { icon: 'bell-badge-outline', label: 'Alerts', color: P.rose, bg: '#FFF0F0', route: 'Notifications' },
+          ].map((a, i) => (
+            <Pressable key={i} onPress={() => nav.navigate(a.route)} style={styles.quickCard}>
+              <View style={[styles.quickIcon, { backgroundColor: a.bg }]}><Icon name={a.icon} size={18} color={a.color} /></View>
+              <Text style={styles.quickLabel}>{a.label}</Text>
+            </Pressable>
+          ))}
         </View>
-        <Pressable onPress={() => navigation.navigate('Addresses')} style={styles.addressCard}>
-          <View style={styles.addressIconWrap}>
-            <Icon name="map-marker-outline" size={20} color={PALETTE.primary} />
-          </View>
-          <View style={styles.addressInfo}>
-            <Text style={styles.addressTitle}>Manage your delivery addresses</Text>
-            <Text style={styles.addressDesc}>Add, edit, or remove shipping addresses for faster checkout</Text>
-          </View>
-          <Icon name="chevron-right" size={18} color={PALETTE.muted} />
-        </Pressable>
-      </View>
 
-      {/* ── Quick Actions ── */}
-      <View style={styles.quickActionsCard}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-        <Pressable onPress={() => navigation.navigate('ProfileSettings')} style={styles.actionRow}>
-          <View style={[styles.actionIcon, styles.orangeSoftBg]}>
-            <Icon name="cog-outline" size={20} color={PALETTE.primary} />
+        {/* Currency Section */}
+        <View style={styles.curCard}>
+          <View style={styles.curHead}>
+            <Icon name="currency-usd" size={16} color={P.primary} />
+            <Text style={styles.curTitle}>Preferred Currency</Text>
           </View>
-          <View style={styles.actionInfo}>
-            <Text style={styles.actionLabel}>Settings</Text>
-            <Text style={styles.actionDesc}>Account, preferences, notifications</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Security')} style={styles.actionRow}>
-          <View style={[styles.actionIcon, styles.greenSoftBg]}>
-            <Icon name="shield-lock-outline" size={20} color={PALETTE.emerald} />
-          </View>
-          <View style={styles.actionInfo}>
-            <Text style={styles.actionLabel}>Security & Privacy</Text>
-            <Text style={styles.actionDesc}>Password, 2FA, privacy settings</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
-        </Pressable>
-        <Pressable onPress={() => navigation.navigate('Services')} style={[styles.actionRow, styles.actionRowLast]}>
-          <View style={[styles.actionIcon, styles.redSoftBg]}>
-            <Icon name="lifebuoy" size={20} color={PALETTE.red} />
-          </View>
-          <View style={styles.actionInfo}>
-            <Text style={styles.actionLabel}>Help & Support</Text>
-            <Text style={styles.actionDesc}>FAQ, contact us, report issue</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={PALETTE.faint} />
-        </Pressable>
-      </View>
+          <Text style={styles.curDesc}>All prices will be displayed in your selected currency</Text>
+          <CurrencyDropdown selected={selectedCurrency} onSelect={setCurrency} loading={curLoading} />
+        </View>
 
-      {/* ── Logout ── */}
-      <Pressable onPress={signOut} style={styles.logoutButton}>
-        <Icon name="logout" size={18} color={PALETTE.red} />
-        <Text style={styles.logoutText}>Sign out</Text>
-      </Pressable>
-    </ScrollView>
+        {/* Location Section */}
+        <Pressable onPress={() => nav.navigate('Location')} style={styles.locCard}>
+          <View style={styles.locIconWrap}>
+            <Icon name="map-marker" size={20} color={P.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.locTitle}>My Location</Text>
+            <Text style={styles.locDesc}>Set location for nearby suppliers & accurate shipping</Text>
+          </View>
+          <Icon name="chevron-right" size={16} color={P.muted} />
+        </Pressable>
+
+        {/* Dashboard Sections */}
+        {sections.map(sec => (
+          <View key={sec.title} style={styles.secCard}>
+            <Text style={styles.secTitle}>{sec.title}</Text>
+            <View style={styles.secGrid}>
+              {sec.items.map(item => (
+                <Pressable key={item.label} onPress={() => go(item.label)} style={styles.secItem}>
+                  <View style={[styles.secIcon, { backgroundColor: `${item.color}15` }]}>
+                    <Icon name={item.icon} size={16} color={item.color} />
+                    {item.badge && <View style={[styles.secBadge, { backgroundColor: item.color }]}><Text style={styles.secBadgeText}>{item.badge}</Text></View>}
+                  </View>
+                  <Text style={styles.secLabel} numberOfLines={1}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ))}
+
+        {/* Saved Addresses */}
+        <Pressable onPress={() => nav.navigate('Addresses')} style={styles.secCard}>
+          <View style={styles.addrHead}>
+            <Text style={styles.secTitle}>Saved Addresses</Text>
+            <View style={styles.addrAdd}>
+              <Icon name="plus" size={12} color={P.primary} />
+              <Text style={styles.addrAddText}>Add New</Text>
+            </View>
+          </View>
+          <View style={styles.addrRow}>
+            <View style={styles.addrIcon}>
+              <Icon name="map-marker-outline" size={16} color={P.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addrTitle}>Manage your delivery addresses</Text>
+              <Text style={styles.addrDesc}>Add, edit, or remove shipping addresses</Text>
+            </View>
+            <Icon name="chevron-right" size={14} color={P.muted} />
+          </View>
+        </Pressable>
+
+        {/* Bottom Actions */}
+        <View style={styles.secCard}>
+          <Pressable onPress={() => nav.navigate('ProfileSettings')} style={styles.actRow}><Icon name="cog-outline" size={16} color={P.primary} /><Text style={styles.actText}>Settings</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
+          <Pressable onPress={() => nav.navigate('Security')} style={styles.actRow}><Icon name="shield-lock-outline" size={16} color={P.emerald} /><Text style={styles.actText}>Security & Privacy</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
+          <Pressable onPress={() => nav.navigate('Services')} style={[styles.actRow, { borderBottomWidth: 0 }]}><Icon name="lifebuoy" size={16} color={P.red} /><Text style={styles.actText}>Help & Support</Text><Icon name="chevron-right" size={14} color={P.faint} /></Pressable>
+        </View>
+
+        {/* Logout */}
+        <Pressable onPress={signOut} style={styles.logout}>
+          <Icon name="logout" size={14} color={P.red} />
+          <Text style={styles.logoutText}>Sign out</Text>
+        </Pressable>
+
+        {/* Extra bottom spacer for tab bar */}
+        <View style={{ height: BOTTOM_TAB_HEIGHT }} />
+      </ScrollView>
+    </View>
   );
 }
 
-// ──────────────────────────────────────
-// Styles
-// ──────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────
 const styles = StyleSheet.create({
-  screen: { backgroundColor: PALETTE.background, flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: 120, paddingTop: spacing.xxl, gap: spacing.lg },
+  screen: { flex: 1, backgroundColor: P.bg },
+  scrollView: { flex: 1 },
 
-  // ── Guest ──
+  // Header
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: STATUSBAR_H + 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border, zIndex: 10 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: P.ink },
+  headerBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  headerBadge: { position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: 7, backgroundColor: P.red, alignItems: 'center', justifyContent: 'center' },
+  headerBadgeText: { fontSize: 8, fontWeight: '800', color: '#FFF' },
+
+  // Content
+  authContent: { padding: 12, paddingBottom: 20, gap: 10 },
+  guestContent: { padding: 16, paddingTop: STATUSBAR_H + 20, paddingBottom: 40, gap: 12 },
+
+  // Guest
   guestTop: { alignItems: 'flex-end' },
-  closeButton: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: radii.pill, height: 36, justifyContent: 'center', width: 36, ...shadow },
-  guestHeader: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: radii.lg, flexDirection: 'row', padding: spacing.lg, ...shadow },
-  guestAvatar: { alignItems: 'center', backgroundColor: PALETTE.background, borderRadius: 40, height: 64, justifyContent: 'center', width: 64 },
-  guestTextWrap: { flex: 1, marginLeft: spacing.md },
-  guestTitle: { color: PALETTE.ink, fontSize: typography.body, fontWeight: '800', letterSpacing: -0.3 },
-  guestText: { color: PALETTE.muted, fontSize: 12, fontWeight: '500', lineHeight: 17, marginTop: 4 },
-  authActions: { flexDirection: 'row', gap: spacing.md },
-  loginButton: { alignItems: 'center', backgroundColor: PALETTE.primary, borderRadius: radii.md, flex: 1, paddingVertical: 14 },
-  loginButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  signupButton: { alignItems: 'center', backgroundColor: PALETTE.surface, borderColor: PALETTE.primary, borderRadius: radii.md, borderWidth: 1.5, flex: 1, paddingVertical: 14 },
-  signupButtonText: { color: PALETTE.primary, fontSize: 14, fontWeight: '700' },
-  benefitsCard: { backgroundColor: PALETTE.surface, borderRadius: radii.lg, padding: spacing.lg, ...shadow },
-  benefitRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.sm },
-  benefitIcon: { alignItems: 'center', borderRadius: radii.md, height: 40, justifyContent: 'center', width: 40 },
-  benefitInfo: { flex: 1 },
-  benefitTitle: { color: PALETTE.ink, fontSize: 12, fontWeight: '700' },
-  benefitSubtitle: { color: PALETTE.muted, fontSize: 10, fontWeight: '500', marginTop: 1 },
-  lockedRow: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: radii.md, flexDirection: 'row', gap: spacing.md, padding: spacing.md, ...shadow },
-  lockedIcon: { alignItems: 'center', backgroundColor: PALETTE.background, borderRadius: radii.sm, height: 36, justifyContent: 'center', width: 36 },
-  lockedTitle: { color: PALETTE.muted, flex: 1, fontSize: 12, fontWeight: '600' },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: P.surface, alignItems: 'center', justifyContent: 'center' },
+  guestCard: { backgroundColor: P.surface, borderRadius: 12, padding: 16 },
+  guestAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: P.bg, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 10 },
+  guestTitle: { fontSize: 15, fontWeight: '700', color: P.ink, textAlign: 'center' },
+  guestSub: { fontSize: 11, color: P.muted, textAlign: 'center', marginTop: 4, marginBottom: 14 },
+  guestBtns: { flexDirection: 'row', gap: 10 },
+  guestBtnPri: { flex: 1, backgroundColor: P.primary, borderRadius: 8, paddingVertical: 10, alignItems: 'center' },
+  guestBtnPriText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  guestBtnSec: { flex: 1, backgroundColor: P.surface, borderRadius: 8, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: P.primary },
+  guestBtnSecText: { color: P.primary, fontSize: 12, fontWeight: '700' },
+  benRow: { flexDirection: 'row', gap: 10, alignItems: 'center', paddingVertical: 8 },
+  benIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  benTitle: { fontSize: 11, fontWeight: '700', color: P.ink },
+  benSub: { fontSize: 10, color: P.muted },
+  lockRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: P.surface, borderRadius: 8, padding: 12 },
+  lockText: { flex: 1, fontSize: 11, color: P.muted, fontWeight: '600' },
 
-  // ── Section Title ──
-  sectionTitle: { color: PALETTE.ink, fontSize: 14, fontWeight: '800', marginBottom: spacing.md, letterSpacing: -0.2 },
+  // Profile
+  profCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: P.surface, borderRadius: 12, padding: 12 },
+  profImg: { width: 44, height: 44, borderRadius: 22 },
+  profFall: { width: 44, height: 44, borderRadius: 22, backgroundColor: P.primary, alignItems: 'center', justifyContent: 'center' },
+  profFallText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
+  profName: { fontSize: 13, fontWeight: '700', color: P.ink },
+  profEmail: { fontSize: 10, color: P.muted, marginTop: 1 },
 
-  // ── Profile Card ──
-  profileCard: { backgroundColor: PALETTE.surface, borderRadius: radii.lg, padding: spacing.lg, ...shadow },
-  profileTop: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
-  avatar: { borderRadius: 36, height: 72, width: 72, backgroundColor: PALETTE.background },
-  avatarFallback: { alignItems: 'center', backgroundColor: PALETTE.primary, borderRadius: 36, height: 72, justifyContent: 'center', width: 72 },
-  avatarText: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  profileInfo: { flex: 1 },
-  profileName: { color: PALETTE.ink, fontSize: 18, fontWeight: '800', letterSpacing: -0.3 },
-  profileEmail: { color: PALETTE.muted, fontSize: 12, fontWeight: '500', marginTop: 2 },
-  profileBadge: { alignItems: 'center', flexDirection: 'row', gap: 4, marginTop: 6 },
-  profileBadgeText: { color: PALETTE.emerald, fontSize: 10, fontWeight: '700' },
-  editButton: { padding: 4 },
+  // Welcome
+  welcome: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F8EE', borderRadius: 8, padding: 10 },
+  welcomeText: { flex: 1, fontSize: 10, color: '#006C3D', fontWeight: '600' },
 
-  // ── Welcome Banner ──
-  welcomeBanner: { alignItems: 'center', backgroundColor: PALETTE.successBg, borderColor: PALETTE.successBorder, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: 8, padding: spacing.md },
-  welcomeText: { color: PALETTE.successText, flex: 1, fontSize: 11, fontWeight: '600' },
+  // Role
+  roleRow: { flexDirection: 'row', gap: 8 },
+  roleBtn: { flex: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center', backgroundColor: P.surface, borderWidth: 1, borderColor: P.border },
+  roleBtnActive: { backgroundColor: P.primaryLight, borderColor: P.primary },
+  roleText: { fontSize: 11, fontWeight: '700', color: P.muted },
+  roleTextActive: { color: P.primary },
 
-  // ── Error Banner ──
-  errorBanner: { alignItems: 'center', backgroundColor: '#FFF0F0', borderColor: '#FFCCCC', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: 8, padding: spacing.md },
-  errorBannerText: { color: PALETTE.red, flex: 1, fontSize: 11, fontWeight: '600' },
+  // Stats
+  statsRow: { flexDirection: 'row', gap: 8 },
+  statCard: { flex: 1, backgroundColor: P.surface, borderRadius: 10, padding: 12, alignItems: 'center', gap: 4 },
+  statVal: { fontSize: 18, fontWeight: '800', color: P.ink },
+  statLbl: { fontSize: 9, fontWeight: '600', color: P.muted, textTransform: 'uppercase' },
 
-  // ── Role Switcher ──
-  roleRow: { flexDirection: 'row', gap: spacing.sm },
-  roleButton: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: radii.md, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', paddingVertical: 10, ...shadow },
-  roleButtonActive: { backgroundColor: PALETTE.primaryLight, borderColor: PALETTE.primary, borderWidth: 1.5 },
-  roleText: { color: PALETTE.muted, fontSize: 12, fontWeight: '700' },
-  roleTextActive: { color: PALETTE.primaryDark },
+  // Quick Actions
+  quickRow: { flexDirection: 'row', gap: 8 },
+  quickCard: { flex: 1, backgroundColor: P.surface, borderRadius: 10, padding: 10, alignItems: 'center', gap: 6 },
+  quickIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  quickLabel: { fontSize: 9, fontWeight: '600', color: P.text },
 
-  // ── Quick Actions Row ──
-  quickActionsRow: { flexDirection: 'row', gap: spacing.sm },
-  quickActionCard: { alignItems: 'center', backgroundColor: PALETTE.surface, borderRadius: radii.md, flex: 1, padding: spacing.md, ...shadow },
-  quickActionIcon: { alignItems: 'center', borderRadius: radii.md, height: 44, justifyContent: 'center', marginBottom: 8, width: 44 },
-  quickActionLabel: { color: PALETTE.text, fontSize: 10, fontWeight: '600', textAlign: 'center', lineHeight: 14 },
+  // Currency
+  curCard: { backgroundColor: P.surface, borderRadius: 12, padding: 14 },
+  curHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  curTitle: { fontSize: 12, fontWeight: '700', color: P.ink },
+  curDesc: { fontSize: 10, color: P.muted, marginBottom: 10 },
+  curTrigger: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: P.inputBg, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: P.faint },
+  curFlag: { fontSize: 20 },
+  curCode: { fontSize: 12, fontWeight: '700', color: P.ink, flex: 1 },
 
-  // ── Stats ──
-  statsCard: { backgroundColor: PALETTE.surface, borderRadius: radii.lg, flexDirection: 'row', padding: spacing.lg, ...shadow },
-  statItem: { alignItems: 'center', flex: 1 },
-  statIconWrap: { alignItems: 'center', borderRadius: radii.md, height: 40, justifyContent: 'center', marginBottom: 8, width: 40 },
-  statValue: { color: PALETTE.ink, fontSize: 18, fontWeight: '800' },
-  statLabel: { color: PALETTE.muted, fontSize: 10, fontWeight: '600', marginTop: 2 },
-  statDivider: { backgroundColor: PALETTE.faint, width: 1 },
-  statLoader: { marginBottom: 2 },
+  // Location
+  locCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: P.surface, borderRadius: 12, padding: 12 },
+  locIconWrap: { width: 36, height: 36, borderRadius: 10, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  locTitle: { fontSize: 12, fontWeight: '700', color: P.ink },
+  locDesc: { fontSize: 10, color: P.muted, marginTop: 2 },
 
-  // ── Section Grid ──
-  sectionCard: { backgroundColor: PALETTE.surface, borderRadius: radii.lg, padding: spacing.lg, ...shadow },
-  sectionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  sectionItem: { alignItems: 'center', width: '23%', paddingVertical: spacing.sm },
-  sectionIconWrap: { alignItems: 'center', borderRadius: radii.md, height: 44, justifyContent: 'center', marginBottom: 6, position: 'relative', width: 44 },
-  itemBadge: { alignItems: 'center', borderRadius: 8, justifyContent: 'center', minWidth: 16, paddingHorizontal: 4, paddingVertical: 1, position: 'absolute', right: -4, top: -4 },
-  itemBadgeText: { color: '#fff', fontSize: 8, fontWeight: '800' },
-  sectionItemLabel: { color: PALETTE.text, fontSize: 10, fontWeight: '600', textAlign: 'center' },
+  // Section
+  secCard: { backgroundColor: P.surface, borderRadius: 12, padding: 14 },
+  secTitle: { fontSize: 12, fontWeight: '700', color: P.ink, marginBottom: 10 },
+  secGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  secItem: { alignItems: 'center', width: '23%', paddingVertical: 6 },
+  secIcon: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 4, position: 'relative' },
+  secBadge: { position: 'absolute', top: -2, right: -2, minWidth: 14, height: 14, borderRadius: 7, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  secBadgeText: { fontSize: 7, fontWeight: '800', color: '#FFF' },
+  secLabel: { fontSize: 9, fontWeight: '600', color: P.text, textAlign: 'center' },
 
-  // ── Address Section ──
-  addressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  addAddressBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: PALETTE.primaryLight, borderRadius: radii.sm, paddingHorizontal: 10, paddingVertical: 6 },
-  addAddressText: { color: PALETTE.primary, fontSize: 11, fontWeight: '700' },
-  addressCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: PALETTE.background, borderRadius: radii.md, padding: spacing.md },
-  addressIconWrap: { alignItems: 'center', backgroundColor: PALETTE.primaryLight, borderRadius: radii.md, height: 40, justifyContent: 'center', width: 40 },
-  addressInfo: { flex: 1 },
-  addressTitle: { color: PALETTE.ink, fontSize: 12, fontWeight: '700', marginBottom: 2 },
-  addressDesc: { color: PALETTE.muted, fontSize: 10, fontWeight: '500' },
+  // Address Section
+  addrHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  addrAdd: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: P.primaryLight, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 5 },
+  addrAddText: { fontSize: 10, fontWeight: '700', color: P.primary },
+  addrRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: P.inputBg, borderRadius: 10, padding: 12 },
+  addrIcon: { width: 34, height: 34, borderRadius: 8, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  addrTitle: { fontSize: 11, fontWeight: '700', color: P.ink },
+  addrDesc: { fontSize: 10, color: P.muted, marginTop: 2 },
 
-  // ── Quick Actions ──
-  quickActionsCard: { backgroundColor: PALETTE.surface, borderRadius: radii.lg, padding: spacing.lg, ...shadow },
-  actionRow: { alignItems: 'center', borderBottomColor: PALETTE.faint, borderBottomWidth: 1, flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.md },
-  actionRowLast: { borderBottomWidth: 0 },
-  actionIcon: { alignItems: 'center', borderRadius: radii.md, height: 40, justifyContent: 'center', width: 40 },
-  orangeSoftBg: { backgroundColor: '#FFF3E8' },
-  greenSoftBg: { backgroundColor: '#E8F8EE' },
-  redSoftBg: { backgroundColor: '#FFF0F0' },
-  actionInfo: { flex: 1 },
-  actionLabel: { color: PALETTE.ink, fontSize: 12, fontWeight: '700' },
-  actionDesc: { color: PALETTE.muted, fontSize: 10, fontWeight: '500', marginTop: 1 },
+  // Actions
+  actRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: P.border },
+  actText: { flex: 1, fontSize: 12, fontWeight: '600', color: P.ink },
 
-  // Section Title Row
-sectionTitleRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 8,
-},
+  // Logout
+  logout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: P.surface, borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: '#FFCCCC' },
+  logoutText: { fontSize: 12, fontWeight: '700', color: P.red },
 
-// View All Button
-viewAllBtn: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 2,
-},
-viewAllText: {
-  fontSize: 12,
-  fontWeight: '600',
-  color: PALETTE.primary,
-},
-
-// Location Card
-locationCard: {
-  flexDirection: 'row',
-  gap: 12,
-  backgroundColor: PALETTE.background,
-  borderRadius: radii.md,
-  padding: 14,
-  marginTop: 8,
-},
-locationMapPreview: {
-  width: 64,
-  height: 64,
-  borderRadius: 12,
-  backgroundColor: PALETTE.primaryLight,
-  alignItems: 'center',
-  justifyContent: 'center',
-},
-locationInfo: {
-  flex: 1,
-  gap: 4,
-},
-locationTitle: {
-  fontSize: 13,
-  fontWeight: '700',
-  color: PALETTE.ink,
-},
-locationDesc: {
-  fontSize: 11,
-  color: PALETTE.muted,
-  lineHeight: 16,
-},
-locationStatus: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 4,
-  marginTop: 4,
-},
-locationDot: {
-  width: 6,
-  height: 6,
-  borderRadius: 3,
-},
-locationStatusText: {
-  fontSize: 10,
-  fontWeight: '600',
-  color: PALETTE.emerald,
-},
-
-  // ── Logout ──
-  logoutButton: { alignItems: 'center', backgroundColor: PALETTE.surface, borderColor: PALETTE.logoutBorder, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: 8, justifyContent: 'center', paddingVertical: 14 },
-  logoutText: { color: PALETTE.red, fontSize: 13, fontWeight: '700' },
+  // Modal
+  modalWrap: { flex: 1, justifyContent: 'flex-end' },
+  modalBack: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: { backgroundColor: P.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%' },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: P.faint, alignSelf: 'center', marginTop: 10, marginBottom: 8 },
+  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12 },
+  modalTitle: { fontSize: 15, fontWeight: '700', color: P.ink },
+  modalClose: { width: 30, height: 30, borderRadius: 15, backgroundColor: P.inputBg, alignItems: 'center', justifyContent: 'center' },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginBottom: 12, backgroundColor: P.inputBg, borderRadius: 10, paddingHorizontal: 12, height: 40, gap: 8 },
+  searchInp: { flex: 1, fontSize: 12, color: P.ink },
+  curItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginBottom: 4 },
+  curItemActive: { backgroundColor: P.primaryLight },
+  curItemFlag: { fontSize: 24 },
+  curItemCode: { fontSize: 13, fontWeight: '700', color: P.ink },
+  curItemSym: { fontSize: 11, color: P.muted },
+  curItemName: { fontSize: 10, color: P.muted },
 });
 
 export default AccountScreen;

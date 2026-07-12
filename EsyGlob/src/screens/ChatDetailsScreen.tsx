@@ -103,23 +103,6 @@ function getUserId(user: CurrentUser | null | undefined): string | undefined {
   return user.id ?? user._id;
 }
 
-function resolveChatParticipant(chat: Chat, currentUserId?: string) {
-  const buyer = typeof chat.buyerId === 'object' ? (chat.buyerId as CurrentUser) : undefined;
-  const seller = typeof chat.sellerId === 'object' ? (chat.sellerId as CurrentUser) : undefined;
-  const current = currentUserId;
-  const other =
-    current && buyer && getUserId(buyer) === current
-      ? seller
-      : current && seller && getUserId(seller) === current
-      ? buyer
-      : seller ?? buyer;
-
-  return {
-    name: other?.name ?? other?.fullName ?? other?.email ?? 'User',
-    image: firstImage(other?.profileImage, other?.avatarUrl, other?.avatar, other?.image),
-  };
-}
-
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 function ChatDetailsScreen() {
@@ -221,8 +204,8 @@ function ChatDetailsScreen() {
         try {
           socket.emit('join_chat', { chatId });
           socket.emit('mark_read', { chatId });
-        } catch (e) {
-          console.warn('Failed to join chat:', e);
+        } catch (error) {
+          console.warn('Failed to join chat:', error);
         }
       };
       
@@ -263,7 +246,7 @@ function ChatDetailsScreen() {
         try {
           socket.emit('typing', { chatId, typing: false });
           socket.emit('leave_chat', { chatId });
-        } catch (e) {
+        } catch {
           // Ignore cleanup errors
         }
         socket.off('connect', join);
@@ -293,7 +276,7 @@ function ChatDetailsScreen() {
       const timer = setTimeout(() => {
         try {
           socket.emit('typing', { chatId, typing: false });
-        } catch (e) {
+        } catch {
           // Ignore
         }
       }, 1800);
@@ -302,7 +285,7 @@ function ChatDetailsScreen() {
         clearTimeout(timer);
         try {
           socket.emit('typing', { chatId, typing: false });
-        } catch (e) {
+        } catch {
           // Ignore
         }
       };
@@ -398,7 +381,7 @@ function ChatDetailsScreen() {
           sellerMessage: notes || 'Quotation from chat.',
         });
       }
-
+ 
       if (mode === 'start_order') {
         return enableChatOrder(chatId, productId);
       }

@@ -201,7 +201,7 @@ function RFQCreateScreen() {
   });
 
   // categoriesData is direct array: [{ name: "Agriculture", subcategories: [...] }, ...]
-  const categories = categoriesData ?? [];
+  const categories = useMemo(() => categoriesData ?? [], [categoriesData]);
 
   // Get category names for dropdown
   const categoryNames = useMemo(() => {

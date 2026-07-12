@@ -22,6 +22,7 @@ import {
 } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorState, LoadingState } from '../components/StateViews';
+import { useCurrency } from '../currency/CurrencyContext';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ type ActionType = 'counter_offer' | 'request_revision' | 'reject' | null;
 // ─── Component ──────────────────────────────────────────────────────────────
 
 function QuotationDetailsScreen() {
+  const { formatPrice } = useCurrency();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -197,11 +199,11 @@ function QuotationDetailsScreen() {
           <View style={styles.priceCard}>
             <Text style={styles.priceLabel}>Total Value</Text>
             <Text style={styles.priceValue}>
-              {item.currency ?? '₹'} {Number(item.totalPrice ?? item.unitPrice).toLocaleString('en-IN')}
+              {formatPrice(Number(item.totalPrice ?? item.unitPrice), item.currency ?? 'INR')}
             </Text>
             {item.unitPrice && item.quantity ? (
               <Text style={styles.priceSub}>
-                {item.currency ?? '₹'} {Number(item.unitPrice).toLocaleString('en-IN')} / unit · Qty: {item.quantity}
+                {formatPrice(Number(item.unitPrice), item.currency ?? 'INR')} / unit · Qty: {item.quantity}
               </Text>
             ) : null}
           </View>
@@ -280,12 +282,12 @@ function QuotationDetailsScreen() {
         {/* Details */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Quotation Details</Text>
-          <DetailRow icon="cash" label="Unit Price" value={item.unitPrice ? `${item.currency ?? '₹'} ${Number(item.unitPrice).toLocaleString('en-IN')}` : undefined} />
+          <DetailRow icon="cash" label="Unit Price" value={item.unitPrice ? formatPrice(Number(item.unitPrice), item.currency ?? 'INR') : undefined} />
           <DetailRow icon="cube-outline" label="Quantity" value={item.quantity ? `${item.quantity} ${item.unit ?? 'units'}` : undefined} />
           <DetailRow icon="clock-outline" label="Lead Time" value={item.leadTime} />
           <DetailRow icon="credit-card" label="Payment Terms" value={item.paymentTerms} />
           <DetailRow icon="truck-delivery" label="Incoterms" value={item.incoterms} />
-          <DetailRow icon="cash-marker" label="Shipping" value={item.shippingCost ? `${item.currency ?? '₹'} ${Number(item.shippingCost).toLocaleString('en-IN')}` : undefined} />
+          <DetailRow icon="cash-marker" label="Shipping" value={item.shippingCost ? formatPrice(Number(item.shippingCost), item.currency ?? 'INR') : undefined} />
           {item.sellerMessage && <DetailRow icon="message-text" label="Seller Message" value={item.sellerMessage} multiline />}
           <DetailRow icon="calendar" label="Created" value={item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined} />
           <DetailRow icon="calendar-check" label="Valid Until" value={item.validUntil ? new Date(item.validUntil).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : item.validity ?? undefined} />

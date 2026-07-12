@@ -18,6 +18,7 @@ import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { radii, shadow, spacing } from '../theme';
 import { getId } from '../utils/format';
 import AuthScreen from './AuthScreen';
+import { useCurrency } from '../currency/CurrencyContext';
 
 // ──────────────────────────────────────
 // Alibaba-inspired palette
@@ -328,6 +329,7 @@ function RFQScreen() {
 // RFQ Card
 // ──────────────────────────────────────
 function RFQCard({ item, role }: { item: RFQ; role: 'buyer' | 'seller' }) {
+  const { formatPrice } = useCurrency();
   const navigation = useNavigation<any>();
   const destination = item.destinationCountry ?? item.deliveryCountry;
   const statusCfg = getStatusConfig(item.status ?? 'active');
@@ -380,7 +382,7 @@ function RFQCard({ item, role }: { item: RFQ; role: 'buyer' | 'seller' }) {
         {item.targetPrice ? (
           <DetailChip
             icon="currency-inr"
-            label={`${item.currency ?? '₹'} ${Number(item.targetPrice).toLocaleString('en-IN')}`}
+            label={formatPrice(Number(item.targetPrice), item.currency ?? 'INR')}
           />
         ) : null}
       </View>
@@ -398,6 +400,7 @@ function RFQCard({ item, role }: { item: RFQ; role: 'buyer' | 'seller' }) {
 // Quotation Card
 // ──────────────────────────────────────
 function QuotationCard({ item }: { item: Quotation }) {
+  const { formatPrice } = useCurrency();
   const navigation = useNavigation<any>();
   const rfq = typeof item.rfqId === 'object' ? (item.rfqId as any) : undefined;
   const product =
@@ -443,12 +446,11 @@ function QuotationCard({ item }: { item: Quotation }) {
       {item.totalPrice || item.unitPrice ? (
         <View style={styles.priceHighlight}>
           <Text style={styles.priceValue}>
-            {item.currency ?? '₹'}{' '}
-            {Number(item.totalPrice ?? item.unitPrice).toLocaleString('en-IN')}
+            {formatPrice(Number(item.totalPrice ?? item.unitPrice), item.currency ?? 'INR')}
           </Text>
           {item.unitPrice && item.quantity ? (
             <Text style={styles.priceUnit}>
-              {item.currency ?? '₹'} {Number(item.unitPrice).toLocaleString('en-IN')} / unit · Qty: {item.quantity}
+              {formatPrice(Number(item.unitPrice), item.currency ?? 'INR')} / unit · Qty: {item.quantity}
             </Text>
           ) : null}
         </View>

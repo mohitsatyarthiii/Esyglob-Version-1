@@ -11,10 +11,13 @@ import { ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, shadow, spacing } from '../theme';
 import { formatValue } from '../utils/display';
 import { firstImage } from '../utils/images';
+import { useCurrency } from '../currency/CurrencyContext';
 
 const sellerNextStatuses = ['confirmed', 'processing', 'production', 'ready_to_ship', 'shipped', 'delivered', 'completed'];
 
 function OrderDetailsScreen() {
+  const { formatPrice } = useCurrency();
+  const displayMoney = (currency: unknown, value: unknown) => value == null ? '' : formatPrice(Number(value), String(currency ?? 'INR'));
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
@@ -73,7 +76,7 @@ function OrderDetailsScreen() {
               <Text numberOfLines={1} style={styles.orderNumber}>{item.orderNumber ?? orderId}</Text>
               <Text style={styles.status}>{String(item.status ?? 'pending').replace(/_/g, ' ')}</Text>
             </View>
-            <Text style={styles.total}>{item.currency ?? 'INR'} {String(item.totalAmount ?? item.totalPrice ?? 'pending')}</Text>
+            <Text style={styles.total}>{displayMoney(item.currency, item.totalAmount ?? item.totalPrice)}</Text>
           </View>
           <View style={styles.productRow}>
             <RemoteImage
@@ -96,11 +99,11 @@ function OrderDetailsScreen() {
           <Text style={styles.sectionTitle}>Payment and logistics</Text>
           <InfoGrid
             items={[
-              ['Product total', money(item.currency, item.productTotal ?? item.subtotal ?? item.merchandiseAmount)],
-              ['Logistics', money(item.currency, item.logisticsCharges ?? item.logisticsAmount ?? item.shippingCost)],
-              ['Platform fee', money(item.currency, item.platformFee)],
-              ['GST', money(item.currency, item.gstAmount ?? item.taxAmount)],
-              ['Grand total', money(item.currency, item.grandTotal ?? item.totalAmount)],
+              ['Product total', displayMoney(item.currency, item.productTotal ?? item.subtotal ?? item.merchandiseAmount)],
+              ['Logistics', displayMoney(item.currency, item.logisticsCharges ?? item.logisticsAmount ?? item.shippingCost)],
+              ['Platform fee', displayMoney(item.currency, item.platformFee)],
+              ['GST', displayMoney(item.currency, item.gstAmount ?? item.taxAmount)],
+              ['Grand total', displayMoney(item.currency, item.grandTotal ?? item.totalAmount)],
               ['Shipping method', selectedLogistics?.name ?? item.shippingMethod ?? item.logisticsOption],
             ]}
           />
@@ -209,14 +212,6 @@ function display(value: unknown) {
   }
 
   return formatValue(value);
-}
-
-function money(currency: unknown, value: unknown) {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
-
-  return `${String(currency ?? 'INR')} ${String(value)}`;
 }
 
 function timelineLabel(event: Record<string, unknown>) {

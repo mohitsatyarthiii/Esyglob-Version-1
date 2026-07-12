@@ -28,11 +28,12 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import EnquiryModal from '../components/EnquiryModal';
+import { useCurrency } from '../currency/CurrencyContext';
 import SavedHeartButton from '../components/SavedHeartButton';
 import TradeAssurance from '../components/TradeAssurance';
+import ReviewsPanel from '../components/ReviewsPanel';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import {
-  formatProductPrice,
 } from '../utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -194,6 +195,7 @@ function MoqSelector({
   onSelect: (qty: number) => void; 
   currency?: string;
 }) {
+  const { formatPrice } = useCurrency();
   if (!tiers || tiers.length === 0) return null;
 
   return (
@@ -235,7 +237,7 @@ function MoqSelector({
                   </View>
                 )}
                 <Text style={[styles.moqCardPrice, isActive && styles.moqCardPriceActive]}>
-                  {currency} {tier.price.toLocaleString('en-IN')}
+                  {formatPrice(tier.price, currency === '₹' ? 'INR' : currency)}
                 </Text>
                 <Text style={styles.moqCardUnit}>per unit</Text>
               </View>
@@ -247,9 +249,16 @@ function MoqSelector({
   );
 }
 
+function InformationCard({ title, rows }: { title: string; rows: Array<[string, unknown]> }) {
+  const visible = rows.filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (!visible.length) return null;
+  return <View style={styles.informationCard}><Text style={styles.informationTitle}>{title}</Text>{visible.map(([label, value], index) => <View key={label} style={[styles.informationRow, index === visible.length - 1 && styles.informationRowLast]}><Text style={styles.informationLabel}>{label}</Text><Text selectable style={styles.informationValue}>{String(value)}</Text></View>)}</View>;
+}
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 function ProductDetailsScreen() {
+  const { formatPrice, selectedCurrency } = useCurrency();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -284,6 +293,7 @@ function ProductDetailsScreen() {
 
   const sellerUserId = useMemo(() => extractSellerUserId(product), [product]);
   const sellerRouteId = useMemo(() => extractSellerRouteId(product), [product]);
+  const seller = typeof product?.sellerId === 'object' && product.sellerId ? product.sellerId as Record<string, any> : undefined;
   const sellerName = useMemo(() => extractSellerName(product), [product]);
   const images = useMemo(() => extractImages(product), [product]);
   const moqTiers: MoqTier[] = useMemo(() => buildMoqTiers(product), [product]);
@@ -435,7 +445,7 @@ function ProductDetailsScreen() {
   const shareProduct = () => {
     if (!product) return;
     Share.share({ 
-      message: `${product.name || 'Product'}\n${formatProductPrice(product)}` 
+      message: `${product.name || 'Product'}\n${formatPrice(Number(product.price ?? 0), product.currency ?? 'INR')}` 
     });
   };
 
@@ -467,7 +477,7 @@ function ProductDetailsScreen() {
 
   // ── Data for rendering ──────────────────────────────────────────────────
 
-  const currency = product.currency || '₹';
+  const currency = selectedCurrency;
   const totalMoqValue = selectedTier 
     ? selectedTier.price * quantity 
     : (product.price || 0) * quantity;
@@ -556,6 +566,8 @@ function ProductDetailsScreen() {
           </View>
         </View>
 
+        {gallery.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnailRow}>{gallery.map((uri, index) => <TouchableOpacity accessibilityLabel={`Show product image ${index + 1}`} key={`${uri}-thumb-${index}`} onPress={() => scrollToImage(index)} style={[styles.thumbnailButton, selectedImage === index && styles.thumbnailButtonActive]}><RemoteImage uri={uri} width={58} height={58} resizeMode="cover" style={styles.thumbnailImage} /></TouchableOpacity>)}</ScrollView> : null}
+
         {/* Product Name */}
         <View style={styles.nameSection}>
           <Text style={styles.productName}>{product.name}</Text>
@@ -600,7 +612,7 @@ function ProductDetailsScreen() {
         <View style={styles.priceSection}>
           <View style={styles.priceRow}>
             <Text style={styles.price}>
-              {currency} {selectedTier?.price?.toLocaleString('en-IN') || product.price?.toLocaleString('en-IN') || '0'}
+              {formatPrice(Number(selectedTier?.price ?? product.price ?? 0), product.currency ?? 'INR')}
               <Text style={styles.priceUnit}> /unit</Text>
             </Text>
           </View>
@@ -609,7 +621,7 @@ function ProductDetailsScreen() {
             <View style={styles.metricItem}>
               <Text style={styles.metricLabel}>Total MOQ Value:</Text>
               <Text style={styles.metricValue}>
-                {currency} {totalMoqValue.toLocaleString('en-IN')}
+                {formatPrice(totalMoqValue, product.currency ?? 'INR')}
               </Text>
             </View>
             <Text style={styles.metricSubtext}>Price updates instantly from selected MOQ</Text>
@@ -641,55 +653,10 @@ function ProductDetailsScreen() {
             style={styles.sampleOrderBtn}
           >
             <Text style={styles.sampleOrderText}>
-              Sample Available {currency} {samplePrice.toLocaleString('en-IN')} - Order Sample →
+              Sample Available {formatPrice(Number(samplePrice), product.currency ?? 'INR')} - Order Sample →
             </Text>
           </TouchableOpacity>
         </View>
-
-        {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity 
-            onPress={() => {
-              if (!isAuth) {
-                navigation.navigate('Auth', { initialMode: 'login' });
-                return;
-              }
-              if (!isBuyer) {
-                Alert.alert('Switch Role', 'Please switch to buyer mode to chat.');
-                return;
-              }
-              chatNow.mutate();
-            }}
-            style={[styles.chatBtn, (!canAct || chatNow.isPending) && styles.disabledBtn]}
-            disabled={!canAct || chatNow.isPending}
-          >
-            <Icon name="message-text-outline" size={18} color="#FFF" />
-            <Text style={styles.btnText}>{chatNow.isPending ? '...' : 'Chat'}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            onPress={() => {
-              if (!isAuth) {
-                navigation.navigate('Auth', { initialMode: 'login' });
-                return;
-              }
-              if (!isBuyer) {
-                Alert.alert('Switch Role', 'Please switch to buyer mode to send enquiry.');
-                return;
-              }
-              setEnquiryOpen(true);
-            }}
-            style={[styles.inquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]}
-            disabled={!canAct || sendEnquiry.isPending}
-          >
-            <Icon name="send-outline" size={18} color={P.primary} />
-            <Text style={styles.inquiryBtnText}>{sendEnquiry.isPending ? '...' : 'Inquiry'}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity disabled={!sellerRouteId} onPress={goToStore} style={styles.storeAction}>
-          <Icon name="storefront-outline" size={18} color={P.primary} /><Text style={styles.storeActionText}>View Supplier Store</Text>
-        </TouchableOpacity>
 
         {/* Trust Badges */}
         <View style={styles.trustRow}>
@@ -707,11 +674,30 @@ function ProductDetailsScreen() {
           </View>
         </View>
 
+        <InformationCard title="Product information" rows={[
+          ['Category', typeof product.category === 'object' ? product.category?.name : product.category], ['Brand', product.brand], ['Model', product.model ?? product.modelNumber], ['SKU', product.sku], ['HSN', product.hsn ?? product.hsnCode], ['Origin', product.countryOfOrigin ?? product.originCountry], ['Available quantity', product.stock ?? product.availableQuantity], ['Status', product.status], ['Manufacturer', product.manufacturer], ['Supply ability', product.supplyAbility], ['Warranty', product.warranty],
+        ]} />
+        {product.description ? <View style={styles.informationCard}><Text style={styles.informationTitle}>Product description</Text><Text selectable style={styles.descriptionText}>{String(product.description).replace(/<[^>]*>/g, '')}</Text></View> : null}
+        <InformationCard title="Specifications" rows={Object.entries(product.specifications ?? product.attributes ?? {}).map(([key, value]) => [key.replace(/_/g, ' '), value])} />
+        <InformationCard title="Delivery & shipping" rows={[
+          ['Estimated delivery', product.estimatedDelivery ?? product.deliveryTime], ['Shipping method', product.shippingMethod], ['Dispatch time', product.dispatchTime ?? product.leadTime], ['Incoterms', Array.isArray(product.incoterms) ? product.incoterms.join(', ') : product.incoterms], ['Packaging', product.packagingDetails ?? product.packaging], ['Freight information', product.freightInformation], ['Shipping policy', product.shippingPolicy],
+        ]} />
+        <InformationCard title="Manufacturer" rows={[
+          ['Company', seller?.companyName ?? seller?.name], ['Location', seller?.location ?? seller?.country], ['Business type', seller?.businessType], ['Years in business', seller?.yearsInBusiness], ['Response rate', seller?.responseRate], ['Rating', seller?.rating], ['Completed orders', seller?.completedOrders],
+        ]} />
+        <View style={styles.informationCard}><ReviewsPanel productId={productId} sellerId={sellerRouteId} showForm title="Ratings & reviews" /></View>
+
         {/* Trade Assurance */}
         <TradeAssurance />
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity accessibilityLabel="View supplier store" disabled={!sellerRouteId} onPress={goToStore} style={styles.storeIconButton}><Icon name="storefront-outline" size={23} color={P.primary} /><Text style={styles.storeIconLabel}>Store</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => { if (!isAuth) { navigation.navigate('Auth', { initialMode: 'login' }); return; } if (!isBuyer) { Alert.alert('Switch Role', 'Please switch to buyer mode to chat.'); return; } chatNow.mutate(); }} style={[styles.chatBtn, (!canAct || chatNow.isPending) && styles.disabledBtn]} disabled={!canAct || chatNow.isPending}><Icon name="message-text-outline" size={18} color={P.primary} /><Text style={styles.chatButtonText}>{chatNow.isPending ? 'Opening…' : 'Chat Now'}</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => { if (!isAuth) { navigation.navigate('Auth', { initialMode: 'login' }); return; } if (!isBuyer) { Alert.alert('Switch Role', 'Please switch to buyer mode to send enquiry.'); return; } setEnquiryOpen(true); }} style={[styles.inquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]} disabled={!canAct || sendEnquiry.isPending}><Icon name="send-outline" size={18} color="#FFF" /><Text style={styles.inquiryPrimaryText}>{sendEnquiry.isPending ? 'Sending…' : 'Send Enquiry'}</Text></TouchableOpacity>
+      </View>
 
       {/* Gallery Lightbox */}
       <Modal visible={galleryOpen} animationType="fade" onRequestClose={() => setGalleryOpen(false)}>
@@ -858,6 +844,10 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '600',
   },
+  thumbnailRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 9, backgroundColor: P.surface },
+  thumbnailButton: { width: 62, height: 62, borderRadius: 9, borderWidth: 1, borderColor: P.border, padding: 2, overflow: 'hidden' },
+  thumbnailButtonActive: { borderColor: P.primary, borderWidth: 2 },
+  thumbnailImage: { width: '100%', height: '100%', borderRadius: 6 },
 
   // Product Name
   nameSection: {
@@ -1061,21 +1051,27 @@ const styles = StyleSheet.create({
   // Action Buttons
   actionRow: {
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 14,
     backgroundColor: P.surface,
-    marginTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: P.border,
   },
+  storeIconButton: { width: 54, minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: P.border, alignItems: 'center', justifyContent: 'center', backgroundColor: P.surface },
+  storeIconLabel: { color: P.primary, fontSize: 9, fontWeight: '700', marginTop: 2 },
   chatBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: P.primary,
-    borderRadius: 8,
+    backgroundColor: P.surface,
+    borderRadius: 12,
     paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: P.primary,
   },
   inquiryBtn: {
     flex: 1,
@@ -1083,8 +1079,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#FFF',
-    borderRadius: 8,
+    backgroundColor: P.primary,
+    borderRadius: 12,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: P.primary,
@@ -1099,11 +1095,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  chatButtonText: { color: P.primary, fontSize: 13, fontWeight: '800' },
+  inquiryPrimaryText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
   disabledBtn: {
     opacity: 0.5,
   },
   storeAction: { marginHorizontal: 16, marginBottom: 8, height: 42, borderRadius: 8, borderWidth: 1, borderColor: P.primary, backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   storeActionText: { color: P.primary, fontSize: 13, fontWeight: '700' },
+  informationCard: { backgroundColor: P.surface, marginTop: 8, paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: P.border },
+  informationTitle: { fontSize: 17, fontWeight: '800', color: P.ink, marginBottom: 12 },
+  informationRow: { flexDirection: 'row', gap: 16, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: P.faint },
+  informationRowLast: { borderBottomWidth: 0 },
+  informationLabel: { width: '38%', color: P.textSecondary, fontSize: 12, textTransform: 'capitalize' },
+  informationValue: { flex: 1, textAlign: 'right', color: P.ink, fontSize: 12, fontWeight: '600' },
+  descriptionText: { color: P.text, fontSize: 14, lineHeight: 22 },
 
   // Trust Row
   trustRow: {

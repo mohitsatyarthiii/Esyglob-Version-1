@@ -73,6 +73,10 @@ jest.mock('react-native', () => {
     },
     Image: createHost('Image'),
     FlatList: createHost('FlatList'),
+    KeyboardAvoidingView: createHost('KeyboardAvoidingView'),
+    TouchableOpacity: createHost('TouchableOpacity'),
+    LayoutAnimation: { configureNext: jest.fn(), Presets: { easeInEaseOut: {} } },
+    UIManager: { setLayoutAnimationEnabledExperimental: jest.fn() },
     NativeModules: {},
     Platform: {
       OS: 'ios',
@@ -93,6 +97,16 @@ jest.mock('react-native', () => {
     useColorScheme: () => 'light',
   };
 });
+
+jest.mock('react-native-geolocation-service', () => ({
+  __esModule: true,
+  default: {
+    getCurrentPosition: jest.fn(),
+    watchPosition: jest.fn(() => 1),
+    clearWatch: jest.fn(),
+    stopObserving: jest.fn(),
+  },
+}));
 
 jest.mock('react-native-vector-icons/MaterialCommunityIcons', () => {
   const React = require('react');

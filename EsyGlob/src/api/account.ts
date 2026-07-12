@@ -17,6 +17,7 @@ export type ProfileSettings = {
   companyDescription?: string;
   roles?: string[];
   primaryRole?: string;
+  preferredCurrency?: string;
 };
 
 export type WalletData = {
@@ -48,16 +49,9 @@ export type AddressBookItem = {
 
 // ─── Location Types ────────────────────────────────────────────────────
 
-export interface LocationCoordinates {
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  altitude?: number;
-  speed?: number;
-  heading?: number;
-}
 
-export interface LocationAddress {
+
+interface LocationAddress {
   formatted?: string;
   street?: string;
   city?: string;
@@ -66,6 +60,14 @@ export interface LocationAddress {
   postalCode?: string;
 }
 
+interface LocationCoordinates {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+  altitude?: number;
+  speed?: number;
+  heading?: number;
+}
 export interface UpdateLocationPayload extends LocationCoordinates {
   address?: LocationAddress;
 }
@@ -122,6 +124,11 @@ export async function fetchProfileSettings() {
 
 export async function updateProfileSettings(input: ProfileSettings) {
   const payload = await apiRequest('/profile', { method: 'PATCH', body: input });
+  return unwrapData(payload);
+}
+
+export async function updatePreferredCurrency(currency: string) {
+  const payload = await apiRequest('/profile/currency', { method: 'PATCH', body: { currency } });
   return unwrapData(payload);
 }
 

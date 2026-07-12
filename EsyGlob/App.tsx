@@ -46,6 +46,7 @@ import { logPerf } from './src/utils/performance';
 import { readJson, writeJson } from './src/storage/appStorage';
 import { RealtimeProvider } from './src/realtime';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import CurrencyProvider from './src/currency/CurrencyContext';
 import LocationScreen from './src/screens/LocationScreen';
 
 export type RootStackParamList = {
@@ -81,6 +82,7 @@ export type RootStackParamList = {
   ServiceBooking: { serviceKey: string };
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ShippingLogistics: undefined;
+  Location: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -158,6 +160,7 @@ function App() {
       }}
       onSuccess={warmMarketplaceQueries}>
       <AuthProvider>
+        <CurrencyProvider>
         <RealtimeProvider>
         <SafeAreaProvider>
           <StatusBar
@@ -204,6 +207,7 @@ function App() {
           </NavigationContainer>
         </SafeAreaProvider>
         </RealtimeProvider>
+        </CurrencyProvider>
       </AuthProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>
