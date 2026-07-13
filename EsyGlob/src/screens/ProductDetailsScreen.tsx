@@ -24,6 +24,7 @@ import {
   createProductEnquiry,
   startProductChat,
   trackProductView,
+  uploadFiles,
 } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
@@ -382,6 +383,15 @@ function ProductDetailsScreen() {
       const selectedProductId = product._id || product.id;
       if (!selectedProductId) throw new Error('Product ID not available.');
 
+      const uploadedAttachments = attachments.length
+        ? await uploadFiles('product-enquiries', attachments)
+        : undefined;
+      const cloudFiles = uploadedAttachments?.uploads ?? uploadedAttachments?.files ?? [];
+
+      if (attachments.length && cloudFiles.length !== attachments.length) {
+        throw new Error('One or more attachments could not be uploaded. Please retry.');
+      }
+
       return createProductEnquiry({
         productId: selectedProductId,
         sellerUserId: sellerUserId,
@@ -394,7 +404,11 @@ function ProductDetailsScreen() {
         packagingRequirements: packagingRequirements.trim() || undefined,
         deliveryRequirements: deliveryRequirements.trim() || undefined,
         additionalNotes: additionalNotes.trim() || undefined,
-        attachments: attachments.map(a => ({ filename: a.name, type: a.type })),
+        attachments: cloudFiles.map((file, index) => ({
+          filename: file.name ?? attachments[index]?.name ?? 'Attachment',
+          type: file.mimeType ?? attachments[index]?.type ?? 'application/octet-stream',
+          url: file.secure_url ?? file.url ?? file.location,
+        })),
         currency: product.currency || 'INR',
         deliveryTimeline: 'flexible',
         incoterms: 'FOB',

@@ -244,6 +244,7 @@ export type RFQ = {
   title?: string;
   productName?: string;
   status?: string;
+  visibility?: 'public' | 'private';
   quantity?: number | string;
   unit?: string;
   destinationCountry?: string;
@@ -353,6 +354,7 @@ export type QuotationListResponse = {
 export type Chat = {
   _id?: string;
   id?: string;
+  createdAt?: string;
   lastMessage?: string;
   lastMessageAt?: string;
   chatType?: string;
@@ -404,6 +406,7 @@ export type MessageItem = {
   orderDetails?: Record<string, unknown> | Order | null;
   rfqDetails?: Record<string, unknown> | RFQ | null;
   quotationDetails?: Record<string, unknown> | Quotation | null;
+  serviceDetails?: Record<string, unknown> | null;
 };
 
 export type ChatDetails = {

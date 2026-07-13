@@ -14,7 +14,9 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { createProductEnquiry, createRFQ } from '../api/marketplace';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { pick, types as documentTypes } from '@react-native-documents/picker';
+import { createProductEnquiry, createRFQ, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { fetchCategories } from '../api/categories';
 import { getId } from '../utils/format';
 
@@ -105,6 +107,8 @@ function Dropdown({ label, value, options, onSelect, required, icon, loading }: 
   loading?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
+  const [search, setSearch] = useState('');
+  const filteredOptions = options.filter(option => option.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <View style={styles.fieldWrap}>
@@ -132,22 +136,23 @@ function Dropdown({ label, value, options, onSelect, required, icon, loading }: 
                 <Icon name="close" size={22} color={P.text} />
               </Pressable>
             </View>
+            <View style={styles.dropdownSearch}><Icon name="magnify" size={18} color={P.muted} /><TextInput value={search} onChangeText={setSearch} placeholder={`Search ${label.toLowerCase()}`} placeholderTextColor={P.muted} style={styles.dropdownSearchInput} /></View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {loading ? (
                 <View style={styles.loadingState}>
                   <ActivityIndicator size="large" color={P.primary} />
                   <Text style={styles.loadingText}>Loading options...</Text>
                 </View>
-              ) : options.length === 0 ? (
+              ) : filteredOptions.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Icon name="alert-circle-outline" size={40} color={P.muted} />
                   <Text style={styles.emptyText}>No options available</Text>
                 </View>
               ) : (
-                options.map((option, index) => (
+                filteredOptions.map((option, index) => (
                   <Pressable
                     key={index}
-                    onPress={() => { onSelect(option); setVisible(false); }}
+                    onPress={() => { onSelect(option); setVisible(false); setSearch(''); }}
                     style={[styles.modalOption, value === option && styles.modalOptionActive]}>
                     <Text style={[styles.modalOptionText, value === option && styles.modalOptionTextActive]}>
                       {option}
@@ -193,6 +198,40 @@ function RFQCreateScreen() {
     documentUrls: '',
     attachmentUrls: '',
   });
+  const [uploadedFiles, setUploadedFiles] = useState<UploadAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [failedUpload, setFailedUpload] = useState<(() => Promise<void>) | null>(null);
+
+  const uploadSelected = async (files: Array<{ uri: string; name: string; type: string }>) => {
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const result = await uploadFiles('rfqs', files);
+      const uploaded = result.uploads ?? result.files ?? [];
+      if (uploaded.length !== files.length) throw new Error('Some files were not uploaded.');
+      setUploadedFiles(current => [...current, ...uploaded]);
+      setFailedUpload(null);
+    } catch (error) {
+      setFailedUpload(() => () => uploadSelected(files));
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload files.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const pickImages = async () => {
+    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: Math.max(1, 10 - uploadedFiles.length), quality: 0.8 });
+    await uploadSelected((result.assets ?? []).filter(asset => asset.uri).map(asset => ({ uri: asset.uri as string, name: asset.fileName ?? `rfq-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' })));
+  };
+
+  const pickDocuments = async () => {
+    try {
+      const files = await pick({ allowMultiSelection: true, type: [documentTypes.allFiles] });
+      await uploadSelected(files.map(file => ({ uri: file.uri, name: file.name ?? `rfq-file-${Date.now()}`, type: file.type ?? 'application/octet-stream' })));
+    } catch (error: any) {
+      if (error?.code !== 'OPERATION_CANCELED') Alert.alert('File selection failed', error?.message ?? 'Unable to select files.');
+    }
+  };
 
   // Fetch categories from backend - API returns direct array
   const { data: categoriesData, isLoading: categoriesLoading } = useQuery({
@@ -288,7 +327,7 @@ function RFQCreateScreen() {
             form.specifications,
             form.items.map(i => `${i.name}: ${i.specifications}`).join('\n'),
           ].filter(Boolean).join('\n\n'),
-          attachments: [],
+          attachments: uploadedFiles.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
         });
       }
 
@@ -311,7 +350,7 @@ function RFQCreateScreen() {
         isVerifiedSuppliersOnly: form.isVerifiedSuppliersOnly,
         items: form.items.filter(i => i.name.trim()),
         rfqType: form.items.length > 1 ? 'multi_product' : 'custom',
-        attachments: [],
+        attachments: uploadedFiles.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
       });
     },
     onSuccess: async (result: any) => {
@@ -521,9 +560,10 @@ function RFQCreateScreen() {
           <Text style={styles.sectionKicker}>Attachments</Text>
           <Text style={styles.sectionTitle}>Images, documents & files</Text>
           <View style={styles.card}>
-            <InputField label="Image URL" value={form.imageUrls} onChangeText={v => updateField('imageUrls', v)} placeholder="https://..." icon="image" />
-            <InputField label="Document URL" value={form.documentUrls} onChangeText={v => updateField('documentUrls', v)} placeholder="https://..." icon="file-document" />
-            <InputField label="Attachment URL" value={form.attachmentUrls} onChangeText={v => updateField('attachmentUrls', v)} placeholder="https://..." icon="paperclip" />
+            {uploadedFiles.map((file, index) => <View key={`${file.url}-${index}`} style={styles.uploadRow}><Icon name={file.mimeType?.startsWith('image/') ? 'image-outline' : 'file-document-outline'} size={22} color={P.primary} /><View style={styles.uploadBody}><Text numberOfLines={1} style={styles.uploadName}>{file.name ?? `Attachment ${index + 1}`}</Text><Text style={styles.uploadStatus}>Uploaded securely</Text></View><Pressable onPress={() => setUploadedFiles(current => current.filter((_, fileIndex) => fileIndex !== index))}><Icon name="close-circle" size={20} color={P.danger} /></Pressable></View>)}
+            <View style={styles.uploadActions}><Pressable disabled={uploading} onPress={pickImages} style={styles.uploadButton}><Icon name="image-plus" size={18} color={P.primary} /><Text style={styles.uploadButtonText}>Add images</Text></Pressable><Pressable disabled={uploading} onPress={pickDocuments} style={styles.uploadButton}><Icon name="paperclip" size={18} color={P.primary} /><Text style={styles.uploadButtonText}>Add files</Text></Pressable></View>
+            {uploading ? <View style={styles.uploadProgress}><ActivityIndicator size="small" color={P.primary} /><Text style={styles.uploadStatus}>Uploading to secure storage…</Text></View> : null}
+            {failedUpload ? <Pressable onPress={() => failedUpload()} style={styles.retryUpload}><Icon name="refresh" size={17} color={P.danger} /><Text style={styles.retryUploadText}>Retry failed upload</Text></Pressable> : null}
           </View>
         </View>
 
@@ -619,6 +659,8 @@ const styles = StyleSheet.create({
     borderBottomColor: P.border,
   },
   modalTitle: { fontSize: 16, fontWeight: '700', color: P.text },
+  dropdownSearch: { alignItems: 'center', backgroundColor: P.inputBg, borderRadius: 10, flexDirection: 'row', gap: 8, margin: 12, paddingHorizontal: 12 },
+  dropdownSearchInput: { color: P.text, flex: 1, minHeight: 44 },
   modalOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -672,6 +714,16 @@ const styles = StyleSheet.create({
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 8 },
   checkTitle: { fontSize: 13, fontWeight: '600', color: P.text },
   checkDesc: { fontSize: 10, color: P.muted, marginTop: 2 },
+  uploadRow: { alignItems: 'center', borderBottomColor: P.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 10, paddingVertical: 10 },
+  uploadBody: { flex: 1 },
+  uploadName: { color: P.text, fontSize: 13, fontWeight: '700' },
+  uploadStatus: { color: P.muted, fontSize: 11, marginTop: 2 },
+  uploadActions: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  uploadButton: { alignItems: 'center', backgroundColor: P.primaryLight, borderRadius: 10, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', padding: 12 },
+  uploadButtonText: { color: P.primary, fontSize: 12, fontWeight: '700' },
+  uploadProgress: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 10 },
+  retryUpload: { alignItems: 'center', flexDirection: 'row', gap: 6, marginTop: 10 },
+  retryUploadText: { color: P.danger, fontSize: 12, fontWeight: '700' },
 
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: P.primary, borderRadius: 14, height: 50, marginTop: 8 },
   submitBtnDisabled: { opacity: 0.5 },

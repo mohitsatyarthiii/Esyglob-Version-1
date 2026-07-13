@@ -128,6 +128,9 @@ function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
   const productRecord = isRecord(product) ? product : null;
   const productName = String(productRecord?.name ?? productRecord?.title ?? 'Order item');
   const image = productRecord ? firstImage(productRecord.image as string | undefined, productRecord.images as string[] | undefined) : null;
+  const buyer = isRecord(order.buyerId) ? order.buyerId : null;
+  const seller = isRecord(order.sellerId) ? order.sellerId : null;
+  const shippingStatus = String((order as any).shippingStatus ?? order.status ?? 'pending');
 
   return (
     <Pressable onPress={onPress} style={styles.card}>
@@ -146,8 +149,11 @@ function OrderCard({ order, onPress }: { order: Order; onPress: () => void }) {
         <View style={styles.productBody}>
           <Text numberOfLines={2} style={styles.productName}>{productName}</Text>
           <Text style={styles.meta}>Type: {order.orderType ?? 'bulk'} / {order.orderSubType ?? 'trade_order'}</Text>
-          <Text style={styles.meta}>Payment: {order.paymentStatus ?? 'pending'}</Text>
-          <Text style={styles.meta}>Buyer: {formatValue(order.buyerId)}</Text>
+          <Text style={styles.meta}>Quantity: {String(order.quantity ?? (productRecord?.quantity as unknown) ?? '—')}</Text>
+          <Text style={styles.meta}>Buyer: {String(buyer?.fullName ?? buyer?.name ?? buyer?.email ?? formatValue(order.buyerId))}</Text>
+          <Text style={styles.meta}>Seller: {String(seller?.companyName ?? seller?.businessName ?? seller?.displayName ?? formatValue(order.sellerId))}</Text>
+          <Text style={styles.meta}>Payment: {order.paymentStatus ?? 'pending'} · Shipping: {shippingStatus.replace(/_/g, ' ')}</Text>
+          <Text style={styles.meta}>Ordered: {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'Date pending'}</Text>
           {order.trackingNumber ? <Text style={styles.meta}>Tracking: {order.trackingNumber}</Text> : null}
         </View>
       </View>

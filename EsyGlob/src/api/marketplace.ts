@@ -733,6 +733,17 @@ export async function initiateOrderPayment(orderId: string): Promise<PaymentInit
   return unwrapData<PaymentInitiation>(payload);
 }
 
+export async function fetchPaymentDetails(paymentId: string): Promise<Record<string, unknown>> {
+  const payload = await apiRequest(`/payments/${paymentId}`);
+  return unwrapData<Record<string, unknown>>(payload);
+}
+
+export async function fetchInvoices(): Promise<Record<string, unknown>[]> {
+  const payload = await apiRequest('/invoices');
+  const data = unwrapData<{ invoices?: Record<string, unknown>[] } | Record<string, unknown>[]>(payload);
+  return Array.isArray(data) ? data : data?.invoices ?? [];
+}
+
 export async function verifyOrderPayment(
   input: Record<string, unknown>,
 ): Promise<{

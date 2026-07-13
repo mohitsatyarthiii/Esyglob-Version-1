@@ -34,6 +34,8 @@ class OrderRepository {
       .populate('rfqId')
       .populate('quotationId')
       .populate('chatId')
+      .populate('paymentId', 'paymentNumber status amount currency transactionId razorpayPaymentId paymentMethod method platformFee gatewayFee netAmount refundAmount refundedAt createdAt paidAt')
+      .populate('invoiceId', 'invoiceNumber status paymentStatus documentUrl totalAmount')
       .exec();
   }
 

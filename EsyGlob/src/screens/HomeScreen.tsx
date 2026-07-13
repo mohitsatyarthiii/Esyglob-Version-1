@@ -532,10 +532,10 @@ const CategorySlider = React.memo(({ categories, loading, navigation }: any) => 
   return (
     <View style={styles.sectionWrap}>
       <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>Categories</Text><Pressable onPress={() => navigation.navigate('Categories')}><Text style={styles.seeAll}>See all</Text></Pressable></View>
-      <FlatList data={categories.slice(0, 8)} horizontal keyExtractor={(item: Category) => getStableKey(item)} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}
+      <FlatList data={categories.slice(0, 16)} horizontal keyExtractor={(item: Category) => getStableKey(item)} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}
         renderItem={({ item }) => (
           <Pressable onPress={() => navigation.navigate('ProductListing', { category: item.name ?? item.slug, categoryName: item.name })} style={styles.categoryItem}>
-            <View style={styles.categoryIconWrap}>{item.image ? <RemoteImage uri={item.image} width={64} height={64} style={styles.categoryIcon} /> : <Icon name="view-grid-outline" size={20} color={P.primary} />}</View>
+            <View style={styles.categoryIconWrap}>{firstImage(item.image, item.icon) ? <RemoteImage uri={firstImage(item.image, item.icon)} width={64} height={64} style={styles.categoryIcon} /> : <Icon name="view-grid-outline" size={20} color={P.primary} />}</View>
             <Text style={styles.categoryName} numberOfLines={1}>{item.name ?? item.slug}</Text>
           </Pressable>
         )} />
@@ -814,8 +814,8 @@ const styles = StyleSheet.create({
   seeAll: { fontSize: 12, fontWeight: '600', color: P.primary },
   categoryRail: { paddingHorizontal: 12, gap: 12 },
   categoryItem: { alignItems: 'center', width: 68 },
-  categoryIconWrap: { width: 56, height: 56, borderRadius: 24, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 6 },
-  categoryIcon: { width: 56, height: 56, borderRadius: 24 },
+  categoryIconWrap: { width: 58, height: 58, borderRadius: 29, backgroundColor: P.primaryLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 6 },
+  categoryIcon: { width: 58, height: 58, borderRadius: 29 },
   categoryName: { fontSize: 10, fontWeight: '600', color: P.text, textAlign: 'center', lineHeight: 12 },
   categorySkeleton: { width: 56, height: 56, borderRadius: 24, backgroundColor: P.cardMuted },
   productRail: { paddingHorizontal: 12, gap: 10 },

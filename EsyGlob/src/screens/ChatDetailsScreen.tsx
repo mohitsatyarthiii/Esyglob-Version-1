@@ -31,6 +31,7 @@ import {
   UploadAttachment,
   blockChatUser,
   favoriteChat,
+  fetchChats,
 } from '../api/marketplace';
 import { Chat, CurrentUser, MessageItem, Product } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -139,6 +140,16 @@ function ChatDetailsScreen() {
     enabled: Boolean(chatId),
     refetchInterval: 5000,
   });
+  const isGroupChat = chat.data?.chat?.chatType === 'group';
+  const personalChats = useQuery({ queryKey: ['chats', activeRole, 'all', false], queryFn: () => fetchChats({ role: activeRole, view: 'all' }), enabled: Boolean(isGroupChat) });
+  const groupMembers = useMemo(() => (chat.data?.chat?.groupMembers ?? []).filter((member): member is CurrentUser => typeof member === 'object' && Boolean(member)), [chat.data?.chat?.groupMembers]);
+  const openMemberChat = (member: CurrentUser) => {
+    const memberId = getUserId(member); if (!memberId || memberId === senderId) return;
+    const existing = personalChats.data?.find(item => item.chatType !== 'group' && [item.buyerId, item.sellerId].some(value => typeof value === 'string' ? value === memberId : getUserId(value as CurrentUser) === memberId));
+    const existingId = existing ? getId(existing) : undefined;
+    if (existingId) { setProfileActionsOpen(false); navigation.push('ChatDetails', { chatId: existingId, title: member.fullName ?? member.name ?? member.email ?? 'Chat contact' }); }
+    else Alert.alert('Conversation unavailable', 'Start a direct conversation with this member from their supplier or product page.');
+  };
 
   // ─── Safe Sender ID ────────────────────────────────────────────────────
 
@@ -614,7 +625,7 @@ function ChatDetailsScreen() {
           <View style={styles.headerBody}>
             <Text numberOfLines={1} style={styles.headerName}>{participant.name}</Text>
             <Text style={styles.headerStatus}>
-              {participantTyping ? 'typing...' : participantOnline ? 'online' : 'Tap for contact actions'}
+              {isGroupChat ? `${groupMembers.length} members · tap for group info` : participantTyping ? 'typing...' : participantOnline ? 'online' : 'Tap for contact actions'}
             </Text>
           </View>
           <Icon name="dots-vertical" size={22} color={WP.headerText} />
@@ -744,6 +755,10 @@ function ChatDetailsScreen() {
       >
         <Pressable style={styles.sheetBackdrop} onPress={() => setProfileActionsOpen(false)}>
           <View style={styles.contactSheet}>
+            {isGroupChat ? <>
+              <View style={styles.groupInfoHero}><View style={styles.groupInfoAvatar}><Icon name="account-group" size={34} color="#FFF" /></View><Text style={styles.contactSheetTitle}>{chat.data?.chat?.groupName ?? 'Group chat'}</Text><Text style={styles.groupInfoMeta}>{groupMembers.length} members · Created {chat.data?.chat?.createdAt ? new Date(chat.data.chat.createdAt).toLocaleDateString() : 'recently'}</Text></View>
+              <Text style={styles.groupMemberHeading}>Members</Text><ScrollView style={styles.groupMemberList}>{groupMembers.map(member => { const memberId = getUserId(member) ?? member.email ?? 'member'; const name = member.fullName ?? member.name ?? member.email ?? 'Group member'; const company = (member as any).companyName ?? (member as any).businessName; return <Pressable key={memberId} onPress={() => openMemberChat(member)} style={styles.groupMemberRow}><RemoteImage uri={firstImage(member.profileImage, member.avatarUrl, member.avatar, member.image)} width={46} height={46} style={styles.groupMemberAvatar} fallback={<View style={styles.groupMemberFallback}><Text style={styles.groupMemberInitial}>{name[0]?.toUpperCase() ?? 'M'}</Text></View>} /><View style={styles.groupMemberBody}><View style={styles.groupMemberNameRow}><Text numberOfLines={1} style={styles.groupMemberName}>{name}</Text>{(member as any).isVerified ? <Icon name="check-decagram" size={15} color="#2563EB" /> : null}</View><Text numberOfLines={1} style={styles.groupMemberCompany}>{company ?? String((member as any).role ?? 'Member')}</Text></View><Icon name="message-text-outline" size={20} color={WP.primaryDark} /></Pressable>; })}</ScrollView>
+            </> : <>
             <Text style={styles.contactSheetTitle}>{participant.name}</Text>
             {[
               ['account-outline', 'View Profile', () => chat.data?.sellerProfile?._id && navigation.navigate('SellerDetails', { sellerId: chat.data.sellerProfile._id })],
@@ -761,6 +776,7 @@ function ChatDetailsScreen() {
                 <Icon name="chevron-right" size={18} color={WP.muted} />
               </Pressable>
             ))}
+            </>}
           </View>
         </Pressable>
       </Modal>
@@ -1125,7 +1141,17 @@ function MessageContent({
   const navigation = useNavigation<any>();
   const content = item.content ?? item.text ?? '';
   const storeDetails = (item as any).storeDetails as Record<string, unknown> | undefined;
+  const serviceDetails = item.serviceDetails;
   const attachments = Array.isArray(item.attachments) ? (item.attachments as unknown[]) : [];
+
+  const openEntity = (route: string, param: string, value: unknown, label: string) => {
+    const id = resolveId(value);
+    if (!id) {
+      Alert.alert(`${label} unavailable`, `This shared ${label.toLowerCase()} no longer has a valid link.`);
+      return;
+    }
+    navigation.navigate(route, { [param]: id });
+  };
 
   if (item.productDetails) {
     const product = item.productDetails as Product;
@@ -1135,7 +1161,7 @@ function MessageContent({
         subtitle={content || 'Shared product'}
         icon="package-variant-closed"
         image={firstImage(product.image, product.images)}
-        onPress={() => navigation.navigate('ProductDetails', { productId: getId(product) })}
+        onPress={() => openEntity('ProductDetails', 'productId', product, 'Product')}
       />
     );
   }
@@ -1147,7 +1173,7 @@ function MessageContent({
         title={String(rfq.title ?? rfq.productName ?? 'RFQ')}
         subtitle={`Qty ${String(rfq.quantity ?? '-')}`}
         icon="clipboard-list-outline"
-        onPress={() => navigation.navigate('RFQDetails', { rfqId: getId(rfq) })}
+        onPress={() => openEntity('RFQDetails', 'rfqId', rfq, 'RFQ')}
       />
     );
   }
@@ -1159,7 +1185,7 @@ function MessageContent({
         title={String(q.title ?? 'Quotation')}
         subtitle={`${q.currency ?? ''} ${q.totalPrice ?? q.unitPrice ?? ''}`}
         icon="cash-multiple"
-        onPress={() => navigation.navigate('QuotationDetails', { quotationId: getId(q) })}
+        onPress={() => openEntity('QuotationDetails', 'quotationId', q, 'Quotation')}
       />
     );
   }
@@ -1172,7 +1198,7 @@ function MessageContent({
         subtitle={String(order.status ?? '')}
         icon="rocket-launch-outline"
         actionLabel="View Order"
-        onPress={() => navigation.navigate('OrderDetails', { orderId: getId(order) })}
+        onPress={() => openEntity('OrderDetails', 'orderId', order, 'Order')}
       />
     );
   }
@@ -1183,9 +1209,19 @@ function MessageContent({
         title={sellerProfileName(storeDetails)}
         subtitle="Shared store"
         icon="storefront-outline"
-        onPress={() =>
-          navigation.navigate('SellerDetails', { sellerId: getId(storeDetails) })
-        }
+        onPress={() => openEntity('SellerDetails', 'sellerId', storeDetails, 'Store')}
+      />
+    );
+  }
+
+  if (serviceDetails) {
+    const serviceKey = serviceDetails.serviceKey ?? serviceDetails.key ?? serviceDetails.slug;
+    return (
+      <BusinessCard
+        title={String(serviceDetails.name ?? serviceDetails.title ?? 'Service')}
+        subtitle={content || 'Shared service'}
+        icon="briefcase-outline"
+        onPress={() => openEntity('ServiceDetails', 'serviceKey', serviceKey, 'Service')}
       />
     );
   }
@@ -1413,6 +1449,19 @@ const styles = StyleSheet.create({
   contactSheetTitle: { fontSize: 18, fontWeight: '700', color: WP.textOther, marginBottom: 10 },
   contactSheetRow: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
   contactSheetText: { flex: 1, fontSize: 14, fontWeight: '600', color: WP.textOther },
+  groupInfoHero: { alignItems: 'center', paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
+  groupInfoAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: WP.primaryDark, alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
+  groupInfoMeta: { color: WP.muted, fontSize: 12, marginTop: -4 },
+  groupMemberHeading: { fontSize: 12, fontWeight: '800', color: WP.muted, textTransform: 'uppercase', letterSpacing: 0.7, marginTop: 15, marginBottom: 5 },
+  groupMemberList: { maxHeight: 380 },
+  groupMemberRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
+  groupMemberAvatar: { width: 46, height: 46, borderRadius: 23 },
+  groupMemberFallback: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#DDE7E5', alignItems: 'center', justifyContent: 'center' },
+  groupMemberInitial: { color: WP.primaryDark, fontSize: 17, fontWeight: '800' },
+  groupMemberBody: { flex: 1 },
+  groupMemberNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  groupMemberName: { maxWidth: '88%', fontSize: 14, fontWeight: '700', color: WP.textOther },
+  groupMemberCompany: { color: WP.muted, fontSize: 11, marginTop: 3, textTransform: 'capitalize' },
   headerName: { fontSize: 17, fontWeight: '600', color: WP.headerText },
   headerStatus: { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 1 },
 

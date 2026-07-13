@@ -29,6 +29,8 @@ import SellerDetailsScreen from './src/screens/SellerDetailsScreen';
 import SellersScreen from './src/screens/SellersScreen';
 import OrderCheckoutScreen from './src/screens/OrderCheckoutScreen';
 import OrderDetailsScreen from './src/screens/OrderDetailsScreen';
+import PaymentDetailsScreen from './src/screens/PaymentDetailsScreen';
+import InvoiceDetailsScreen from './src/screens/InvoiceDetailsScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
 import SellerFactoryScreen from './src/screens/SellerFactoryScreen';
 import SellerOnboardingScreen from './src/screens/SellerOnboardingScreen';
@@ -76,6 +78,8 @@ export type RootStackParamList = {
   OrderCheckout: { mode: 'sample' | 'trade'; productId?: string; chatId?: string; quotationId?: string };
   Orders: undefined;
   OrderDetails: { orderId: string };
+  PaymentDetails: { paymentId: string; orderNumber?: string };
+  InvoiceDetails: { invoiceId?: string; orderId?: string };
   SellerOnboarding: undefined;
   SellerFactory: undefined;
   SellerProducts: undefined;
@@ -197,6 +201,8 @@ function App() {
               <Stack.Screen name="OrderCheckout" component={OrderCheckoutScreen} />
               <Stack.Screen name="Orders" component={OrdersScreen} />
               <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
+              <Stack.Screen name="PaymentDetails" component={PaymentDetailsScreen} />
+              <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
               <Stack.Screen name="SellerOnboarding" component={SellerOnboardingScreen} />
               <Stack.Screen name="SellerFactory" component={SellerFactoryScreen} />
               <Stack.Screen name="SellerProducts" component={SellerProductsScreen} />

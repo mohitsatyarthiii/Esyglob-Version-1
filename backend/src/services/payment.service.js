@@ -37,7 +37,11 @@ class PaymentService {
       throw Object.assign(new Error('Payment not found'), { statusCode: 404 });
     }
     if (payment.userId.toString() !== userId.toString()) {
-      throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+      const order = payment.orderId ? await PaymentRepository.findOrderById(payment.orderId) : null;
+      const seller = order?.sellerId ? await Seller.findById(order.sellerId).select('userId').lean() : null;
+      if (!seller?.userId || String(seller.userId) !== String(userId)) {
+        throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+      }
     }
     return payment;
   }

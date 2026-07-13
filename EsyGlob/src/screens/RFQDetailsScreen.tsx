@@ -14,7 +14,9 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { createQuotation, fetchRFQDetails, startProductChat } from '../api/marketplace';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { pick, types as documentTypes } from '@react-native-documents/picker';
+import { createQuotation, fetchRFQDetails, startProductChat, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
@@ -101,6 +103,8 @@ function RFQDetailsScreen() {
   const { activeRole } = useAuth();
   const { rfqId } = route.params as { rfqId: string };
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quoteAttachments, setQuoteAttachments] = useState<UploadAttachment[]>([]);
+  const [quoteUploading, setQuoteUploading] = useState(false);
   const [quoteForm, setQuoteForm] = useState({
     suppliedQuantity: '',
     unitPrice: '',
@@ -118,6 +122,35 @@ function RFQDetailsScreen() {
     enabled: Boolean(rfqId),
     staleTime: 30_000,
   });
+
+  const uploadQuoteFiles = async (files: Array<{ uri: string; name: string; type: string }>) => {
+    if (!files.length) return;
+    setQuoteUploading(true);
+    try {
+      const result = await uploadFiles('quotations', files);
+      const uploads = result.uploads ?? result.files ?? [];
+      if (uploads.length !== files.length) throw new Error('Some files were not uploaded. Please retry.');
+      setQuoteAttachments(current => [...current, ...uploads]);
+    } catch (error) {
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload quotation files.');
+    } finally {
+      setQuoteUploading(false);
+    }
+  };
+
+  const pickQuoteImages = async () => {
+    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: Math.max(1, 10 - quoteAttachments.length), quality: 0.8 });
+    await uploadQuoteFiles((result.assets ?? []).filter(asset => asset.uri).map(asset => ({ uri: asset.uri as string, name: asset.fileName ?? `quotation-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' })));
+  };
+
+  const pickQuoteDocuments = async () => {
+    try {
+      const files = await pick({ allowMultiSelection: true, type: [documentTypes.allFiles] });
+      await uploadQuoteFiles(files.map(file => ({ uri: file.uri, name: file.name ?? `quotation-file-${Date.now()}`, type: file.type ?? 'application/octet-stream' })));
+    } catch (error: any) {
+      if (error?.code !== 'OPERATION_CANCELED') Alert.alert('File selection failed', error?.message ?? 'Unable to select files.');
+    }
+  };
 
   // ── Submit Quote ──────────────────────────────────────────────────────
 
@@ -142,10 +175,12 @@ function RFQDetailsScreen() {
         incoterms: quoteForm.incoterms,
         shippingCost: Number(quoteForm.shippingCost) || 0,
         sellerMessage: quoteForm.sellerMessage || 'Quotation submitted from mobile.',
+        attachments: quoteAttachments.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
       });
     },
     onSuccess: async (result: any) => {
       setQuoteOpen(false);
+      setQuoteAttachments([]);
       await queryClient.invalidateQueries({ queryKey: ['rfq-details', rfqId] });
       const quotationId = getId(result);
       if (quotationId) {
@@ -376,6 +411,10 @@ function RFQDetailsScreen() {
               <FormField label="Payment Terms" value={quoteForm.paymentTerms} onChangeText={v => setQuoteForm({ ...quoteForm, paymentTerms: v })} />
               <FormField label="Incoterms" value={quoteForm.incoterms} onChangeText={v => setQuoteForm({ ...quoteForm, incoterms: v })} />
               <FormField label="Message to Buyer" value={quoteForm.sellerMessage} onChangeText={v => setQuoteForm({ ...quoteForm, sellerMessage: v })} multiline />
+              <Text style={styles.formLabel}>Attachments</Text>
+              {quoteAttachments.map((file, index) => <View key={`${file.url}-${index}`} style={styles.quoteAttachment}><Icon name={file.mimeType?.startsWith('image/') ? 'image-outline' : 'file-document-outline'} size={20} color={P.accent} /><Text numberOfLines={1} style={styles.quoteAttachmentName}>{file.name ?? `Attachment ${index + 1}`}</Text><Pressable onPress={() => setQuoteAttachments(current => current.filter((_, fileIndex) => fileIndex !== index))}><Icon name="close-circle" size={19} color={P.danger} /></Pressable></View>)}
+              <View style={styles.quoteUploadActions}><Pressable disabled={quoteUploading} onPress={pickQuoteImages} style={styles.quoteUploadButton}><Icon name="image-plus" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Images</Text></Pressable><Pressable disabled={quoteUploading} onPress={pickQuoteDocuments} style={styles.quoteUploadButton}><Icon name="paperclip" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Files</Text></Pressable></View>
+              {quoteUploading ? <View style={styles.quoteUploadProgress}><ActivityIndicator size="small" color={P.accent} /><Text style={styles.quoteUploadText}>Uploading…</Text></View> : null}
 
               {quoteForm.unitPrice && quoteForm.suppliedQuantity && (
                 <View style={styles.pricePreview}>
@@ -521,6 +560,12 @@ const styles = StyleSheet.create({
   formField: { marginBottom: 12 },
   formFieldCompact: { flex: 1 },
   formLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  quoteAttachment: { alignItems: 'center', backgroundColor: P.inputBg, borderRadius: 9, flexDirection: 'row', gap: 8, marginBottom: 7, padding: 10 },
+  quoteAttachmentName: { color: P.text, flex: 1, fontSize: 12, fontWeight: '600' },
+  quoteUploadActions: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  quoteUploadButton: { alignItems: 'center', backgroundColor: P.accentLight, borderRadius: 9, flex: 1, flexDirection: 'row', gap: 5, justifyContent: 'center', padding: 11 },
+  quoteUploadText: { color: P.accent, fontSize: 12, fontWeight: '700' },
+  quoteUploadProgress: { alignItems: 'center', flexDirection: 'row', gap: 8, marginBottom: 10 },
   formInput: { backgroundColor: P.inputBg, borderRadius: 10, paddingHorizontal: 12, height: 44, fontSize: 14, color: P.text, borderWidth: 1, borderColor: P.border },
   formTextarea: { height: 90, paddingTop: 12, textAlignVertical: 'top' },
 

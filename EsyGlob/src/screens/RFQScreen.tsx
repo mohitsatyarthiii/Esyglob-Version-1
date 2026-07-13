@@ -333,6 +333,7 @@ function RFQCard({ item, role }: { item: RFQ; role: 'buyer' | 'seller' }) {
   const navigation = useNavigation<any>();
   const destination = item.destinationCountry ?? item.deliveryCountry;
   const statusCfg = getStatusConfig(item.status ?? 'active');
+  const isPrivate = item.visibility === 'private';
 
   return (
     <Pressable
@@ -341,11 +342,19 @@ function RFQCard({ item, role }: { item: RFQ; role: 'buyer' | 'seller' }) {
       }
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
       {/* Status badge — top right */}
+      <View style={styles.rfqBadgeRow}>
+      <View style={[styles.visibilityBadge, isPrivate ? styles.privateBadge : styles.publicBadge]}>
+        <Icon name={isPrivate ? 'lock-outline' : 'earth'} size={12} color={isPrivate ? '#9A3412' : '#166534'} />
+        <Text style={[styles.visibilityBadgeText, isPrivate ? styles.privateBadgeText : styles.publicBadgeText]}>
+          {isPrivate ? 'Private RFQ' : 'Public RFQ'}
+        </Text>
+      </View>
       <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
         <Icon name={statusCfg.icon} size={12} color={statusCfg.color} />
         <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>
           {(item.status ?? 'active').replace(/_/g, ' ')}
         </Text>
+      </View>
       </View>
 
       {/* Title & meta */}
@@ -681,6 +690,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
   },
+  rfqBadgeRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
+  visibilityBadge: { alignItems: 'center', borderRadius: radii.pill, flexDirection: 'row', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  publicBadge: { backgroundColor: '#DCFCE7' },
+  privateBadge: { backgroundColor: '#FFEDD5' },
+  visibilityBadgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  publicBadgeText: { color: '#166534' },
+  privateBadgeText: { color: '#9A3412' },
 
   // ── Card content ──
   cardTitle: {

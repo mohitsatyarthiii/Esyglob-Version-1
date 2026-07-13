@@ -56,6 +56,7 @@ function OrderDetailsScreen() {
   const image = firstImage(product?.image as string | undefined, product?.images as string[] | undefined);
   const selectedLogistics = asRecord(item.selectedLogistics);
   const shipping = asRecord(item.shippingAddress);
+  const billing = asRecord(item.billingAddress);
   const seller = asRecord(item.sellerId);
   const buyer = asRecord(item.buyerId);
   const services = Array.isArray(item.platformServices) ? item.platformServices : Array.isArray(item.automatedServices) ? item.automatedServices : [];
@@ -109,6 +110,10 @@ function OrderDetailsScreen() {
           />
           <InfoLine label="ETA" value={selectedLogistics?.eta ?? item.estimatedDeliveryDate} />
           <InfoLine label="Tracking" value={item.trackingNumber} />
+          <View style={styles.documentActions}>
+            {entityId(item.paymentId) ? <Pressable onPress={() => navigation.navigate('PaymentDetails', { paymentId: entityId(item.paymentId), orderNumber: item.orderNumber })} style={styles.documentButton}><Icon name="credit-card-outline" size={18} color={colors.primaryDark} /><Text style={styles.documentButtonText}>Payment details</Text></Pressable> : null}
+            <Pressable onPress={() => navigation.navigate('InvoiceDetails', { invoiceId: entityId(item.invoiceId), orderId })} style={styles.documentButton}><Icon name="file-document-outline" size={18} color={colors.primaryDark} /><Text style={styles.documentButtonText}>Invoice</Text></Pressable>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -116,6 +121,8 @@ function OrderDetailsScreen() {
           <InfoLine label="Buyer" value={buyer?.name ?? buyer?.fullName ?? buyer?.email ?? item.buyerId} />
           <InfoLine label="Supplier" value={seller?.companyName ?? seller?.businessName ?? seller?.displayName ?? item.sellerId} />
           <InfoLine label="Destination" value={[shipping?.city, shipping?.state, shipping?.country, shipping?.postalCode].filter(Boolean).join(', ')} />
+          <InfoLine label="Shipping address" value={formatAddress(shipping)} />
+          <InfoLine label="Billing address" value={formatAddress(billing)} />
         </View>
 
         {services.length ? (
@@ -202,6 +209,17 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' ? value as Record<string, unknown> : null;
 }
 
+function entityId(value: unknown) {
+  if (typeof value === 'string') return value;
+  const record = asRecord(value);
+  return record ? String(record._id ?? record.id ?? '') : '';
+}
+
+function formatAddress(address: Record<string, unknown> | null) {
+  if (!address) return undefined;
+  return [address.fullName ?? address.name, address.addressLine1 ?? address.line1 ?? address.street, address.addressLine2 ?? address.line2, address.city, address.state, address.postalCode, address.country].filter(Boolean).join(', ');
+}
+
 function display(value: unknown) {
   if (value === undefined || value === null || value === '') {
     return 'Pending';
@@ -256,6 +274,9 @@ const styles = StyleSheet.create({
   productName: { color: colors.ink, fontSize: 16, fontWeight: '900', lineHeight: 21, marginBottom: spacing.xs },
   card: { backgroundColor: colors.card, borderRadius: radii.md, marginBottom: spacing.lg, padding: spacing.lg },
   sectionTitle: { color: colors.ink, fontSize: 17, fontWeight: '900', marginBottom: spacing.md },
+  documentActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  documentButton: { alignItems: 'center', backgroundColor: colors.cardMuted, borderRadius: radii.pill, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', padding: spacing.md },
+  documentButtonText: { color: colors.primaryDark, fontSize: 12, fontWeight: '900' },
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
   infoTile: { backgroundColor: colors.cardMuted, borderRadius: radii.sm, flexBasis: '48%', flexGrow: 1, minHeight: 66, padding: spacing.md },
   infoLabel: { color: colors.muted, fontSize: 11, fontWeight: '900', marginBottom: spacing.xs, textTransform: 'uppercase' },

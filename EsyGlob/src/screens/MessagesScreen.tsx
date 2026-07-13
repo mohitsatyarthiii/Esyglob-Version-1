@@ -63,7 +63,7 @@ const P = {
   gold: '#F59E0B',
 };
 
-type ChatView = 'all' | 'favorites' | 'archived';
+type ChatView = 'all' | 'groups' | 'favorites' | 'archived';
 
 // ─── Safe Helpers ──────────────────────────────────────────────────────────
 
@@ -165,7 +165,7 @@ function MessagesScreen() {
 
   const chats = useQuery({
     queryKey,
-    queryFn: () => fetchChats({ role: activeRole, view, unreadOnly }),
+    queryFn: () => fetchChats({ role: activeRole, view: view === 'groups' ? 'all' : view, unreadOnly }),
     enabled: status === 'authenticated',
     staleTime: 45_000,
   });
@@ -175,14 +175,16 @@ function MessagesScreen() {
     if (!chats.data?.length) return [];
 
     const sellerMap = new Map<string, SellerSummary>();
+    const selfId = getUserId(user);
 
     chats.data.forEach((chat: Chat) => {
+      if (chat.chatType === 'group') return;
       const seller =
         typeof chat.sellerId === 'object' ? (chat.sellerId as SellerSummary) : undefined;
 
       if (seller) {
         const id = getId(seller) ?? seller._id ?? seller.id;
-        if (id && !sellerMap.has(id)) {
+        if (id && id !== selfId && !sellerMap.has(id)) {
           sellerMap.set(id, {
             ...seller,
             _id: id,
@@ -196,7 +198,7 @@ function MessagesScreen() {
 
       if (buyer) {
         const id = buyer._id ?? buyer.id;
-        if (id && !sellerMap.has(id)) {
+        if (id && id !== selfId && !sellerMap.has(id)) {
           sellerMap.set(id, {
             _id: id,
             id: id,
@@ -211,7 +213,7 @@ function MessagesScreen() {
     });
 
     return Array.from(sellerMap.values());
-  }, [chats.data]);
+  }, [chats.data, user]);
 
   const archiveMutation = useChatMutation(
     queryKey,
@@ -327,6 +329,7 @@ function MessagesScreen() {
           product?.name,
           product?.title,
           item.chatType,
+          item.groupName,
           item.lastMessage,
         ]
           .filter(Boolean)
@@ -335,11 +338,12 @@ function MessagesScreen() {
         const unread =
           activeRole === 'seller' ? item.sellerUnreadCount : item.buyerUnreadCount;
         return (
+          (view !== 'groups' || item.chatType === 'group') &&
           (!unreadOnly || Boolean(unread)) &&
           (!query.trim() || haystack.includes(query.trim().toLowerCase()))
         );
       }),
-    [activeRole, chats.data, query, unreadOnly, currentUserId],
+    [activeRole, chats.data, query, unreadOnly, currentUserId, view],
   );
 
   const { pinnedChats, unpinnedChats } = useMemo(() => {
@@ -464,7 +468,7 @@ function MessagesScreen() {
             onPress={() => setGroupOpen(true)} 
             style={styles.headerBtn}
           >
-            <Icon name="account-group-plus" size={20} color={P.textSecondary} />
+            <Icon name="plus" size={22} color={P.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -491,7 +495,7 @@ function MessagesScreen() {
       {/* Tabs */}
       <View style={styles.tabContainer}>
         <View style={styles.tabsWrapper}>
-          {(['all', 'favorites', 'archived'] as const).map((tab) => (
+          {(['all', 'groups', 'favorites', 'archived'] as const).map((tab) => (
             <TouchableOpacity
               key={tab}
               onPress={() => setView(tab)}
@@ -504,7 +508,7 @@ function MessagesScreen() {
                 styles.tabText,
                 view === tab && styles.tabTextActive,
               ]}>
-                {tab === 'all' ? 'All' : tab === 'favorites' ? 'Starred' : 'Archived'}
+                {tab === 'all' ? 'Chats' : tab === 'groups' ? 'Groups' : tab === 'favorites' ? 'Favorites' : 'Archive'}
               </Text>
               {view === tab && <View style={styles.tabIndicator} />}
             </TouchableOpacity>
@@ -529,11 +533,12 @@ function MessagesScreen() {
           <View style={styles.emptyContainer}>
             <Icon name="chat-outline" size={60} color={P.textMuted} />
             <Text style={styles.emptyTitle}>
-              {view === 'archived' ? 'No archived chats' : 'No conversations yet'}
+              {view === 'archived' ? 'No archived chats' : view === 'groups' ? 'No groups yet' : view === 'favorites' ? 'No favorites yet' : 'No conversations yet'}
             </Text>
             <Text style={styles.emptySubtitle}>
               {view === 'archived' 
                 ? 'Archived chats will appear here' 
+                : view === 'groups' ? 'Create a group with people you already chat with' : view === 'favorites' ? 'Favorite conversations will appear here'
                 : 'Start a conversation with a supplier or buyer'}
             </Text>
           </View>
@@ -930,7 +935,7 @@ function GroupChatModal({
             renderItem={({ item }: { item: SellerSummary }) => {
               const id = getId(item) ?? item._id ?? item.id ?? '';
               const isSelected = selectedMembers.includes(id);
-              const name = item.companyName ?? item.businessName ?? item.displayName ?? id;
+              const name = item.displayName ?? item.companyName ?? item.businessName ?? 'Chat contact';
 
               return (
                 <TouchableOpacity
@@ -956,9 +961,7 @@ function GroupChatModal({
                     <Text style={styles.supplierName} numberOfLines={1}>
                       {name}
                     </Text>
-                    <Text style={styles.supplierMeta}>
-                      {item.address?.country ?? item.country ?? 'Chat contact'}
-                    </Text>
+                    <Text style={styles.supplierMeta}>{[item.companyName !== name ? item.companyName : undefined, item.address?.country ?? item.country].filter(Boolean).join(' · ') || 'Existing conversation'}</Text>
                   </View>
                   <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                     {isSelected && <Icon name="check" size={16} color="#FFF" />}
