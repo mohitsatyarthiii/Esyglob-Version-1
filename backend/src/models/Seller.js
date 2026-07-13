@@ -128,7 +128,7 @@ const sellerSchema = new mongoose.Schema(
     verificationLevel: {
       type: Number,
       min: 0,
-      max: 4,
+      max: 6,
       default: 0,
       index: true,
     },

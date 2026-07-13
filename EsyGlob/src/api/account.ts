@@ -22,12 +22,22 @@ export type ProfileSettings = {
 
 export type WalletData = {
   wallet?: Record<string, unknown>;
-  summary?: Record<string, number>;
+  summary?: Record<string, unknown>;
   transactions?: Array<Record<string, unknown>>;
   withdrawals?: Array<Record<string, unknown>>;
   paymentMethods?: Array<Record<string, unknown>>;
   payments?: Array<Record<string, unknown>>;
   orders?: Array<Record<string, unknown>>;
+  escrowTransactions?: Array<Record<string, unknown>>;
+};
+
+export type WalletActivitySource = 'transaction' | 'withdrawal' | 'payment';
+
+export type WalletActivityDetails = {
+  activity: Record<string, unknown>;
+  order?: Record<string, unknown>;
+  payment?: Record<string, unknown>;
+  wallet?: Record<string, unknown>;
 };
 
 export type AddressBookItem = {
@@ -142,6 +152,36 @@ export async function changePassword(input: { currentPassword: string; newPasswo
 export async function fetchWallet(role: string) {
   const payload = await apiRequest('/wallet', { query: { role } });
   return unwrapData<WalletData>(payload);
+}
+
+export async function fetchWalletActivityDetails(
+  role: string,
+  source: WalletActivitySource,
+  activityId: string,
+): Promise<WalletActivityDetails> {
+  const data = await fetchWallet(role);
+  const records = source === 'transaction'
+    ? data.transactions
+    : source === 'withdrawal'
+      ? data.withdrawals
+      : data.payments;
+  const activity = (records ?? []).find(item => String(item._id ?? item.id) === activityId);
+  if (!activity) throw new Error('This wallet activity could not be found. Pull to refresh and try again.');
+
+  const orderId = typeof activity.orderId === 'object'
+    ? String((activity.orderId as Record<string, unknown>)._id ?? '')
+    : String(activity.orderId ?? '');
+  const paymentId = source === 'payment'
+    ? activityId
+    : typeof activity.paymentId === 'object'
+      ? String((activity.paymentId as Record<string, unknown>)._id ?? '')
+      : String(activity.paymentId ?? '');
+  return {
+    activity,
+    order: (data.orders ?? []).find(item => String(item._id ?? item.id) === orderId),
+    payment: (data.payments ?? []).find(item => String(item._id ?? item.id) === paymentId),
+    wallet: data.wallet,
+  };
 }
 
 export async function fetchPaymentMethods(role: string) {

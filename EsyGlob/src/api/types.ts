@@ -173,6 +173,8 @@ export type Product = {
   manufacturingDetails?: Record<string, unknown> | string;
   factoryDetails?: Record<string, unknown> | string;
   priceTiers?: Array<{
+    minimumQuantity?: number | string;
+    maximumQuantity?: number | string;
     minQuantity?: number | string;
     maxQuantity?: number | string;
     price?: number | string;

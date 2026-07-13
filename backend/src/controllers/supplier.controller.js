@@ -187,6 +187,7 @@ export async function saveOnboardingDraft(req, res, next) {
       seller: result.seller,
       draftSavedAt: result.draftSavedAt,
       completion: result.completion,
+      verificationCenter: result.verificationCenter,
     });
   } catch (error) {
     if (error.name === 'ZodError') {
@@ -286,7 +287,8 @@ export async function uploadDocument(req, res, next) {
     const isFactoryVideo =
       documentType === 'factory_video' && file.mimetype.startsWith('video/');
 
-    if (!UPLOAD.ALLOWED_DOCUMENT_TYPES.includes(file.mimetype) && !isFactoryVideo) {
+    const allowedMime = UPLOAD.ALLOWED_DOCUMENT_TYPES.includes(file.mimetype) || UPLOAD.ALLOWED_IMAGE_TYPES.includes(file.mimetype) || isFactoryVideo;
+    if (!allowedMime) {
       return res.status(415).json({ error: 'Unsupported file type' });
     }
 
@@ -329,8 +331,6 @@ export async function uploadDocument(req, res, next) {
     );
 
     const document = verification.documents.at(-1);
-    document.url = `/api/suppliers/verification/documents/${document._id}`;
-    await verification.save();
 
     // Update seller status
     const Seller = (await import('../models/Seller.js')).default;
@@ -351,9 +351,42 @@ export async function uploadDocument(req, res, next) {
       checksum
     );
 
-    return res.json({ success: true, document });
+    const Notification = (await import('../models/Notification.js')).default;
+    await Notification.create({ userId: user.id, notificationType: 'document_uploaded', title: 'Document uploaded', description: `${file.originalname} was uploaded and is pending review.`, data: { verificationId: verification._id, documentId: document._id, documentType } });
+
+    const safeDocument = document.toObject();
+    safeDocument.url = `/api/suppliers/verification/documents/${document._id}`;
+    safeDocument.downloadUrl = safeDocument.url;
+    return res.json({ success: true, document: safeDocument });
   } catch (error) {
     console.error('Verification document upload error:', error);
-    return res.status(500).json({ error: 'Unable to upload verification document' });
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to upload verification document' });
+  }
+}
+
+export async function archiveDocument(req, res) {
+  try {
+    const result = await supplierService.archiveVerificationDocument(req.user, req.params.documentId);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to remove document' });
+  }
+}
+
+export async function listVerificationReviews(req, res) {
+  try {
+    const verifications = await supplierService.listVerificationReviews(req.query);
+    return res.json({ success: true, verifications });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to load verification reviews' });
+  }
+}
+
+export async function reviewVerificationDocument(req, res) {
+  try {
+    const result = await supplierService.reviewVerificationDocument(req.user, req.params.documentId, req.body || {});
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to review document' });
   }
 }

@@ -145,9 +145,11 @@ function ChatDetailsScreen() {
   const groupMembers = useMemo(() => (chat.data?.chat?.groupMembers ?? []).filter((member): member is CurrentUser => typeof member === 'object' && Boolean(member)), [chat.data?.chat?.groupMembers]);
   const openMemberChat = (member: CurrentUser) => {
     const memberId = getUserId(member); if (!memberId || memberId === senderId) return;
+    const memberName = member.fullName ?? member.name ?? member.email;
+    if (!memberName) return;
     const existing = personalChats.data?.find(item => item.chatType !== 'group' && [item.buyerId, item.sellerId].some(value => typeof value === 'string' ? value === memberId : getUserId(value as CurrentUser) === memberId));
     const existingId = existing ? getId(existing) : undefined;
-    if (existingId) { setProfileActionsOpen(false); navigation.push('ChatDetails', { chatId: existingId, title: member.fullName ?? member.name ?? member.email ?? 'Chat contact' }); }
+    if (existingId) { setProfileActionsOpen(false); navigation.push('ChatDetails', { chatId: existingId, title: memberName }); }
     else Alert.alert('Conversation unavailable', 'Start a direct conversation with this member from their supplier or product page.');
   };
 

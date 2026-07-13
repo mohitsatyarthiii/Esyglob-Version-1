@@ -41,6 +41,7 @@ export function getSellerCompletionSummary(seller) {
     totalCount: fields.length,
     completedFields: completedFields.map(({ key, label }) => ({ key, label })),
     remainingFields: remainingFields.map(({ key, label }) => ({ key, label })),
+    isComplete: remainingFields.length === 0,
   };
 }
 

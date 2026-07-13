@@ -64,6 +64,7 @@ type ActivityItem = {
   totalAmount?: number;
   currency?: string;
   createdAt?: string;
+  [key: string]: unknown;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -129,7 +130,8 @@ function WalletScreen() {
     queryFn: () => fetchWallet(role),
   });
 
-  const summary: Record<string, number> = (wallet.data?.summary ?? {}) as Record<string, number>;
+  const summary = (wallet.data?.summary ?? {}) as Record<string, unknown>;
+  const metric = (key: string) => Number(summary[key] ?? 0);
   const paymentMethods = useMemo<Array<Record<string, unknown>>>(
     () => (wallet.data?.paymentMethods ?? []) as Array<Record<string, unknown>>,
     [wallet.data?.paymentMethods],
@@ -230,12 +232,12 @@ function WalletScreen() {
               <View style={styles.balanceGlow} />
               <Text style={styles.balanceLabel}>Total Balance</Text>
               <Text style={styles.balanceAmount}>
-                {formatPrice(summary.balance ?? 0, 'INR')}
+                {formatPrice(metric('balance'), 'INR')}
               </Text>
               <View style={styles.balanceGrid}>
                 <View style={styles.balanceItem}>
                   <Text style={styles.balanceItemValue}>
-                    {formatPrice(summary.escrowBalance ?? 0, 'INR')}
+                    {formatPrice(metric('escrowBalance'), 'INR')}
                   </Text>
                   <Text style={styles.balanceItemLabel}>In Escrow</Text>
                 </View>
@@ -243,8 +245,8 @@ function WalletScreen() {
                 <View style={styles.balanceItem}>
                   <Text style={styles.balanceItemValue}>
                     {role === 'seller'
-                      ? formatPrice(summary.withdrawableAmount ?? 0, 'INR')
-                      : formatPrice(summary.orderPaymentTotal ?? 0, 'INR')}
+                      ? formatPrice(metric('withdrawableAmount'), 'INR')
+                      : formatPrice(metric('orderPaymentTotal'), 'INR')}
                   </Text>
                   <Text style={styles.balanceItemLabel}>
                     {role === 'seller' ? 'Withdrawable' : 'Orders'}
@@ -405,7 +407,15 @@ function WalletScreen() {
           const currency = String(item.currency ?? 'INR');
 
           return (
-            <View style={styles.activityRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${label} details`}
+              onPress={() => navigation.navigate('WalletTransactionDetails', {
+                activityId: String(item._id ?? item.id ?? ''),
+                source: String(item.section).toLowerCase(),
+                role,
+              })}
+              style={({ pressed }) => [styles.activityRow, pressed && styles.activityRowPressed]}>
               <View style={[styles.activityIcon, { backgroundColor: color + '15' }]}>
                 <Icon name={icon} size={18} color={color} />
               </View>
@@ -421,7 +431,8 @@ function WalletScreen() {
                 {item.section === 'Withdrawal' ? '-' : '+'}
                 {formatPrice(amount, currency)}
               </Text>
-            </View>
+              <Icon name="chevron-right" size={19} color={P.muted} />
+            </Pressable>
           );
         }}
         ListEmptyComponent={
@@ -727,6 +738,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: P.border,
   },
+  activityRowPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },
   activityIcon: {
     width: 38,
     height: 38,

@@ -202,7 +202,7 @@ function MessagesScreen() {
           sellerMap.set(id, {
             _id: id,
             id: id,
-            companyName: buyer.name ?? buyer.fullName ?? buyer.email ?? 'User',
+            companyName: buyer.name ?? buyer.fullName ?? buyer.email,
             displayName: buyer.name ?? buyer.fullName,
             logo: buyer.profileImage ?? buyer.avatar ?? buyer.image,
             companyLogo: buyer.profileImage ?? buyer.avatar ?? buyer.image,
@@ -212,7 +212,9 @@ function MessagesScreen() {
       }
     });
 
-    return Array.from(sellerMap.values());
+    return Array.from(sellerMap.values()).filter(contact => Boolean(
+      contact.displayName ?? contact.companyName ?? contact.businessName,
+    ));
   }, [chats.data, user]);
 
   const archiveMutation = useChatMutation(
@@ -935,7 +937,8 @@ function GroupChatModal({
             renderItem={({ item }: { item: SellerSummary }) => {
               const id = getId(item) ?? item._id ?? item.id ?? '';
               const isSelected = selectedMembers.includes(id);
-              const name = item.displayName ?? item.companyName ?? item.businessName ?? 'Chat contact';
+              const name = item.displayName ?? item.companyName ?? item.businessName;
+              if (!name) return null;
 
               return (
                 <TouchableOpacity
@@ -959,9 +962,9 @@ function GroupChatModal({
                   </View>
                   <View style={styles.supplierInfo}>
                     <Text style={styles.supplierName} numberOfLines={1}>
-                      {name}
+                      {name}{item.isVerified ? '  ✓' : ''}
                     </Text>
-                    <Text style={styles.supplierMeta}>{[item.companyName !== name ? item.companyName : undefined, item.address?.country ?? item.country].filter(Boolean).join(' · ') || 'Existing conversation'}</Text>
+                    <Text style={styles.supplierMeta}>{[item.companyName !== name ? item.companyName : undefined, item.address?.country ?? item.country, item.isVerified ? 'Verified supplier' : undefined].filter(Boolean).join(' · ')}</Text>
                   </View>
                   <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                     {isSelected && <Icon name="check" size={16} color="#FFF" />}

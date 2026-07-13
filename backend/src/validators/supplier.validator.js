@@ -83,4 +83,12 @@ export const onboardingDraftSchema = z.object({
       pincode: z.string().trim().max(20).optional(),
     })
     .optional(),
+  verificationCenter: z
+    .object({
+      currentStep: z.coerce.number().int().min(0).max(7).optional(),
+      completedSteps: z.array(z.coerce.number().int().min(0).max(7)).optional(),
+      stepData: z.record(z.string(), z.unknown()).optional(),
+      submitForReview: z.boolean().optional(),
+    })
+    .optional(),
 });

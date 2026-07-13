@@ -1,5 +1,6 @@
 import { cached } from '../lib/cache.js';
 import { getSellerCompletionSummary } from '../lib/seller-verification.js';
+import { buildVerificationCenterSummary } from '../lib/verification-center.js';
 import { buildSellerQuery, sellerSortField, stripUndefined } from '../lib/supplier-helpers.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
 
@@ -107,11 +108,13 @@ export async function getOnboarding(user) {
   );
 
   const completion = seller ? getSellerCompletionSummary(seller) : null;
-  return { seller, verification, completion, draftAvailable };
+  const verificationCenter = buildVerificationCenterSummary(seller, verification);
+  return { seller, verification, completion, verificationCenter, draftAvailable };
 }
 
 export async function saveOnboardingDraft(user, data) {
-  const cleaned = stripUndefined(data);
+  const { verificationCenter: centerInput, ...sellerInput } = data;
+  const cleaned = stripUndefined(sellerInput);
   const now = new Date();
 
   const existingSeller = await supplierRepository.findExistingSeller(user.id);
@@ -136,19 +139,50 @@ export async function saveOnboardingDraft(user, data) {
     : existingVerification?.status && PROTECTED_SELLER_STATUSES.has(existingVerification.status)
       ? existingVerification.status
       : 'pending';
+  const requestedStatus = centerInput?.submitForReview ? 'under_review' : verificationStatus;
 
-  await supplierRepository.upsertVerificationRecord(seller._id, user.id, {
+  const verification = await supplierRepository.upsertVerificationRecord(seller._id, user.id, {
     sellerId: seller._id,
     userId: user.id,
-    status: verificationStatus,
+    status: requestedStatus,
     onboardingCompleted: Boolean(user.hasCompletedOnboarding && completion.isComplete),
     completedFields: completion.completedFields,
     remainingFields: completion.remainingFields,
     completedFieldCount: completion.completedCount,
     totalFieldCount: completion.totalCount,
+    ...(centerInput ? {
+      currentStep: centerInput.currentStep,
+      completedSteps: centerInput.completedSteps,
+      stepData: centerInput.stepData,
+      lastSavedAt: now,
+    } : {}),
   });
 
-  return { seller, completion, draftSavedAt: now.toISOString() };
+  const centerSummary = buildVerificationCenterSummary(seller, verification);
+  await supplierRepository.upsertVerificationRecord(seller._id, user.id, {
+    completedSteps: centerSummary.completedSteps,
+    rejectedSteps: centerSummary.rejectedSteps,
+    businessScore: centerSummary.businessScore,
+    tradeReadinessScore: centerSummary.tradeReadinessScore,
+    serviceReadinessScore: centerSummary.serviceReadinessScore,
+    overallTrustScore: centerSummary.overallTrustScore,
+    verificationScore: centerSummary.overallTrustScore,
+    verificationLevel: centerSummary.verificationLevel,
+  });
+
+  await supplierRepository.updateSellerById(seller._id, {
+    trustScore: centerSummary.overallTrustScore,
+    verificationLevel: centerSummary.verificationLevel,
+  });
+
+  const Notification = (await import('../models/Notification.js')).default;
+  const notifications = [];
+  if (centerInput?.submitForReview) notifications.push({ userId: user.id, notificationType: 'verification_started', title: 'Verification submitted', description: 'Your seller verification is ready for review.', data: { verificationId: verification._id } });
+  if (centerSummary.overallTrustScore > Number(existingVerification?.overallTrustScore || 0)) notifications.push({ userId: user.id, notificationType: 'trust_score_increased', title: 'Trust score increased', description: `Your trust score is now ${centerSummary.overallTrustScore}.`, data: { score: centerSummary.overallTrustScore } });
+  if (centerSummary.verificationLevel > Number(existingVerification?.verificationLevel || 0)) notifications.push({ userId: user.id, notificationType: 'verification_level_increased', title: 'Verification level increased', description: `You reached ${centerSummary.currentLevel}.`, data: { level: centerSummary.verificationLevel } });
+  if (notifications.length) await Notification.insertMany(notifications);
+
+  return { seller, completion, verificationCenter: centerSummary, draftSavedAt: now.toISOString() };
 }
 
 export async function submitOnboarding(user, data) {
@@ -207,7 +241,41 @@ export async function uploadVerificationDocument(user, file, documentType) {
 }
 
 export async function saveDocumentRecord(sellerId, userId, documentData) {
-  return supplierRepository.addDocumentToVerification(sellerId, userId, documentData);
+  const existing = await supplierRepository.findExistingVerification(sellerId);
+  const duplicate = existing?.documents?.find(document => document.checksum && document.checksum === documentData.checksum && document.status !== 'archived');
+  if (duplicate) {
+    const error = new Error('This file has already been uploaded');
+    error.statusCode = 409;
+    throw error;
+  }
+  const previous = [...(existing?.documents || [])].reverse().find(document => document.type === documentData.type && document.status !== 'archived');
+  return supplierRepository.addDocumentToVerification(sellerId, userId, {
+    ...documentData,
+    version: Number(previous?.version || 0) + 1,
+    reuploadCount: Number(previous?.reuploadCount || 0) + (previous ? 1 : 0),
+    supersedesDocumentId: previous?._id,
+  });
+}
+
+export async function archiveVerificationDocument(user, documentId) {
+  const verification = await supplierRepository.findVerificationByDocumentId(documentId);
+  if (!verification || String(verification.userId) !== String(user.id)) {
+    const error = new Error('Document not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  const document = verification.documents.id(documentId);
+  if (!document) {
+    const error = new Error('Document not found');
+    error.statusCode = 404;
+    throw error;
+  }
+  const previousStatus = document.status;
+  document.status = 'archived';
+  document.archivedAt = new Date();
+  await verification.save();
+  await supplierRepository.createAuditLog({ verificationId: verification._id, sellerId: verification.sellerId, actorId: user.id, action: 'document_archived', fromStatus: previousStatus, toStatus: 'archived', metadata: { documentId } });
+  return { documentId, status: 'archived' };
 }
 
 export async function createDocumentAudit(verificationId, sellerId, actorId, documentType, filename, checksum) {
@@ -219,4 +287,46 @@ export async function createDocumentAudit(verificationId, sellerId, actorId, doc
     toStatus: 'document_submitted',
     metadata: { documentType, filename, checksum },
   });
+}
+
+export async function listVerificationReviews(query = {}) {
+  const filter = {};
+  if (query.status && query.status !== 'all') filter.status = query.status;
+  if (query.sellerId) filter.sellerId = query.sellerId;
+  if (query.level !== undefined && query.level !== '') filter.verificationLevel = Number(query.level);
+  if (query.search) filter.$text = { $search: String(query.search).slice(0, 100) };
+  return supplierRepository.listVerificationRecords(filter, query.limit);
+}
+
+export async function reviewVerificationDocument(admin, documentId, input) {
+  const allowed = new Set(['under_review', 'verified', 'rejected', 'needs_update']);
+  if (!allowed.has(input.status)) {
+    const error = new Error('Invalid document review status'); error.statusCode = 422; throw error;
+  }
+  if (['rejected', 'needs_update'].includes(input.status) && !String(input.reason || input.notes || '').trim()) {
+    const error = new Error('A rejection reason or reviewer note is required'); error.statusCode = 422; throw error;
+  }
+  const verification = await supplierRepository.findVerificationByDocumentId(documentId);
+  if (!verification) { const error = new Error('Document not found'); error.statusCode = 404; throw error; }
+  const document = verification.documents.id(documentId);
+  const previousStatus = document.status;
+  document.status = input.status;
+  document.rejectionReason = ['rejected', 'needs_update'].includes(input.status) ? String(input.reason || input.notes) : undefined;
+  document.reviewerNotes = input.notes ? String(input.notes).slice(0, 2000) : undefined;
+  document.verifiedBy = admin.id;
+  document.verifiedAt = input.status === 'verified' ? new Date() : undefined;
+  verification.reviewedAt = new Date(); verification.reviewedBy = admin.id;
+  verification.status = input.status === 'under_review' ? 'document_review' : input.status === 'verified' ? 'under_review' : 'info_requested';
+  await verification.save();
+  const Seller = (await import('../models/Seller.js')).default;
+  const seller = await Seller.findById(verification.sellerId);
+  const summary = buildVerificationCenterSummary(seller, verification);
+  Object.assign(verification, { completedSteps: summary.completedSteps, rejectedSteps: summary.rejectedSteps, businessScore: summary.businessScore, tradeReadinessScore: summary.tradeReadinessScore, serviceReadinessScore: summary.serviceReadinessScore, overallTrustScore: summary.overallTrustScore, verificationScore: summary.overallTrustScore, verificationLevel: summary.verificationLevel });
+  await verification.save();
+  if (seller) { seller.trustScore = summary.overallTrustScore; seller.verificationLevel = summary.verificationLevel; seller.verificationStatus = verification.status; await seller.save(); }
+  await supplierRepository.createAuditLog({ verificationId: verification._id, sellerId: verification.sellerId, actorId: admin.id, action: input.status === 'verified' ? 'document_approved' : input.status === 'needs_update' ? 'document_needs_update' : input.status === 'rejected' ? 'document_rejected' : 'information_requested', fromStatus: previousStatus, toStatus: input.status, notes: input.notes || input.reason, metadata: { documentId } });
+  const Notification = (await import('../models/Notification.js')).default;
+  const notificationType = input.status === 'verified' ? 'document_verified' : input.status === 'under_review' ? 'verification_under_review' : input.status === 'needs_update' ? 'verification_needs_update' : 'document_rejected';
+  await Notification.create({ userId: verification.userId, notificationType, title: input.status === 'verified' ? 'Document verified' : input.status === 'under_review' ? 'Verification review started' : 'Verification document needs attention', description: input.notes || input.reason || `Your ${document.name} status changed to ${input.status}.`, data: { verificationId: verification._id, documentId, status: input.status } });
+  return { verification, document, verificationCenter: summary };
 }

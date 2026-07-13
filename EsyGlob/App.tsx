@@ -33,7 +33,7 @@ import PaymentDetailsScreen from './src/screens/PaymentDetailsScreen';
 import InvoiceDetailsScreen from './src/screens/InvoiceDetailsScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
 import SellerFactoryScreen from './src/screens/SellerFactoryScreen';
-import SellerOnboardingScreen from './src/screens/SellerOnboardingScreen';
+import VerificationCenterScreen from './src/screens/VerificationCenterScreen';
 import SellerProductFormScreen from './src/screens/SellerProductFormScreen';
 import SellerProductsScreen from './src/screens/SellerProductsScreen';
 import ServiceBookingScreen from './src/screens/ServiceBookingScreen';
@@ -41,6 +41,7 @@ import ServiceDetailsScreen from './src/screens/ServiceDetailsScreen';
 import BookedServiceDetailsScreen from './src/screens/BookedServiceDetailsScreen';
 import ShippingLogisticsScreen from './src/screens/ShippingLogisticsScreen';
 import WalletScreen from './src/screens/WalletScreen';
+import WalletTransactionDetailsScreen from './src/screens/WalletTransactionDetailsScreen';
 import { ServiceRequest } from './src/api/services';
 import { fetchCategories, fetchProducts, fetchSellers } from './src/api/marketplace';
 import { ProductListResponse } from './src/api/types';
@@ -64,6 +65,7 @@ export type RootStackParamList = {
   ProfileSettings: undefined;
   Security: undefined;
   Wallet: undefined;
+  WalletTransactionDetails: { activityId: string; source: 'transaction' | 'withdrawal' | 'payment'; role: string };
   ProductDetails: { productId: string };
   ProductListing: { category?: string; categoryName?: string; subcategory?: string; subcategoryName?: string; q?: string; seller?: string; sellerName?: string } | undefined;
   Search: { q?: string } | undefined;
@@ -187,6 +189,7 @@ function App() {
               <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} />
               <Stack.Screen name="Security" component={SecurityScreen} />
               <Stack.Screen name="Wallet" component={WalletScreen} />
+              <Stack.Screen name="WalletTransactionDetails" component={WalletTransactionDetailsScreen} />
               <Stack.Screen name="ProductDetails" component={ProductDetailsScreen} />
               <Stack.Screen name="ProductListing" component={SearchScreen} />
               <Stack.Screen name="Search" component={SearchScreen} />
@@ -203,7 +206,7 @@ function App() {
               <Stack.Screen name="OrderDetails" component={OrderDetailsScreen} />
               <Stack.Screen name="PaymentDetails" component={PaymentDetailsScreen} />
               <Stack.Screen name="InvoiceDetails" component={InvoiceDetailsScreen} />
-              <Stack.Screen name="SellerOnboarding" component={SellerOnboardingScreen} />
+              <Stack.Screen name="SellerOnboarding" component={VerificationCenterScreen} />
               <Stack.Screen name="SellerFactory" component={SellerFactoryScreen} />
               <Stack.Screen name="SellerProducts" component={SellerProductsScreen} />
               <Stack.Screen name="SellerProductForm" component={SellerProductFormScreen} />

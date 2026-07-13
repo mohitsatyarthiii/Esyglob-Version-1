@@ -274,3 +274,16 @@ export async function addDocumentToVerification(sellerId, userId, documentData) 
 export async function createAuditLog(auditData) {
   return VerificationAudit.create(auditData);
 }
+
+export async function listVerificationRecords(query = {}, limit = 50) {
+  return SellerVerification.find(query)
+    .populate('sellerId', 'companyName companyType verificationLevel trustScore isVerified')
+    .populate('userId', 'fullName email')
+    .sort({ priority: -1, updatedAt: -1 })
+    .limit(Math.min(Math.max(Number(limit) || 50, 1), 100))
+    .exec();
+}
+
+export async function updateSellerById(sellerId, data) {
+  return Seller.findByIdAndUpdate(sellerId, { $set: data }, { new: true }).exec();
+}

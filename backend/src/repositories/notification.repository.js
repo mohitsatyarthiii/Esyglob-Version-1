@@ -25,7 +25,10 @@ export const NOTIFICATION_CATEGORIES = {
     'warehouse_order_created', 'inventory_added',
   ],
   account: [
-    'verification_approved', 'subscription_expiring', 'subscription_renewed',
+    'verification_approved', 'verification_started', 'verification_under_review',
+    'verification_rejected', 'verification_needs_update', 'trust_score_increased',
+    'verification_level_increased', 'document_uploaded', 'document_verified',
+    'document_rejected', 'subscription_expiring', 'subscription_renewed',
     'account_update', 'system_alert',
   ],
   products: ['product_viewed', 'product_update', 'supplier_response'],

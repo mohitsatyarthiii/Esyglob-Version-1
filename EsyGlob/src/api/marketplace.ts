@@ -306,9 +306,15 @@ export async function fetchSellerOnboarding(): Promise<{
   seller?: SellerSummary;
   verification?: Record<string, unknown>;
   completion?: Record<string, unknown>;
+  verificationCenter?: Record<string, unknown>;
   draftAvailable?: boolean;
 }> {
   const payload = await apiRequest('/suppliers/me');
+  return unwrapData(payload);
+}
+
+export async function archiveSellerDocument(documentId: string) {
+  const payload = await apiRequest(`/suppliers/verification/documents/${documentId}`, { method: 'DELETE' });
   return unwrapData(payload);
 }
 

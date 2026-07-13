@@ -22,6 +22,30 @@ router.get(
   supplierController.getMySupplierProfile
 );
 
+router.delete(
+  '/verification/documents/:documentId',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.archiveDocument
+);
+
+router.get(
+  '/verification/admin/reviews',
+  authenticate,
+  requireAuth,
+  requireRole('admin'),
+  supplierController.listVerificationReviews
+);
+
+router.patch(
+  '/verification/admin/documents/:documentId',
+  authenticate,
+  requireAuth,
+  requireRole('admin'),
+  supplierController.reviewVerificationDocument
+);
+
 router.patch(
   '/profile',
   authenticate,

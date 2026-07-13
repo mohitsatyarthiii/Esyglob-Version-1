@@ -104,6 +104,9 @@ class WalletRepository {
   static async getOrders(query, limit = 75) {
     return Order.find(query)
       .select('buyerId sellerId productId orderNumber orderType orderSubType status paymentStatus totalAmount totalPrice currency quantity createdAt updatedAt')
+      .populate('buyerId', 'fullName name email avatarUrl')
+      .populate('sellerId', 'companyName businessName companyLogo logo isVerified userId')
+      .populate('productId', 'name title images image sku')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean()

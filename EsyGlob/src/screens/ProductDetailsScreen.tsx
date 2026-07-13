@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState, useRef } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
@@ -19,7 +20,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { fetchProductDetails } from '../api/products';
+import { fetchProductDetails, fetchProducts } from '../api/products';
 import {
   createProductEnquiry,
   startProductChat,
@@ -33,6 +34,7 @@ import { useCurrency } from '../currency/CurrencyContext';
 import SavedHeartButton from '../components/SavedHeartButton';
 import TradeAssurance from '../components/TradeAssurance';
 import ReviewsPanel from '../components/ReviewsPanel';
+import ProductCard from '../components/ProductCard';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import {
 } from '../utils/format';
@@ -142,15 +144,16 @@ function buildMoqTiers(product: any): MoqTier[] {
     });
 
     for (const t of sortedTiers) {
-      const minQty = Number(t.minimumQuantity ?? t.minQty ?? 1);
-      const maxQty = t.maximumQuantity != null ? Number(t.maximumQuantity ?? t.maxQty) : null;
-      const price = Number(t.unitPrice ?? t.price ?? product.price ?? 0);
-      const unit = product.unit || 'pcs';
+      const minQty = Math.max(1, Number(t.minimumQuantity ?? t.minQuantity ?? t.minQty ?? t.minimum_order_quantity ?? 1));
+      const rawMax = t.maximumQuantity ?? t.maxQuantity ?? t.maxQty;
+      const maxQty = rawMax != null ? Number(rawMax) : null;
+      const price = Number(t.unitPrice ?? t.pricePerUnit ?? t.price ?? product.price ?? 0);
+      const unit = t.unit || product.unit || 'pcs';
       
       tiers.push({
-        minQty,
-       maxQty: (typeof maxQty === 'number' && maxQty > 0) ? maxQty : null,
-        price,
+        minQty: Number.isFinite(minQty) ? minQty : 1,
+        maxQty: (typeof maxQty === 'number' && Number.isFinite(maxQty) && maxQty >= minQty) ? maxQty : null,
+        price: Number.isFinite(price) ? price : 0,
         unit,
       });
     }
@@ -278,6 +281,7 @@ function ProductDetailsScreen() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedImage, setSelectedImage] = useState(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const initializedMoqProductRef = useRef<string>('');
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
@@ -298,6 +302,13 @@ function ProductDetailsScreen() {
   const sellerName = useMemo(() => extractSellerName(product), [product]);
   const images = useMemo(() => extractImages(product), [product]);
   const moqTiers: MoqTier[] = useMemo(() => buildMoqTiers(product), [product]);
+  const relatedQuery = useQuery({
+    queryKey: ['related-products', productId, product?.categoryId ?? product?.category],
+    queryFn: () => fetchProducts({ category: typeof product?.categoryId === 'object' ? String(product.categoryId._id ?? product.categoryId.id ?? product.categoryId.name ?? '') : String(product?.categoryId ?? product?.category ?? ''), limit: 10 }),
+    enabled: Boolean(product && (product.categoryId || product.category)),
+    staleTime: 2 * 60_000,
+  });
+  const relatedProducts = useMemo(() => (relatedQuery.data?.products ?? []).filter(item => String(item._id ?? item.id) !== String(productId)).slice(0, 8), [relatedQuery.data?.products, productId]);
 
   // ── Auth State ───────────────────────────────────────────────────────────
 
@@ -317,19 +328,22 @@ function ProductDetailsScreen() {
       }
       return quantity >= t.minQty;
     });
-    return tier || moqTiers[moqTiers.length - 1];
+    if (tier) return tier;
+    if (quantity < moqTiers[0].minQty) return moqTiers[0];
+    return [...moqTiers].reverse().find(item => quantity >= item.minQty) ?? moqTiers[0];
   }, [moqTiers, quantity]);
 
   // ── Initialize quantity ─────────────────────────────────────────────────
 
   React.useEffect(() => {
-    if (moqTiers.length > 0) {
+    if (moqTiers.length > 0 && initializedMoqProductRef.current !== productId) {
+      initializedMoqProductRef.current = productId;
       setQuantity(moqTiers[0].minQty);
       if (moqTiers[0].price > 0) {
         setTargetPrice(String(moqTiers[0].price));
       }
     }
-  }, [moqTiers]);
+  }, [moqTiers, productId]);
 
   // ── Track view ──────────────────────────────────────────────────────────
 
@@ -700,6 +714,11 @@ function ProductDetailsScreen() {
           ['Company', seller?.companyName ?? seller?.name], ['Location', seller?.location ?? seller?.country], ['Business type', seller?.businessType], ['Years in business', seller?.yearsInBusiness], ['Response rate', seller?.responseRate], ['Rating', seller?.rating], ['Completed orders', seller?.completedOrders],
         ]} />
         <View style={styles.informationCard}><ReviewsPanel productId={productId} sellerId={sellerRouteId} showForm title="Ratings & reviews" /></View>
+
+        <View style={styles.relatedSection}>
+          <View style={styles.relatedHeader}><View><Text style={styles.relatedEyebrow}>MORE TO EXPLORE</Text><Text style={styles.relatedTitle}>Related products</Text></View><Icon name="arrow-right" size={21} color={P.primary} /></View>
+          {relatedQuery.isLoading ? <ActivityIndicator color={P.primary} style={styles.relatedLoader} /> : relatedProducts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>{relatedProducts.map(item => <ProductCard key={String(item._id ?? item.id)} product={item} variant="carousel" />)}</ScrollView> : <Text style={styles.relatedEmpty}>No similar products are available yet.</Text>}
+        </View>
 
         {/* Trade Assurance */}
         <TradeAssurance />
@@ -1117,6 +1136,13 @@ const styles = StyleSheet.create({
   storeAction: { marginHorizontal: 16, marginBottom: 8, height: 42, borderRadius: 8, borderWidth: 1, borderColor: P.primary, backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   storeActionText: { color: P.primary, fontSize: 13, fontWeight: '700' },
   informationCard: { backgroundColor: P.surface, marginTop: 8, paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: P.border },
+  relatedSection: { backgroundColor: P.surface, marginTop: 8, paddingVertical: 18, borderTopWidth: 1, borderBottomWidth: 1, borderColor: P.border },
+  relatedHeader: { paddingHorizontal: 16, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  relatedEyebrow: { color: P.primary, fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
+  relatedTitle: { color: P.ink, fontSize: 20, fontWeight: '900', marginTop: 2 },
+  relatedList: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
+  relatedLoader: { paddingVertical: 30 },
+  relatedEmpty: { color: P.muted, fontSize: 13, paddingHorizontal: 16, paddingVertical: 18 },
   informationTitle: { fontSize: 17, fontWeight: '800', color: P.ink, marginBottom: 12 },
   informationRow: { flexDirection: 'row', gap: 16, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: P.faint },
   informationRowLast: { borderBottomWidth: 0 },
