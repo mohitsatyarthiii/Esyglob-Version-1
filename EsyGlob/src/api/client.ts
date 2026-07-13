@@ -28,6 +28,7 @@ type RequestOptions = {
 const DEFAULT_GET_CACHE_TTL_MS = 20_000;
 const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
 const inflightRequests = new Map<string, Promise<unknown>>();
+let cacheGeneration = 0;
 
 export function buildApiUrl(path: string, query?: RequestOptions['query']) {
   const url = new URL(path.startsWith('http') ? path : `${config.apiBaseUrl}${path}`);
@@ -88,6 +89,7 @@ async function parseResponse(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const requestGeneration = cacheGeneration;
   const requestStart = perfNow();
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const headers = getApiHeaders(options.headers);
@@ -162,7 +164,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         throw new ApiError(message, response.status, payload);
       }
 
-      if (canCache) {
+      if (canCache && requestGeneration === cacheGeneration) {
         responseCache.set(cacheKey, {
           expiresAt: Date.now() + (options.cacheTtlMs ?? DEFAULT_GET_CACHE_TTL_MS),
           value: payload,
@@ -209,8 +211,14 @@ export function clearSessionCookie() {
   responseCache.clear();
 }
 
-export function clearAuthTokens() {
+export function clearApiSessionCache() {
+  cacheGeneration += 1;
   responseCache.clear();
+  inflightRequests.clear();
+}
+
+export function clearAuthTokens() {
+  clearApiSessionCache();
 }
 
 export function hasAuthCredentials() {

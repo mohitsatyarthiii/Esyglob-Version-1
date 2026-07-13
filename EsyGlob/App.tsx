@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import NetInfo from '@react-native-community/netinfo';
 import { QueryClient, focusManager, onlineManager } from '@tanstack/react-query';
 import { PersistQueryClientProvider, Persister } from '@tanstack/react-query-persist-client';
-import { AuthProvider } from './src/auth/AuthContext';
+import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import AppTabs from './src/navigation/AppTabs';
 import AIChatScreen from './src/screens/AIChatScreen';
 import AuthScreen from './src/screens/AuthScreen';
@@ -158,7 +158,7 @@ function App() {
       client={queryClient}
       persistOptions={{
         persister: queryPersister,
-        buster: 'esyglob-mobile-v2',
+        buster: 'esyglob-public-cache-v3',
         maxAge: 60 * 60_000,
         dehydrateOptions: {
   shouldDehydrateQuery: (query: { state: { status: string }; queryKey: readonly unknown[] }) => {
@@ -168,7 +168,18 @@ function App() {
       }}
       onSuccess={warmMarketplaceQueries}>
       <AuthProvider>
-        <CurrencyProvider>
+        <SessionIsolatedRuntime isDarkMode={isDarkMode} />
+      </AuthProvider>
+      </PersistQueryClientProvider>
+    </GestureHandlerRootView>
+    </AppErrorBoundary>
+  );
+}
+
+function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
+  const { sessionVersion } = useAuth();
+  return (
+        <CurrencyProvider key={sessionVersion}>
         <RealtimeProvider>
         <SafeAreaProvider>
           <StatusBar
@@ -220,12 +231,12 @@ function App() {
         </SafeAreaProvider>
         </RealtimeProvider>
         </CurrencyProvider>
-      </AuthProvider>
-      </PersistQueryClientProvider>
-    </GestureHandlerRootView>
-    </AppErrorBoundary>
   );
 }
+
+/* The runtime above is keyed by the authenticated session. Navigation, screen
+ * state, timers, listeners, currency/profile state and realtime state are all
+ * unmounted before another identity can render. */
 
 export default App;
 
@@ -280,7 +291,7 @@ function warmMarketplaceQueries() {
 }
 
 function createMmkvQueryPersister(): Persister {
-  const storageKey = 'query.cache.marketplace.v2';
+  const storageKey = 'query.cache.public.v3';
   const maxBytes = 1_500_000;
 
   return {
@@ -327,19 +338,7 @@ function isPersistableQueryKey(queryKey: readonly unknown[]) {
   const root = String(queryKey[0] ?? '');
 
   return [
-    'home',
     'home-categories',
-    'home-featured-products',
-    'home-latest-products',
     'categories',
-    'home-products-feed',
-    'products',
-    'related-products',
-    'manufacturers-directory',
-    'sellers-module',
-    'seller-details',
-    'saved-items',
-    'chats',
-    'chat-details',
   ].includes(root);
 }

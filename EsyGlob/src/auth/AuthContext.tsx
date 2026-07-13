@@ -2,7 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { ApiError, clearAuthTokens, clearSessionCookie } from '../api/client';
 import { getCurrentUser, login, LoginInput, logout, signup, SignupInput } from '../api/auth';
 import { CurrentUser, UserRole } from '../api/types';
-import { readJson, writeJson } from '../storage/appStorage';
+import { appStorage, writeJson } from '../storage/appStorage';
+import { useQueryClient } from '@tanstack/react-query';
+import { disconnectRealtime } from '../realtime/socket';
 
 const USER_KEY = 'auth.user';
 
@@ -18,6 +20,7 @@ type AuthContextValue = {
   signUp: (input: SignupInput) => Promise<void>;
   signOut: () => Promise<void>;
   setActiveRole: (role: UserRole) => void;
+  sessionVersion: number;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -42,10 +45,24 @@ function getErrorMessage(error: unknown) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<CurrentUser | null>(() => readJson<CurrentUser>(USER_KEY));
+  const queryClient = useQueryClient();
+  // Never render a persisted identity. The current session is established only
+  // after the server validates the current cookie through /auth/me.
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [status, setStatus] = useState<AuthStatus>('checking');
   const [activeRole, setActiveRoleState] = useState<UserRole | null>(() => pickInitialRole(user));
   const [error, setError] = useState<string | null>(null);
+  const [sessionVersion, setSessionVersion] = useState(0);
+
+  const destroyLocalSession = useCallback(async () => {
+    disconnectRealtime();
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    clearAuthTokens();
+    clearSessionCookie();
+    appStorage.clearAll();
+    setSessionVersion(value => value + 1);
+  }, [queryClient]);
 
   const commitUser = useCallback((nextUser: CurrentUser | null) => {
     setUser(nextUser);
@@ -60,15 +77,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       commitUser(await getCurrentUser());
     } catch (nextError) {
-      clearAuthTokens();
-      clearSessionCookie();
+      await destroyLocalSession();
       commitUser(null);
       if (nextError instanceof ApiError && nextError.status === 401) {
         return;
       }
       setError(getErrorMessage(nextError));
     }
-  }, [commitUser]);
+  }, [commitUser, destroyLocalSession]);
 
   useEffect(() => {
     refresh();
@@ -77,23 +93,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback(
     async (input: LoginInput) => {
       setError(null);
-      commitUser(await login(input));
+      commitUser(null);
+      await destroyLocalSession();
+      const nextUser = await login(input);
+      commitUser(nextUser);
+      setSessionVersion(value => value + 1);
     },
-    [commitUser],
+    [commitUser, destroyLocalSession],
   );
 
   const signUp = useCallback(
     async (input: SignupInput) => {
       setError(null);
-      commitUser(await signup(input));
+      commitUser(null);
+      await destroyLocalSession();
+      const nextUser = await signup(input);
+      commitUser(nextUser);
+      setSessionVersion(value => value + 1);
     },
-    [commitUser],
+    [commitUser, destroyLocalSession],
   );
 
   const signOut = useCallback(async () => {
-    await logout();
     commitUser(null);
-  }, [commitUser]);
+    disconnectRealtime();
+    setSessionVersion(value => value + 1);
+    try {
+      await logout();
+    } finally {
+      await destroyLocalSession();
+    }
+  }, [commitUser, destroyLocalSession]);
 
   const setActiveRole = useCallback((role: UserRole) => {
     if (role === 'buyer' || role === 'seller') {
@@ -112,8 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signUp,
       signOut,
       setActiveRole,
+      sessionVersion,
     }),
-    [activeRole, error, refresh, signIn, signOut, signUp, status, user, setActiveRole],
+    [activeRole, error, refresh, sessionVersion, signIn, signOut, signUp, status, user, setActiveRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

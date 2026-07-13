@@ -41,6 +41,14 @@ export const appStorage = {
       // Storage cleanup must never prevent logout or app startup.
     }
   },
+  clearAll() {
+    memoryFallback.clear();
+    try {
+      getStorage()?.clearAll();
+    } catch {
+      // A failed native clear must not leave the in-memory session alive.
+    }
+  },
 };
 
 export function readJson<T>(key: string): T | null {
