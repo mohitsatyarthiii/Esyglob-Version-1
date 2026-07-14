@@ -3,6 +3,7 @@ import { config } from './config/env.js';
 import { closeDatabase, connectToDatabase, warmupDatabase } from './config/database.js';
 import { createServer } from 'node:http';
 import { initializeSocket } from './lib/socket-server.js';
+import AIChatService from './services/ai-chat.service.js';
 
 let server;
 
@@ -15,6 +16,13 @@ async function startServer() {
 
     server = createServer(app);
     initializeSocket(server);
+    AIChatService.warmProvider().then(ok => {
+      console.log(`[AI] Ollama warm-up ${ok ? 'complete' : 'unavailable'}`);
+    });
+    const aiKeepWarm = setInterval(() => {
+      AIChatService.warmProvider().catch(() => undefined);
+    }, Number(process.env.OLLAMA_WARM_INTERVAL_MS || 25 * 60 * 1000));
+    aiKeepWarm.unref();
     server.listen(config.port, () => {
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
     });

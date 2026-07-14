@@ -100,6 +100,21 @@ function AIChatScreen() {
       ]);
       setInput('');
       let nextChatId = chatId;
+      let tokenBuffer = '';
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+      const flushTokens = () => {
+        const chunk = tokenBuffer;
+        tokenBuffer = '';
+        flushTimer = null;
+        if (!chunk) return;
+        setMessages(current =>
+          current.map(item =>
+            item.localId === assistantId
+              ? { ...item, content: `${item.content ?? ''}${chunk}` }
+              : item,
+          ),
+        );
+      };
 
       const messageWithFiles = attachmentUrls.length
         ? `${message}\n\nAttached Cloudinary files:\n${attachmentUrls.join(
@@ -138,20 +153,14 @@ function AIChatScreen() {
             setActiveAIChatId(role, event.chatId);
           }
           if (event.type === 'token') {
-            setMessages(current =>
-              current.map(item =>
-                item.localId === assistantId
-                  ? {
-                      ...item,
-                      content: `${item.content ?? ''}${String(
-                        event.content ?? '',
-                      )}`,
-                    }
-                  : item,
-              ),
-            );
+            tokenBuffer += String(event.content ?? '');
+            if (!flushTimer) flushTimer = setTimeout(flushTokens, 40);
           }
           if (event.type === 'done') {
+            if (flushTimer) clearTimeout(flushTimer);
+            flushTimer = null;
+            const finalChunk = tokenBuffer;
+            tokenBuffer = '';
             if (typeof event.chatId === 'string') {
               nextChatId = event.chatId;
               setChatId(event.chatId);
@@ -162,6 +171,7 @@ function AIChatScreen() {
                 item.localId === assistantId
                   ? {
                       ...item,
+                      content: `${item.content ?? ''}${finalChunk}`,
                       streaming: false,
                       metadata: {
                         ...(item.metadata ?? {}),

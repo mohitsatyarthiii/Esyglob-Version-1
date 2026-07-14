@@ -92,22 +92,16 @@ export async function getAISearchResults({ query, filters = {}, userId = null })
   const orderLimit = Math.min(Number(process.env.AI_MARKETPLACE_ORDER_LIMIT || 8), 20);
   const terms = getSearchTerms(query, filters);
 
-  // Cache public queries
-  if (!userId) {
-    const cacheKey = `ai-market:${JSON.stringify({ terms, filters, productLimit, supplierLimit, categoryLimit, rfqLimit, orderLimit })}`;
-    const cached = getCached(cacheKey);
-    if (cached) return cached;
-
-    const results = await getAISearchResultsUncached({
-      query, filters, userId, productLimit, supplierLimit, categoryLimit, rfqLimit, orderLimit, terms,
-    });
-    setCache(cacheKey, results);
-    return results;
-  }
-
-  return getAISearchResultsUncached({
+  // Authenticated results include private account context, so userId is part
+  // of the cache key. Reuse remains permission-isolated.
+  const cacheKey = `ai-market:${JSON.stringify({ userId: userId ? String(userId) : 'public', terms, filters, productLimit, supplierLimit, categoryLimit, rfqLimit, orderLimit })}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+  const results = await getAISearchResultsUncached({
     query, filters, userId, productLimit, supplierLimit, categoryLimit, rfqLimit, orderLimit, terms,
   });
+  setCache(cacheKey, results);
+  return results;
 }
 
 async function getAISearchResultsUncached({
@@ -286,11 +280,13 @@ export function summarizeMarketplaceResults(results) {
   const productCategories = [...new Set((results.products || []).map(p => p.category).filter(Boolean))].slice(0, 4);
   const supplierLocations = [...new Set((results.suppliers || []).map(s => s.address?.country || s.address?.state).filter(Boolean))].slice(0, 4);
 
-  const topProducts = (results.products || []).slice(0, 12).map(product =>
+  const promptProductLimit = Number(process.env.AI_PROMPT_PRODUCT_LIMIT || 4);
+  const promptSupplierLimit = Number(process.env.AI_PROMPT_SUPPLIER_LIMIT || 4);
+  const topProducts = (results.products || []).slice(0, promptProductLimit).map(product =>
     `- Product: ${product.name} | ${product.category || 'General'} | Price ${product.currency || 'INR'} ${product.price || 'request'} | MOQ ${product.minimumOrderQuantity || 1} ${product.unit || 'units'} | Supplier ${product.sellerId?.companyName || 'Supplier'}${product.sellerId?.isVerified ? ' verified' : ''} | Link ${publicProductLink(product)}${product.sellerId?._id ? ` | Supplier link ${publicSupplierLink(product.sellerId)}` : ''}`
   );
 
-  const topSuppliers = (results.suppliers || []).slice(0, 12).map(seller =>
+  const topSuppliers = (results.suppliers || []).slice(0, promptSupplierLimit).map(seller =>
     `- Supplier: ${seller.companyName || 'Supplier'} | ${seller.companyType || 'supplier'} | ${seller.address?.country || 'Global'} | Trust ${seller.trustScore || 0} | ${seller.isVerified ? 'Verified' : 'Not verified'} | Link ${publicSupplierLink(seller)}`
   );
 

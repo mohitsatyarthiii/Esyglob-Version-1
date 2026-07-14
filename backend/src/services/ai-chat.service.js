@@ -8,6 +8,27 @@ const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
 
 class AIChatService {
+  static async warmProvider() {
+    if (!OLLAMA_ENABLED) return false;
+    try {
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(Number(process.env.OLLAMA_WARMUP_TIMEOUT_MS || 90000)),
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          messages: [{ role: 'user', content: 'Respond with OK.' }],
+          stream: false,
+          keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
+          options: { num_predict: 2, temperature: 0 },
+        }),
+      });
+      return response.ok;
+    } catch (error) {
+      console.warn('[Ollama] Warm-up failed:', error.message);
+      return false;
+    }
+  }
   /**
    * Determine role context
    */
@@ -25,7 +46,10 @@ class AIChatService {
     const text = message.toLowerCase().trim();
     if (!text) return false;
     if (/^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|who are you|what can you do)[\s.!?]*$/.test(text)) return false;
-    return /product|supplier|manufacturer|rfq|quote|quotation|order|payment|shipping|import|export|market|country|category|price|moq|buyer|seller|company|factory|trade|customs|logistics|sample|complaint|support|verify|verification|account|find|search|recommend|compare|source|sourcing/.test(text);
+    const marketplaceNoun = /product|supplier|manufacturer|category|factory|service|rfq|quotation|quote|order/;
+    const discoveryIntent = /find|search|show|recommend|compare|source|sourcing|shortlist|alternative|available|marketplace/;
+    const accountIntent = /\b(my|our)\b.*\b(rfq|quotation|quote|order|payment|shipment)\b|\b(rfq|quotation|quote|order|payment|shipment)\b.*\b(status|track|manage|history)\b/;
+    return (marketplaceNoun.test(text) && discoveryIntent.test(text)) || accountIntent.test(text);
   }
 
   /**

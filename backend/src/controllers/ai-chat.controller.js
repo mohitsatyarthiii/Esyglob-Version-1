@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
-const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 720);
+const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 420);
 
 // Provider health tracking
 const providerHealth = {
@@ -104,6 +104,7 @@ class AIChatController {
    * POST - Stream chat (SSE)
    */
   static async streamChat(req, res) {
+    const requestStartedAt = Date.now();
     const userId = req.user?._id;
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -164,7 +165,9 @@ class AIChatController {
 
       try {
         // Build platform context
+        const retrievalStartedAt = Date.now();
         const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId);
+        const retrievalMs = Date.now() - retrievalStartedAt;
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
           `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`
@@ -183,6 +186,8 @@ class AIChatController {
         let activeProvider = 'smart';
         let activeModel = 'default';
         let aiFailed = false;
+        let firstTokenAt = 0;
+        const providerStartedAt = Date.now();
 
         // Try AI if not simple greeting
         if (!isSimpleGreeting && smartResponse.shouldUseAI !== false) {
@@ -197,9 +202,9 @@ class AIChatController {
                   keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
                   messages: [
                     { role: 'system', content: systemPrompt },
-                    ...chat.messages.slice(-8).map(item => ({
+                    ...chat.messages.slice(-4).map(item => ({
                       role: item.role === 'user' ? 'user' : 'assistant',
-                      content: item.content,
+                      content: String(item.content || '').slice(0, 1200),
                     })),
                     { role: 'user', content: message },
                   ],
@@ -234,6 +239,7 @@ class AIChatController {
                       const data = JSON.parse(line);
                       const token = data.message?.content || data.response || '';
                       if (token) {
+                        if (!firstTokenAt) firstTokenAt = Date.now();
                         assistantText += token;
                         sendSSE({ type: 'token', content: token });
                       }
@@ -284,12 +290,13 @@ class AIChatController {
           // Stream words for fallback
           const words = String(fallbackText || '').match(/\S+\s*|\n+/g) || [];
           for (const word of words) {
+            if (!firstTokenAt) firstTokenAt = Date.now();
             sendSSE({ type: 'token', content: word });
-            if (word.trim()) await new Promise(resolve => setTimeout(resolve, 18));
           }
         }
 
         const cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
+        const providerMs = Date.now() - providerStartedAt;
         const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({
           message,
           role: roleContext,
@@ -297,6 +304,7 @@ class AIChatController {
         });
 
         // ── SINGLE database write ────────────────────────────────────────
+        const persistenceStartedAt = Date.now();
         await AIChatRepository.updateChatAfterResponse(chat._id, userId, {
           userMessage: {
             role: 'user',
@@ -329,6 +337,7 @@ class AIChatController {
             'context.marketplaceSnapshot': platformContext.snapshot,
           },
         });
+        const persistenceMs = Date.now() - persistenceStartedAt;
 
         sendSSE({
           type: 'done',
@@ -338,6 +347,13 @@ class AIChatController {
           tokensUsed,
           marketplace: platformContext.snapshot,
           suggestedFollowUps,
+          timing: {
+            retrievalMs,
+            providerMs,
+            persistenceMs,
+            timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
+            totalMs: Date.now() - requestStartedAt,
+          },
         });
       } catch (error) {
         console.error('[Stream] Error:', error);
