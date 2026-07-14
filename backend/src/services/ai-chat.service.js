@@ -57,13 +57,17 @@ class AIChatService {
         orderCount: results.orders.length,
         topProducts: results.products.slice(0, 4).map(p => ({
           id: p._id, name: p.name, category: p.category, price: p.price,
-          moq: p.minimumOrderQuantity, link: `/products/${p._id}`,
+          currency: p.currency, moq: p.minimumOrderQuantity, unit: p.unit,
+          image: p.images?.[0], rating: p.averageRating, leadTime: p.leadTime,
+          link: `/products/${p._id}`,
           supplier: p.sellerId?.companyName,
+          supplierVerified: p.sellerId?.isVerified,
           supplierLink: p.sellerId?._id ? `/manufacturers/${p.sellerId._id}` : null,
         })),
         topSuppliers: results.suppliers.slice(0, 4).map(s => ({
           id: s._id, companyName: s.companyName, companyType: s.companyType,
           verified: s.isVerified, country: s.address?.country, trustScore: s.trustScore,
+          rating: s.rating,
           link: `/manufacturers/${s._id}`,
         })),
         topCategories: results.categories.slice(0, 4).map(c => ({
@@ -120,6 +124,18 @@ class AIChatService {
       context.sourcePath ? `Current page: ${context.sourcePath}` : null,
     ].filter(Boolean);
     return parts.length ? `\nSupport context:\n${parts.join('\n')}` : '';
+  }
+
+  static buildSuggestedFollowUps({ message = '', role = 'general', snapshot = {} } = {}) {
+    const text = message.toLowerCase();
+    const suggestions = [];
+    if (snapshot.productCount) suggestions.push('Compare the best matching products by MOQ, price, and supplier trust');
+    if (snapshot.supplierCount) suggestions.push('Show only verified suppliers and explain the safest shortlist');
+    if (/rfq|source|buy|product|supplier/.test(text)) suggestions.push('Draft a professional RFQ with specifications and trade terms');
+    if (role === 'seller' || /quotation|quote/.test(text)) suggestions.push('Prepare a quotation with MOQ, lead time, packaging, and payment terms');
+    if (/import|export|ship|custom|tariff|logistic/.test(text)) suggestions.push('Explain the documents, Incoterms, costs, and compliance risks');
+    suggestions.push(role === 'seller' ? 'What should I improve to win more buyer enquiries?' : 'What due-diligence checks should I complete before ordering?');
+    return [...new Set(suggestions)].slice(0, 3);
   }
 
   /**

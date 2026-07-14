@@ -187,7 +187,7 @@ async function getAISearchResultsUncached({
       .exec(),
     Seller.find(sellerQuery)
       .select('companyName companyType companyDescription address isVerified trustScore rating productCategories exportMarkets userId')
-      .populate('userId', 'fullName email')
+      .populate('userId', 'fullName')
       .sort({ isVerified: -1, trustScore: -1, rating: -1, createdAt: -1 })
       .limit(supplierLimit)
       .lean()

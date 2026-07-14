@@ -1,12 +1,13 @@
 import AIChatService from '../services/ai-chat.service.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
+import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
 
 // Ollama streaming configuration
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
-const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
+const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 720);
 
 // Provider health tracking
 const providerHealth = {
@@ -164,6 +165,10 @@ class AIChatController {
       try {
         // Build platform context
         const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId);
+        const systemPrompt = AIService.buildMarketplaceSystemPrompt(
+          roleContext,
+          `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`
+        );
         const smartResponse = AIChatService.resolveSmartResponse({
           message,
           role: roleContext,
@@ -190,7 +195,14 @@ class AIChatController {
                 body: JSON.stringify({
                   model: OLLAMA_MODEL,
                   keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
-                  messages: [{ role: 'user', content: message }],
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    ...chat.messages.slice(-8).map(item => ({
+                      role: item.role === 'user' ? 'user' : 'assistant',
+                      content: item.content,
+                    })),
+                    { role: 'user', content: message },
+                  ],
                   stream: true,
                   options: {
                     temperature: 0.35,
@@ -278,6 +290,11 @@ class AIChatController {
         }
 
         const cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
+        const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({
+          message,
+          role: roleContext,
+          snapshot: platformContext.snapshot,
+        });
 
         // ── SINGLE database write ────────────────────────────────────────
         await AIChatRepository.updateChatAfterResponse(chat._id, userId, {
@@ -300,6 +317,8 @@ class AIChatController {
               model: activeModel,
               streamed: true,
               card: body.responseCard || undefined,
+              marketplace: platformContext.snapshot,
+              suggestedFollowUps,
             },
           },
           provider: activeProvider,
@@ -317,6 +336,8 @@ class AIChatController {
           model: activeModel,
           provider: activeProvider,
           tokensUsed,
+          marketplace: platformContext.snapshot,
+          suggestedFollowUps,
         });
       } catch (error) {
         console.error('[Stream] Error:', error);
