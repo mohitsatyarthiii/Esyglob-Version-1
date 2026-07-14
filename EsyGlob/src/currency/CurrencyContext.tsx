@@ -31,6 +31,7 @@ type ContextValue = {
   currencySymbol: string;
   exchangeRate: number;
   exchangeRates: Rates;
+  lastUpdatedAt: number | null;
   isLoading: boolean;
   error: string | null;
   setCurrency: (currency: CurrencyCode) => Promise<void>;
@@ -42,7 +43,7 @@ type ContextValue = {
 
 const fallback: ContextValue = {
   selectedCurrency: 'INR', currencyCode: 'INR', currencySymbol: '\u20b9', exchangeRate: 1,
-  exchangeRates: fallbackRates, isLoading: false, error: null,
+  exchangeRates: fallbackRates, lastUpdatedAt: null, isLoading: false, error: null,
   setCurrency: async () => undefined, updateCurrency: async () => undefined,
   refreshRates: async () => undefined, convertPrice: amount => Number(amount || 0),
   formatPrice: amount => `\u20b9${Number(amount || 0).toLocaleString('en-IN')}`,
@@ -64,6 +65,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     return stored && CURRENCIES.includes(stored) ? stored : 'INR';
   });
   const [exchangeRates, setRates] = useState<Rates>(cached?.rates ?? fallbackRates);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(cached?.fetchedAt ?? null);
   const [isLoading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const fetchedAt = useRef(cached?.fetchedAt ?? 0);
@@ -81,6 +83,7 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
         if (!payload.rates || typeof payload.rates !== 'object') throw new Error('Invalid exchange-rate response');
         const rates = { INR: 1, ...payload.rates };
         fetchedAt.current = Date.now();
+        setLastUpdatedAt(fetchedAt.current);
         setRates(rates);
         writeJson(RATES_KEY, { fetchedAt: fetchedAt.current, rates });
         setLoading(false);
@@ -127,9 +130,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   }, [convertPrice, selectedCurrency]);
   const value = useMemo<ContextValue>(() => ({
     selectedCurrency, currencyCode: selectedCurrency, currencySymbol: meta[selectedCurrency].symbol,
-    exchangeRate: exchangeRates[selectedCurrency] ?? 1, exchangeRates, isLoading, error,
+    exchangeRate: exchangeRates[selectedCurrency] ?? 1, exchangeRates, lastUpdatedAt, isLoading, error,
     setCurrency, updateCurrency: setCurrency, refreshRates, convertPrice, formatPrice,
-  }), [convertPrice, error, exchangeRates, formatPrice, isLoading, refreshRates, selectedCurrency, setCurrency]);
+  }), [convertPrice, error, exchangeRates, formatPrice, isLoading, lastUpdatedAt, refreshRates, selectedCurrency, setCurrency]);
   return <CurrencyContext.Provider value={value}>{children}</CurrencyContext.Provider>;
 }
 

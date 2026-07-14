@@ -3,8 +3,10 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,42 +18,10 @@ import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addPaymentMethod, fetchWallet, requestWithdrawal } from '../api/account';
 import { useAuth } from '../auth/AuthContext';
-import { ErrorState, LoadingState } from '../components/StateViews';
 import { useCurrency } from '../currency/CurrencyContext';
-
-// ─── Premium Palette ────────────────────────────────────────────────────────
-
-const P = {
-  bg: '#F8FAFC',
-  surface: '#FFFFFF',
-  primary: '#0F172A',
-  accent: '#6366F1',
-  accentLight: '#EEF2FF',
-  gold: '#F59E0B',
-  goldLight: '#FFFBEB',
-  emerald: '#10B981',
-  emeraldLight: '#ECFDF5',
-  rose: '#EF4444',
-  roseLight: '#FFF5F5',
-  sky: '#3B82F6',
-  skyLight: '#EFF6FF',
-  text: '#0F172A',
-  textSecondary: '#475569',
-  muted: '#94A3B8',
-  border: '#E2E8F0',
-  inputBg: '#F1F5F9',
-};
+import { ErrorState, LoadingState } from '../components/StateViews';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-type PaymentMethodForm = {
-  label: string;
-  accountHolder: string;
-  accountNumber: string;
-  ifsc: string;
-  bankName: string;
-  upiId: string;
-};
 
 type ActivityItem = {
   _id?: string;
@@ -67,63 +37,26 @@ type ActivityItem = {
   [key: string]: unknown;
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function getActivityIcon(section: string): string {
-  switch (section) {
-    case 'Withdrawal':
-      return 'arrow-up-circle';
-    case 'Payment':
-      return 'credit-card';
-    case 'Transaction':
-      return 'swap-horizontal';
-    default:
-      return 'receipt';
-  }
-}
-
-function getActivityColor(section: string): string {
-  switch (section) {
-    case 'Withdrawal':
-      return P.rose;
-    case 'Payment':
-      return P.sky;
-    case 'Transaction':
-      return P.emerald;
-    default:
-      return P.muted;
-  }
-}
-
-function getActivityLabel(item: ActivityItem): string {
-  return item.section ?? item.type ?? 'Activity';
-}
-
-function getActivityStatus(item: ActivityItem): string {
-  const s = (item.status ?? item.paymentStatus ?? 'recorded') as string;
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
+type FilterType = 'all' | 'credits' | 'debits';
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 function WalletScreen() {
-  const { formatPrice, currencySymbol } = useCurrency();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const { activeRole } = useAuth();
+  const { formatPrice, selectedCurrency: currency } = useCurrency();
   const role: string = activeRole === 'seller' ? 'seller' : 'buyer';
 
-  const [method, setMethod] = useState<PaymentMethodForm>({
-    label: '',
-    accountHolder: '',
-    accountNumber: '',
-    ifsc: '',
-    bankName: '',
-    upiId: '',
-  });
-  const [withdrawal, setWithdrawal] = useState('');
-  const [showAddMethod, setShowAddMethod] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [paymentMethodId, setPaymentMethodId] = useState('');
+  const [activityFilter, setActivityFilter] = useState<FilterType>('all');
+  const [showAllActivity, setShowAllActivity] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [method, setMethod] = useState({
+    label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '', upiId: '',
+  });
+  const [withdrawalAmount, setWithdrawalAmount] = useState('');
 
   const wallet = useQuery({
     queryKey: ['wallet', role],
@@ -143,323 +76,306 @@ function WalletScreen() {
       setPaymentMethodId(String(preferred._id ?? preferred.id ?? ''));
     }
   }, [paymentMethodId, paymentMethods]);
-  const listData: ActivityItem[] = useMemo(
-    () => {
-      const transactions = wallet.data?.transactions ?? [];
-      const withdrawals = wallet.data?.withdrawals ?? [];
-      const payments = wallet.data?.payments ?? [];
-      return [
-        ...transactions.map(item => ({ ...item, section: 'Transaction' })),
-        ...withdrawals.map(item => ({ ...item, section: 'Withdrawal' })),
-        ...payments.map(item => ({ ...item, section: 'Payment' })),
-      ] as ActivityItem[];
-    },
-    [wallet.data?.payments, wallet.data?.transactions, wallet.data?.withdrawals],
-  );
+
+  const allActivity: ActivityItem[] = useMemo(() => {
+    const txns = (wallet.data?.transactions ?? []) as ActivityItem[];
+    const withdrawals = (wallet.data?.withdrawals ?? []) as ActivityItem[];
+    const payments = (wallet.data?.payments ?? []) as ActivityItem[];
+    return [
+      ...txns.map(item => ({ ...item, section: 'Transaction' })),
+      ...withdrawals.map(item => ({ ...item, section: 'Withdrawal' })),
+      ...payments.map(item => ({ ...item, section: 'Payment' })),
+    ].sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+  }, [wallet.data]);
+
+  const filteredActivity = useMemo(() => {
+    if (activityFilter === 'credits') return allActivity.filter(item => item.section !== 'Withdrawal' && item.section !== 'Payment');
+    if (activityFilter === 'debits') return allActivity.filter(item => item.section === 'Withdrawal' || item.section === 'Payment');
+    return allActivity;
+  }, [allActivity, activityFilter]);
+
+  const displayedActivity = showAllActivity ? filteredActivity : filteredActivity.slice(0, 5);
 
   const createMethod = useMutation({
-    mutationFn: () =>
-      addPaymentMethod({
-        role,
-        type: method.upiId ? 'upi' : 'bank_account',
-        ...method,
-        holderName: method.accountHolder,
-        label: method.label || method.bankName || 'Payment method',
-      }),
+    mutationFn: () => addPaymentMethod({
+      role, type: method.upiId ? 'upi' : 'bank_account', ...method,
+      holderName: method.accountHolder, label: method.label || method.bankName || 'Payment method',
+    }),
     onSuccess: async () => {
       setMethod({ label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '', upiId: '' });
-      setShowAddMethod(false);
+      setShowAddModal(false);
       await queryClient.invalidateQueries({ queryKey: ['wallet', role] });
-      Alert.alert('✓ Method Added', 'Your payment method has been saved.');
+      Alert.alert('Done', 'Payment method saved.');
     },
-    onError: (error: unknown) =>
-      Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to save.'),
+    onError: (error: unknown) => Alert.alert('Error', error instanceof Error ? error.message : 'Failed'),
   });
 
   const createWithdrawal = useMutation({
-    mutationFn: () => requestWithdrawal({
-      amount: Number(withdrawal),
-      currency: 'INR',
-      paymentMethodId,
-    }),
+    mutationFn: () => requestWithdrawal({ amount: Number(withdrawalAmount), currency, paymentMethodId }),
     onSuccess: async () => {
-      setWithdrawal('');
+      setWithdrawalAmount('');
+      setShowWithdrawModal(false);
       await queryClient.invalidateQueries({ queryKey: ['wallet', role] });
-      Alert.alert('✓ Requested', 'Withdrawal submitted successfully.');
+      Alert.alert('Done', 'Withdrawal submitted.');
     },
-    onError: (error: unknown) =>
-      Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to withdraw.'),
+    onError: (error: unknown) => Alert.alert('Error', error instanceof Error ? error.message : 'Failed'),
   });
 
+  const isDebitTransaction = (item: ActivityItem): boolean => {
+    return item.section === 'Withdrawal' || item.section === 'Payment';
+  };
+
+  const getTransactionLabel = (item: ActivityItem): string => {
+    if (item.section === 'Payment') return 'Payment Sent';
+    if (item.section === 'Withdrawal') return 'Withdrawal';
+    if (item.section === 'Transaction') return 'Payment Received';
+    return item.section || 'Activity';
+  };
+
   if (wallet.isLoading) return <LoadingState label="Loading wallet..." />;
-  if (wallet.isError)
-    return (
-      <ErrorState
-        message={(wallet.error as Error)?.message ?? 'Failed to load'}
-        onRetry={() => wallet.refetch()}
-      />
-    );
+  if (wallet.isError) return <ErrorState message={(wallet.error as Error)?.message ?? 'Failed'} onRetry={() => wallet.refetch()} />;
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={P.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <FlatList
-        data={listData}
+        data={displayedActivity}
         keyExtractor={(item, index) => String(item._id ?? item.id ?? index)}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={wallet.isFetching}
-            onRefresh={() => wallet.refetch()}
-            tintColor={P.accent}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={wallet.isFetching} onRefresh={() => wallet.refetch()} tintColor="#6366f1" />}
         ListHeaderComponent={
           <View>
             {/* Header */}
             <View style={styles.header}>
-              <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                <Icon name="arrow-left" size={22} color={P.text} />
+              <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
+                <Icon name="arrow-left" size={22} color="#1a1a1a" />
               </Pressable>
               <Text style={styles.headerTitle}>Wallet</Text>
-              <View style={styles.backBtn} />
+              <View style={styles.headerBtn} />
             </View>
 
             {/* Balance Card */}
             <View style={styles.balanceCard}>
-              <View style={styles.balanceGlow} />
               <Text style={styles.balanceLabel}>Total Balance</Text>
-              <Text style={styles.balanceAmount}>
-                {formatPrice(metric('balance'), 'INR')}
-              </Text>
-              <View style={styles.balanceGrid}>
-                <View style={styles.balanceItem}>
-                  <Text style={styles.balanceItemValue}>
-                    {formatPrice(metric('escrowBalance'), 'INR')}
-                  </Text>
-                  <Text style={styles.balanceItemLabel}>In Escrow</Text>
+              <Text style={styles.balanceAmount}>{formatPrice(metric('balance'), currency)}</Text>
+              <View style={styles.balanceRow}>
+                <View style={styles.balanceCol}>
+                  <Icon name="shield-check-outline" size={14} color="#64748b" />
+                  <View>
+                    <Text style={styles.balanceColValue}>{formatPrice(metric('escrowBalance'), currency)}</Text>
+                    <Text style={styles.balanceColLabel}>In Escrow</Text>
+                  </View>
                 </View>
-                <View style={styles.balanceDivider} />
-                <View style={styles.balanceItem}>
-                  <Text style={styles.balanceItemValue}>
-                    {role === 'seller'
-                      ? formatPrice(metric('withdrawableAmount'), 'INR')
-                      : formatPrice(metric('orderPaymentTotal'), 'INR')}
-                  </Text>
-                  <Text style={styles.balanceItemLabel}>
-                    {role === 'seller' ? 'Withdrawable' : 'Orders'}
-                  </Text>
+                <View style={styles.balanceCol}>
+                  <Icon name="wallet-outline" size={14} color="#64748b" />
+                  <View>
+                    <Text style={styles.balanceColValue}>
+                      {formatPrice(role === 'seller' ? metric('withdrawableAmount') : metric('orderPaymentTotal'), currency)}
+                    </Text>
+                    <Text style={styles.balanceColLabel}>{role === 'seller' ? 'Withdrawable' : 'Orders'}</Text>
+                  </View>
                 </View>
               </View>
             </View>
 
-            {/* Payment Methods */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Payment Methods</Text>
-                <Pressable onPress={() => setShowAddMethod(v => !v)} style={styles.addBtn}>
-                  <Icon name={showAddMethod ? 'close' : 'plus'} size={18} color={P.accent} />
+            {/* Quick Actions */}
+            <View style={styles.actionsRow}>
+              <Pressable style={styles.actionBtn} onPress={() => setShowAddModal(true)}>
+                <View style={[styles.actionIcon, { backgroundColor: '#e0e7ff' }]}>
+                  <Icon name="bank-plus" size={20} color="#6366f1" />
+                </View>
+                <Text style={styles.actionLabel}>Add Bank</Text>
+              </Pressable>
+              {role === 'seller' && (
+                <Pressable style={styles.actionBtn} onPress={() => {
+                  if (!paymentMethodId) { Alert.alert('No method', 'Add a payment method first.'); return; }
+                  setShowWithdrawModal(true);
+                }}>
+                  <View style={[styles.actionIcon, { backgroundColor: '#fef3c7' }]}>
+                    <Icon name="bank-transfer-out" size={20} color="#f59e0b" />
+                  </View>
+                  <Text style={styles.actionLabel}>Withdraw</Text>
                 </Pressable>
-              </View>
+              )}
+              <Pressable style={styles.actionBtn} onPress={() => navigation.navigate('Account')}>
+                <View style={[styles.actionIcon, { backgroundColor: '#d1fae5' }]}>
+                  <Icon name="history" size={20} color="#10b981" />
+                </View>
+                <Text style={styles.actionLabel}>History</Text>
+              </Pressable>
+            </View>
 
-              {/* Saved Methods */}
-              {paymentMethods.length > 0 && (
-                <View style={styles.methodList}>
-                  {paymentMethods.map((item: Record<string, unknown>, i: number) => (
-                    <Pressable
-                      key={String(item._id ?? item.id ?? i)}
-                      onPress={() => setPaymentMethodId(String(item._id ?? item.id ?? ''))}
-                      style={[styles.methodCard, paymentMethodId === String(item._id ?? item.id ?? '') && styles.methodCardSelected]}>
-                      <View style={[styles.methodIcon, { backgroundColor: P.accentLight }]}>
-                        <Icon
-                          name={item.type === 'upi' ? 'cellphone' : 'bank'}
-                          size={20}
-                          color={P.accent}
-                        />
+            {/* Saved Methods */}
+            {paymentMethods.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Saved Methods</Text>
+                {paymentMethods.map((item: Record<string, unknown>, i: number) => {
+                  const id = String(item._id ?? item.id ?? i);
+                  const selected = paymentMethodId === id;
+                  return (
+                    <Pressable key={id} onPress={() => setPaymentMethodId(id)} style={[styles.methodCard, selected && styles.methodCardSelected]}>
+                      <View style={[styles.methodIcon, { backgroundColor: selected ? '#e0e7ff' : '#f1f5f9' }]}>
+                        <Icon name={item.type === 'upi' ? 'cellphone' : 'bank'} size={18} color={selected ? '#6366f1' : '#64748b'} />
                       </View>
                       <View style={styles.methodInfo}>
-                        <Text style={styles.methodTitle} numberOfLines={1}>
-                          {String(item.label ?? item.bankName ?? item.upiId ?? 'Method')}
-                        </Text>
-                        <Text style={styles.methodMeta}>
-                          {String(item.holderName ?? item.maskedAccountNumber ?? item.type ?? '')}
-                        </Text>
+                        <Text style={styles.methodName}>{String(item.label ?? item.bankName ?? 'Method')}</Text>
+                        <Text style={styles.methodMeta}>{String(item.holderName ?? item.maskedAccountNumber ?? '')}</Text>
                       </View>
-                      <Icon
-                        name={paymentMethodId === String(item._id ?? item.id ?? '') ? 'check-circle' : 'circle-outline'}
-                        size={18}
-                        color={paymentMethodId === String(item._id ?? item.id ?? '') ? P.emerald : P.muted}
-                      />
+                      {selected && <Icon name="check-circle" size={18} color="#6366f1" />}
                     </Pressable>
-                  ))}
-                </View>
-              )}
-
-              {/* Add Method Form */}
-              {showAddMethod && (
-                <View style={styles.addMethodForm}>
-                  <InputField
-                    label="Label / Nickname"
-                    value={method.label}
-                    onChangeText={label => setMethod({ ...method, label })}
-                    placeholder="e.g. Business Account"
-                  />
-                  <InputField
-                    label="Account Holder Name"
-                    value={method.accountHolder}
-                    onChangeText={accountHolder => setMethod({ ...method, accountHolder })}
-                    placeholder="Full name"
-                  />
-                  <InputField
-                    label="Account Number"
-                    value={method.accountNumber}
-                    onChangeText={accountNumber => setMethod({ ...method, accountNumber })}
-                    placeholder="Account number"
-                    keyboardType="numeric"
-                  />
-                  <InputField
-                    label="IFSC Code"
-                    value={method.ifsc}
-                    onChangeText={ifsc => setMethod({ ...method, ifsc })}
-                    placeholder="IFSC"
-                  />
-                  <InputField
-                    label="Bank Name"
-                    value={method.bankName}
-                    onChangeText={bankName => setMethod({ ...method, bankName })}
-                    placeholder="Bank name"
-                  />
-                  <InputField
-                    label="UPI ID (optional)"
-                    value={method.upiId}
-                    onChangeText={upiId => setMethod({ ...method, upiId })}
-                    placeholder="user@upi"
-                  />
-                  <Pressable
-                    onPress={() => createMethod.mutate()}
-                    disabled={createMethod.isPending || (!method.accountNumber && !method.upiId)}
-                    style={[
-                      styles.submitBtn,
-                      createMethod.isPending && styles.submitBtnDisabled,
-                    ]}>
-                    {createMethod.isPending ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <Text style={styles.submitBtnText}>Save Method</Text>
-                    )}
-                  </Pressable>
-                </View>
-              )}
-            </View>
-
-            {/* Withdrawal (Seller Only) */}
-            {role === 'seller' && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Quick Withdraw</Text>
-                <View style={styles.withdrawCard}>
-                  <View style={styles.withdrawInput}>
-                    <Text style={styles.currencySymbol}>{currencySymbol}</Text>
-                    <TextInput
-                      value={withdrawal}
-                      onChangeText={setWithdrawal}
-                      keyboardType="numeric"
-                      placeholder="Enter amount"
-                      placeholderTextColor={P.muted}
-                      style={styles.withdrawTextInput}
-                    />
-                  </View>
-                  <Pressable
-                    onPress={() => createWithdrawal.mutate()}
-                    disabled={createWithdrawal.isPending || !withdrawal || !paymentMethodId}
-                    style={[
-                      styles.withdrawBtn,
-                      (createWithdrawal.isPending || !withdrawal || !paymentMethodId) && styles.submitBtnDisabled,
-                    ]}>
-                    {createWithdrawal.isPending ? (
-                      <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                      <>
-                        <Icon name="arrow-up-circle" size={16} color="#FFF" />
-                        <Text style={styles.withdrawBtnText}>Withdraw</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
+                  );
+                })}
               </View>
             )}
 
             {/* Activity Header */}
-            {listData.length > 0 && (
-              <View style={styles.activityHeader}>
-                <Text style={styles.sectionTitle}>Recent Activity</Text>
+            <View style={styles.activityTop}>
+              <Text style={styles.sectionTitle}>Activity</Text>
+              <View style={styles.filterRow}>
+                {(['all', 'credits', 'debits'] as FilterType[]).map(f => (
+                  <Pressable
+                    key={f}
+                    onPress={() => { setActivityFilter(f); setShowAllActivity(false); }}
+                    style={[styles.filterChip, activityFilter === f && styles.filterChipActive]}>
+                    <Text style={[styles.filterChipText, activityFilter === f && styles.filterChipTextActive]}>
+                      {f === 'all' ? 'All' : f === 'credits' ? 'Received' : 'Sent'}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
-            )}
+            </View>
           </View>
         }
         renderItem={({ item }) => {
-          const icon = getActivityIcon(item.section ?? 'Transaction');
-          const color = getActivityColor(item.section ?? 'Transaction');
-          const label = getActivityLabel(item);
-          const status = getActivityStatus(item);
+          const isDebit = isDebitTransaction(item);
+          const status = String(item.status ?? item.paymentStatus ?? '').replace(/_/g, ' ');
           const amount = Number(item.amount ?? item.totalAmount ?? 0);
-          const currency = String(item.currency ?? 'INR');
+          const itemCurrency = String(item.currency ?? currency);
 
           return (
             <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${label} details`}
               onPress={() => navigation.navigate('WalletTransactionDetails', {
                 activityId: String(item._id ?? item.id ?? ''),
                 source: String(item.section).toLowerCase(),
                 role,
               })}
-              style={({ pressed }) => [styles.activityRow, pressed && styles.activityRowPressed]}>
-              <View style={[styles.activityIcon, { backgroundColor: color + '15' }]}>
-                <Icon name={icon} size={18} color={color} />
+              style={({ pressed }) => [styles.txnCard, pressed && styles.txnCardPressed]}>
+              <View style={[styles.txnIcon, { backgroundColor: isDebit ? '#fef2f2' : '#f0fdf4' }]}>
+                <Icon name={isDebit ? 'arrow-up-right' : 'arrow-down-left'} size={18} color={isDebit ? '#ef4444' : '#10b981'} />
               </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityLabel}>{label}</Text>
-                <Text style={styles.activityStatus}>{status}</Text>
+              <View style={styles.txnInfo}>
+                <Text style={styles.txnLabel}>{getTransactionLabel(item)}</Text>
+                <Text style={styles.txnStatus}>{status}</Text>
               </View>
-              <Text
-                style={[
-                  styles.activityAmount,
-                  { color: item.section === 'Withdrawal' ? P.rose : P.text },
-                ]}>
-                {item.section === 'Withdrawal' ? '-' : '+'}
-                {formatPrice(amount, currency)}
+              <Text style={[styles.txnAmount, { color: isDebit ? '#ef4444' : '#10b981' }]}>
+                {formatPrice(amount, itemCurrency)}
               </Text>
-              <Icon name="chevron-right" size={19} color={P.muted} />
             </Pressable>
           );
         }}
+        ListFooterComponent={
+          filteredActivity.length > 5 && !showAllActivity ? (
+            <Pressable onPress={() => setShowAllActivity(true)} style={styles.viewAllBtn}>
+              <Text style={styles.viewAllText}>View all {filteredActivity.length} transactions</Text>
+              <Icon name="chevron-down" size={16} color="#6366f1" />
+            </Pressable>
+          ) : showAllActivity ? (
+            <Pressable onPress={() => setShowAllActivity(false)} style={styles.viewAllBtn}>
+              <Text style={styles.viewAllText}>Show less</Text>
+              <Icon name="chevron-up" size={16} color="#6366f1" />
+            </Pressable>
+          ) : null
+        }
         ListEmptyComponent={
-          <View style={styles.emptyWrap}>
-            <Icon name="wallet-outline" size={40} color={P.muted} />
-            <Text style={styles.emptyText}>No activity yet</Text>
+          <View style={styles.emptyState}>
+            <Icon name="receipt-outline" size={36} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No transactions yet</Text>
           </View>
         }
       />
+
+      {/* ─── Add Method Modal ─── */}
+      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
+        <View style={styles.modalScreen}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={() => setShowAddModal(false)} style={styles.modalClose}>
+              <Icon name="close" size={22} color="#1a1a1a" />
+            </Pressable>
+            <Text style={styles.modalTitle}>Add Payment Method</Text>
+            <View style={styles.modalClose} />
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBody}>
+            <Field label="Label / Nickname" value={method.label} onChangeText={v => setMethod({ ...method, label: v })} placeholder="Business Account" />
+            <Field label="Account Holder Name" value={method.accountHolder} onChangeText={v => setMethod({ ...method, accountHolder: v })} placeholder="Full name" />
+            <Field label="Account Number" value={method.accountNumber} onChangeText={v => setMethod({ ...method, accountNumber: v })} placeholder="Account number" keyboardType="numeric" />
+            <Field label="IFSC Code" value={method.ifsc} onChangeText={v => setMethod({ ...method, ifsc: v })} placeholder="SBIN0001234" />
+            <Field label="Bank Name" value={method.bankName} onChangeText={v => setMethod({ ...method, bankName: v })} placeholder="State Bank of India" />
+
+            <View style={styles.orDivider}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>OR</Text>
+              <View style={styles.orLine} />
+            </View>
+
+            <Field label="UPI ID" value={method.upiId} onChangeText={v => setMethod({ ...method, upiId: v })} placeholder="username@upi" />
+
+            <Pressable
+              onPress={() => createMethod.mutate()}
+              disabled={createMethod.isPending || (!method.accountNumber && !method.upiId)}
+              style={[styles.saveBtn, createMethod.isPending && styles.btnDisabled]}>
+              {createMethod.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save Payment Method</Text>}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ─── Withdraw Modal ─── */}
+      <Modal visible={showWithdrawModal} animationType="fade" transparent onRequestClose={() => setShowWithdrawModal(false)}>
+        <Pressable style={styles.overlay} onPress={() => setShowWithdrawModal(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Withdraw Funds</Text>
+
+            <View style={styles.sheetBalance}>
+              <Text style={styles.sheetBalanceLabel}>Available</Text>
+              <Text style={styles.sheetBalanceAmount}>{formatPrice(metric('withdrawableAmount'), currency)}</Text>
+            </View>
+
+            <View style={styles.amountBox}>
+              <Text style={styles.currencySymbol}>{currency === 'INR' ? '₹' : currency === 'USD' ? '$' : '€'}</Text>
+              <TextInput
+                value={withdrawalAmount}
+                onChangeText={setWithdrawalAmount}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor="#cbd5e1"
+                style={styles.amountInput}
+              />
+            </View>
+
+            <Pressable
+              onPress={() => createWithdrawal.mutate()}
+              disabled={createWithdrawal.isPending || !withdrawalAmount || Number(withdrawalAmount) <= 0}
+              style={[styles.withdrawConfirmBtn, (createWithdrawal.isPending || !withdrawalAmount) && styles.btnDisabled]}>
+              {createWithdrawal.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.withdrawConfirmText}>Confirm Withdrawal</Text>}
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
-// ─── Input Field ────────────────────────────────────────────────────────────
+// ─── Field Component ────────────────────────────────────────────────────────
 
-function InputField({
-  label,
-  ...props
-}: { label: string } & React.ComponentProps<typeof TextInput>) {
+function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        placeholderTextColor={P.muted}
-        style={styles.fieldInput}
-        {...props}
-      />
+      <TextInput placeholderTextColor="#94a3b8" style={styles.fieldInput} {...props} />
     </View>
   );
 }
@@ -467,315 +383,147 @@ function InputField({
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: P.bg,
-  },
-  content: {
-    paddingBottom: 100,
-  },
+  screen: { flex: 1, backgroundColor: '#f8fafc' },
+  listContent: { paddingBottom: 100 },
 
   // Header
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 56,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: P.bg,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#fff',
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: P.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: P.border,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: P.text,
-    letterSpacing: -0.3,
-  },
+  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
 
   // Balance Card
   balanceCard: {
-    marginHorizontal: 16,
-    backgroundColor: P.primary,
-    borderRadius: 20,
-    padding: 20,
-    position: 'relative',
-    overflow: 'hidden',
+    marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 16, padding: 20,
+    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 16,
   },
-  balanceGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: P.accent,
-    opacity: 0.15,
-  },
-  balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  balanceAmount: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFF',
-    marginTop: 4,
-    letterSpacing: -0.5,
-  },
-  balanceGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.15)',
-  },
-  balanceItem: {
-    flex: 1,
-  },
-  balanceItemValue: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  balanceItemLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
-  },
-  balanceDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    marginHorizontal: 12,
-  },
+  balanceLabel: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 4 },
+  balanceAmount: { fontSize: 36, fontWeight: '700', color: '#0f172a', letterSpacing: -0.5, marginBottom: 16 },
+  balanceRow: { flexDirection: 'row', gap: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  balanceCol: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  balanceColValue: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
+  balanceColLabel: { fontSize: 11, color: '#94a3b8', fontWeight: '500', marginTop: 1 },
 
-  // Sections
-  section: {
-    marginTop: 20,
-    paddingHorizontal: 16,
+  // Actions
+  actionsRow: { flexDirection: 'row', marginHorizontal: 16, gap: 10, marginBottom: 24 },
+  actionBtn: {
+    flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: 14,
+    padding: 14, gap: 8, borderWidth: 1, borderColor: '#e2e8f0',
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: P.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  addBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: P.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  actionIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  actionLabel: { fontSize: 12, fontWeight: '600', color: '#475569' },
 
-  // Payment Methods
-  methodList: {
-    gap: 8,
-    marginBottom: 10,
-  },
+  // Methods
+  section: { marginHorizontal: 16, marginBottom: 24 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
   methodCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: P.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: P.border,
+    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff',
+    borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0',
   },
-  methodCardSelected: { borderColor: P.emerald, borderWidth: 2 },
-  methodIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  methodInfo: {
-    flex: 1,
-  },
-  methodTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: P.text,
-  },
-  methodMeta: {
-    fontSize: 11,
-    color: P.muted,
-    marginTop: 2,
-  },
+  methodCardSelected: { borderColor: '#6366f1', backgroundColor: '#fafaff' },
+  methodIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  methodInfo: { flex: 1 },
+  methodName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  methodMeta: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
 
-  // Add Method Form
-  addMethodForm: {
-    backgroundColor: P.surface,
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: P.border,
-    gap: 4,
+  // Activity Header
+  activityTop: {
+    marginHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 8,
   },
-  fieldWrap: {
-    marginBottom: 10,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: P.textSecondary,
-    marginBottom: 4,
-  },
-  fieldInput: {
-    backgroundColor: P.inputBg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 42,
-    fontSize: 13,
-    fontWeight: '500',
-    color: P.text,
-    borderWidth: 1,
-    borderColor: P.border,
-  },
-  submitBtn: {
-    backgroundColor: P.accent,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 44,
-    marginTop: 6,
-  },
-  submitBtnDisabled: {
-    opacity: 0.5,
-  },
-  submitBtnText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  filterRow: { flexDirection: 'row', gap: 6 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: '#f1f5f9' },
+  filterChipActive: { backgroundColor: '#0f172a' },
+  filterChipText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
+  filterChipTextActive: { color: '#fff' },
 
-  // Withdraw
-  withdrawCard: {
-    backgroundColor: P.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: P.border,
-    gap: 10,
+  // Transaction
+  txnCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16,
+    marginBottom: 6, backgroundColor: '#fff', borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: '#f1f5f9',
   },
-  withdrawInput: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: P.inputBg,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: P.border,
-  },
-  currencySymbol: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: P.text,
-  },
-  withdrawTextInput: {
-    flex: 1,
-    height: 48,
-    fontSize: 18,
-    fontWeight: '600',
-    color: P.text,
-  },
-  withdrawBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: P.primary,
-    borderRadius: 10,
-    height: 44,
-  },
-  withdrawBtnText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  txnCardPressed: { backgroundColor: '#fafafa' },
+  txnIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  txnInfo: { flex: 1 },
+  txnLabel: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  txnStatus: { fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' },
+  txnAmount: { fontSize: 15, fontWeight: '700' },
 
-  // Activity
-  activityHeader: {
-    paddingHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 8,
+  // View All
+  viewAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginHorizontal: 16, marginTop: 14, paddingVertical: 12, backgroundColor: '#fff',
+    borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0',
   },
-  activityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 16,
-    marginBottom: 2,
-    backgroundColor: P.surface,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: P.border,
-  },
-  activityRowPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },
-  activityIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  activityLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: P.text,
-  },
-  activityStatus: {
-    fontSize: 11,
-    color: P.muted,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
-  activityAmount: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
+  viewAllText: { fontSize: 13, fontWeight: '600', color: '#6366f1' },
 
   // Empty
-  emptyWrap: {
-    alignItems: 'center',
-    padding: 40,
-    gap: 8,
+  emptyState: { alignItems: 'center', padding: 40, gap: 8 },
+  emptyText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+
+  // Modal
+  modalScreen: { flex: 1, backgroundColor: '#fff' },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 56, paddingHorizontal: 16, paddingBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
   },
-  emptyText: {
-    fontSize: 13,
-    color: P.muted,
-    fontWeight: '500',
+  modalClose: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
+  modalBody: { padding: 16, paddingBottom: 40 },
+
+  // Fields
+  fieldWrap: { marginBottom: 16 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 },
+  fieldInput: {
+    backgroundColor: '#f8fafc', borderRadius: 10, paddingHorizontal: 14, height: 46,
+    fontSize: 14, fontWeight: '500', color: '#0f172a', borderWidth: 1, borderColor: '#e2e8f0',
   },
+
+  // OR Divider
+  orDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 12 },
+  orLine: { flex: 1, height: 1, backgroundColor: '#e2e8f0' },
+  orText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
+
+  // Save Button
+  saveBtn: {
+    backgroundColor: '#6366f1', borderRadius: 12, alignItems: 'center',
+    justifyContent: 'center', height: 50, marginTop: 24,
+  },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  btnDisabled: { opacity: 0.5 },
+
+  // Withdraw Sheet
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: '#e2e8f0',
+    alignSelf: 'center', marginBottom: 20,
+  },
+  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
+  sheetBalance: {
+    backgroundColor: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: '#e2e8f0',
+  },
+  sheetBalanceLabel: { fontSize: 12, fontWeight: '500', color: '#64748b' },
+  sheetBalanceAmount: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginTop: 4 },
+  amountBox: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc',
+    borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20,
+  },
+  currencySymbol: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginRight: 8 },
+  amountInput: { flex: 1, height: 56, fontSize: 24, fontWeight: '600', color: '#0f172a' },
+  withdrawConfirmBtn: {
+    backgroundColor: '#0f172a', borderRadius: 14, alignItems: 'center',
+    justifyContent: 'center', height: 52,
+  },
+  withdrawConfirmText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
 
 export default WalletScreen;

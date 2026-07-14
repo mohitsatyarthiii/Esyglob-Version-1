@@ -311,13 +311,13 @@ function ChatDetailsScreen() {
   // ─── Mutations ──────────────────────────────────────────────────────────
 
   const contactAction = useMutation({
-    mutationFn: ({ action }: { action: 'favorite' | 'block' }) =>
-      action === 'favorite' ? favoriteChat(chatId, true) : blockChatUser(chatId, true),
+    mutationFn: ({ action }: { action: 'favorite' | 'block' | 'unblock' }) =>
+      action === 'favorite' ? favoriteChat(chatId, true) : blockChatUser(chatId, action === 'block'),
     onSuccess: (_result, variables) => {
       setProfileActionsOpen(false);
       Alert.alert(
-        variables.action === 'block' ? 'User blocked' : 'Conversation saved', 
-        variables.action === 'block' ? 'This contact can no longer message you.' : 'Added to your favorite conversations.'
+        variables.action === 'block' ? 'User blocked' : variables.action === 'unblock' ? 'Contact unblocked' : 'Conversation saved',
+        variables.action === 'block' ? 'This contact can no longer message you.' : variables.action === 'unblock' ? 'You can send and receive messages again.' : 'Added to your favorite conversations.'
       );
       queryClient.invalidateQueries({ queryKey: ['chat-details', chatId] });
     },
@@ -600,6 +600,7 @@ function ChatDetailsScreen() {
   const selectableProducts = getSelectableProducts(chat.data, chatProduct);
   const selectedProduct =
     selectableProducts.find(item => getId(item) === selectedProductId) ?? selectableProducts[0];
+  const blockedAt = activeRole === 'seller' ? chat.data.chat.sellerBlockedAt : chat.data.chat.buyerBlockedAt;
 
   return (
     <KeyboardAvoidingView
@@ -717,7 +718,7 @@ function ChatDetailsScreen() {
       ) : null}
 
       {/* Composer */}
-      <View style={styles.composer}>
+      {blockedAt ? <View style={styles.blockedPanel}><Icon name="account-cancel" size={28} color={WP.rose}/><View style={styles.blockedBody}><Text style={styles.blockedTitle}>This contact is blocked.</Text><Text style={styles.blockedTime}>Blocked {new Date(blockedAt).toLocaleDateString()} at {new Date(blockedAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</Text></View><Pressable disabled={contactAction.isPending} onPress={()=>contactAction.mutate({action:'unblock'})} style={styles.unblockButton}><Text style={styles.unblockText}>UNBLOCK</Text></Pressable></View> : <View style={styles.composer}>
         <Pressable onPress={() => setSheetMode('actions')} style={styles.composerBtn}>
           <Icon name="plus" size={24} color={WP.muted} />
         </Pressable>
@@ -746,7 +747,7 @@ function ChatDetailsScreen() {
             <Icon name="microphone-outline" size={24} color={WP.muted} />
           </Pressable>
         )}
-      </View>
+      </View>}
 
       {/* Action Sheet Modal */}
       <Modal 
@@ -768,7 +769,7 @@ function ChatDetailsScreen() {
               ['rocket-launch-outline', 'Start Order', () => chatProduct && navigation.navigate('OrderCheckout', { mode: 'trade', chatId, productId: getId(chatProduct) })],
               ['package-variant', 'View Product', () => chatProduct && navigation.navigate('ProductDetails', { productId: getId(chatProduct) })],
               ['heart-outline', 'Favorite', () => contactAction.mutate({ action: 'favorite' })],
-              ['block-helper', 'Block User', () => contactAction.mutate({ action: 'block' })],
+              [blockedAt ? 'account-check-outline' : 'block-helper', blockedAt ? 'Unblock User' : 'Block User', () => contactAction.mutate({ action: blockedAt ? 'unblock' : 'block' })],
               ['alert-octagon-outline', 'Report', () => Linking.openURL(`mailto:support@esyglob.com?subject=${encodeURIComponent(`Report chat ${chatId}`)}`)],
               ['share-variant-outline', 'Share Contact', () => Share.share({ message: `${participant.name}${chat.data?.sellerProfile?.companyWebsite ? `\n${chat.data.sellerProfile.companyWebsite}` : ''}` })],
             ].map(([icon, label, handler]) => (
@@ -1587,6 +1588,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: WP.faint,
   },
+  blockedPanel: { alignItems: 'center', backgroundColor: '#FFF7F7', borderTopColor: '#FECACA', borderTopWidth: 1, flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingVertical: 13 },
+  blockedBody: { flex: 1 },
+  blockedTitle: { color: '#991B1B', fontSize: 13, fontWeight: '900' },
+  blockedTime: { color: '#B45309', fontSize: 10, fontWeight: '700', marginTop: 2 },
+  unblockButton: { backgroundColor: WP.rose, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 10 },
+  unblockText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   composerBtn: {
     width: 40,
     height: 40,

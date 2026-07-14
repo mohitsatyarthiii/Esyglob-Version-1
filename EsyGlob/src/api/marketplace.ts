@@ -650,6 +650,12 @@ export async function blockChatUser(chatId: string, blocked: boolean) {
   return patchChatAction(chatId, { action: 'block', value: blocked });
 }
 
+export type MessengerContact = { chatId: string; userId: string; name: string; email?: string; avatarUrl?: string; profileUrl?: string; type?: 'buyer' | 'seller'; isBlocked?: boolean; blockedAt?: string };
+export async function fetchMessengerContacts(role?: string | null) {
+  const payload = await apiRequest('/messenger/contacts', { query: { role: role ?? undefined } });
+  return unwrapData<{ blockedUsers?: MessengerContact[]; recentContacts?: MessengerContact[] }>(payload);
+}
+
 export async function deleteChatForMe(chatId: string) {
   return patchChatAction(chatId, { action: 'delete' });
 }

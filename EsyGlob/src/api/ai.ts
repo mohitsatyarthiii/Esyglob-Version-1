@@ -1,11 +1,6 @@
 import { ApiError, apiRequest, buildApiUrl, getApiHeaders } from './client';
 import { normalizeList, unwrapData } from './normalizers';
-
-declare const TextDecoder:
-  | {
-      new (): { decode(input?: Uint8Array, options?: { stream?: boolean }): string };
-    }
-  | undefined;
+import { Category, Product, SellerSummary } from './types';
 
 export type AIMessage = {
   _id?: string;
@@ -64,6 +59,27 @@ export type MarketInsightReport = {
   [key: string]: unknown;
 };
 
+export type ImageSearchResult = {
+  answer?: string;
+  products: Product[];
+  suppliers: SellerSummary[];
+  categories: Category[];
+  imageSearch?: { imageUrl?: string; status?: string; message?: string } | null;
+};
+
+export async function searchMarketplaceByImage(imageUrl: string, role?: string | null): Promise<ImageSearchResult> {
+  const payload = await apiRequest('/ai-search', { method: 'POST', body: { imageUrl, role: role ?? 'general', includeAI: true, forceAI: true } });
+  const data = unwrapData<Record<string, any>>(payload) ?? {};
+  const results = data.results && typeof data.results === 'object' ? data.results : {};
+  return {
+    answer: String(data.answer ?? ''),
+    products: data.products ?? results.products ?? [],
+    suppliers: data.suppliers ?? data.sellers ?? results.suppliers ?? [],
+    categories: data.categories ?? results.categories ?? [],
+    imageSearch: data.imageSearch ?? null,
+  };
+}
+
 export async function fetchAIChats(role?: string | null): Promise<AIChat[]> {
   const payload = await apiRequest('/ai-chat', { query: { role: role ?? undefined } });
   const data = unwrapData<{ chats?: AIChat[] } | AIChat[]>(payload);
@@ -91,63 +107,75 @@ export async function postAIChat(input: AIStreamInput) {
   return unwrapData<{ chat?: AIChat; response?: { message?: string; provider?: string; model?: string } }>(payload);
 }
 
-export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record<string, unknown>) => void) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
-  const response = await fetch(buildApiUrl('/ai-chat/stream'), {
-    method: 'POST',
-    headers: getApiHeaders({ Accept: 'text/event-stream', 'Content-Type': 'application/json' }),
-    credentials: 'include',
-    body: JSON.stringify(input),
-    signal: controller.signal,
-  });
-
-  if (!response.ok) {
-    clearTimeout(timeout);
-    throw new ApiError(`AI stream failed with status ${response.status}`, response.status);
-  }
-
-  const body = (response as Response & { body?: { getReader?: () => unknown } }).body;
-  const reader = body?.getReader?.() as { read: () => Promise<{ done?: boolean; value?: Uint8Array }> } | undefined;
-
-  if (!reader || typeof TextDecoder === 'undefined') {
+export async function streamAIChat(input: AIStreamInput, onEvent: (event: Record<string, unknown>) => void): Promise<void> {
+  if (typeof XMLHttpRequest === 'undefined') {
     const fallback = await postAIChat(input);
     onEvent({ type: 'token', content: fallback.response?.message ?? '' });
     onEvent({ type: 'done', chatId: fallback.chat?._id ?? fallback.chat?.id, provider: fallback.response?.provider, model: fallback.response?.model });
-    clearTimeout(timeout);
     return;
   }
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let processedLength = 0;
+    let buffer = '';
+    let settled = false;
+    let receivedDone = false;
 
-  for (;;) {
-    const next = await reader.read();
-    if (next.done) {
-      break;
-    }
-
-    buffer += decoder.decode(next.value, { stream: true });
-    const frames = buffer.split(/\n\n/);
-    buffer = frames.pop() ?? '';
-    frames.forEach(frame => {
-      frame.split(/\n/).forEach(line => {
-        if (!line.startsWith('data:')) {
-          return;
-        }
-        const raw = line.replace(/^data:\s*/, '');
-        if (!raw || raw === '[DONE]') {
-          return;
-        }
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error); else resolve();
+    };
+    const processFrames = (flush = false) => {
+      const nextText = xhr.responseText.slice(processedLength);
+      processedLength = xhr.responseText.length;
+      buffer += nextText.replace(/\r\n/g, '\n');
+      const frames = buffer.split(/\n\n/);
+      const remainder = frames.pop() ?? '';
+      if (flush) {
+        if (remainder) frames.push(remainder);
+        buffer = '';
+      } else {
+        buffer = remainder;
+      }
+      frames.forEach(frame => frame.split('\n').forEach(line => {
+        if (!line.startsWith('data:')) return;
+        const raw = line.replace(/^data:\s*/, '').trim();
+        if (!raw || raw === '[DONE]') return;
         try {
-          onEvent(JSON.parse(raw));
-        } catch {
-          onEvent({ type: 'token', content: raw });
+          const event = JSON.parse(raw) as Record<string, unknown>;
+          if (event.type === 'done') receivedDone = true;
+          if (event.type === 'error') {
+            finish(new ApiError(String(event.message ?? 'AI service returned an error'), 503, event));
+            return;
+          }
+          onEvent(event);
+        } catch (error) {
+          if (error instanceof SyntaxError) onEvent({ type: 'token', content: raw });
         }
-      });
-    });
-  }
-  clearTimeout(timeout);
+      }));
+    };
+
+    xhr.open('POST', buildApiUrl('/ai-chat/stream'));
+    const headers = getApiHeaders({ Accept: 'text/event-stream', 'Content-Type': 'application/json' });
+    Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+    xhr.timeout = 120_000;
+    xhr.onprogress = () => processFrames();
+    xhr.onload = () => {
+      processFrames(true);
+      if (xhr.status < 200 || xhr.status >= 300) {
+        finish(new ApiError(`AI request failed with status ${xhr.status}`, xhr.status, xhr.responseText));
+        return;
+      }
+      if (!receivedDone) onEvent({ type: 'done' });
+      finish();
+    };
+    xhr.onerror = () => finish(new ApiError('Unable to reach the AI service. Check your connection and retry.', 0));
+    xhr.ontimeout = () => finish(new ApiError('The AI service took too long to respond. Please retry.', 408));
+    xhr.onabort = () => finish(new ApiError('AI request was cancelled.', 499));
+    xhr.send(JSON.stringify(input));
+  });
 }
 
 export async function fetchAIProviderStatus() {

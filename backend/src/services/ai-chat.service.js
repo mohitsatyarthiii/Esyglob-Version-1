@@ -143,10 +143,10 @@ class AIChatService {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(Number(process.env.OLLAMA_REQUEST_TIMEOUT_MS || 45000)),
+        signal: AbortSignal.timeout(Number(process.env.OLLAMA_REQUEST_TIMEOUT_MS || 90000)),
         body: JSON.stringify({
           model: OLLAMA_MODEL,
-          keep_alive: '30m',
+          keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
           messages: ollamaMessages,
           stream: false,
           options: {

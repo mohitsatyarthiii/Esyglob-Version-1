@@ -1,13 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { launchImageLibrary } from 'react-native-image-picker';
+import { pick, types as documentTypes } from '@react-native-documents/picker';
 import { AIChat, AIMessage, deleteAIChat, fetchAIChat, fetchAIChats, patchAIChat, streamAIChat } from '../api/ai';
+import { getActiveAIChatId, setActiveAIChatId } from '../ai/aiSession';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
 import AuthScreen from './AuthScreen';
+import { uploadFiles, type UploadAttachment } from '../api/marketplace';
 
 type PluginMode = 'create-rfq' | 'send-quotation' | 'ai-support' | null;
 type LocalMessage = AIMessage & { localId?: string; streaming?: boolean };
@@ -18,11 +22,14 @@ function AIChatScreen() {
   const { activeRole, status } = useAuth();
   const role = activeRole === 'seller' ? 'seller' : 'buyer';
   const [search, setSearch] = useState('');
-  const [chatId, setChatId] = useState<string | undefined>();
+  const [chatId, setChatId] = useState<string | undefined>(() => getActiveAIChatId(role));
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState('');
   const [plugin, setPlugin] = useState<PluginMode>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [attachments, setAttachments] = useState<UploadAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [failedFiles, setFailedFiles] = useState<Array<{uri:string;name:string;type:string}>>([]);
   const chats = useQuery({
     queryKey: ['ai-chats', role],
     queryFn: () => fetchAIChats(role),
@@ -32,6 +39,10 @@ function AIChatScreen() {
     () => (chats.data ?? []).filter(chat => (chat.title ?? '').toLowerCase().includes(search.trim().toLowerCase())),
     [chats.data, search],
   );
+  useEffect(() => {
+    if (!chatId || messages.length) return;
+    fetchAIChat(chatId).then(detail => setMessages(detail.messages ?? [])).catch(() => setActiveAIChatId(role));
+  }, [chatId, messages.length, role]);
   const send = useMutation({
     mutationFn: async (message: string) => {
       const userMessage: LocalMessage = { localId: `u-${Date.now()}`, role: 'user', content: message, createdAt: new Date().toISOString() };
@@ -40,17 +51,21 @@ function AIChatScreen() {
       setInput('');
       let nextChatId = chatId;
 
+      const attachmentUrls = attachments.map(file => file.secure_url ?? file.url ?? file.location).filter(Boolean);
+      const messageWithFiles = attachmentUrls.length ? `${message}\n\nAttached Cloudinary files:\n${attachmentUrls.join('\n')}` : message;
       await streamAIChat({
-        message,
+        message: messageWithFiles,
         displayMessage: message,
         chatId,
         role,
         conversationType: plugin === 'create-rfq' ? 'rfq' : plugin === 'send-quotation' ? 'quotation' : plugin === 'ai-support' ? 'support' : 'assistant',
-        context: { feature: 'AI Chatbot', sourcePath: `/mobile/${role}/ai` },
+        context: { feature: 'AI Chatbot', sourcePath: `/mobile/${role}/ai`, attachments: attachmentUrls },
+        pluginPayload: plugin ? { pluginId: plugin, attachmentUrls } : attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null,
       }, event => {
         if (event.type === 'start' && typeof event.chatId === 'string') {
           nextChatId = event.chatId;
           setChatId(event.chatId);
+          setActiveAIChatId(role, event.chatId);
         }
         if (event.type === 'token') {
           setMessages(current => current.map(item => item.localId === assistantId ? { ...item, content: `${item.content ?? ''}${String(event.content ?? '')}` } : item));
@@ -59,6 +74,7 @@ function AIChatScreen() {
           if (typeof event.chatId === 'string') {
             nextChatId = event.chatId;
             setChatId(event.chatId);
+            setActiveAIChatId(role, event.chatId);
           }
           setMessages(current => current.map(item => item.localId === assistantId ? { ...item, streaming: false } : item));
         }
@@ -68,6 +84,7 @@ function AIChatScreen() {
     },
     onSuccess: () => {
       setPlugin(null);
+      setAttachments([]);
       queryClient.invalidateQueries({ queryKey: ['ai-chats', role] });
     },
     onError: error => {
@@ -85,21 +102,32 @@ function AIChatScreen() {
     if (!id) return;
     setHistoryOpen(false);
     setChatId(id);
+    setActiveAIChatId(role, id);
     const detail = await fetchAIChat(id);
     setMessages(detail.messages ?? []);
   };
 
   const newChat = () => {
     setChatId(undefined);
+    setActiveAIChatId(role);
     setMessages([]);
     setHistoryOpen(false);
   };
 
   const submit = (override?: string) => {
     const message = (override ?? input).trim();
-    if (!message || send.isPending) return;
-    send.mutate(message);
+    if ((!message && !attachments.length) || send.isPending) return;
+    send.mutate(message || 'Please analyze the attached file(s).');
   };
+
+  const uploadSelected = async (files: Array<{uri:string;name:string;type:string}>) => {
+    if (!files.length) return; setUploading(true); setFailedFiles([]);
+    try { const result = await uploadFiles('ai-chat', files); const uploaded = result.uploads ?? result.files ?? []; if (uploaded.length !== files.length) throw new Error('Some files were not uploaded.'); setAttachments(current => [...current, ...uploaded]); }
+    catch (error) { setFailedFiles(files); Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload files.'); }
+    finally { setUploading(false); }
+  };
+  const pickImages = async () => { const result = await launchImageLibrary({mediaType:'photo',selectionLimit:5,quality:0.8}); await uploadSelected((result.assets??[]).filter(a=>a.uri).map(a=>({uri:a.uri!,name:a.fileName??`ai-${Date.now()}.jpg`,type:a.type??'image/jpeg'}))); };
+  const pickDocuments = async () => { const files = await pick({allowMultiSelection:true,type:[documentTypes.pdf,documentTypes.doc,documentTypes.docx,documentTypes.xls,documentTypes.xlsx]}); await uploadSelected(files.map(file=>({uri:file.uri,name:file.name??`document-${Date.now()}`,type:file.type??'application/octet-stream'}))); };
 
   const archiveChat = async () => {
     if (!chatId) return;
@@ -147,9 +175,12 @@ function AIChatScreen() {
           </Pressable>
         ))}
       </View>
+      {attachments.length || uploading || failedFiles.length ? <View style={styles.attachmentTray}>{attachments.map((file,index)=><View key={`${file.url}-${index}`} style={styles.attachmentChip}><Icon name={file.mimeType?.startsWith('image/')?'image-outline':'file-document-outline'} size={16} color={colors.primary}/><Text numberOfLines={1} style={styles.attachmentName}>{file.name??`Attachment ${index+1}`}</Text><Pressable onPress={()=>setAttachments(current=>current.filter((_,i)=>i!==index))}><Icon name="close-circle" size={17} color={colors.rose}/></Pressable></View>)}{uploading?<View style={styles.uploadState}><ActivityIndicator size="small" color={colors.primary}/><Text style={styles.uploadText}>Uploading to Cloudinary…</Text></View>:null}{failedFiles.length?<Pressable onPress={()=>uploadSelected(failedFiles)} style={styles.retry}><Icon name="refresh" size={15} color={colors.rose}/><Text style={styles.retryText}>Retry upload</Text></Pressable>:null}</View>:null}
       <View style={styles.composer}>
+        <Pressable onPress={pickImages} disabled={uploading} style={styles.attachButton}><Icon name="image-plus" size={21} color={colors.primaryDark}/></Pressable>
+        <Pressable onPress={pickDocuments} disabled={uploading} style={styles.attachButton}><Icon name="paperclip" size={21} color={colors.primaryDark}/></Pressable>
         <TextInput value={input} onChangeText={setInput} multiline placeholder="Message EsyGlob AI" placeholderTextColor={colors.muted} style={styles.input} />
-        <Pressable disabled={!input.trim() || send.isPending} onPress={() => submit()} style={[styles.send, (!input.trim() || send.isPending) && styles.sendDisabled]}>
+        <Pressable disabled={(!input.trim() && !attachments.length) || send.isPending || uploading} onPress={() => submit()} style={[styles.send, ((!input.trim() && !attachments.length) || send.isPending || uploading) && styles.sendDisabled]}>
           {send.isPending ? <ActivityIndicator color="#fff" /> : <Icon name="send" size={18} color="#fff" />}
         </Pressable>
       </View>
@@ -266,6 +297,14 @@ const styles = StyleSheet.create({
   pluginChip: { alignItems: 'center', backgroundColor: '#fff8f3', borderRadius: radii.pill, flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   pluginText: { color: colors.primaryDark, fontSize: 11, fontWeight: '900' },
   composer: { alignItems: 'flex-end', backgroundColor: colors.card, flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
+  attachButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 28 },
+  attachmentTray: { backgroundColor: colors.card, borderTopColor: colors.faint, borderTopWidth: StyleSheet.hairlineWidth, gap: 6, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+  attachmentChip: { alignItems: 'center', backgroundColor: colors.cardMuted, borderRadius: radii.sm, flexDirection: 'row', gap: 7, paddingHorizontal: 10, paddingVertical: 8 },
+  attachmentName: { color: colors.ink, flex: 1, fontSize: 11, fontWeight: '800' },
+  uploadState: { alignItems: 'center', flexDirection: 'row', gap: 7 },
+  uploadText: { color: colors.muted, fontSize: 11, fontWeight: '700' },
+  retry: { alignItems: 'center', flexDirection: 'row', gap: 5 },
+  retryText: { color: colors.rose, fontSize: 11, fontWeight: '900' },
   input: { backgroundColor: colors.cardMuted, borderRadius: radii.md, color: colors.ink, flex: 1, maxHeight: 120, minHeight: 46, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   send: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, height: 46, justifyContent: 'center', width: 46 },
   sendDisabled: { opacity: 0.55 },

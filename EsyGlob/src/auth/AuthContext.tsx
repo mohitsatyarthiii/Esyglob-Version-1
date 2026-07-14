@@ -5,6 +5,7 @@ import { CurrentUser, UserRole } from '../api/types';
 import { appStorage, writeJson } from '../storage/appStorage';
 import { useQueryClient } from '@tanstack/react-query';
 import { disconnectRealtime } from '../realtime/socket';
+import { clearAISessions } from '../ai/aiSession';
 
 const USER_KEY = 'auth.user';
 
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
     clearAuthTokens();
     clearSessionCookie();
+    clearAISessions();
     appStorage.clearAll();
     setSessionVersion(value => value + 1);
   }, [queryClient]);

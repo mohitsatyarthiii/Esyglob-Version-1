@@ -157,6 +157,9 @@ class AIChatController {
 
       sendSSE({ type: 'start', chatId: String(chat._id) });
       sendSSE({ type: 'typing' });
+      const heartbeat = setInterval(() => {
+        if (!res.writableEnded) res.write(': keep-alive\n\n');
+      }, 10_000);
 
       try {
         // Build platform context
@@ -183,10 +186,10 @@ class AIChatController {
               const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 45000)),
+                signal: AbortSignal.timeout(Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 90000)),
                 body: JSON.stringify({
                   model: OLLAMA_MODEL,
-                  keep_alive: '30m',
+                  keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
                   messages: [{ role: 'user', content: message }],
                   stream: true,
                   options: {
@@ -319,6 +322,7 @@ class AIChatController {
         console.error('[Stream] Error:', error);
         sendSSE({ type: 'error', message: 'An error occurred during streaming' });
       } finally {
+        clearInterval(heartbeat);
         res.end();
       }
     } catch (error) {

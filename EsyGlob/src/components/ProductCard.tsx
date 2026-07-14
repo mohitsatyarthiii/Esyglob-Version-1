@@ -135,6 +135,12 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
               iconColor={PALETTE.muted}
             />
           )}
+          <Pressable
+            accessibilityLabel="Search using a product image"
+            onPress={event => { event.stopPropagation(); navigation.navigate('ImageSearch', { productId }); }}
+            style={styles.imageSearchBtn}>
+            <Icon name="camera-outline" size={15} color={PALETTE.primary} />
+          </Pressable>
 
           {/* Verified badge */}
           {verified && (
@@ -284,6 +290,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  imageSearchBtn: { position: 'absolute', top: 38, right: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 14, width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
 
   // Verified
   verifiedBadge: {

@@ -2,8 +2,8 @@ import React, { useMemo } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { useQuery } from '@tanstack/react-query';
-import { fetchAggregatedServiceActivity, ServiceRequest } from '../api/services';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { cancelServiceActivity, fetchAggregatedServiceActivity, ServiceRequest } from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
@@ -13,12 +13,14 @@ function BookedServiceDetailsScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'BookedServiceDetails'>>();
   const { activeRole } = useAuth();
+  const queryClient = useQueryClient();
   const activity = useQuery({
     queryKey: ['service-activity', activeRole],
     queryFn: () => fetchAggregatedServiceActivity(activeRole),
     refetchInterval: 45_000,
   });
   const request = route.params?.request;
+  const cancel = useMutation({ mutationFn: () => { if (!request) throw new Error('Service request is unavailable.'); return cancelServiceActivity(request); }, onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['service-activity'] }); navigation.replace('BookedServiceDetails', { mode: 'list' }); } });
 
   if (route.params?.mode === 'list' || !request) {
     if (activity.isLoading) {
@@ -45,6 +47,7 @@ function BookedServiceDetailsScreen() {
 
   const timeline = buildTimeline(request);
   const canEdit = ['draft', 'submitted', 'pending', 'pending_seller'].includes(String(request.status ?? '').toLowerCase());
+  const canCancel = canEdit && request._serviceSource === 'shipping';
 
   return (
     <View style={styles.screen}>
@@ -95,17 +98,19 @@ function BookedServiceDetailsScreen() {
         <Section title="Admin notes">
           <Text style={styles.bodyText}>{request.notes || 'No admin notes yet. Updates will appear here automatically when the backend status changes.'}</Text>
         </Section>
+        <Section title="Assigned team"><Text style={styles.bodyText}>{String(request.assignedTeam ?? request.assignedProvider ?? request.assignedTo ?? request.providerName ?? 'Assignment pending')}</Text></Section>
+        <Section title="Payment and invoice">
+          <View style={styles.infoRow}><Text style={styles.infoKey}>Payment status</Text><Text style={styles.infoValue}>{String(request.paymentStatus ?? 'Not requested')}</Text></View>
+          <View style={styles.infoRow}><Text style={styles.infoKey}>Payment amount</Text><Text style={styles.infoValue}>{String(request.amount ?? request.totalAmount ?? request.estimatedCost ?? 'Pending quotation')}</Text></View>
+          <View style={styles.infoRow}><Text style={styles.infoKey}>Invoice</Text><Text style={styles.infoValue}>{String(request.invoiceNumber ?? request.invoiceId ?? 'Not generated')}</Text></View>
+        </Section>
         <View style={styles.actionRow}>
-          <Pressable disabled={!canEdit} style={[styles.outlineButton, !canEdit && styles.disabledButton]}>
-            <Icon name="pencil-outline" size={18} color={canEdit ? colors.primaryDark : colors.muted} />
-            <Text style={[styles.outlineText, !canEdit && styles.disabledText]}>{canEdit ? 'Edit' : 'Editing locked'}</Text>
-          </Pressable>
-          <Pressable disabled={!canEdit} style={[styles.outlineButton, !canEdit && styles.disabledButton]}>
-            <Icon name="close-circle-outline" size={18} color={canEdit ? colors.rose : colors.muted} />
-            <Text style={[styles.cancelText, !canEdit && styles.disabledText]}>Cancel Request</Text>
+          <Pressable disabled={!canCancel || cancel.isPending} onPress={() => cancel.mutate()} style={[styles.outlineButton, !canCancel && styles.disabledButton]}>
+            <Icon name="close-circle-outline" size={18} color={canCancel ? colors.rose : colors.muted} />
+            <Text style={[styles.cancelText, !canCancel && styles.disabledText]}>{cancel.isPending ? 'Cancelling…' : 'Cancel Request'}</Text>
           </Pressable>
         </View>
-        {!canEdit ? <Text style={styles.lockReason}>Editing is unavailable after review or processing starts.</Text> : null}
+        {!canCancel ? <Text style={styles.lockReason}>Direct cancellation is available only for eligible shipment bookings. Contact support for managed services.</Text> : null}
       </ScrollView>
     </View>
   );

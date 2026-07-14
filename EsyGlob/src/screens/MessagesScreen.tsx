@@ -456,6 +456,9 @@ function MessagesScreen() {
             : 'Chats'}
         </Text>
         <View style={styles.headerActions}>
+          <TouchableOpacity onPress={() => navigation.navigate('BlockedContacts')} style={styles.headerBtn}>
+            <Icon name="account-cancel-outline" size={20} color={P.textSecondary} />
+          </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => setUnreadOnly(v => !v)} 
             style={[styles.headerBtn, unreadOnly && styles.headerBtnActive]}

@@ -52,6 +52,11 @@ import AppErrorBoundary from './src/components/AppErrorBoundary';
 import CurrencyProvider from './src/currency/CurrencyContext';
 import LocationScreen from './src/screens/LocationScreen';
 import HelpSupportScreen from './src/screens/HelpSupportScreen';
+import ImageSearchScreen from './src/screens/ImageSearchScreen';
+import ImageSearchResultsScreen from './src/screens/ImageSearchResultsScreen';
+import EsyCalculatorScreen from './src/screens/EsyCalculatorScreen';
+import BlockedContactsScreen from './src/screens/BlockedContactsScreen';
+import ServiceHubScreen from './src/screens/ServiceHubScreen';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -91,6 +96,11 @@ export type RootStackParamList = {
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ShippingLogistics: undefined;
   Location: undefined;
+  ImageSearch: { productId?: string } | undefined;
+  ImageSearchResults: { imageUrl: string };
+  EsyCalculator: undefined;
+  BlockedContacts: undefined;
+  ServiceHub: { hubKey: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -226,6 +236,11 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
               <Stack.Screen name="Location" component={LocationScreen} />
+              <Stack.Screen name="ImageSearch" component={ImageSearchScreen} />
+              <Stack.Screen name="ImageSearchResults" component={ImageSearchResultsScreen} />
+              <Stack.Screen name="EsyCalculator" component={EsyCalculatorScreen} />
+              <Stack.Screen name="BlockedContacts" component={BlockedContactsScreen} />
+              <Stack.Screen name="ServiceHub" component={ServiceHubScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>

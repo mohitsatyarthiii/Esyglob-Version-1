@@ -388,6 +388,8 @@ export type Chat = {
   }>;
   quotationId?: Quotation | string;
   isActive?: boolean;
+  buyerBlockedAt?: string | null;
+  sellerBlockedAt?: string | null;
 };
 
 export type MessageItem = {

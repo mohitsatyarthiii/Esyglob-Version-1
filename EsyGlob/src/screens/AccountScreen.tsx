@@ -17,7 +17,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchChats, fetchNotifications, fetchRFQs } from '../api/marketplace';
+import { fetchChats, fetchNotifications, fetchRFQs, fetchSellerOnboarding } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { LoadingState } from '../components/StateViews';
@@ -285,6 +285,7 @@ function AccountScreen() {
   const notifQ = useQuery({ queryKey: ['acc-notif', role], queryFn: fetchNotifications, enabled: status === 'authenticated', ...QO, select: (d: any) => ({ unread: Array.isArray(d) ? d.filter((i: any) => !i.isRead).length : 0 }) });
   const rfqQ = useQuery({ queryKey: ['acc-rfq', role], queryFn: () => fetchRFQs({ scope: role, limit: 1 }), enabled: status === 'authenticated', ...QO, select: (d: any) => ({ count: d?.pagination?.total ?? d?.rfqs?.length ?? 0 }) });
   const chatQ = useQuery({ queryKey: ['acc-chat', role], queryFn: () => fetchChats(role), enabled: status === 'authenticated', ...QO, select: (d: any) => ({ count: Array.isArray(d) ? d.length : 0 }) });
+  const verificationQ = useQuery({ queryKey: ['seller-onboarding'], queryFn: fetchSellerOnboarding, enabled: status === 'authenticated' && role === 'seller', staleTime: 20_000 });
 
   const unread = notifQ.data?.unread ?? 0;
   const rfqs = rfqQ.data?.count ?? 0;
@@ -390,24 +391,7 @@ function AccountScreen() {
           </View>
         )}
 
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Icon name="file-document-outline" size={18} color={P.primary} />
-            {rfqQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{rfqs}</Text>}
-            <Text style={styles.statLbl}>Active RFQs</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Icon name="message-text-outline" size={18} color={P.emerald} />
-            {chatQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{chats}</Text>}
-            <Text style={styles.statLbl}>Messages</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Icon name="bell-outline" size={18} color={P.red} />
-            {notifQ.isLoading ? <ActivityIndicator size="small" color={P.muted} /> : <Text style={styles.statVal}>{unread}</Text>}
-            <Text style={styles.statLbl}>Alerts</Text>
-          </View>
-        </View>
+        {role === 'seller' && verificationQ.data ? (() => { const data = verificationQ.data as any; const summary = data.verificationCenter?.summary ?? data.verificationCenter ?? data.completion ?? {}; const completion = Number(summary.completionPercentage ?? summary.percentage ?? 0); const trust = Number(summary.overallTrustScore ?? data.seller?.trustScore ?? 0); const level = summary.currentLevel ?? summary.verificationLevel ?? data.seller?.verificationLevel ?? 'Starter'; const complete = completion >= 100 || String(data.seller?.verificationStatus).toLowerCase() === 'verified'; return <Pressable onPress={() => nav.navigate('SellerOnboarding')} style={[styles.verificationCard, complete && styles.verificationComplete]}><View style={[styles.verificationIcon, complete && styles.verificationIconComplete]}><Icon name={complete?'check-decagram':'shield-star-outline'} size={25} color={complete?'#FFF':P.primary}/></View><View style={{flex:1}}><Text style={[styles.verificationTitle,complete&&styles.verificationTitleComplete]}>{complete?'Verification Completed':'Seller verification'}</Text><Text style={[styles.verificationMeta,complete&&styles.verificationMetaComplete]}>Trust {trust}/100 · Level {String(level)}{!complete?` · ${Math.max(0,100-completion)}% remaining`:''}</Text>{!complete?<View style={styles.verificationTrack}><View style={[styles.verificationFill,{width:`${Math.min(100,completion)}%`}]}/></View>:null}</View><Icon name="chevron-right" size={20} color={complete?'#FFF':P.muted}/></Pressable>; })() : null}
 
         {/* Quick Actions */}
         <View style={styles.quickRow}>
@@ -509,6 +493,16 @@ function AccountScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: P.bg },
   scrollView: { flex: 1 },
+  verificationCard: { alignItems: 'center', backgroundColor: P.surface, borderColor: '#FED7AA', borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 12, marginBottom: 14, padding: 14 },
+  verificationComplete: { backgroundColor: '#047857', borderColor: '#047857' },
+  verificationIcon: { alignItems: 'center', backgroundColor: P.primaryLight, borderRadius: 13, height: 46, justifyContent: 'center', width: 46 },
+  verificationIconComplete: { backgroundColor: 'rgba(255,255,255,.18)' },
+  verificationTitle: { color: P.ink, fontSize: 14, fontWeight: '900' },
+  verificationTitleComplete: { color: '#FFF' },
+  verificationMeta: { color: P.muted, fontSize: 10, fontWeight: '700', marginTop: 3 },
+  verificationMetaComplete: { color: '#D1FAE5' },
+  verificationTrack: { backgroundColor: '#FFEDD5', borderRadius: 4, height: 6, marginTop: 8, overflow: 'hidden' },
+  verificationFill: { backgroundColor: P.primary, borderRadius: 4, height: 6 },
 
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: STATUSBAR_H + 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: P.surface, borderBottomWidth: 1, borderBottomColor: P.border, zIndex: 10 },

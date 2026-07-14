@@ -38,6 +38,7 @@ import { spacing } from '../theme';
 import { getId, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
 import { streamAIChat } from '../api/ai';
+import { getActiveAIChatId, setActiveAIChatId } from '../ai/aiSession';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -83,12 +84,10 @@ type ExploreAction = {
 };
 
 const EXPLORE_ACTIONS: ExploreAction[] = [
-  { icon: 'robot', title: 'AI Chat', color: '#6366F1', bg: '#EEF2FF', route: 'AIChat' },
-  { icon: 'account-search', title: 'Suppliers', color: '#10B981', bg: '#ECFDF5', route: 'Sellers' },
-  { icon: 'clipboard-list', title: 'RFQ', color: '#F59E0B', bg: '#FFFBEB', route: 'RFQCreate' },
-  { icon: 'chart-line', title: 'Insights', color: '#8B5CF6', bg: '#F5F3FF', route: 'MarketInsights' },
-  { icon: 'briefcase-check', title: 'Trade', color: '#F26A21', bg: '#FFF7ED', route: 'Services' },
-  { icon: 'truck-delivery', title: 'Logistics', color: '#06B6D4', bg: '#F0F9FF', route: 'ShippingLogistics' },
+  { icon: 'clipboard-list', title: 'Create RFQ', color: '#F59E0B', bg: '#FFFBEB', route: 'RFQCreate' },
+  { icon: 'calculator-variant-outline', title: 'Esy Calculator', color: '#6366F1', bg: '#EEF2FF', route: 'EsyCalculator' },
+  { icon: 'shape-outline', title: 'Explore Categories', color: '#10B981', bg: '#ECFDF5', route: 'Categories' },
+  { icon: 'camera-outline', title: 'QR / Image Search', color: '#F26A21', bg: '#FFF7ED', route: 'ImageSearch' },
 ];
 
 const CACHE_CONFIG = { staleTime: 5 * 60_000, gcTime: 30 * 60_000, retry: 2 };
@@ -203,7 +202,7 @@ function HomeScreen() {
     },
   ]);
   const [inputText, setInputText] = useState('');
-  const [chatId, setChatId] = useState<string | undefined>();
+  const [chatId, setChatId] = useState<string | undefined>(() => getActiveAIChatId('buyer'));
   const [isStreaming, setIsStreaming] = useState(false);
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -280,7 +279,7 @@ function HomeScreen() {
     try {
       await streamAIChat({ message: trimmed, displayMessage: trimmed, chatId, role: 'buyer', conversationType: 'assistant', context: { feature: 'Home AI', sourcePath: '/mobile/home/ai' } }, chunk => {
         if (chunk.type === 'token') { full += String(chunk.content ?? ''); setMessages(prev => { const u = [...prev]; const l = u[u.length - 1]; if (l?.isStreaming) u[u.length - 1] = { ...l, content: full }; return u; }); }
-        if ((chunk.type === 'start' || chunk.type === 'done') && typeof chunk.chatId === 'string') setChatId(chunk.chatId);
+        if ((chunk.type === 'start' || chunk.type === 'done') && typeof chunk.chatId === 'string') { setChatId(chunk.chatId); setActiveAIChatId('buyer', chunk.chatId); }
         if (chunk.type === 'error') full = String(chunk.message ?? 'AI response failed.');
       });
     } catch (e: any) { full = `❌ ${e.message}`; }
@@ -292,6 +291,7 @@ function HomeScreen() {
   const resetChat = useCallback(() => {
     setMessages([{ id: 'welcome', role: 'assistant', content: "👋 Hello! I'm your EsyGlob AI assistant. How can I help you today?", timestamp: Date.now() }]);
     setChatId(undefined);
+    setActiveAIChatId('buyer');
   }, []);
 
   const showSuggestions = messages.length === 1 && !isStreaming;
@@ -532,7 +532,7 @@ const CategorySlider = React.memo(({ categories, loading, navigation }: any) => 
   return (
     <View style={styles.sectionWrap}>
       <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>Categories</Text><Pressable onPress={() => navigation.navigate('Categories')}><Text style={styles.seeAll}>See all</Text></Pressable></View>
-      <FlatList data={categories.slice(0, 16)} horizontal keyExtractor={(item: Category) => getStableKey(item)} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}
+      <FlatList data={categories.slice(0, 30)} horizontal initialNumToRender={10} maxToRenderPerBatch={8} windowSize={5} keyExtractor={(item: Category) => getStableKey(item)} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRail}
         renderItem={({ item }) => (
           <Pressable onPress={() => navigation.navigate('ProductListing', { category: item.name ?? item.slug, categoryName: item.name })} style={styles.categoryItem}>
             <View style={styles.categoryIconWrap}>{firstImage(item.image, item.icon) ? <RemoteImage uri={firstImage(item.image, item.icon)} width={64} height={64} style={styles.categoryIcon} /> : <Icon name="view-grid-outline" size={20} color={P.primary} />}</View>
