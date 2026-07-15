@@ -601,10 +601,13 @@ function AccountScreen() {
     qc.invalidateQueries({ queryKey: ['acc-rfq'] });
     qc.invalidateQueries({ queryKey: ['acc-chat'] });
   };
-  const go = (label: string) =>
-    label === 'My Bookings'
-      ? nav.navigate('BookedServiceDetails', { mode: 'list' })
-      : nav.navigate(NAV[label] || 'Home');
+  const go = (label: string) => {
+    if (label === 'My Bookings')
+      return nav.navigate('BookedServiceDetails', { mode: 'list' });
+    if (label === 'Subscription')
+      return nav.navigate('SubscriptionCenter', { role });
+    return nav.navigate(NAV[label] || 'Home');
+  };
 
   if (authMode)
     return (

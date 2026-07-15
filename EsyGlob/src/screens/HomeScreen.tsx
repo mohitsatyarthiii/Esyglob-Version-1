@@ -577,6 +577,8 @@ const ProductSection = React.memo(({ title, products: items, loading, navigation
   );
 });
 
+// ─── SellerCard Component (Replace karo existing SellerCard se) ─────────────
+
 const SellerCard = React.memo(({ seller, navigation }: any) => {
   const verified = seller.isVerified || seller.verificationStatus === 'verified';
   const title = seller.companyName ?? seller.businessName ?? seller.displayName ?? 'Supplier';
@@ -590,178 +592,222 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
     seller.logoUrl,
     seller.factoryImages,
   );
-  const previewImages: string[] = (seller.factoryImages ?? []).filter(Boolean).slice(0, 3);
+  const previewImages: string[] = (seller.factoryImages ?? []).filter(Boolean).slice(0, 2);
   const rating = seller.rating ? Number(seller.rating).toFixed(1) : null;
   const trustScore = seller.trustScore ?? null;
-  const categories = (seller.mainCategories ?? []).slice(0, 3);
+  const categories = (seller.mainCategories ?? []).slice(0, 4);
   const description = seller.companyIntroduction ?? seller.description ?? '';
   const responseTime = seller.responseTime ?? seller.averageResponseTimeHours
-    ? `⚡ ${seller.averageResponseTimeHours}h response`
+    ? `${seller.averageResponseTimeHours}h response`
     : seller.responseRate
-    ? `📞 ${seller.responseRate} response`
+    ? `${seller.responseRate} rate`
+    : null;
+  const productCount = seller.productCount ?? seller.totalProducts ?? 0;
+  const yearsInBusiness = seller.yearsInBusiness ?? seller.establishedYear 
+    ? new Date().getFullYear() - (seller.establishedYear || new Date().getFullYear())
     : null;
 
-  // Rotate gradient accent per card (based on seller ID hash)
-  const gradients = [
-    ['#667EEA', '#764BA2'], // Purple
-    ['#F093FB', '#F5576C'], // Pink
-    ['#4FACFE', '#00F2FE'], // Cyan
-    ['#43E97B', '#38F9D7'], // Green
-    ['#FA709A', '#FEE140'], // Peach
-    ['#A18CD1', '#FBC2EB'], // Lavender
+  // Blue shades for card theming
+  const blueShades = [
+    { primary: '#1E40AF', light: '#EFF6FF', accent: '#3B82F6', dark: '#1E3A5F' },
+    { primary: '#1D4ED8', light: '#EEF2FF', accent: '#4F46E5', dark: '#1E3A8A' },
+    { primary: '#2563EB', light: '#F0F4FF', accent: '#60A5FA', dark: '#1E40AF' },
+    { primary: '#3730A3', light: '#F5F3FF', accent: '#6366F1', dark: '#312E81' },
   ];
   const hash = sellerId.split('').reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
-  const [grad1] = gradients[hash % gradients.length];
+  const theme = blueShades[hash % blueShades.length];
 
   return (
     <Pressable
       onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
-      style={({ pressed }) => [styles.sellerCard, pressed && styles.pressed]}>
-      
-      {/* Accent gradient line at top */}
-      <View style={[styles.accentLine, { backgroundColor: grad1 }]} />
-
-      {/* ── Header ── */}
-      <View style={styles.sellerHeader}>
-        <View style={styles.logoWrap}>
-          <RemoteImage
-            uri={sellerImage}
-            width={64}
-            height={64}
-            style={styles.sellerLogo}
-            fallback={
-              <View style={[styles.sellerLogoFallback, { backgroundColor: grad1 + '20' }]}>
-                <Text style={[styles.sellerLogoText, { color: grad1 }]}>
-                  {title.slice(0, 2).toUpperCase()}
-                </Text>
-              </View>
-            }
-          />
-          {verified && (
-            <View style={styles.verifiedDot}>
-              <Icon name="check" size={10} color="#FFF" />
-            </View>
-          )}
+      style={({ pressed }) => [
+        sellerStyles.card,
+        pressed && sellerStyles.cardPressed,
+      ]}
+    >
+      {/* ── Top Blue Header Section ── */}
+      <View style={[sellerStyles.blueHeader, { backgroundColor: theme.primary }]}>
+        {/* Background pattern dots */}
+        <View style={sellerStyles.headerPattern}>
+          <View style={[sellerStyles.patternDot, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
+          <View style={[sellerStyles.patternDot, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+          <View style={[sellerStyles.patternDot, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />
         </View>
 
-        <View style={styles.sellerIdentity}>
-          <View style={styles.nameRow}>
-            <Text style={styles.sellerName} numberOfLines={2}>{title}</Text>
-          </View>
-          
-          {/* Badges */}
-          <View style={styles.badgeRow}>
+        {/* Logo + Company Info */}
+        <View style={sellerStyles.headerContent}>
+          <View style={sellerStyles.logoContainer}>
+            <RemoteImage
+              uri={sellerImage}
+              width={60}
+              height={60}
+              style={sellerStyles.logo}
+              fallback={
+                <View style={[sellerStyles.logoFallback, { backgroundColor: theme.dark }]}>
+                  <Text style={sellerStyles.logoFallbackText}>
+                    {title.slice(0, 2).toUpperCase()}
+                  </Text>
+                </View>
+              }
+            />
             {verified && (
-              <View style={[styles.badge, { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' }]}>
-                <Icon name="check-decagram" size={10} color="#059669" />
-                <Text style={[styles.badgeText, { color: '#059669' }]}>Verified</Text>
+              <View style={sellerStyles.verifiedBadge}>
+                <Icon name="check-decagram" size={14} color="#10B981" />
               </View>
             )}
-            {seller.isTrustedSeller && (
-              <View style={[styles.badge, { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' }]}>
-                <Icon name="shield-check" size={10} color="#D97706" />
-                <Text style={[styles.badgeText, { color: '#D97706' }]}>Trusted</Text>
-              </View>
-            )}
-            {seller.factoryVerified && (
-              <View style={[styles.badge, { backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}>
-                <Icon name="factory" size={10} color="#7C3AED" />
-                <Text style={[styles.badgeText, { color: '#7C3AED' }]}>Factory</Text>
-              </View>
-            )}
+          </View>
+
+          <View style={sellerStyles.companyInfo}>
+            <Text style={sellerStyles.companyName} numberOfLines={2}>{title}</Text>
+            <View style={sellerStyles.locationRow}>
+              <Icon name="map-marker" size={11} color="rgba(255,255,255,0.8)" />
+              <Text style={sellerStyles.locationText} numberOfLines={1}>{location}</Text>
+            </View>
+            
+            {/* Quick badges */}
+            <View style={sellerStyles.quickBadges}>
+              {verified && (
+                <View style={[sellerStyles.miniBadge, { backgroundColor: 'rgba(16,185,129,0.2)' }]}>
+                  <Text style={[sellerStyles.miniBadgeText, { color: '#6EE7B7' }]}>✓ Verified</Text>
+                </View>
+              )}
+              {seller.isTrustedSeller && (
+                <View style={[sellerStyles.miniBadge, { backgroundColor: 'rgba(245,158,11,0.2)' }]}>
+                  <Text style={[sellerStyles.miniBadgeText, { color: '#FBBF24' }]}>★ Trusted</Text>
+                </View>
+              )}
+              {seller.factoryVerified && (
+                <View style={[sellerStyles.miniBadge, { backgroundColor: 'rgba(167,139,250,0.2)' }]}>
+                  <Text style={[sellerStyles.miniBadgeText, { color: '#C4B5FD' }]}>Factory</Text>
+                </View>
+              )}
+            </View>
           </View>
         </View>
       </View>
 
-      {/* ── Stats Dashboard ── */}
-      <View style={styles.statsDashboard}>
-        <View style={styles.statBlock}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#FFF7ED' }]}>
-            <Icon name="star" size={16} color="#F59E0B" />
-          </View>
-          <Text style={styles.statValue}>{rating || '—'}</Text>
-          <Text style={styles.statLabel}>Rating</Text>
+      {/* ── Stats Strip ── */}
+      <View style={sellerStyles.statsStrip}>
+        <View style={sellerStyles.statItem}>
+          <Icon name="star" size={15} color="#F59E0B" />
+          <Text style={sellerStyles.statValue}>{rating || '—'}</Text>
+          <Text style={sellerStyles.statLabel}>Rating</Text>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBlock}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#ECFDF5' }]}>
-            <Icon name="shield-check" size={16} color="#10B981" />
-          </View>
-          <Text style={styles.statValue}>{trustScore ? `${trustScore}%` : '—'}</Text>
-          <Text style={styles.statLabel}>Trust</Text>
+        <View style={sellerStyles.statDivider} />
+        <View style={sellerStyles.statItem}>
+          <Icon name="shield-check" size={15} color="#10B981" />
+          <Text style={sellerStyles.statValue}>{trustScore ? `${trustScore}%` : '—'}</Text>
+          <Text style={sellerStyles.statLabel}>Trust</Text>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBlock}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#F5F3FF' }]}>
-            <Icon name="package-variant-closed" size={16} color="#7C3AED" />
-          </View>
-          <Text style={styles.statValue}>{seller.productCount || '—'}</Text>
-          <Text style={styles.statLabel}>Items</Text>
+        <View style={sellerStyles.statDivider} />
+        <View style={sellerStyles.statItem}>
+          <Icon name="package-variant" size={15} color="#3B82F6" />
+          <Text style={sellerStyles.statValue}>{productCount || '—'}</Text>
+          <Text style={sellerStyles.statLabel}>Products</Text>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statBlock}>
-          <View style={[styles.statIconWrap, { backgroundColor: '#EFF6FF' }]}>
-            <Icon name="calendar-outline" size={16} color="#3B82F6" />
-          </View>
-          <Text style={styles.statValue}>{seller.yearsInBusiness ? `${seller.yearsInBusiness}Y` : '—'}</Text>
-          <Text style={styles.statLabel}>Exp</Text>
+        <View style={sellerStyles.statDivider} />
+        <View style={sellerStyles.statItem}>
+          <Icon name="clock-outline" size={15} color="#8B5CF6" />
+          <Text style={sellerStyles.statValue}>{yearsInBusiness ? `${yearsInBusiness}Y` : '—'}</Text>
+          <Text style={sellerStyles.statLabel}>Experience</Text>
         </View>
       </View>
 
-      {/* ── Quick Info Strips ── */}
-      <View style={styles.quickInfoGrid}>
-        <View style={styles.quickInfoItem}>
-          <Text style={styles.quickInfoEmoji}>📍</Text>
-          <Text style={styles.quickInfoText} numberOfLines={1}>{location}</Text>
+      {/* ── Key Info Points ── */}
+      <View style={sellerStyles.infoGrid}>
+        {/* Response Time */}
+        <View style={sellerStyles.infoPoint}>
+          <View style={[sellerStyles.infoIconCircle, { backgroundColor: '#EFF6FF' }]}>
+            <Icon name="flash" size={13} color={theme.primary} />
+          </View>
+          <View style={sellerStyles.infoTextWrap}>
+            <Text style={sellerStyles.infoLabel}>Response</Text>
+            <Text style={sellerStyles.infoValue}>{responseTime || 'N/A'}</Text>
+          </View>
         </View>
-        {responseTime && (
-          <View style={styles.quickInfoItem}>
-            <Text style={styles.quickInfoEmoji}>⚡</Text>
-            <Text style={styles.quickInfoText} numberOfLines={1}>{responseTime}</Text>
+
+        {/* Employee Count */}
+        <View style={sellerStyles.infoPoint}>
+          <View style={[sellerStyles.infoIconCircle, { backgroundColor: '#F5F3FF' }]}>
+            <Icon name="account-group" size={13} color="#7C3AED" />
           </View>
-        )}
-        {seller.employeeCount && (
-          <View style={styles.quickInfoItem}>
-            <Text style={styles.quickInfoEmoji}>👥</Text>
-            <Text style={styles.quickInfoText} numberOfLines={1}>{seller.employeeCount} employees</Text>
+          <View style={sellerStyles.infoTextWrap}>
+            <Text style={sellerStyles.infoLabel}>Team</Text>
+            <Text style={sellerStyles.infoValue}>
+              {seller.employeeCount ? `${seller.employeeCount}` : '—'}
+            </Text>
           </View>
-        )}
+        </View>
+
+        {/* Annual Revenue */}
+        <View style={sellerStyles.infoPoint}>
+          <View style={[sellerStyles.infoIconCircle, { backgroundColor: '#ECFDF5' }]}>
+            <Icon name="chart-bar" size={13} color="#10B981" />
+          </View>
+          <View style={sellerStyles.infoTextWrap}>
+            <Text style={sellerStyles.infoLabel}>Revenue</Text>
+            <Text style={sellerStyles.infoValue}>
+              {seller.annualRevenue || seller.revenue || '—'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Export Percentage */}
+        <View style={sellerStyles.infoPoint}>
+          <View style={[sellerStyles.infoIconCircle, { backgroundColor: '#FFF7ED' }]}>
+            <Icon name="earth" size={13} color="#F97316" />
+          </View>
+          <View style={sellerStyles.infoTextWrap}>
+            <Text style={sellerStyles.infoLabel}>Export</Text>
+            <Text style={sellerStyles.infoValue}>
+              {seller.exportPercentage ? `${seller.exportPercentage}%` : '—'}
+            </Text>
+          </View>
+        </View>
       </View>
 
-      {/* ── Description ── */}
+      {/* ── About Section (if exists) ── */}
       {description ? (
-        <View style={styles.descWrap}>
-          <Text style={styles.descLabel}>About</Text>
-          <Text style={styles.sellerDesc} numberOfLines={3}>{description}</Text>
+        <View style={sellerStyles.aboutSection}>
+          <Text style={sellerStyles.aboutText} numberOfLines={2}>
+            {description}
+          </Text>
         </View>
       ) : null}
 
       {/* ── Categories ── */}
       {categories.length > 0 && (
-        <View style={styles.chipScroll}>
+        <View style={sellerStyles.categoriesRow}>
           {categories.map((cat: string, i: number) => (
-            <View key={i} style={[styles.catChip, { borderColor: grad1 + '40', backgroundColor: grad1 + '10' }]}>
-              <Text style={[styles.catChipText, { color: grad1 }]}>{cat}</Text>
+            <View key={i} style={[sellerStyles.categoryChip, { backgroundColor: theme.light }]}>
+              <Text style={[sellerStyles.categoryText, { color: theme.primary }]}>{cat}</Text>
             </View>
           ))}
+          {seller.mainCategories?.length > 4 && (
+            <View style={[sellerStyles.categoryChip, { backgroundColor: '#F1F5F9' }]}>
+              <Text style={[sellerStyles.categoryText, { color: '#64748B' }]}>
+                +{seller.mainCategories.length - 4}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
       {/* ── Factory Images ── */}
       {previewImages.length > 0 && (
-        <View style={styles.factoryStrip}>
+        <View style={sellerStyles.factoryRow}>
           {previewImages.map((uri: string, i: number) => (
-            <View key={`${uri}-${i}`} style={styles.factoryImgWrap}>
+            <View key={`${uri}-${i}`} style={sellerStyles.factoryImageWrap}>
               <RemoteImage
                 uri={uri}
-                width={240}
-                height={160}
-                style={styles.factoryImage}
+                width={200}
+                height={120}
+                style={sellerStyles.factoryImage}
               />
               {i === 0 && (
-                <View style={styles.factoryLabel}>
-                  <Icon name="camera" size={8} color="#FFF" />
-                  <Text style={styles.factoryLabelText}>Factory</Text>
+                <View style={sellerStyles.factoryTag}>
+                  <Icon name="factory" size={8} color="#FFF" />
+                  <Text style={sellerStyles.factoryTagText}>Factory</Text>
                 </View>
               )}
             </View>
@@ -769,8 +815,8 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       )}
 
-      {/* ── Footer ── */}
-      <View style={styles.cardFooter}>
+      {/* ── Action Footer ── */}
+      <View style={sellerStyles.footer}>
         <SavedHeartButton
           type="supplier"
           itemId={sellerId}
@@ -779,10 +825,17 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
           iconColor="#94A3B8"
           savedColor="#EF4444"
         />
-        <View style={styles.viewProfileBtn}>
-          <Text style={styles.viewProfileText}>View Profile</Text>
+        <Pressable 
+          style={({ pressed }) => [
+            sellerStyles.viewButton,
+            { backgroundColor: theme.primary },
+            pressed && { opacity: 0.9 },
+          ]}
+          onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
+        >
+          <Text style={sellerStyles.viewButtonText}>View Profile</Text>
           <Icon name="arrow-right" size={14} color="#FFF" />
-        </View>
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -909,111 +962,153 @@ accentLine: {
 },
 
 // ── Header ─────────────────────────────────────────────────────────────
-sellerHeader: {
+// ─── Seller Card Styles ────────────────────────────────────────────────────
+
+sellerCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 16,
+  marginBottom: 14,
+  marginHorizontal: 12,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: '#E2E8F0',
+  shadowColor: '#1E40AF',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.08,
+  shadowRadius: 16,
+  elevation: 4,
+},
+cardPressed: {
+  transform: [{ scale: 0.985 }],
+  shadowOpacity: 0.04,
+  elevation: 2,
+},
+
+// ── Blue Header Section ─────────────────────────────────────────────────
+blueHeader: {
+  padding: 14,
+  position: 'relative',
+  overflow: 'hidden',
+},
+headerPattern: {
+  position: 'absolute',
+  top: -20,
+  right: -20,
+  flexDirection: 'row',
+  gap: 8,
+  transform: [{ rotate: '15deg' }],
+},
+patternDot: {
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+},
+headerContent: {
   flexDirection: 'row',
   gap: 12,
-  padding: 14,
-  paddingBottom: 10,
 },
-logoWrap: {
+logoContainer: {
   position: 'relative',
+  flexShrink: 0,
 },
-sellerLogo: {
-  width: 64,
-  height: 64,
-  borderRadius: 16,
-  backgroundColor: '#F1F5F9',
+logo: {
+  width: 60,
+  height: 60,
+  borderRadius: 14,
+  borderWidth: 2,
+  borderColor: 'rgba(255,255,255,0.4)',
+  backgroundColor: 'rgba(255,255,255,0.1)',
 },
-sellerLogoFallback: {
-  width: 64,
-  height: 64,
-  borderRadius: 16,
+logoFallback: {
+  width: 60,
+  height: 60,
+  borderRadius: 14,
   alignItems: 'center',
   justifyContent: 'center',
+  borderWidth: 2,
+  borderColor: 'rgba(255,255,255,0.4)',
 },
-sellerLogoText: {
-  fontSize: 22,
+logoFallbackText: {
+  fontSize: 20,
   fontWeight: '800',
+  color: '#FFF',
 },
-verifiedDot: {
+verifiedBadge: {
   position: 'absolute',
-  bottom: -2,
-  right: -2,
-  width: 20,
-  height: 20,
-  borderRadius: 10,
-  backgroundColor: '#10B981',
+  bottom: -4,
+  right: -4,
+  width: 22,
+  height: 22,
+  borderRadius: 11,
+  backgroundColor: '#FFF',
   alignItems: 'center',
   justifyContent: 'center',
-  borderWidth: 2.5,
-  borderColor: '#FFF',
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.15,
+  shadowRadius: 4,
+  elevation: 3,
 },
-sellerIdentity: {
+companyInfo: {
   flex: 1,
   justifyContent: 'center',
 },
-nameRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 6,
-},
-sellerName: {
+companyName: {
   fontSize: 15,
   fontWeight: '700',
-  color: '#0F172A',
-  lineHeight: 20,
+  color: '#FFFFFF',
+  lineHeight: 19,
+  marginBottom: 3,
   letterSpacing: -0.2,
-  flex: 1,
 },
-badgeRow: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  gap: 5,
-  marginTop: 6,
-},
-badge: {
+locationRow: {
   flexDirection: 'row',
   alignItems: 'center',
   gap: 3,
-  borderRadius: 5,
-  paddingHorizontal: 6,
-  paddingVertical: 3,
-  borderWidth: 1,
+  marginBottom: 6,
 },
-badgeText: {
-  fontSize: 9,
+locationText: {
+  fontSize: 10,
+  color: 'rgba(255,255,255,0.85)',
+  fontWeight: '500',
+  flex: 1,
+},
+quickBadges: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  gap: 4,
+},
+miniBadge: {
+  borderRadius: 4,
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+},
+miniBadgeText: {
+  fontSize: 8.5,
   fontWeight: '700',
 },
 
-// ── Stats Dashboard ────────────────────────────────────────────────────
-statsDashboard: {
+// ── Stats Strip ─────────────────────────────────────────────────────────
+statsStrip: {
   flexDirection: 'row',
   backgroundColor: '#F8FAFC',
-  marginHorizontal: 14,
-  borderRadius: 14,
   paddingVertical: 12,
-  borderWidth: 1,
-  borderColor: '#E8ECF2',
+  paddingHorizontal: 4,
+  borderBottomWidth: 1,
+  borderBottomColor: '#E2E8F0',
 },
-statBlock: {
+statItem: {
   flex: 1,
   alignItems: 'center',
-  gap: 3,
-},
-statIconWrap: {
-  width: 32,
-  height: 32,
-  borderRadius: 10,
-  alignItems: 'center',
-  justifyContent: 'center',
+  gap: 2,
 },
 statValue: {
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: '700',
   color: '#0F172A',
 },
 statLabel: {
-  fontSize: 9,
+  fontSize: 8.5,
   fontWeight: '600',
   color: '#94A3B8',
   textTransform: 'uppercase',
@@ -1021,53 +1116,150 @@ statLabel: {
 },
 statDivider: {
   width: 1,
-  height: 36,
+  height: 30,
   backgroundColor: '#E2E8F0',
   alignSelf: 'center',
 },
 
-// ── Quick Info ─────────────────────────────────────────────────────────
-quickInfoGrid: {
+// ── Key Info Grid ───────────────────────────────────────────────────────
+infoGrid: {
   flexDirection: 'row',
   flexWrap: 'wrap',
+  paddingHorizontal: 12,
+  paddingVertical: 10,
   gap: 8,
-  paddingHorizontal: 14,
-  marginTop: 10,
 },
-quickInfoItem: {
+infoPoint: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+  width: '47%',
+  backgroundColor: '#F8FAFC',
+  borderRadius: 10,
+  padding: 8,
+  borderWidth: 1,
+  borderColor: '#F1F5F9',
+},
+infoIconCircle: {
+  width: 30,
+  height: 30,
+  borderRadius: 8,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+},
+infoTextWrap: {
+  flex: 1,
+},
+infoLabel: {
+  fontSize: 9,
+  fontWeight: '600',
+  color: '#94A3B8',
+  textTransform: 'uppercase',
+  letterSpacing: 0.3,
+  marginBottom: 1,
+},
+infoValue: {
+  fontSize: 11,
+  fontWeight: '700',
+  color: '#0F172A',
+},
+
+// ── About Section ───────────────────────────────────────────────────────
+aboutSection: {
+  paddingHorizontal: 14,
+  paddingBottom: 8,
+},
+aboutText: {
+  fontSize: 11.5,
+  color: '#64748B',
+  lineHeight: 16,
+  fontWeight: '500',
+},
+
+// ── Categories ─────────────────────────────────────────────────────────
+categoriesRow: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  gap: 5,
+  paddingHorizontal: 14,
+  paddingVertical: 8,
+},
+categoryChip: {
+  borderRadius: 6,
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+},
+categoryText: {
+  fontSize: 9.5,
+  fontWeight: '700',
+},
+
+// ── Factory Images ─────────────────────────────────────────────────────
+factoryRow: {
+  flexDirection: 'row',
+  gap: 6,
+  paddingHorizontal: 14,
+  paddingBottom: 8,
+},
+factoryImageWrap: {
+  flex: 1,
+  position: 'relative',
+  borderRadius: 10,
+  overflow: 'hidden',
+  backgroundColor: '#F1F5F9',
+},
+factoryImage: {
+  width: '100%',
+  height: 80,
+  borderRadius: 10,
+},
+factoryTag: {
+  position: 'absolute',
+  top: 6,
+  left: 6,
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 3,
+  backgroundColor: 'rgba(0,0,0,0.65)',
+  borderRadius: 4,
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+},
+factoryTagText: {
+  fontSize: 7,
+  fontWeight: '700',
+  color: '#FFF',
+},
+
+// ── Footer ─────────────────────────────────────────────────────────────
+footer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  backgroundColor: '#F8FAFC',
+  borderTopWidth: 1,
+  borderTopColor: '#E2E8F0',
+},
+viewButton: {
   flexDirection: 'row',
   alignItems: 'center',
   gap: 4,
-  flex: 1,
-  minWidth: '40%',
-},
-quickInfoEmoji: {
-  fontSize: 13,
-},
-quickInfoText: {
-  fontSize: 11,
-  fontWeight: '500',
-  color: '#64748B',
-  flex: 1,
-},
-
-// ── Description ────────────────────────────────────────────────────────
-descWrap: {
+  borderRadius: 8,
   paddingHorizontal: 14,
-  marginTop: 10,
+  paddingVertical: 8,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+  shadowRadius: 4,
+  elevation: 2,
 },
-descLabel: {
-  fontSize: 10,
+viewButtonText: {
+  fontSize: 11,
   fontWeight: '700',
-  color: '#94A3B8',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-  marginBottom: 4,
-},
-sellerDesc: {
-  fontSize: 12.5,
-  color: '#475569',
-  lineHeight: 18,
+  color: '#FFF',
 },
 
 // ── Categories ─────────────────────────────────────────────────────────
@@ -1101,12 +1293,6 @@ factoryImgWrap: {
   position: 'relative',
   borderRadius: 10,
   overflow: 'hidden',
-},
-factoryImage: {
-  width: '100%',
-  height: 85,
-  borderRadius: 10,
-  backgroundColor: '#F1F5F9',
 },
 factoryLabel: {
   position: 'absolute',

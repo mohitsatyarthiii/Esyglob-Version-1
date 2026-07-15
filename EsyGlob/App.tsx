@@ -101,7 +101,7 @@ export type RootStackParamList = {
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
   Tracking: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ServiceBookingSuccess: { request: ServiceRequest };
-  SubscriptionCenter: undefined;
+  SubscriptionCenter: { role?: 'buyer' | 'seller' } | undefined;
   DocumentationManagement: undefined;
   ProductSimilarSearch: { productId: string };
   ShippingLogistics: undefined;

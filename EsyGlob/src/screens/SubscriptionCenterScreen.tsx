@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import RazorpayCheckout from 'react-native-razorpay';
@@ -26,9 +26,15 @@ import { ErrorState, LoadingState } from '../components/StateViews';
 
 export default function SubscriptionCenterScreen() {
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
   const qc = useQueryClient();
   const { activeRole } = useAuth();
-  const role = activeRole === 'seller' ? 'seller' : 'buyer';
+  const role =
+    route.params?.role === 'seller' || route.params?.role === 'buyer'
+      ? route.params.role
+      : activeRole === 'seller'
+        ? 'seller'
+        : 'buyer';
   const [cycle, setCycle] = useState<BillingCycle>('monthly');
   const overview = useQuery({
     queryKey: ['subscription', role],

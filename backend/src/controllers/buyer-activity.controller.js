@@ -32,10 +32,6 @@ class BuyerActivityController {
    */
   static async getSavedItems(req, res) {
     try {
-      if (!req.user?.roles?.includes('buyer')) {
-        return res.status(403).json({ error: 'Buyer access required' });
-      }
-
       const result = await BuyerActivityService.getSavedItems(
         req.user._id, req.query
       );
@@ -52,10 +48,6 @@ class BuyerActivityController {
   static async toggleSavedItem(req, res) {
     try {
       console.log('[BuyerActivityController.toggleSavedItem] req.body:', JSON.stringify(req.body));
-
-      if (!req.user?.roles?.includes('buyer')) {
-        return res.status(403).json({ error: 'Buyer access required' });
-      }
 
       const { itemType, itemId } = req.body;
 

@@ -1,12 +1,11 @@
 import { Router } from 'express';
 import BuyerActivityController from '../controllers/buyer-activity.controller.js';
-import { authenticate, requireAuth, requireRole } from '../middlewares/auth.middleware.js';
+import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
 router.use(authenticate);
 router.use(requireAuth);
-router.use(requireRole('buyer'));
 
 // ==================== RECENTLY VIEWED ====================
 
