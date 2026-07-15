@@ -61,9 +61,8 @@ function ServiceBookingScreen() {
     },
     onSuccess: data => {
       queryClient.invalidateQueries({ queryKey: ['service-activity'] });
-      Alert.alert('Booking Confirmed', 'Payment verified and your invoice is ready.', [
-        { text: 'View Status', onPress: () => navigation.replace('BookedServiceDetails', { request: data }) },
-      ]);
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      navigation.replace('ServiceBookingSuccess', { request: data });
     },
     onError: (error: Error) => {
       Alert.alert('Error', error.message);

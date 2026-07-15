@@ -90,6 +90,7 @@ const NAV: Record<string, string> = {
   'Trade Assurance': 'Services', 'Payment Methods': 'Wallet', 'Add Card': 'Wallet',
   'Location': 'Location',
   'Tracking': 'Tracking',
+  'My Bookings': 'BookedServiceDetails',
 };
 
 // ─── Currency Data ─────────────────────────────────────
@@ -133,6 +134,7 @@ const BUYER_SECTIONS = [
       { icon: 'account-search-outline', label: 'Find Suppliers', color: P.emerald },
       { icon: 'shield-check-outline', label: 'Trade Assurance', color: P.sky },
       { icon: 'map-marker-path', label: 'Tracking', color: P.violet },
+      { icon: 'calendar-check-outline', label: 'My Bookings', color: P.primary },
     ],
   },
   {
@@ -164,6 +166,7 @@ const SELLER_SECTIONS = [
       { icon: 'robot-outline', label: 'AI Assistant', color: P.violet },
       { icon: 'check-decagram-outline', label: 'Verification', color: P.sky },
       { icon: 'map-marker-path', label: 'Tracking', color: P.violet },
+      { icon: 'calendar-check-outline', label: 'My Bookings', color: P.primary },
     ],
   },
   {
@@ -300,7 +303,7 @@ function AccountScreen() {
   useEffect(() => { if (status === 'authenticated' && prevMode) { setAuthMode(null); setWelcome(true); setPrevMode(null); } }, [status, prevMode]);
 
   const refresh = () => { qc.invalidateQueries({ queryKey: ['acc-notif'] }); qc.invalidateQueries({ queryKey: ['acc-rfq'] }); qc.invalidateQueries({ queryKey: ['acc-chat'] }); };
-  const go = (label: string) => nav.navigate(NAV[label] || 'Home');
+  const go = (label: string) => label === 'My Bookings' ? nav.navigate('BookedServiceDetails', { mode: 'list' }) : nav.navigate(NAV[label] || 'Home');
 
   if (authMode) return <AuthScreen initialMode={authMode} onClose={() => setAuthMode(null)} onSuccess={() => { setAuthMode(null); setWelcome(true); }} />;
   if (status === 'checking') return <LoadingState label="Restoring session" />;

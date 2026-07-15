@@ -29,6 +29,7 @@ const invoiceSchema = new mongoose.Schema(
     paymentDate: Date,
     companySnapshot: mongoose.Schema.Types.Mixed,
     terms: [String],
+    downloadToken: { type: String, unique: true, sparse: true, index: true },
   },
   { timestamps: true }
 );

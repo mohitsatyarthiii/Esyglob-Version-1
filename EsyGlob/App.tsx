@@ -57,6 +57,8 @@ import ImageSearchResultsScreen from './src/screens/ImageSearchResultsScreen';
 import EsyCalculatorScreen from './src/screens/EsyCalculatorScreen';
 import BlockedContactsScreen from './src/screens/BlockedContactsScreen';
 import ServiceHubScreen from './src/screens/ServiceHubScreen';
+import ServiceBookingSuccessScreen from './src/screens/ServiceBookingSuccessScreen';
+import { BusinessVerificationServiceScreen, ConsultingServiceScreen, CustomsServiceScreen, DisputeServiceScreen, DocumentationServiceScreen, EscrowServiceScreen, InspectionServiceScreen, InsuranceServiceScreen, ShippingServiceScreen, SupplierVerificationServiceScreen, TradeFinanceServiceScreen, WarehousingServiceScreen } from './src/screens/serviceFlows/DedicatedServiceDetailScreens';
 
 export type RootStackParamList = {
   MainTabs: undefined;
@@ -95,6 +97,7 @@ export type RootStackParamList = {
   ServiceBooking: { serviceKey: string };
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
   Tracking: { mode?: 'list'; request?: ServiceRequest } | undefined;
+  ServiceBookingSuccess: { request: ServiceRequest };
   ShippingLogistics: undefined;
   Location: undefined;
   ImageSearch: { productId?: string } | undefined;
@@ -102,6 +105,9 @@ export type RootStackParamList = {
   EsyCalculator: undefined;
   BlockedContacts: undefined;
   ServiceHub: { hubKey: string };
+  ShippingService: undefined; CustomsService: undefined; WarehousingService: undefined; DocumentationService: undefined;
+  InsuranceService: undefined; ConsultingService: undefined; EscrowService: undefined; TradeFinanceService: undefined;
+  InspectionService: undefined; DisputeService: undefined; SupplierVerificationService: undefined; BusinessVerificationService: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -236,6 +242,7 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="ServiceBooking" component={ServiceBookingScreen} />
               <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
               <Stack.Screen name="Tracking" component={BookedServiceDetailsScreen} initialParams={{ mode: 'list' }} />
+              <Stack.Screen name="ServiceBookingSuccess" component={ServiceBookingSuccessScreen} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
               <Stack.Screen name="Location" component={LocationScreen} />
               <Stack.Screen name="ImageSearch" component={ImageSearchScreen} />
@@ -243,6 +250,18 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="EsyCalculator" component={EsyCalculatorScreen} />
               <Stack.Screen name="BlockedContacts" component={BlockedContactsScreen} />
               <Stack.Screen name="ServiceHub" component={ServiceHubScreen} />
+              <Stack.Screen name="ShippingService" component={ShippingServiceScreen} />
+              <Stack.Screen name="CustomsService" component={CustomsServiceScreen} />
+              <Stack.Screen name="WarehousingService" component={WarehousingServiceScreen} />
+              <Stack.Screen name="DocumentationService" component={DocumentationServiceScreen} />
+              <Stack.Screen name="InsuranceService" component={InsuranceServiceScreen} />
+              <Stack.Screen name="ConsultingService" component={ConsultingServiceScreen} />
+              <Stack.Screen name="EscrowService" component={EscrowServiceScreen} />
+              <Stack.Screen name="TradeFinanceService" component={TradeFinanceServiceScreen} />
+              <Stack.Screen name="InspectionService" component={InspectionServiceScreen} />
+              <Stack.Screen name="DisputeService" component={DisputeServiceScreen} />
+              <Stack.Screen name="SupplierVerificationService" component={SupplierVerificationServiceScreen} />
+              <Stack.Screen name="BusinessVerificationService" component={BusinessVerificationServiceScreen} />
             </Stack.Navigator>
           </NavigationContainer>
         </SafeAreaProvider>

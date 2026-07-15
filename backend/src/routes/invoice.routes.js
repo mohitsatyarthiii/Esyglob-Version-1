@@ -4,6 +4,8 @@ import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
+router.get('/public/:token.pdf', InvoiceController.publicPdf);
+
 router.use(authenticate);
 router.use(requireAuth);
 
