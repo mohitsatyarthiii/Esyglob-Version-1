@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   CurrencyCalculator, FreightCalculator, GstCalculator, ImportDutyCalculator,
@@ -405,7 +405,10 @@ const calcStyles = StyleSheet.create({
 
 export default function EsyCalculatorScreen() {
   const navigation = useNavigation<any>();
-  const [active, setActive] = useState<TabKey>('landed');
+  const route = useRoute<any>();
+  const [active, setActive] = useState<TabKey>(() =>
+    TABS.some(tab => tab.key === route.params?.tab) ? route.params.tab : 'landed',
+  );
   const [summary, setSummary] = useState<CostSummary>(emptyCostSummary);
   const opacity = useRef(new Animated.Value(1)).current;
 

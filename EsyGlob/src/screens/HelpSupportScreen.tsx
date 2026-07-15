@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Alert, LayoutAnimation, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, UIManager, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { submitSupportContact } from '../api/support';
+import { createSupportTicket } from '../api/support';
+import { useAuth } from '../auth/AuthContext';
 import { LEGAL_LINKS, SUPPORT_CONTACTS } from '../config/support';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -18,9 +19,10 @@ const FAQS = [
 ];
 
 export default function HelpSupportScreen() {
-  const navigation = useNavigation<any>(); const [expanded, setExpanded] = useState<number | null>(null);
+  const navigation = useNavigation<any>(); const route = useRoute<any>(); const [expanded, setExpanded] = useState<number | null>(() => route.params?.focus === 'faq' ? 0 : null);
+  const { activeRole } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
-  const contact = useMutation({ mutationFn: submitSupportContact, onSuccess: () => { setForm({ name: '', email: '', subject: '', message: '' }); Alert.alert('Request received', 'Our support team will contact you shortly.'); }, onError: error => Alert.alert('Unable to submit', error instanceof Error ? error.message : 'Please try again.') });
+  const contact = useMutation({ mutationFn: (input: typeof form) => createSupportTicket({ subject: input.subject, description: input.message, roleContext: activeRole === 'seller' ? 'seller' : 'buyer', issueType: 'other', priority: 'medium', metadata: { contactName: input.name, contactEmail: input.email } }), onSuccess: () => { setForm({ name: '', email: '', subject: '', message: '' }); Alert.alert('Ticket raised', 'Your ticket is open and synchronized with EsyGlob support.'); }, onError: error => Alert.alert('Unable to submit', error instanceof Error ? error.message : 'Please try again.') });
   const open = (url: string) => Linking.openURL(url).catch(() => Alert.alert('Unable to open', 'No compatible app is available.'));
   const submit = () => { if (!form.name.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || form.subject.trim().length < 2 || form.message.trim().length < 10) { Alert.alert('Complete the form', 'Enter your name, valid email, subject, and a message of at least 10 characters.'); return; } contact.mutate(form); };
   return <SafeAreaView style={s.screen}><View style={s.header}><Pressable onPress={() => navigation.goBack()} style={s.iconButton}><Icon name="arrow-left" size={22} color="#111827" /></Pressable><Text style={s.headerTitle}>Help & Support</Text><View style={s.iconButton} /></View><ScrollView contentContainerStyle={s.content}>

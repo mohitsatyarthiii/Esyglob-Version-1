@@ -4,6 +4,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,7 +41,52 @@ type ActivityItem = {
 
 type FilterType = 'all' | 'credits' | 'debits';
 
-// ─── Component ──────────────────────────────────────────────────────────────
+// ─── Design System ──────────────────────────────────────────────────────────
+
+const D = {
+  surface: '#FFFFFF',
+  background: '#F8FAFC',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textTertiary: '#94A3B8',
+  border: '#E2E8F0',
+  borderLight: '#F1F5F9',
+  primary: '#2563EB',
+  primaryLight: '#EFF6FF',
+  primaryDark: '#1E40AF',
+  success: '#10B981',
+  successLight: '#ECFDF5',
+  danger: '#EF4444',
+  dangerLight: '#FEF2F2',
+  warning: '#F59E0B',
+  warningLight: '#FFFBEB',
+  cardGradient: ['#1E3A8A', '#2563EB', '#3B82F6'],
+};
+
+// ─── Transaction Icons ──────────────────────────────────────────────────────
+
+const getTransactionIcon = (item: ActivityItem): { icon: string; bg: string; color: string } => {
+  const type = String(item.type || item.section || '').toLowerCase();
+  
+  if (type.includes('payment') || type.includes('debit') || item.section === 'Payment') {
+    return { icon: 'arrow-up-right', bg: D.dangerLight, color: D.danger };
+  }
+  if (type.includes('withdrawal') || item.section === 'Withdrawal') {
+    return { icon: 'bank-transfer-out', bg: '#FFF7ED', color: '#F97316' };
+  }
+  if (type.includes('refund')) {
+    return { icon: 'cash-refund', bg: '#F5F3FF', color: '#7C3AED' };
+  }
+  if (type.includes('escrow')) {
+    return { icon: 'shield-lock', bg: D.primaryLight, color: D.primary };
+  }
+  if (type.includes('commission') || type.includes('fee')) {
+    return { icon: 'receipt-text-minus', bg: '#FEFCE8', color: '#CA8A04' };
+  }
+  return { icon: 'arrow-down-left', bg: D.successLight, color: D.success };
+};
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 function WalletScreen() {
   const navigation = useNavigation<any>();
@@ -48,14 +95,23 @@ function WalletScreen() {
   const { formatPrice, selectedCurrency: currency } = useCurrency();
   const role: string = activeRole === 'seller' ? 'seller' : 'buyer';
 
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showBankModal, setShowBankModal] = useState(false);
+  const [showUpiModal, setShowUpiModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [activityFilter, setActivityFilter] = useState<FilterType>('all');
   const [showAllActivity, setShowAllActivity] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [method, setMethod] = useState({
-    label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '', upiId: '',
+  
+  // Bank form
+  const [bankForm, setBankForm] = useState({
+    label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '',
   });
+  
+  // UPI form
+  const [upiForm, setUpiForm] = useState({
+    label: '', upiId: '',
+  });
+  
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
 
   const wallet = useQuery({
@@ -96,16 +152,31 @@ function WalletScreen() {
 
   const displayedActivity = showAllActivity ? filteredActivity : filteredActivity.slice(0, 5);
 
-  const createMethod = useMutation({
+  const createBankMethod = useMutation({
     mutationFn: () => addPaymentMethod({
-      role, type: method.upiId ? 'upi' : 'bank_account', ...method,
-      holderName: method.accountHolder, label: method.label || method.bankName || 'Payment method',
+      role, type: 'bank_account', ...bankForm,
+      holderName: bankForm.accountHolder,
+      label: bankForm.label || bankForm.bankName || 'Bank Account',
     }),
     onSuccess: async () => {
-      setMethod({ label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '', upiId: '' });
-      setShowAddModal(false);
+      setBankForm({ label: '', accountHolder: '', accountNumber: '', ifsc: '', bankName: '' });
+      setShowBankModal(false);
       await queryClient.invalidateQueries({ queryKey: ['wallet', role] });
-      Alert.alert('Done', 'Payment method saved.');
+      Alert.alert('Done', 'Bank account added.');
+    },
+    onError: (error: unknown) => Alert.alert('Error', error instanceof Error ? error.message : 'Failed'),
+  });
+
+  const createUpiMethod = useMutation({
+    mutationFn: () => addPaymentMethod({
+      role, type: 'upi', ...upiForm,
+      label: upiForm.label || upiForm.upiId || 'UPI',
+    }),
+    onSuccess: async () => {
+      setUpiForm({ label: '', upiId: '' });
+      setShowUpiModal(false);
+      await queryClient.invalidateQueries({ queryKey: ['wallet', role] });
+      Alert.alert('Done', 'UPI ID added.');
     },
     onError: (error: unknown) => Alert.alert('Error', error instanceof Error ? error.message : 'Failed'),
   });
@@ -121,14 +192,16 @@ function WalletScreen() {
     onError: (error: unknown) => Alert.alert('Error', error instanceof Error ? error.message : 'Failed'),
   });
 
-  const isDebitTransaction = (item: ActivityItem): boolean => {
-    return item.section === 'Withdrawal' || item.section === 'Payment';
-  };
-
   const getTransactionLabel = (item: ActivityItem): string => {
     if (item.section === 'Payment') return 'Payment Sent';
     if (item.section === 'Withdrawal') return 'Withdrawal';
-    if (item.section === 'Transaction') return 'Payment Received';
+    if (item.section === 'Transaction') {
+      const type = String(item.type || '').toLowerCase();
+      if (type.includes('refund')) return 'Refund Received';
+      if (type.includes('escrow')) return 'Escrow Released';
+      if (type.includes('commission')) return 'Commission';
+      return 'Payment Received';
+    }
     return item.section || 'Activity';
   };
 
@@ -137,110 +210,170 @@ function WalletScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="dark-content" backgroundColor={D.surface} />
+
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.headerBack}>
+          <Icon name="arrow-left" size={20} color={D.text} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Wallet</Text>
+        <Pressable 
+          onPress={() => navigation.navigate('WalletTransactionDetails', { role })}
+          style={styles.headerRight}
+        >
+          <Icon name="history" size={20} color={D.textSecondary} />
+        </Pressable>
+      </View>
 
       <FlatList
         data={displayedActivity}
         keyExtractor={(item, index) => String(item._id ?? item.id ?? index)}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={wallet.isFetching} onRefresh={() => wallet.refetch()} tintColor="#6366f1" />}
+        refreshControl={
+          <RefreshControl 
+            refreshing={wallet.isFetching} 
+            onRefresh={() => wallet.refetch()} 
+            tintColor={D.primary}
+          />
+        }
         ListHeaderComponent={
           <View>
-            {/* Header */}
-            <View style={styles.header}>
-              <Pressable onPress={() => navigation.goBack()} style={styles.headerBtn}>
-                <Icon name="arrow-left" size={22} color="#1a1a1a" />
-              </Pressable>
-              <Text style={styles.headerTitle}>Wallet</Text>
-              <View style={styles.headerBtn} />
-            </View>
+            {/* ── Balance Card ── */}
+            <LinearGradient
+              colors={D.cardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.balanceCard}
+            >
+              {/* Subtle pattern */}
+              <View style={styles.cardPattern}>
+                <View style={[styles.patternCircle, { width: 120, height: 120, top: -40, right: -30 }]} />
+                <View style={[styles.patternCircle, { width: 80, height: 80, bottom: -20, left: -20 }]} />
+              </View>
 
-            {/* Balance Card */}
-            <View style={styles.balanceCard}>
-              <Text style={styles.balanceLabel}>Total Balance</Text>
+              <Text style={styles.balanceLabel}>TOTAL BALANCE</Text>
               <Text style={styles.balanceAmount}>{formatPrice(metric('balance'), currency)}</Text>
+              
               <View style={styles.balanceRow}>
-                <View style={styles.balanceCol}>
-                  <Icon name="shield-check-outline" size={14} color="#64748b" />
-                  <View>
-                    <Text style={styles.balanceColValue}>{formatPrice(metric('escrowBalance'), currency)}</Text>
-                    <Text style={styles.balanceColLabel}>In Escrow</Text>
-                  </View>
+                <View style={styles.balanceItem}>
+                  <Text style={styles.balanceItemValue}>{formatPrice(metric('escrowBalance'), currency)}</Text>
+                  <Text style={styles.balanceItemLabel}>In Escrow</Text>
                 </View>
-                <View style={styles.balanceCol}>
-                  <Icon name="wallet-outline" size={14} color="#64748b" />
-                  <View>
-                    <Text style={styles.balanceColValue}>
-                      {formatPrice(role === 'seller' ? metric('withdrawableAmount') : metric('orderPaymentTotal'), currency)}
-                    </Text>
-                    <Text style={styles.balanceColLabel}>{role === 'seller' ? 'Withdrawable' : 'Orders'}</Text>
-                  </View>
+                <View style={styles.balanceDivider} />
+                <View style={styles.balanceItem}>
+                  <Text style={styles.balanceItemValue}>
+                    {formatPrice(role === 'seller' ? metric('withdrawableAmount') : metric('orderPaymentTotal'), currency)}
+                  </Text>
+                  <Text style={styles.balanceItemLabel}>{role === 'seller' ? 'Withdrawable' : 'Orders'}</Text>
                 </View>
               </View>
-            </View>
+            </LinearGradient>
 
-            {/* Quick Actions */}
+            {/* ── Quick Actions ── */}
             <View style={styles.actionsRow}>
-              <Pressable style={styles.actionBtn} onPress={() => setShowAddModal(true)}>
-                <View style={[styles.actionIcon, { backgroundColor: '#e0e7ff' }]}>
-                  <Icon name="bank-plus" size={20} color="#6366f1" />
+              <Pressable 
+                style={styles.actionCard}
+                onPress={() => setShowBankModal(true)}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: D.primaryLight }]}>
+                  <Icon name="bank-plus" size={20} color={D.primary} />
                 </View>
-                <Text style={styles.actionLabel}>Add Bank</Text>
+                <Text style={styles.actionText}>Add Bank</Text>
               </Pressable>
+
+              <Pressable 
+                style={styles.actionCard}
+                onPress={() => setShowUpiModal(true)}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: '#F5F3FF' }]}>
+                  <Icon name="cellphone" size={20} color="#7C3AED" />
+                </View>
+                <Text style={styles.actionText}>Add UPI</Text>
+              </Pressable>
+
               {role === 'seller' && (
-                <Pressable style={styles.actionBtn} onPress={() => {
-                  if (!paymentMethodId) { Alert.alert('No method', 'Add a payment method first.'); return; }
-                  setShowWithdrawModal(true);
-                }}>
-                  <View style={[styles.actionIcon, { backgroundColor: '#fef3c7' }]}>
-                    <Icon name="bank-transfer-out" size={20} color="#f59e0b" />
+                <Pressable 
+                  style={styles.actionCard}
+                  onPress={() => {
+                    if (!paymentMethodId) { Alert.alert('No method', 'Add a payment method first.'); return; }
+                    setShowWithdrawModal(true);
+                  }}
+                >
+                  <View style={[styles.actionIcon, { backgroundColor: D.warningLight }]}>
+                    <Icon name="bank-transfer-out" size={20} color={D.warning} />
                   </View>
-                  <Text style={styles.actionLabel}>Withdraw</Text>
+                  <Text style={styles.actionText}>Withdraw</Text>
                 </Pressable>
               )}
-              <Pressable style={styles.actionBtn} onPress={() => navigation.navigate('Account')}>
-                <View style={[styles.actionIcon, { backgroundColor: '#d1fae5' }]}>
-                  <Icon name="history" size={20} color="#10b981" />
-                </View>
-                <Text style={styles.actionLabel}>History</Text>
-              </Pressable>
             </View>
 
-            {/* Saved Methods */}
+            {/* ── Saved Methods ── */}
             {paymentMethods.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Saved Methods</Text>
-                {paymentMethods.map((item: Record<string, unknown>, i: number) => {
-                  const id = String(item._id ?? item.id ?? i);
-                  const selected = paymentMethodId === id;
-                  return (
-                    <Pressable key={id} onPress={() => setPaymentMethodId(id)} style={[styles.methodCard, selected && styles.methodCardSelected]}>
-                      <View style={[styles.methodIcon, { backgroundColor: selected ? '#e0e7ff' : '#f1f5f9' }]}>
-                        <Icon name={item.type === 'upi' ? 'cellphone' : 'bank'} size={18} color={selected ? '#6366f1' : '#64748b'} />
-                      </View>
-                      <View style={styles.methodInfo}>
-                        <Text style={styles.methodName}>{String(item.label ?? item.bankName ?? 'Method')}</Text>
-                        <Text style={styles.methodMeta}>{String(item.holderName ?? item.maskedAccountNumber ?? '')}</Text>
-                      </View>
-                      {selected && <Icon name="check-circle" size={18} color="#6366f1" />}
-                    </Pressable>
-                  );
-                })}
+              <View style={styles.methodsSection}>
+                <Text style={styles.sectionTitle}>Payment Methods</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.methodsScroll}
+                >
+                  {paymentMethods.map((item: Record<string, unknown>, i: number) => {
+                    const id = String(item._id ?? item.id ?? i);
+                    const selected = paymentMethodId === id;
+                    const isUpi = item.type === 'upi';
+                    return (
+                      <Pressable 
+                        key={id} 
+                        onPress={() => setPaymentMethodId(id)} 
+                        style={[
+                          styles.methodCard,
+                          selected && styles.methodCardSelected,
+                        ]}
+                      >
+                        <View style={[styles.methodCardIcon, { backgroundColor: selected ? (isUpi ? '#F5F3FF' : D.primaryLight) : D.borderLight }]}>
+                          <Icon 
+                            name={isUpi ? 'cellphone' : 'bank'} 
+                            size={18} 
+                            color={selected ? (isUpi ? '#7C3AED' : D.primary) : D.textTertiary} 
+                          />
+                        </View>
+                        <Text style={styles.methodName} numberOfLines={1}>
+                          {String(item.label ?? item.bankName ?? (isUpi ? 'UPI' : 'Bank'))}
+                        </Text>
+                        <Text style={styles.methodMeta} numberOfLines={1}>
+                          {String(item.maskedAccountNumber ?? item.upiId ?? '••••')}
+                        </Text>
+                        {selected && (
+                          <View style={styles.methodCheck}>
+                            <Icon name="check-circle" size={16} color={D.primary} />
+                          </View>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
             )}
 
-            {/* Activity Header */}
-            <View style={styles.activityTop}>
-              <Text style={styles.sectionTitle}>Activity</Text>
+            {/* ── Activity Header ── */}
+            <View style={styles.activityHeader}>
+              <Text style={styles.sectionTitle}>Recent Activity</Text>
               <View style={styles.filterRow}>
                 {(['all', 'credits', 'debits'] as FilterType[]).map(f => (
                   <Pressable
                     key={f}
                     onPress={() => { setActivityFilter(f); setShowAllActivity(false); }}
-                    style={[styles.filterChip, activityFilter === f && styles.filterChipActive]}>
-                    <Text style={[styles.filterChipText, activityFilter === f && styles.filterChipTextActive]}>
-                      {f === 'all' ? 'All' : f === 'credits' ? 'Received' : 'Sent'}
+                    style={[
+                      styles.filterChip,
+                      activityFilter === f && styles.filterChipActive,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      activityFilter === f && styles.filterChipTextActive,
+                    ]}>
+                      {f === 'all' ? 'All' : f === 'credits' ? 'In' : 'Out'}
                     </Text>
                   </Pressable>
                 ))}
@@ -249,10 +382,14 @@ function WalletScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          const isDebit = isDebitTransaction(item);
+          const { icon, bg, color } = getTransactionIcon(item);
+          const isDebit = item.section === 'Withdrawal' || item.section === 'Payment';
           const status = String(item.status ?? item.paymentStatus ?? '').replace(/_/g, ' ');
           const amount = Number(item.amount ?? item.totalAmount ?? 0);
           const itemCurrency = String(item.currency ?? currency);
+          const date = item.createdAt 
+            ? new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+            : '';
 
           return (
             <Pressable
@@ -261,16 +398,24 @@ function WalletScreen() {
                 source: String(item.section).toLowerCase(),
                 role,
               })}
-              style={({ pressed }) => [styles.txnCard, pressed && styles.txnCardPressed]}>
-              <View style={[styles.txnIcon, { backgroundColor: isDebit ? '#fef2f2' : '#f0fdf4' }]}>
-                <Icon name={isDebit ? 'arrow-up-right' : 'arrow-down-left'} size={18} color={isDebit ? '#ef4444' : '#10b981'} />
+              style={({ pressed }) => [
+                styles.txnCard,
+                pressed && styles.txnCardPressed,
+              ]}
+            >
+              <View style={[styles.txnIcon, { backgroundColor: bg }]}>
+                <Icon name={icon} size={16} color={color} />
               </View>
+              
               <View style={styles.txnInfo}>
                 <Text style={styles.txnLabel}>{getTransactionLabel(item)}</Text>
-                <Text style={styles.txnStatus}>{status}</Text>
+                <Text style={styles.txnMeta}>
+                  {status || 'Completed'}{date ? ` • ${date}` : ''}
+                </Text>
               </View>
-              <Text style={[styles.txnAmount, { color: isDebit ? '#ef4444' : '#10b981' }]}>
-                {formatPrice(amount, itemCurrency)}
+              
+              <Text style={[styles.txnAmount, { color: isDebit ? D.danger : D.success }]}>
+                {isDebit ? '−' : '+'}{formatPrice(amount, itemCurrency)}
               </Text>
             </Pressable>
           );
@@ -279,54 +424,89 @@ function WalletScreen() {
           filteredActivity.length > 5 && !showAllActivity ? (
             <Pressable onPress={() => setShowAllActivity(true)} style={styles.viewAllBtn}>
               <Text style={styles.viewAllText}>View all {filteredActivity.length} transactions</Text>
-              <Icon name="chevron-down" size={16} color="#6366f1" />
             </Pressable>
           ) : showAllActivity ? (
             <Pressable onPress={() => setShowAllActivity(false)} style={styles.viewAllBtn}>
               <Text style={styles.viewAllText}>Show less</Text>
-              <Icon name="chevron-up" size={16} color="#6366f1" />
             </Pressable>
-          ) : null
+          ) : (
+            <View style={{ height: 40 }} />
+          )
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Icon name="receipt-outline" size={36} color="#cbd5e1" />
+            <Icon name="receipt-text-outline" size={32} color={D.textTertiary} />
             <Text style={styles.emptyText}>No transactions yet</Text>
           </View>
         }
       />
 
-      {/* ─── Add Method Modal ─── */}
-      <Modal visible={showAddModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowAddModal(false)}>
+      {/* ─── Add Bank Modal ─── */}
+      <Modal visible={showBankModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowBankModal(false)}>
         <View style={styles.modalScreen}>
           <View style={styles.modalHeader}>
-            <Pressable onPress={() => setShowAddModal(false)} style={styles.modalClose}>
-              <Icon name="close" size={22} color="#1a1a1a" />
+            <Pressable onPress={() => setShowBankModal(false)} style={styles.modalClose}>
+              <Icon name="close" size={20} color={D.text} />
             </Pressable>
-            <Text style={styles.modalTitle}>Add Payment Method</Text>
-            <View style={styles.modalClose} />
+            <Text style={styles.modalTitle}>Add Bank Account</Text>
+            <View style={{ width: 36 }} />
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBody}>
-            <Field label="Label / Nickname" value={method.label} onChangeText={v => setMethod({ ...method, label: v })} placeholder="Business Account" />
-            <Field label="Account Holder Name" value={method.accountHolder} onChangeText={v => setMethod({ ...method, accountHolder: v })} placeholder="Full name" />
-            <Field label="Account Number" value={method.accountNumber} onChangeText={v => setMethod({ ...method, accountNumber: v })} placeholder="Account number" keyboardType="numeric" />
-            <Field label="IFSC Code" value={method.ifsc} onChangeText={v => setMethod({ ...method, ifsc: v })} placeholder="SBIN0001234" />
-            <Field label="Bank Name" value={method.bankName} onChangeText={v => setMethod({ ...method, bankName: v })} placeholder="State Bank of India" />
-
-            <View style={styles.orDivider}>
-              <View style={styles.orLine} />
-              <Text style={styles.orText}>OR</Text>
-              <View style={styles.orLine} />
-            </View>
-
-            <Field label="UPI ID" value={method.upiId} onChangeText={v => setMethod({ ...method, upiId: v })} placeholder="username@upi" />
+            <Field label="Account Label" value={bankForm.label} onChangeText={v => setBankForm({ ...bankForm, label: v })} placeholder="e.g. Business Account" />
+            <Field label="Account Holder Name" value={bankForm.accountHolder} onChangeText={v => setBankForm({ ...bankForm, accountHolder: v })} placeholder="Full name as per bank" />
+            <Field label="Account Number" value={bankForm.accountNumber} onChangeText={v => setBankForm({ ...bankForm, accountNumber: v })} placeholder="Enter account number" keyboardType="numeric" />
+            <Field label="IFSC Code" value={bankForm.ifsc} onChangeText={v => setBankForm({ ...bankForm, ifsc: v })} placeholder="e.g. SBIN0001234" autoCapitalize="characters" />
+            <Field label="Bank Name" value={bankForm.bankName} onChangeText={v => setBankForm({ ...bankForm, bankName: v })} placeholder="e.g. State Bank of India" />
 
             <Pressable
-              onPress={() => createMethod.mutate()}
-              disabled={createMethod.isPending || (!method.accountNumber && !method.upiId)}
-              style={[styles.saveBtn, createMethod.isPending && styles.btnDisabled]}>
-              {createMethod.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.saveBtnText}>Save Payment Method</Text>}
+              onPress={() => createBankMethod.mutate()}
+              disabled={createBankMethod.isPending || !bankForm.accountNumber || !bankForm.ifsc}
+              style={({ pressed }) => [
+                styles.submitBtn,
+                pressed && styles.submitBtnPressed,
+                (createBankMethod.isPending || !bankForm.accountNumber || !bankForm.ifsc) && styles.btnDisabled,
+              ]}
+            >
+              {createBankMethod.isPending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.submitBtnText}>Save Bank Account</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* ─── Add UPI Modal ─── */}
+      <Modal visible={showUpiModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowUpiModal(false)}>
+        <View style={styles.modalScreen}>
+          <View style={styles.modalHeader}>
+            <Pressable onPress={() => setShowUpiModal(false)} style={styles.modalClose}>
+              <Icon name="close" size={20} color={D.text} />
+            </Pressable>
+            <Text style={styles.modalTitle}>Add UPI ID</Text>
+            <View style={{ width: 36 }} />
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBody}>
+            <Field label="Label" value={upiForm.label} onChangeText={v => setUpiForm({ ...upiForm, label: v })} placeholder="e.g. Personal UPI" />
+            <Field label="UPI ID" value={upiForm.upiId} onChangeText={v => setUpiForm({ ...upiForm, upiId: v })} placeholder="username@upi" autoCapitalize="none" />
+
+            <Pressable
+              onPress={() => createUpiMethod.mutate()}
+              disabled={createUpiMethod.isPending || !upiForm.upiId}
+              style={({ pressed }) => [
+                styles.submitBtn,
+                pressed && styles.submitBtnPressed,
+                (createUpiMethod.isPending || !upiForm.upiId) && styles.btnDisabled,
+              ]}
+            >
+              {createUpiMethod.isPending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.submitBtnText}>Save UPI ID</Text>
+              )}
             </Pressable>
           </ScrollView>
         </View>
@@ -345,13 +525,13 @@ function WalletScreen() {
             </View>
 
             <View style={styles.amountBox}>
-              <Text style={styles.currencySymbol}>{currency === 'INR' ? '₹' : currency === 'USD' ? '$' : '€'}</Text>
+              <Text style={styles.currencySymbol}>{currency === 'INR' ? '₹' : '$'}</Text>
               <TextInput
                 value={withdrawalAmount}
                 onChangeText={setWithdrawalAmount}
                 keyboardType="numeric"
-                placeholder="0"
-                placeholderTextColor="#cbd5e1"
+                placeholder="0.00"
+                placeholderTextColor={D.textTertiary}
                 style={styles.amountInput}
               />
             </View>
@@ -359,8 +539,17 @@ function WalletScreen() {
             <Pressable
               onPress={() => createWithdrawal.mutate()}
               disabled={createWithdrawal.isPending || !withdrawalAmount || Number(withdrawalAmount) <= 0}
-              style={[styles.withdrawConfirmBtn, (createWithdrawal.isPending || !withdrawalAmount) && styles.btnDisabled]}>
-              {createWithdrawal.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.withdrawConfirmText}>Confirm Withdrawal</Text>}
+              style={({ pressed }) => [
+                styles.withdrawBtn,
+                pressed && styles.withdrawBtnPressed,
+                (createWithdrawal.isPending || !withdrawalAmount) && styles.btnDisabled,
+              ]}
+            >
+              {createWithdrawal.isPending ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.withdrawBtnText}>Confirm Withdrawal</Text>
+              )}
             </Pressable>
           </Pressable>
         </Pressable>
@@ -375,7 +564,11 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
   return (
     <View style={styles.fieldWrap}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput placeholderTextColor="#94a3b8" style={styles.fieldInput} {...props} />
+      <TextInput
+        placeholderTextColor={D.textTertiary}
+        style={styles.fieldInput}
+        {...props}
+      />
     </View>
   );
 }
@@ -383,147 +576,458 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fafc' },
-  listContent: { paddingBottom: 100 },
+  screen: { flex: 1, backgroundColor: D.background },
 
   // Header
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 56 : 44,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    backgroundColor: D.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
   },
-  headerBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a' },
+  headerBack: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: D.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: D.text,
+  },
+  headerRight: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: D.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  listContent: { paddingBottom: 40 },
 
   // Balance Card
   balanceCard: {
-    marginHorizontal: 16, backgroundColor: '#fff', borderRadius: 16, padding: 20,
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 16,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 16,
+    padding: 20,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#1E3A8A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  balanceLabel: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 4 },
-  balanceAmount: { fontSize: 36, fontWeight: '700', color: '#0f172a', letterSpacing: -0.5, marginBottom: 16 },
-  balanceRow: { flexDirection: 'row', gap: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
-  balanceCol: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  balanceColValue: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
-  balanceColLabel: { fontSize: 11, color: '#94a3b8', fontWeight: '500', marginTop: 1 },
+  cardPattern: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  patternCircle: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  balanceLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  balanceAmount: {
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    marginBottom: 20,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
+  },
+  balanceItem: {
+    flex: 1,
+  },
+  balanceItemValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  balanceItemLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  balanceDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    marginHorizontal: 16,
+  },
 
-  // Actions
-  actionsRow: { flexDirection: 'row', marginHorizontal: 16, gap: 10, marginBottom: 24 },
-  actionBtn: {
-    flex: 1, alignItems: 'center', backgroundColor: '#fff', borderRadius: 14,
-    padding: 14, gap: 8, borderWidth: 1, borderColor: '#e2e8f0',
+  // Quick Actions
+  actionsRow: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 20,
+    gap: 10,
   },
-  actionIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  actionLabel: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  actionCard: {
+    flex: 1,
+    backgroundColor: D.surface,
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: D.border,
+  },
+  actionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: D.text,
+  },
 
   // Methods
-  section: { marginHorizontal: 16, marginBottom: 24 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
-  methodCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff',
-    borderRadius: 12, padding: 14, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0',
+  methodsSection: {
+    marginBottom: 20,
   },
-  methodCardSelected: { borderColor: '#6366f1', backgroundColor: '#fafaff' },
-  methodIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  methodInfo: { flex: 1 },
-  methodName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
-  methodMeta: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: D.text,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  methodsScroll: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  methodCard: {
+    width: 140,
+    backgroundColor: D.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: D.border,
+    position: 'relative',
+  },
+  methodCardSelected: {
+    borderColor: D.primary,
+    backgroundColor: '#FAFBFF',
+  },
+  methodCardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  methodName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: D.text,
+  },
+  methodMeta: {
+    fontSize: 10,
+    color: D.textTertiary,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  methodCheck: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+  },
 
   // Activity Header
-  activityTop: {
-    marginHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 8,
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 16,
+    marginBottom: 8,
   },
-  filterRow: { flexDirection: 'row', gap: 6 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: '#f1f5f9' },
-  filterChipActive: { backgroundColor: '#0f172a' },
-  filterChipText: { fontSize: 11, fontWeight: '600', color: '#64748b' },
-  filterChipTextActive: { color: '#fff' },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 4,
+    backgroundColor: D.borderLight,
+    borderRadius: 8,
+    padding: 2,
+  },
+  filterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 7,
+  },
+  filterChipActive: {
+    backgroundColor: D.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  filterChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: D.textTertiary,
+  },
+  filterChipTextActive: {
+    color: D.text,
+  },
 
   // Transaction
   txnCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16,
-    marginBottom: 6, backgroundColor: '#fff', borderRadius: 12, padding: 14,
-    borderWidth: 1, borderColor: '#f1f5f9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 4,
+    backgroundColor: D.surface,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: D.borderLight,
   },
-  txnCardPressed: { backgroundColor: '#fafafa' },
-  txnIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  txnInfo: { flex: 1 },
-  txnLabel: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
-  txnStatus: { fontSize: 11, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' },
-  txnAmount: { fontSize: 15, fontWeight: '700' },
+  txnCardPressed: {
+    backgroundColor: '#FAFBFC',
+  },
+  txnIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  txnInfo: {
+    flex: 1,
+  },
+  txnLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: D.text,
+    marginBottom: 2,
+  },
+  txnMeta: {
+    fontSize: 11,
+    color: D.textTertiary,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  txnAmount: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
 
   // View All
   viewAllBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    marginHorizontal: 16, marginTop: 14, paddingVertical: 12, backgroundColor: '#fff',
-    borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 12,
+    backgroundColor: D.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: D.border,
   },
-  viewAllText: { fontSize: 13, fontWeight: '600', color: '#6366f1' },
+  viewAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: D.primary,
+  },
 
   // Empty
-  emptyState: { alignItems: 'center', padding: 40, gap: 8 },
-  emptyText: { fontSize: 13, color: '#94a3b8', fontWeight: '500' },
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 13,
+    color: D.textTertiary,
+    fontWeight: '500',
+  },
 
   // Modal
-  modalScreen: { flex: 1, backgroundColor: '#fff' },
+  modalScreen: { flex: 1, backgroundColor: D.surface },
   modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 56, paddingHorizontal: 16, paddingBottom: 16,
-    borderBottomWidth: 1, borderBottomColor: '#f1f5f9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Platform.OS === 'ios' ? 56 : 44,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
   },
-  modalClose: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  modalBody: { padding: 16, paddingBottom: 40 },
+  modalClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: D.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: D.text,
+  },
+  modalBody: {
+    padding: 20,
+    paddingBottom: 40,
+  },
 
   // Fields
-  fieldWrap: { marginBottom: 16 },
-  fieldLabel: { fontSize: 12, fontWeight: '600', color: '#475569', marginBottom: 6 },
+  fieldWrap: { marginBottom: 18 },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: D.textSecondary,
+    marginBottom: 6,
+  },
   fieldInput: {
-    backgroundColor: '#f8fafc', borderRadius: 10, paddingHorizontal: 14, height: 46,
-    fontSize: 14, fontWeight: '500', color: '#0f172a', borderWidth: 1, borderColor: '#e2e8f0',
+    backgroundColor: D.background,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 14,
+    fontWeight: '500',
+    color: D.text,
+    borderWidth: 1,
+    borderColor: D.border,
   },
 
-  // OR Divider
-  orDivider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 12 },
-  orLine: { flex: 1, height: 1, backgroundColor: '#e2e8f0' },
-  orText: { fontSize: 13, fontWeight: '600', color: '#94a3b8' },
-
-  // Save Button
-  saveBtn: {
-    backgroundColor: '#6366f1', borderRadius: 12, alignItems: 'center',
-    justifyContent: 'center', height: 50, marginTop: 24,
+  // Submit Button
+  submitBtn: {
+    backgroundColor: D.primary,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+    marginTop: 24,
   },
-  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  submitBtnPressed: {
+    opacity: 0.9,
+  },
+  submitBtnText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   btnDisabled: { opacity: 0.5 },
 
   // Withdraw Sheet
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
   sheet: {
-    backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 40,
+    backgroundColor: D.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
   },
   sheetHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: '#e2e8f0',
-    alignSelf: 'center', marginBottom: 20,
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: D.border,
+    alignSelf: 'center',
+    marginBottom: 20,
   },
-  sheetTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16 },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: D.text,
+    marginBottom: 16,
+  },
   sheetBalance: {
-    backgroundColor: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 16,
-    borderWidth: 1, borderColor: '#e2e8f0',
+    backgroundColor: D.primaryLight,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 18,
   },
-  sheetBalanceLabel: { fontSize: 12, fontWeight: '500', color: '#64748b' },
-  sheetBalanceAmount: { fontSize: 20, fontWeight: '700', color: '#0f172a', marginTop: 4 },
+  sheetBalanceLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: D.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  sheetBalanceAmount: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: D.text,
+    marginTop: 2,
+  },
   amountBox: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc',
-    borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: D.background,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: D.border,
+    marginBottom: 24,
   },
-  currencySymbol: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginRight: 8 },
-  amountInput: { flex: 1, height: 56, fontSize: 24, fontWeight: '600', color: '#0f172a' },
-  withdrawConfirmBtn: {
-    backgroundColor: '#0f172a', borderRadius: 14, alignItems: 'center',
-    justifyContent: 'center', height: 52,
+  currencySymbol: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: D.text,
   },
-  withdrawConfirmText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  amountInput: {
+    flex: 1,
+    height: 52,
+    fontSize: 22,
+    fontWeight: '600',
+    color: D.text,
+    paddingLeft: 8,
+  },
+  withdrawBtn: {
+    backgroundColor: D.text,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+  },
+  withdrawBtnPressed: {
+    opacity: 0.9,
+  },
+  withdrawBtnText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
 });
 
 export default WalletScreen;

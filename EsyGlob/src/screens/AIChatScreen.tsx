@@ -33,6 +33,7 @@ import { colors, radii, spacing } from '../theme';
 import AuthScreen from './AuthScreen';
 import { uploadFiles, type UploadAttachment } from '../api/marketplace';
 import RemoteImage from '../components/RemoteImage';
+import CompactAIStatus from '../components/CompactAIStatus';
 import { useCurrency } from '../currency/CurrencyContext';
 
 type PluginMode = 'create-rfq' | 'send-quotation' | 'ai-support' | null;
@@ -654,10 +655,7 @@ function Bubble({
         </View>
       ))}
       {item.streaming ? (
-        <View style={styles.thinking}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.streaming}>EsyGlob AI is responding</Text>
-        </View>
+        <CompactAIStatus />
       ) : !mine && text ? (
         <View style={styles.messageActions}>
           <Pressable

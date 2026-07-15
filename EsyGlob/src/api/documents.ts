@@ -7,6 +7,7 @@ export type UserDocument = {
   category?: string;
   fileUrl?: string;
   fileType?: string;
+  mimeType?: string;
   status: string;
   rejectionReason?: string;
   reviewerNotes?: string;
@@ -15,9 +16,13 @@ export type UserDocument = {
   updatedAt?: string;
 };
 export async function fetchDocuments() {
-  return normalizeList<UserDocument>(await apiRequest('/documents'), [
+  const documents = normalizeList<UserDocument>(await apiRequest('/documents'), [
     'documents',
   ]);
+  return documents.map(document => ({
+    ...document,
+    fileType: document.fileType || document.mimeType,
+  }));
 }
 export async function saveDocument(input: Partial<UserDocument>, id?: string) {
   return unwrapData(

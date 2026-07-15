@@ -55,6 +55,8 @@ import HelpSupportScreen from './src/screens/HelpSupportScreen';
 import ImageSearchScreen from './src/screens/ImageSearchScreen';
 import ImageSearchResultsScreen from './src/screens/ImageSearchResultsScreen';
 import EsyCalculatorScreen from './src/screens/EsyCalculatorScreen';
+import HSCodeFinderScreen from './src/screens/HSCodeFinderScreen';
+import TradeAssuranceScreen from './src/screens/TradeAssuranceScreen';
 import BlockedContactsScreen from './src/screens/BlockedContactsScreen';
 import ServiceHubScreen from './src/screens/ServiceHubScreen';
 import ServiceBookingSuccessScreen from './src/screens/ServiceBookingSuccessScreen';
@@ -67,7 +69,9 @@ export type RootStackParamList = {
   MainTabs: undefined;
   Auth: { initialMode?: 'login' | 'signup' | 'forgot' } | undefined;
   AIChat: undefined;
-  HelpSupport: undefined;
+  HelpSupport: { focus?: 'faq' | 'ticket' } | undefined;
+  TradeAssurance: undefined;
+  HSCodeFinder: undefined;
   MarketInsights: undefined;
   Addresses: undefined;
   Notifications: undefined;
@@ -108,7 +112,7 @@ export type RootStackParamList = {
   Location: undefined;
   ImageSearch: { productId?: string } | undefined;
   ImageSearchResults: { imageUrl: string };
-  EsyCalculator: undefined;
+  EsyCalculator: { tab?: 'landed' | 'simple' | 'gst' | 'duty' | 'freight' | 'currency' | 'profit' | 'moq' | 'packaging' | 'summary' } | undefined;
   BlockedContacts: undefined;
   ServiceHub: { hubKey: string };
   ShippingService: undefined; CustomsService: undefined; WarehousingService: undefined; DocumentationService: undefined;
@@ -216,6 +220,8 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="Auth" component={AuthScreen} />
               <Stack.Screen name="AIChat" component={AIChatScreen} />
               <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+              <Stack.Screen name="TradeAssurance" component={TradeAssuranceScreen} />
+              <Stack.Screen name="HSCodeFinder" component={HSCodeFinderScreen} />
               <Stack.Screen name="MarketInsights" component={MarketInsightsScreen} />
               <Stack.Screen name="Addresses" component={AddressesScreen} />
               <Stack.Screen name="Notifications" component={NotificationCenterScreen} />

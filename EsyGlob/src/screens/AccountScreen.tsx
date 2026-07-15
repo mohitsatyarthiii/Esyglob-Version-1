@@ -116,7 +116,7 @@ const NAV: Record<string, string> = {
   Wishlist: 'ProductListing',
   'Recently Viewed': 'ProductListing',
   Notifications: 'Notifications',
-  'Trade Assurance': 'Services',
+  'Trade Assurance': 'TradeAssurance',
   'Payment Methods': 'Wallet',
   'Add Card': 'Wallet',
   Location: 'Location',
@@ -277,16 +277,17 @@ const BUYER_SECTIONS = [
     items: [
       { icon: 'robot-outline', label: 'AI Sourcing', color: P.violet },
       { icon: 'chart-line', label: 'Market Insights', color: P.violet },
-      {
-        icon: 'account-search-outline',
-        label: 'Find Suppliers',
-        color: P.emerald,
-      },
+      
       { icon: 'star-outline', label: 'My Reviews', color: P.amber },
       {
         icon: 'file-document-multiple-outline',
         label: 'Documentation',
         color: P.sky,
+      },
+      {
+        icon: 'account-search-outline',
+        label: 'Find Manufacturers',
+        color: P.emerald,
       },
     ],
   },

@@ -248,10 +248,10 @@ export const SERVICE_HUBS: ServiceHub[] = [
       { label: 'Languages', value: '15+', icon: 'translate' },
     ],
     items: [
-      item('My Tickets', 'ticket-confirmation-outline', {
-        route: 'BookedServiceDetails',
-        params: { mode: 'list' },
-        description: 'Track all your active, pending & resolved support tickets',
+      item('Raise Support Ticket', 'ticket-confirmation-outline', {
+        route: 'HelpSupport',
+        params: { focus: 'ticket' },
+        description: 'Create a support ticket and track its status',
         stats: 'All statuses',
         badge: 'Track',
         badgeColor: '#6366f1',
@@ -267,6 +267,7 @@ export const SERVICE_HUBS: ServiceHub[] = [
       }),
       item('FAQ & Guides', 'book-open-page-variant-outline', {
         route: 'HelpSupport',
+        params: { focus: 'faq' },
         description: 'Detailed guides, tutorials & frequently asked questions',
         stats: '200+ articles',
         badge: 'Learn',
@@ -280,8 +281,8 @@ export const SERVICE_HUBS: ServiceHub[] = [
         badgeColor: '#f97316',
       }),
       item('Live Chat', 'message-processing-outline', {
-        route: 'Messages',
-        description: 'Instant messaging with our support & operations team',
+        route: 'AIChat',
+        description: 'Get instant help from the existing EsyAI assistant',
         stats: 'Avg <2min reply',
         badge: 'Fastest',
         badgeColor: '#ef4444',
@@ -313,8 +314,7 @@ export const SERVICE_HUBS: ServiceHub[] = [
         popular: true,
       }),
       item('HS Code Finder', 'barcode-scan', {
-        route: 'Search',
-        params: { q: 'HS code' },
+        route: 'HSCodeFinder',
         description: 'Search HS codes for any product category worldwide',
         stats: '10K+ codes',
         badge: 'Essential',
@@ -328,7 +328,8 @@ export const SERVICE_HUBS: ServiceHub[] = [
         badgeColor: '#8b5cf6',
       }),
       item('Currency Converter', 'currency-usd', {
-        route: 'Account',
+        route: 'EsyCalculator',
+        params: { tab: 'currency' },
         description: 'Real-time exchange rates for 30+ global currencies',
         stats: 'Live rates',
         badge: 'Real-time',

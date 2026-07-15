@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,6 +26,7 @@ export default function DocumentationManagementScreen() {
   const nav = useNavigation<any>();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<UserDocument | null>(null);
   const query = useQuery({ queryKey: ['documents'], queryFn: fetchDocuments });
   const upload = async (replace?: UserDocument) => {
     try {
@@ -90,6 +93,7 @@ export default function DocumentationManagementScreen() {
             <DocumentCard
               key={doc._id}
               doc={doc}
+              onPreview={() => setPreview(doc)}
               onReplace={() => upload(doc)}
             />
           ))
@@ -100,14 +104,17 @@ export default function DocumentationManagementScreen() {
           />
         )}
       </ScrollView>
+      <DocumentPreview document={preview} onClose={() => setPreview(null)} />
     </View>
   );
 }
 function DocumentCard({
   doc,
+  onPreview,
   onReplace,
 }: {
   doc: UserDocument;
+  onPreview: () => void;
   onReplace: () => void;
 }) {
   const url = documentUrl(doc.fileUrl);
@@ -142,6 +149,17 @@ function DocumentCard({
         Last updated{' '}
         {doc.updatedAt ? new Date(doc.updatedAt).toLocaleString() : 'recently'}
       </Text>
+      <View style={s.details}>
+        <DocumentDetail label="Verification" value={doc.status} />
+        <DocumentDetail
+          label="Approval"
+          value={doc.status === 'approved' ? 'Approved' : doc.status === 'rejected' ? 'Rejected' : 'Awaiting review'}
+        />
+        <DocumentDetail
+          label="Expiry"
+          value={doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString() : 'Not specified'}
+        />
+      </View>
       {doc.status === 'rejected' ? (
         <View style={s.rejection}>
           <Text style={s.rejectTitle}>Action required</Text>
@@ -160,6 +178,10 @@ function DocumentCard({
               <Icon name="eye-outline" size={16} color="#2563EB" />
               <Text style={s.actionText}>View</Text>
             </Pressable>
+            <Pressable onPress={onPreview} style={s.action}>
+              <Icon name="file-eye-outline" size={16} color="#2563EB" />
+              <Text style={s.actionText}>Preview</Text>
+            </Pressable>
             <Pressable onPress={() => Linking.openURL(url)} style={s.action}>
               <Icon name="download-outline" size={16} color="#2563EB" />
               <Text style={s.actionText}>Download</Text>
@@ -174,6 +196,56 @@ function DocumentCard({
         </Pressable>
       </View>
     </View>
+  );
+}
+function DocumentDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={s.detailItem}>
+      <Text style={s.detailLabel}>{label}</Text>
+      <Text style={s.detailValue}>{value.replace(/_/g, ' ')}</Text>
+    </View>
+  );
+}
+function DocumentPreview({
+  document,
+  onClose,
+}: {
+  document: UserDocument | null;
+  onClose: () => void;
+}) {
+  const url = documentUrl(document?.fileUrl);
+  const isImage = Boolean(
+    document?.fileType?.startsWith('image/') ||
+      url?.match(/\.(png|jpe?g|webp|gif)(\?|$)/i),
+  );
+  return (
+    <Modal visible={Boolean(document)} animationType="slide" onRequestClose={onClose}>
+      <View style={s.previewScreen}>
+        <View style={s.previewHeader}>
+          <Pressable onPress={onClose} style={s.icon}>
+            <Icon name="close" size={23} color="#111827" />
+          </Pressable>
+          <Text numberOfLines={1} style={s.previewTitle}>{document?.name || 'Document preview'}</Text>
+          <View style={s.icon} />
+        </View>
+        <View style={s.previewBody}>
+          {url && isImage ? (
+            <Image source={{ uri: url }} resizeMode="contain" style={s.previewImage} />
+          ) : (
+            <View style={s.previewFallback}>
+              <Icon name="file-document-outline" size={64} color="#2563EB" />
+              <Text style={s.previewMessage}>Use your device document viewer to preview this file.</Text>
+            </View>
+          )}
+          {url ? (
+            <Pressable onPress={() => Linking.openURL(url)} style={s.openButton}>
+              <Icon name="open-in-new" size={18} color="#fff" />
+              <Text style={s.openButtonText}>Open document</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
   );
 }
 const s = StyleSheet.create({
@@ -233,6 +305,10 @@ const s = StyleSheet.create({
   status: { borderRadius: 12, paddingHorizontal: 8, paddingVertical: 5 },
   statusText: { fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
   updated: { color: '#94A3B8', fontSize: 9, marginTop: 10 },
+  details: { flexDirection: 'row', gap: 7, marginTop: 10 },
+  detailItem: { backgroundColor: '#F8FAFC', borderRadius: 8, flex: 1, padding: 7 },
+  detailLabel: { color: '#94A3B8', fontSize: 8, fontWeight: '700', textTransform: 'uppercase' },
+  detailValue: { color: '#334155', fontSize: 9, fontWeight: '800', marginTop: 3, textTransform: 'capitalize' },
   rejection: {
     backgroundColor: '#FEF2F2',
     borderRadius: 10,
@@ -245,6 +321,7 @@ const s = StyleSheet.create({
     borderTopColor: '#F1F5F9',
     borderTopWidth: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     marginTop: 11,
     paddingTop: 10,
@@ -259,4 +336,13 @@ const s = StyleSheet.create({
     paddingVertical: 7,
   },
   actionText: { color: '#2563EB', fontSize: 10, fontWeight: '900' },
+  previewScreen: { flex: 1, backgroundColor: '#F8FAFC' },
+  previewHeader: { alignItems: 'center', backgroundColor: '#fff', borderBottomColor: '#E2E8F0', borderBottomWidth: 1, flexDirection: 'row', paddingHorizontal: 12, paddingTop: 48, paddingBottom: 10 },
+  previewTitle: { color: '#0F172A', flex: 1, fontSize: 16, fontWeight: '900', textAlign: 'center' },
+  previewBody: { flex: 1, justifyContent: 'center', padding: 20 },
+  previewImage: { flex: 1, width: '100%' },
+  previewFallback: { alignItems: 'center', flex: 1, justifyContent: 'center' },
+  previewMessage: { color: '#64748B', fontSize: 13, marginTop: 14, textAlign: 'center' },
+  openButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 12, flexDirection: 'row', gap: 7, justifyContent: 'center', padding: 14 },
+  openButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
 });

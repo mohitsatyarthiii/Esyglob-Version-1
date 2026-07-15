@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, PermissionsAndroid, Platform, StyleSheet, Text, View } from 'react-native';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -42,6 +42,20 @@ export default function ImageSearchScreen() {
     navigation.replace('ImageSearchResults', { imageUrl });
   }, [activeRole, navigation, queryClient]);
 
+  const openGallery = useCallback(async () => {
+    try {
+      setLabel('Opening gallery…');
+      const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 1 });
+      if (response.didCancel) { navigation.goBack(); return; }
+      if (response.errorCode) throw new Error(response.errorMessage ?? 'The gallery could not be opened.');
+      const asset = response.assets?.[0];
+      if (!asset?.uri) throw new Error('The selected image was not returned.');
+      await runSearch({ uri: asset.uri, name: asset.fileName ?? `visual-search-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' });
+    } catch (error) {
+      Alert.alert('Visual search failed', error instanceof Error ? error.message : 'Unable to process this image.');
+    }
+  }, [navigation, runSearch]);
+
   const openCamera = useCallback(async () => {
     try {
       setLabel('Opening camera…');
@@ -54,7 +68,14 @@ export default function ImageSearchScreen() {
         return;
       }
       const response = await launchCamera({ mediaType: 'photo', quality: 0.8, includeBase64: false, saveToPhotos: false });
-      if (response.didCancel) { navigation.goBack(); return; }
+      if (response.didCancel) {
+        Alert.alert('Choose an image', 'Take another photo or select one from your gallery.', [
+          { text: 'Cancel', onPress: () => navigation.goBack(), style: 'cancel' },
+          { text: 'Gallery', onPress: openGallery },
+          { text: 'Camera', onPress: openCamera },
+        ]);
+        return;
+      }
       if (response.errorCode) throw new Error(response.errorMessage ?? 'The camera could not capture an image.');
       const asset = response.assets?.[0];
       if (!asset?.uri) throw new Error('The captured image was not returned by the camera.');
@@ -65,7 +86,7 @@ export default function ImageSearchScreen() {
         { text: 'Retry', onPress: openCamera },
       ]);
     }
-  }, [navigation, requestCamera, runSearch]);
+  }, [navigation, openGallery, requestCamera, runSearch]);
 
   useEffect(() => { if (!launched.current) { launched.current = true; openCamera(); } }, [openCamera]);
 

@@ -9,8 +9,11 @@ import {
   StatusBar,
   ScrollView,
   Dimensions,
+  Platform,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fetchAggregatedServiceActivity } from '../api/services';
@@ -19,124 +22,259 @@ import { SERVICE_HUBS } from '../services/serviceHubs';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Premium Design System ─────────────────────────────────────────────────
+// ─── Design System ──────────────────────────────────────────────────────────
 
 const D = {
-  // Colors
-  primary: '#0F172A',
   surface: '#FFFFFF',
   background: '#F8FAFC',
   border: '#E2E8F0',
   borderLight: '#F1F5F9',
-  
-  // Text
-  textPrimary: '#0F172A',
+  text: '#0F172A',
   textSecondary: '#475569',
   textTertiary: '#94A3B8',
-  
-  // Semantic
+  primary: '#2563EB',
+  primaryLight: '#EFF6FF',
   success: '#059669',
   successLight: '#ECFDF5',
   warning: '#D97706',
   warningLight: '#FFFBEB',
-  info: '#2563EB',
-  infoLight: '#EFF6FF',
-  
-  // Shadows
-  shadowSm: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  shadowMd: {
+  violet: '#7C3AED',
+  violetLight: '#F5F3FF',
+  orange: '#F97316',
+  orangeLight: '#FFF7ED',
+  shadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 3,
-  },
-  shadowLg: {
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 5,
+    elevation: 2,
   },
 };
 
-// ─── Quick Actions Component ────────────────────────────────────────────────
+// ─── Service Hub Detailed Data ──────────────────────────────────────────────
 
-function QuickActions({ totals, role }: { totals: any; role: string }) {
-  const navigation = useNavigation<any>();
-  
-  const actions = [
-    {
-      icon: 'flash',
-      label: 'Active',
-      count: totals.active,
-      color: '#2563EB',
-      bg: '#EFF6FF',
-      borderColor: '#BFDBFE',
-    },
-    {
-      icon: 'clock-outline',
-      label: 'Pending',
-      count: totals.pending,
-      color: '#D97706',
-      bg: '#FFFBEB',
-      borderColor: '#FDE68A',
-    },
-    {
-      icon: 'check-circle-outline',
-      label: 'Completed',
-      count: totals.completed,
-      color: '#059669',
-      bg: '#ECFDF5',
-      borderColor: '#A7F3D0',
-    },
-    {
-      icon: 'trophy-outline',
-      label: role === 'seller' ? 'Orders' : 'Requests',
-      count: totals.active + totals.pending + totals.completed,
-      color: '#7C3AED',
-      bg: '#F5F3FF',
-      borderColor: '#DDD6FE',
-    },
+ const HUB_DETAILS: Record<string, {
+  tagline: string;
+  stats: { icon: string; label: string; value: string }[];
+  features: { icon: string; title: string; desc: string }[];
+  highlights: string[];
+}> = {
+  'logistics': {
+    tagline: 'Global shipping & freight management',
+    stats: [
+      { icon: 'truck-fast', label: 'Active Carriers', value: '45+' },
+      { icon: 'anchor', label: 'Ports Covered', value: '25+' },
+      { icon: 'package-variant-closed', label: 'Monthly Shipments', value: '500+' },
+    ],
+    features: [
+      { icon: 'ship', title: 'Freight Forwarding', desc: 'Sea, air & land freight solutions worldwide' },
+      { icon: 'clipboard-check', title: 'Customs Clearance', desc: 'Hassle-free documentation & clearance' },
+      { icon: 'warehouse', title: 'Warehousing', desc: 'Secure storage in 15+ locations' },
+      { icon: 'truck-delivery', title: 'Last Mile Delivery', desc: 'Doorstep delivery to 25+ countries' },
+    ],
+    highlights: ['Real-time GPS tracking', 'Cargo insurance included', '24/7 support desk', 'Competitive rates'],
+  },
+  'quality': {
+    tagline: 'Product inspection & quality assurance',
+    stats: [
+      { icon: 'account-check', label: 'Certified Inspectors', value: '50+' },
+      { icon: 'earth', label: 'Countries Covered', value: '12+' },
+      { icon: 'clipboard-text', label: 'Reports/Month', value: '200+' },
+    ],
+    features: [
+      { icon: 'magnify-scan', title: 'Pre-shipment Inspection', desc: 'Complete quality check before dispatch' },
+      { icon: 'flask', title: 'Lab Testing', desc: 'ISO 17025 certified partner laboratories' },
+      { icon: 'factory', title: 'Factory Audits', desc: 'Complete facility & process assessment' },
+      { icon: 'certificate', title: 'Certification Support', desc: 'CE, FDA, ISO, BIS & more certifications' },
+    ],
+    highlights: ['95% pass rate', '48hr report delivery', 'Certified inspectors', 'Photo & video evidence'],
+  },
+  'finance': {
+    tagline: 'Trade finance & secure payment solutions',
+    stats: [
+      { icon: 'cash-multiple', label: 'Total Disbursed', value: '₹50Cr+' },
+      { icon: 'shield-check', label: 'Secure Transactions', value: '2,500+' },
+      { icon: 'account-group', label: 'Active Clients', value: '500+' },
+    ],
+    features: [
+      { icon: 'credit-card', title: 'Trade Credit', desc: 'Up to 90 days interest-free credit period' },
+      { icon: 'file-document', title: 'Invoice Factoring', desc: 'Quick cash against unpaid invoices' },
+      { icon: 'bank-transfer', title: 'Export Finance', desc: 'Pre & post shipment funding available' },
+      { icon: 'shield-lock', title: 'Escrow Service', desc: 'Secure payment protection for both parties' },
+    ],
+    highlights: ['Competitive interest rates', 'Quick 48hr disbursal', 'No collateral up to ₹25L', 'Escrow protection'],
+  },
+  'legal': {
+    tagline: 'International trade legal & compliance',
+    stats: [
+      { icon: 'scale-balance', label: 'Legal Experts', value: '35+' },
+      { icon: 'earth', label: 'Jurisdictions', value: '15+' },
+      { icon: 'file-check', label: 'Case Success Rate', value: '96%' },
+    ],
+    features: [
+      { icon: 'file-document-edit', title: 'Contract Drafting', desc: 'International sale & purchase agreements' },
+      { icon: 'lightbulb-on', title: 'IP Protection', desc: 'Patent, trademark & design registration' },
+      { icon: 'handshake', title: 'Dispute Resolution', desc: 'Arbitration, mediation & litigation support' },
+      { icon: 'clipboard-list', title: 'Regulatory Compliance', desc: 'Customs, DGFT, RBI & FEMA compliance' },
+    ],
+    highlights: ['Free initial consultation', 'Multi-language support', 'Pan-India network', 'Dedicated case manager'],
+  },
+  'sourcing': {
+    tagline: 'Product sourcing & supplier matching',
+    stats: [
+      { icon: 'store', label: 'Verified Suppliers', value: '5,000+' },
+      { icon: 'package-variant', label: 'Products Listed', value: '50K+' },
+      { icon: 'trophy', label: 'Match Success Rate', value: '92%' },
+    ],
+    features: [
+      { icon: 'magnify', title: 'Supplier Discovery', desc: 'Smart supplier matching for your needs' },
+      { icon: 'currency-inr', title: 'Price Negotiation', desc: 'Best market price guaranteed by experts' },
+      { icon: 'cube-send', title: 'Sample Management', desc: 'Sample collection, testing & evaluation' },
+      { icon: 'truck-check', title: 'Order Management', desc: 'End-to-end order tracking & management' },
+    ],
+    highlights: ['Verified suppliers only', 'Price comparison tool', 'Escrow payment protection', 'Dedicated sourcing agent'],
+  },
+  'marketing': {
+    tagline: 'Digital marketing & global brand building',
+    stats: [
+      { icon: 'account-group', label: 'Monthly Reach', value: '500K+' },
+      { icon: 'earth', label: 'Target Markets', value: '20+' },
+      { icon: 'trending-up', label: 'Average ROI', value: '250%' },
+    ],
+    features: [
+      { icon: 'google-ads', title: 'Digital Advertising', desc: 'Google, Meta, LinkedIn & B2B platforms' },
+      { icon: 'calendar-star', title: 'Trade Show Support', desc: 'Exhibition booking, setup & lead capture' },
+      { icon: 'book-open', title: 'Catalog Design', desc: 'Professional product & company catalogs' },
+      { icon: 'account-arrow-right', title: 'Lead Generation', desc: 'Qualified B2B buyer leads generation' },
+    ],
+    highlights: ['Dedicated account manager', 'Monthly performance reports', 'Multi-platform campaigns', 'Content in 10+ languages'],
+  },
+  'packaging': {
+    tagline: 'Custom packaging & branding solutions',
+    stats: [
+      { icon: 'cube-outline', label: 'Packaging Types', value: '50+' },
+      { icon: 'palette', label: 'Design Templates', value: '200+' },
+      { icon: 'package-up', label: 'Monthly Orders', value: '300+' },
+    ],
+    features: [
+      { icon: 'package-variant', title: 'Custom Packaging', desc: 'Tailored packaging for any product type' },
+      { icon: 'brush', title: 'Brand Design', desc: 'Logo, color & brand identity on packages' },
+      { icon: 'recycle', title: 'Eco-Friendly Options', desc: 'Sustainable & biodegradable materials' },
+      { icon: 'qrcode', title: 'Smart Packaging', desc: 'QR codes, RFID & anti-counterfeit tech' },
+    ],
+    highlights: ['Free design consultation', 'Bulk order discounts', 'Fast 7-day turnaround', 'Pan-India delivery'],
+  },
+  'translation': {
+    tagline: 'Professional translation & localization',
+    stats: [
+      { icon: 'translate', label: 'Languages', value: '25+' },
+      { icon: 'account-tie', label: 'Native Translators', value: '100+' },
+      { icon: 'file-document-multiple', label: 'Documents/Month', value: '500+' },
+    ],
+    features: [
+      { icon: 'file-translate', title: 'Document Translation', desc: 'Contracts, catalogs & certificates' },
+      { icon: 'web', title: 'Website Localization', desc: 'Full website & e-commerce translation' },
+      { icon: 'microphone', title: 'Interpretation', desc: 'Live interpretation for meetings & calls' },
+      { icon: 'certificate', title: 'Certified Translation', desc: 'Notarized & government-approved docs' },
+    ],
+    highlights: ['Native speakers only', 'Industry-specific experts', '48hr delivery', 'Confidentiality guaranteed'],
+  },
+  'travel': {
+    tagline: 'Business travel & visa assistance',
+    stats: [
+      { icon: 'airplane', label: 'Destinations', value: '40+' },
+      { icon: 'passport', label: 'Visas Processed', value: '1,000+' },
+      { icon: 'hotel', label: 'Partner Hotels', value: '500+' },
+    ],
+    features: [
+      { icon: 'airplane-takeoff', title: 'Flight Booking', desc: 'Best rates on international business travel' },
+      { icon: 'card-account-details', title: 'Visa Assistance', desc: 'Business visa processing & documentation' },
+      { icon: 'bed', title: 'Hotel & Stay', desc: 'Curated business hotels near trade hubs' },
+      { icon: 'car', title: 'Local Transport', desc: 'Airport pickup, car rental & interpretation' },
+    ],
+    highlights: ['Visa approval guarantee', 'Trade fair packages', '24/7 travel support', 'Corporate rates'],
+  },
+  'insurance': {
+    tagline: 'Comprehensive trade & cargo insurance',
+    stats: [
+      { icon: 'shield-check', label: 'Claims Settled', value: '₹15Cr+' },
+      { icon: 'file-document', label: 'Policies Issued', value: '2,000+' },
+      { icon: 'clock-fast', label: 'Claim Settlement', value: '<72hrs' },
+    ],
+    features: [
+      { icon: 'shield', title: 'Cargo Insurance', desc: 'All-risk coverage for sea, air & land shipments' },
+      { icon: 'credit-card', title: 'Credit Insurance', desc: 'Protection against buyer defaults & insolvency' },
+      { icon: 'domain', title: 'Property Insurance', desc: 'Warehouse, factory & office coverage' },
+      { icon: 'account-group', title: 'Liability Insurance', desc: 'Product, public & employer liability cover' },
+    ],
+    highlights: ['Instant online quotes', 'Cashless claim settlement', 'Trusted insurance partners', '24/7 claim assistance'],
+  },
+  'compliance': {
+    tagline: 'Regulatory compliance & certifications',
+    stats: [
+      { icon: 'certificate', label: 'Certifications', value: '40+' },
+      { icon: 'earth', label: 'Regulatory Bodies', value: '20+' },
+      { icon: 'clipboard-check', label: 'Compliance Rate', value: '98%' },
+    ],
+    features: [
+      { icon: 'file-document', title: 'Documentation', desc: 'Export-import documentation & filing' },
+      { icon: 'flask', title: 'Product Testing', desc: 'Safety, quality & performance testing' },
+      { icon: 'certificate', title: 'Certifications', desc: 'CE, FDA, ISO, BIS, RoHS & more' },
+      { icon: 'clipboard-list', title: 'Audit Support', desc: 'Pre-audit preparation & compliance gap analysis' },
+    ],
+    highlights: ['End-to-end support', 'Fast-track certification', 'Expert consultation', 'Annual compliance packages'],
+  },
+  'technology': {
+    tagline: 'Trade tech & digital solutions',
+    stats: [
+      { icon: 'monitor', label: 'Platforms', value: '8+' },
+      { icon: 'account-group', label: 'Active Users', value: '5,000+' },
+      { icon: 'trending-up', label: 'Efficiency Gain', value: '35%' },
+    ],
+    features: [
+      { icon: 'cloud', title: 'Trade Management', desc: 'Cloud-based end-to-end trade platform' },
+      { icon: 'blockchain', title: 'Document Verification', desc: 'Secure document verification & smart contracts' },
+      { icon: 'chart-line', title: 'Analytics', desc: 'Real-time trade analytics & market insights' },
+      { icon: 'robot', title: 'AI Solutions', desc: 'AI-powered risk assessment & supplier matching' },
+    ],
+    highlights: ['API integration', 'Custom dashboards', 'Real-time tracking', 'Data security compliant'],
+  },
+};
+
+// Default fallback for any hub without explicit details
+const getDefaultHubDetails = (hub: typeof SERVICE_HUBS[0]) => ({
+  tagline: hub.description || 'Comprehensive trade service solution',
+  stats: [
+    { icon: 'briefcase-outline', label: 'Services', value: `${hub.items.length}` },
+    { icon: 'account-check', label: 'Providers', value: '100+' },
+    { icon: 'star', label: 'Rating', value: '4.5/5' },
+  ],
+  features: hub.items.slice(0, 4).map((item, i) => ({
+    icon: item.icon || 'circle-small',
+    title: item.title,
+    desc: 'Professional trade service with verified providers',
+  })),
+  highlights: ['Verified providers', 'Competitive pricing', 'Quality guaranteed', '24/7 support'],
+});
+
+// ─── Quick Stats ────────────────────────────────────────────────────────────
+
+function QuickStats({ totals }: { totals: any }) {
+  const items = [
+    { icon: 'flash', label: 'Active', count: totals.active, color: '#2563EB', bg: '#EFF6FF' },
+    { icon: 'clock-outline', label: 'Pending', count: totals.pending, color: '#D97706', bg: '#FFFBEB' },
+    { icon: 'check-circle', label: 'Done', count: totals.completed, color: '#059669', bg: '#ECFDF5' },
   ];
 
   return (
     <View style={quickStyles.container}>
-      <Text style={quickStyles.sectionTitle}>Overview</Text>
-      <View style={quickStyles.grid}>
-        {actions.map((action, index) => (
-          <Pressable
-            key={index}
-            style={({ pressed }) => [
-              quickStyles.card,
-              { backgroundColor: action.bg, borderColor: action.borderColor },
-              pressed && quickStyles.cardPressed,
-            ]}
-          >
-            <View style={[quickStyles.iconCircle, { backgroundColor: action.color + '15' }]}>
-              <Icon name={action.icon} size={18} color={action.color} />
-            </View>
-            <Text style={[quickStyles.count, { color: action.color }]}>
-              {action.count}
-            </Text>
-            <Text style={quickStyles.label}>{action.label}</Text>
-            
-            {/* Mini progress bar */}
-            {action.label === 'Active' && totals.active > 0 && (
-              <View style={quickStyles.progressBar}>
-                <View style={[quickStyles.progressFill, { 
-                  width: `${Math.min(100, (totals.active / (totals.active + totals.completed || 1)) * 100)}%`,
-                  backgroundColor: action.color 
-                }]} />
-              </View>
-            )}
-          </Pressable>
+      <View style={quickStyles.row}>
+        {items.map((item, i) => (
+          <View key={i} style={[quickStyles.item, { backgroundColor: item.bg }]}>
+            <Icon name={item.icon} size={18} color={item.color} />
+            <Text style={[quickStyles.count, { color: item.color }]}>{item.count}</Text>
+            <Text style={quickStyles.label}>{item.label}</Text>
+          </View>
         ))}
       </View>
     </View>
@@ -145,626 +283,348 @@ function QuickActions({ totals, role }: { totals: any; role: string }) {
 
 const quickStyles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    marginTop: 24,
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: D.textTertiary,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  card: {
-    width: (SCREEN_WIDTH - 50) / 2,
-    padding: 14,
-    borderRadius: 16,
-    borderWidth: 1,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  cardPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  count: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -1,
-    marginBottom: 2,
-  },
-  label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: D.textSecondary,
-    marginBottom: 6,
-  },
-  progressBar: {
-    height: 3,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-});
-
-// ─── Stats Bar Component ────────────────────────────────────────────────────
-
-function StatsBar({ activity }: { activity: any[] }) {
-  const stats = useMemo(() => {
-    const total = activity.length;
-    const withQuotes = activity.filter(a => a.hasQuotes).length;
-    const urgentCount = activity.filter(a => 
-      a.priority === 'urgent' || a.urgency === 'high'
-    ).length;
-    const avgResponse = total > 0 
-      ? Math.round(activity.reduce((sum, a) => sum + (a.responseTime || 0), 0) / total)
-      : 0;
-    
-    return [
-      { icon: 'file-document-outline', value: total, label: 'Total Services', color: '#2563EB' },
-      { icon: 'cash-multiple', value: withQuotes, label: 'With Quotes', color: '#7C3AED' },
-      { icon: 'alert-circle-outline', value: urgentCount, label: 'Urgent', color: '#DC2626' },
-      { icon: 'timer-outline', value: `${avgResponse}h`, label: 'Avg Response', color: '#059669' },
-    ];
-  }, [activity]);
-
-  if (activity.length === 0) return null;
-
-  return (
-    <View style={statsBarStyles.container}>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={statsBarStyles.scroll}
-      >
-        {stats.map((stat, index) => (
-          <View key={index} style={statsBarStyles.item}>
-            <View style={[statsBarStyles.iconBox, { backgroundColor: stat.color + '12' }]}>
-              <Icon name={stat.icon} size={16} color={stat.color} />
-            </View>
-            <View>
-              <Text style={statsBarStyles.value}>{stat.value}</Text>
-              <Text style={statsBarStyles.label}>{stat.label}</Text>
-            </View>
-            {index < stats.length - 1 && <View style={statsBarStyles.divider} />}
-          </View>
-        ))}
-      </ScrollView>
-    </View>
-  );
-}
-
-const statsBarStyles = StyleSheet.create({
-  container: {
-    marginHorizontal: 20,
+    paddingHorizontal: 16,
     marginTop: 16,
-    backgroundColor: D.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: D.border,
-    paddingVertical: 14,
-    ...D.shadowSm,
   },
-  scroll: {
-    paddingHorizontal: 12,
-    gap: 4,
+  row: {
+    flexDirection: 'row',
+    gap: 8,
   },
   item: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
   },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  value: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: D.textPrimary,
+  count: {
+    fontSize: 16,
+    fontWeight: '800',
+    flex: 1,
   },
   label: {
     fontSize: 10,
-    color: D.textTertiary,
     fontWeight: '600',
-    marginTop: 1,
-  },
-  divider: {
-    width: 1,
-    height: 32,
-    backgroundColor: D.borderLight,
+    color: D.textTertiary,
   },
 });
 
-// ─── Featured Hub Banner Component ──────────────────────────────────────────
-
-function FeaturedHubBanner({ 
-  hubs, 
-  getHubActivity 
-}: { 
-  hubs: typeof SERVICE_HUBS; 
-  getHubActivity: (key: string) => { active: number; pending: number };
-}) {
-  const navigation = useNavigation<any>();
-  
-  // Pick hub with most activity or first one
-  const featured = useMemo(() => {
-    if (hubs.length === 0) return null;
-    return hubs.reduce((prev, curr) => {
-      const prevCount = getHubActivity(prev.key);
-      const currCount = getHubActivity(curr.key);
-      return (currCount.active + currCount.pending) > (prevCount.active + prevCount.pending) ? curr : prev;
-    }, hubs[0]);
-  }, [hubs]);
-
-  if (!featured) return null;
-
-  const counts = getHubActivity(featured.key);
-  const totalActive = counts.active + counts.pending;
-
-  return (
-    <Pressable
-      onPress={() => navigation.navigate('ServiceHub', { hubKey: featured.key })}
-      style={({ pressed }) => [
-        featuredStyles.container,
-        pressed && featuredStyles.pressed,
-      ]}
-    >
-      <View style={[featuredStyles.gradient, { backgroundColor: featured.tint }]}>
-        <View style={featuredStyles.content}>
-          <View style={featuredStyles.leftSection}>
-            <View style={[featuredStyles.iconCircle, { backgroundColor: featured.color + '20' }]}>
-              <Icon name={featured.icon} size={28} color={featured.color} />
-            </View>
-            <View style={featuredStyles.textSection}>
-              <View style={featuredStyles.badgeRow}>
-                <View style={[featuredStyles.badge, { backgroundColor: featured.color + '15' }]}>
-                  <Icon name="star" size={10} color={featured.color} />
-                  <Text style={[featuredStyles.badgeText, { color: featured.color }]}>
-                    Most Active
-                  </Text>
-                </View>
-              </View>
-              <Text style={featuredStyles.title}>{featured.title}</Text>
-              <Text style={featuredStyles.subtitle} numberOfLines={2}>
-                {featured.description}
-              </Text>
-            </View>
-          </View>
-          
-          <View style={featuredStyles.rightSection}>
-            {totalActive > 0 && (
-              <View style={featuredStyles.countBadge}>
-                <Text style={featuredStyles.countValue}>{totalActive}</Text>
-                <Text style={featuredStyles.countLabel}>active</Text>
-              </View>
-            )}
-            <View style={[featuredStyles.arrowCircle, { backgroundColor: featured.color }]}>
-              <Icon name="arrow-right" size={16} color="#FFF" />
-            </View>
-          </View>
-        </View>
-        
-        {/* Bottom mini stats */}
-        <View style={featuredStyles.miniStats}>
-          <View style={featuredStyles.miniStat}>
-            <Icon name="briefcase-outline" size={12} color={featured.color} />
-            <Text style={[featuredStyles.miniStatText, { color: featured.color }]}>
-              {featured.items.length} services
-            </Text>
-          </View>
-          {counts.pending > 0 && (
-            <View style={featuredStyles.miniStat}>
-              <Icon name="clock-outline" size={12} color="#D97706" />
-              <Text style={[featuredStyles.miniStatText, { color: '#D97706' }]}>
-                {counts.pending} pending
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </Pressable>
-  );
-}
-
-const featuredStyles = StyleSheet.create({
-  container: {
-    marginHorizontal: 20,
-    marginTop: 16,
-    borderRadius: 20,
-    overflow: 'hidden',
-    ...D.shadowLg,
-  },
-  pressed: {
-    opacity: 0.95,
-    transform: [{ scale: 0.98 }],
-  },
-  gradient: {
-    padding: 18,
-  },
-  content: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  leftSection: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 14,
-    marginRight: 12,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textSection: {
-    flex: 1,
-    gap: 4,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    marginBottom: 2,
-  },
-  badge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 4,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: D.textPrimary,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 12,
-    color: D.textSecondary,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  rightSection: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  countBadge: {
-    backgroundColor: D.surface,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    ...D.shadowSm,
-  },
-  countValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: D.textPrimary,
-    letterSpacing: -0.5,
-  },
-  countLabel: {
-    fontSize: 9,
-    color: D.textTertiary,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 1,
-  },
-  arrowCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniStats: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
-  },
-  miniStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  miniStatText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-});
-
-// ─── Service Hub Card Component ─────────────────────────────────────────────
+// ─── Service Hub Card (Enhanced with More Info) ─────────────────────────────
 
 function ServiceHubCard({ 
   hub, 
-  index, 
-  totalHubs, 
   getHubActivity 
 }: { 
   hub: (typeof SERVICE_HUBS)[0]; 
-  index: number;
-  totalHubs: number;
   getHubActivity: (key: string) => { active: number; pending: number };
 }) {
   const navigation = useNavigation<any>();
   const counts = getHubActivity(hub.key);
-  const totalActive = counts.active + counts.pending;
-  const isLast = index === totalHubs - 1;
-  const isEven = index % 2 === 0;
+  const hasPending = counts.pending > 0;
+  const details = HUB_DETAILS[hub.key] || getDefaultHubDetails(hub);
+
+  const borderColors = [
+    '#2563EB', '#7C3AED', '#059669', '#F97316', '#0891B2', '#4F46E5', '#DC2626', '#CA8A04', '#0D9488', '#9333EA',
+  ];
+  const borderColor = borderColors[Math.abs(hub.key.split('').reduce((s, c) => s + c.charCodeAt(0), 0)) % borderColors.length];
 
   return (
     <Pressable
-      onPress={() => navigation.navigate('ServiceHub', { hubKey: hub.key })}
+      onPress={() => hub.key === 'assurance' ? navigation.navigate('TradeAssurance') : navigation.navigate('ServiceHub', { hubKey: hub.key })}
       style={({ pressed }) => [
-        hubCardStyles.card,
-        isLast && hubCardStyles.cardLast,
-        pressed && hubCardStyles.cardPressed,
+        cardStyles.card,
+        pressed && cardStyles.cardPressed,
       ]}
     >
-      {/* Color accent bar */}
-      <View style={[hubCardStyles.accentBar, { backgroundColor: hub.color }]} />
-      
-      <View style={hubCardStyles.cardContent}>
-        {/* Top Row: Icon + Title + Badge */}
-        <View style={hubCardStyles.topRow}>
-          <View style={[hubCardStyles.iconContainer, { backgroundColor: hub.tint }]}>
-            <Icon name={hub.icon} size={22} color={hub.color} />
+      {/* ── Header Section ── */}
+      <View style={cardStyles.header}>
+        <View style={cardStyles.headerLeft}>
+          <View style={[cardStyles.iconWrap, { backgroundColor: hub.tint || D.primaryLight }]}>
+            <Icon name={hub.icon} size={26} color={hub.color || D.primary} />
           </View>
-          
-          <View style={hubCardStyles.titleSection}>
-            <Text style={hubCardStyles.title} numberOfLines={1}>
-              {hub.title}
-            </Text>
-            <Text style={hubCardStyles.serviceCount}>
-              {hub.items.length} service{hub.items.length > 1 ? 's' : ''} available
-            </Text>
+          <View style={cardStyles.headerInfo}>
+            <Text style={cardStyles.title}>{hub.title}</Text>
+            <Text style={cardStyles.tagline}>{details.tagline}</Text>
           </View>
-          
-          {totalActive > 0 && (
-            <View style={[hubCardStyles.activeBadge, { 
-              backgroundColor: counts.pending > 0 ? D.warningLight : D.successLight,
-              borderColor: counts.pending > 0 ? '#FDE68A' : '#A7F3D0',
-            }]}>
-              <View style={[hubCardStyles.activeDot, { 
-                backgroundColor: counts.pending > 0 ? D.warning : D.success 
-              }]} />
-              <Text style={[hubCardStyles.activeText, { 
-                color: counts.pending > 0 ? D.warning : D.success 
-              }]}>
-                {totalActive}
-              </Text>
-            </View>
-          )}
         </View>
         
-        {/* Description */}
-        <Text style={hubCardStyles.description} numberOfLines={2}>
-          {hub.description}
-        </Text>
-        
-        {/* Tags / Key services preview */}
-        <View style={hubCardStyles.tagsContainer}>
-          {hub.items.slice(0, 3).map((item, i) => (
-            <View key={i} style={hubCardStyles.tag}>
-              <Icon name="circle-small" size={8} color={hub.color} />
-              <Text style={hubCardStyles.tagText} numberOfLines={1}>
-                {item.title}
+        {counts.active > 0 && (
+          <View style={[cardStyles.statusBadge, { 
+            backgroundColor: hasPending ? D.warningLight : D.successLight,
+            borderColor: hasPending ? '#FDE68A' : '#A7F3D0',
+          }]}>
+            <View style={[cardStyles.statusDot, { backgroundColor: hasPending ? D.warning : D.success }]} />
+            <Text style={[cardStyles.statusText, { color: hasPending ? D.warning : D.success }]}>
+              {counts.active} {hasPending ? 'pending' : 'active'}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* ── Stats Row ── */}
+      {details.stats.length > 0 && (
+        <View style={cardStyles.statsRow}>
+          {details.stats.map((stat, i) => (
+            <View key={i} style={cardStyles.statItem}>
+              <View style={[cardStyles.statIconCircle, { backgroundColor: (hub.tint || D.primaryLight) }]}>
+                <Icon name={stat.icon} size={14} color={hub.color || D.primary} />
+              </View>
+              <Text style={cardStyles.statValue}>{stat.value}</Text>
+              <Text style={cardStyles.statLabel}>{stat.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* ── Features Grid ── */}
+      <View style={cardStyles.featuresGrid}>
+        {details.features.map((feature, i) => (
+          <View key={i} style={cardStyles.featureItem}>
+            <View style={[cardStyles.featureIconBox, { backgroundColor: (hub.tint || D.primaryLight) }]}>
+              <Icon name={feature.icon} size={16} color={hub.color || D.primary} />
+            </View>
+            <View style={cardStyles.featureTextWrap}>
+              <Text style={cardStyles.featureTitle}>{feature.title}</Text>
+              {feature.desc ? (
+                <Text style={cardStyles.featureDesc} numberOfLines={1}>{feature.desc}</Text>
+              ) : null}
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* ── Highlights ── */}
+      {details.highlights.length > 0 && (
+        <View style={cardStyles.highlightsRow}>
+          {details.highlights.map((highlight, i) => (
+            <View key={i} style={[cardStyles.highlightPill, { backgroundColor: (hub.tint || D.primaryLight) }]}>
+              <Icon name="check-circle" size={10} color={hub.color || D.primary} />
+              <Text style={[cardStyles.highlightText, { color: hub.color || D.primary }]}>
+                {highlight}
               </Text>
             </View>
           ))}
-          {hub.items.length > 3 && (
-            <View style={[hubCardStyles.tag, hubCardStyles.tagMore]}>
-              <Text style={hubCardStyles.tagMoreText}>
-                +{hub.items.length - 3} more
-              </Text>
-            </View>
-          )}
         </View>
-        
-        {/* Footer */}
-        <View style={hubCardStyles.footer}>
-          {counts.pending > 0 ? (
-            <View style={[hubCardStyles.footerBadge, { backgroundColor: D.warningLight }]}>
-              <Icon name="clock-outline" size={12} color={D.warning} />
-              <Text style={[hubCardStyles.footerBadgeText, { color: D.warning }]}>
-                {counts.pending} pending action{counts.pending > 1 ? 's' : ''}
-              </Text>
-            </View>
-          ) : (
-            <View style={[hubCardStyles.footerBadge, { backgroundColor: D.successLight }]}>
-              <Icon name="check-circle-outline" size={12} color={D.success} />
-              <Text style={[hubCardStyles.footerBadgeText, { color: D.success }]}>
-                Up to date
-              </Text>
-            </View>
-          )}
-          
-          <View style={hubCardStyles.exploreBtn}>
-            <Text style={[hubCardStyles.exploreText, { color: hub.color }]}>
-              Explore
-            </Text>
-            <Icon name="chevron-right" size={14} color={hub.color} />
-          </View>
+      )}
+
+      {/* ── Footer ── */}
+      <View style={cardStyles.footer}>
+        <View style={cardStyles.serviceCount}>
+          <Icon name="view-grid-outline" size={14} color={D.textTertiary} />
+          <Text style={cardStyles.serviceCountText}>{hub.items.length} services available</Text>
+        </View>
+        <View style={[cardStyles.exploreBtn, { backgroundColor: hub.color + '15' || D.primaryLight }]}>
+          <Text style={[cardStyles.exploreText, { color: hub.color || D.primary }]}>Explore Hub</Text>
+          <Icon name="arrow-right" size={14} color={hub.color || D.primary} />
         </View>
       </View>
     </Pressable>
   );
 }
 
-const hubCardStyles = StyleSheet.create({
+const cardStyles = StyleSheet.create({
   card: {
     backgroundColor: D.surface,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 14,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: D.border,
-    ...D.shadowMd,
-  },
-  cardLast: {
-    marginBottom: 120,
+    ...D.shadow,
   },
   cardPressed: {
     backgroundColor: '#FAFBFC',
-    borderColor: '#CBD5E1',
-    transform: [{ scale: 0.99 }],
   },
-  accentBar: {
-    height: 3,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  
-  // Top Row
-  topRow: {
+
+  // Header
+  header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    padding: 16,
+    paddingBottom: 12,
     gap: 12,
-    marginBottom: 10,
   },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleSection: {
+  headerLeft: {
+    flexDirection: 'row',
+    gap: 14,
     flex: 1,
   },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: D.textPrimary,
-    letterSpacing: -0.2,
-    marginBottom: 2,
+  iconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  serviceCount: {
-    fontSize: 11,
+  headerInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: D.text,
+    letterSpacing: -0.2,
+  },
+  tagline: {
+    fontSize: 12,
     color: D.textTertiary,
     fontWeight: '500',
+    lineHeight: 16,
   },
-  activeBadge: {
+  statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 20,
-    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 5,
     borderWidth: 1,
+    flexShrink: 0,
   },
-  activeDot: {
+  statusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
   },
-  activeText: {
-    fontSize: 11,
+  statusText: {
+    fontSize: 10,
     fontWeight: '700',
   },
-  
-  // Description
-  description: {
-    fontSize: 13,
-    color: D.textSecondary,
-    lineHeight: 19,
-    marginBottom: 12,
+
+  // Stats Row
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
   },
-  
-  // Tags
-  tagsContainer: {
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: D.borderLight,
+  },
+  statIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: D.text,
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: D.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // Features Grid
+  featuresGrid: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: D.borderLight,
+  },
+  featureIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  featureTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  featureTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: D.text,
+  },
+  featureDesc: {
+    fontSize: 11,
+    color: D.textTertiary,
+    fontWeight: '500',
+  },
+
+  // Highlights
+  highlightsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
-  tag: {
+  highlightPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: D.background,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    gap: 2,
-    maxWidth: '48%',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  tagText: {
+  highlightText: {
     fontSize: 10,
     fontWeight: '600',
-    color: D.textSecondary,
-    flexShrink: 1,
   },
-  tagMore: {
-    backgroundColor: '#F1F5F9',
-  },
-  tagMoreText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: D.textTertiary,
-  },
-  
+
   // Footer
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: D.borderLight,
+    backgroundColor: '#FAFBFC',
   },
-  footerBadge: {
+  serviceCount: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
     gap: 5,
   },
-  footerBadgeText: {
+  serviceCountText: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: D.textTertiary,
   },
   exploreBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
   },
   exploreText: {
     fontSize: 12,
@@ -772,10 +632,11 @@ const hubCardStyles = StyleSheet.create({
   },
 });
 
-// ─── Main ServicesScreen Component ──────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function ServicesScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const { activeRole, user } = useAuth();
   const role = activeRole === 'seller' ? 'seller' : 'buyer';
 
@@ -789,15 +650,10 @@ export default function ServicesScreen() {
   const totals = useMemo(
     () => ({
       active: (activity.data ?? []).filter(
-        x =>
-          !['completed', 'cancelled', 'rejected'].includes(
-            String(x.status ?? '').toLowerCase()
-          )
+        x => !['completed', 'cancelled', 'rejected'].includes(String(x.status ?? '').toLowerCase())
       ).length,
       pending: (activity.data ?? []).filter(
-        x =>
-          String(x.status ?? '').toLowerCase().includes('pending') ||
-          String(x.status ?? '') === 'submitted'
+        x => String(x.status ?? '').toLowerCase().includes('pending') || String(x.status ?? '') === 'submitted'
       ).length,
       completed: (activity.data ?? []).filter(
         x => String(x.status ?? '').toLowerCase() === 'completed'
@@ -810,140 +666,94 @@ export default function ServicesScreen() {
     const hub = SERVICE_HUBS.find(h => h.key === hubKey);
     if (!hub) return { active: 0, pending: 0 };
     const matching = (activity.data ?? []).filter(a =>
-      hub.items.some(
-        i =>
-          i.serviceKey &&
-          [a.serviceKey, a.originalServiceKey].includes(i.serviceKey)
-      )
+      hub.items.some(i => i.serviceKey && [a.serviceKey, a.originalServiceKey].includes(i.serviceKey))
     );
     return {
-      active: matching.filter(
-        x =>
-          !['completed', 'cancelled'].includes(
-            String(x.status ?? '').toLowerCase()
-          )
-      ).length,
-      pending: matching.filter(x =>
-        String(x.status ?? '').toLowerCase().includes('pending')
-      ).length,
+      active: matching.filter(x => !['completed', 'cancelled'].includes(String(x.status ?? '').toLowerCase())).length,
+      pending: matching.filter(x => String(x.status ?? '').toLowerCase().includes('pending')).length,
     };
   };
 
-  // ── Header Component ────────────────────────────────────────────────────
-  
   const ListHeader = () => (
     <View>
-      {/* Premium Hero Section */}
-      <View style={styles.hero}>
-        {/* Subtle background pattern */}
-        <View style={styles.heroBgPattern}>
-          <View style={[styles.heroBgCircle, { top: -20, right: -20, width: 120, height: 120 }]} />
-          <View style={[styles.heroBgCircle, { bottom: -40, left: -30, width: 80, height: 80 }]} />
+      {/* ── Header with Back Button ── */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="arrow-left" size={20} color={D.text} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Services</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      {/* ── Premium Hero Card ── */}
+      <LinearGradient
+        colors={['#1E3A8A', '#2563EB', '#3B82F6']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroCard}
+      >
+        <View style={styles.heroPattern}>
+          <View style={[styles.heroCircle, { width: 140, height: 140, top: -40, right: -40 }]} />
+          <View style={[styles.heroCircle, { width: 80, height: 80, bottom: -20, left: -20 }]} />
         </View>
         
-        <View style={styles.heroContent}>
-          {/* Top greeting with role badge */}
-          <View style={styles.greetingRow}>
-            <View>
-              <Text style={styles.greeting}>
-                {user?.name ? `Welcome back, ${user.name.split(' ')[0]} 👋` : 'Welcome'}
-              </Text>
-            </View>
-            <View style={styles.roleBadge}>
-              <Icon 
-                name={role === 'seller' ? 'store' : 'account'} 
-                size={12} 
-                color={D.info} 
-              />
-              <Text style={styles.roleBadgeText}>
-                {role === 'seller' ? 'Supplier' : 'Buyer'}
-              </Text>
-            </View>
+        <Text style={styles.heroGreeting}>
+          {user?.name ? `Hello, ${user.name.split(' ')[0]}` : 'Welcome'}
+        </Text>
+        <Text style={styles.heroTitle}>Trade Services Hub</Text>
+        <Text style={styles.heroSubtitle}>
+          End-to-end B2B solutions for global commerce
+        </Text>
+        
+        <View style={styles.heroStats}>
+          <View style={styles.heroStat}>
+            <Text style={styles.heroStatValue}>{SERVICE_HUBS.length}</Text>
+            <Text style={styles.heroStatLabel}>Hubs</Text>
           </View>
-          
-          {/* Main heading */}
-          <Text style={styles.heroTitle}>
-            Global Trade & Services Hub
-          </Text>
-          <Text style={styles.heroSubtitle}>
-            End-to-end B2B trade solutions for international commerce
-          </Text>
-          
-          {/* Mini insight */}
-          {totals.active > 0 && (
-            <View style={styles.insightBanner}>
-              <View style={styles.insightDot} />
-              <Text style={styles.insightText}>
-                {totals.pending > 0 
-                  ? `${totals.pending} service${totals.pending > 1 ? 's' : ''} need${totals.pending === 1 ? 's' : ''} your attention`
-                  : `All ${totals.active} active services running smoothly`
-                }
-              </Text>
-            </View>
-          )}
+          <View style={styles.heroStatDivider} />
+          <View style={styles.heroStat}>
+            <Text style={styles.heroStatValue}>
+              {SERVICE_HUBS.reduce((s, h) => s + h.items.length, 0)}
+            </Text>
+            <Text style={styles.heroStatLabel}>Services</Text>
+          </View>
+          <View style={styles.heroStatDivider} />
+          <View style={styles.heroStat}>
+            <Text style={styles.heroStatValue}>80+</Text>
+            <Text style={styles.heroStatLabel}>Countries</Text>
+          </View>
         </View>
+      </LinearGradient>
+
+      {/* Quick Stats */}
+      <QuickStats totals={totals} />
+
+      {/* Section Divider */}
+      <View style={styles.divider}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>All Services</Text>
+        <View style={styles.dividerLine} />
       </View>
-
-      {/* Quick Actions Grid */}
-      <QuickActions totals={totals} role={role} />
-
-      {/* Activity Stats Bar */}
-      <StatsBar activity={activity.data ?? []} />
-
-      {/* Featured Hub Banner */}
-      <FeaturedHubBanner hubs={SERVICE_HUBS} getHubActivity={getHubActivity} />
-
-      {/* Section Divider for Service Hubs */}
-      <View style={styles.sectionDivider}>
-        <View style={styles.sectionDividerLine} />
-        <Text style={styles.sectionDividerText}>All Service Categories</Text>
-        <View style={styles.sectionDividerLine} />
-      </View>
-    </View>
-  );
-
-  // ── Render Item ──────────────────────────────────────────────────────────
-
-  const renderItem = ({
-    item: hub,
-    index,
-  }: {
-    item: (typeof SERVICE_HUBS)[0];
-    index: number;
-  }) => (
-    <ServiceHubCard 
-      hub={hub}
-      index={index}
-      totalHubs={SERVICE_HUBS.length}
-      getHubActivity={getHubActivity}
-    />
-  );
-
-  const ListFooter = () => (
-    <View style={styles.footerSpace}>
-      <Text style={styles.footerText}>
-        {SERVICE_HUBS.length} service categories available
-      </Text>
     </View>
   );
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={D.surface} />
+      <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <FlatList
         data={SERVICE_HUBS}
         keyExtractor={item => item.key}
-        renderItem={renderItem}
+        renderItem={({ item }) => <ServiceHubCard hub={item} getHubActivity={getHubActivity} />}
         ListHeaderComponent={ListHeader}
-        ListFooterComponent={ListFooter}
-        contentContainerStyle={styles.list}
+        ListFooterComponent={<View style={{ height: 40 }} />}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={activity.isRefetching}
             onRefresh={() => activity.refetch()}
-            tintColor={D.textPrimary}
-            colors={[D.info]}
+            tintColor={D.primary}
+            colors={[D.primary]}
             progressBackgroundColor={D.surface}
           />
         }
@@ -959,135 +769,121 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: D.background,
   },
-  list: {
-    paddingBottom: 20,
-  },
 
-  // ─── HERO SECTION ───────────────────────────────────────────────────────
-  hero: {
-    backgroundColor: D.surface,
-    paddingTop: 60,
-    paddingBottom: 6,
-    position: 'relative',
-    overflow: 'hidden',
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    ...D.shadowMd,
-  },
-  heroBgPattern: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  heroBgCircle: {
-    position: 'absolute',
-    borderRadius: 999,
-    backgroundColor: '#F1F5F9',
-    opacity: 0.5,
-  },
-  heroContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  greetingRow: {
+  // Header
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: D.surface,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: D.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: D.text,
+  },
+
+  // Hero Card
+  heroCard: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    borderRadius: 20,
+    padding: 20,
+    position: 'relative',
+    overflow: 'hidden',
+    shadowColor: '#1E3A8A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  heroPattern: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+  },
+  heroCircle: {
+    position: 'absolute',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  heroGreeting: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  heroTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  heroSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '500',
     marginBottom: 16,
   },
-  greeting: {
-    fontSize: 14,
-    color: D.textSecondary,
-    fontWeight: '500',
-  },
-  roleBadge: {
+  heroStats: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: D.infoLight,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.12)',
   },
-  roleBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: D.info,
+  heroStat: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroStatValue: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#FFF',
+  },
+  heroStatLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.55)',
+    fontWeight: '600',
+    marginTop: 2,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: D.textPrimary,
-    letterSpacing: -1,
-    lineHeight: 22,
-    marginBottom: 5,
-  },
-  heroSubtitle: {
-    fontSize: 15,
-    color: D.textTertiary,
-    fontWeight: '400',
-    lineHeight: 22,
-    marginBottom: 16,
-  },
-  insightBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: D.background,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-    gap: 8,
-  },
-  insightDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: D.info,
-  },
-  insightText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: D.textSecondary,
-    flex: 1,
+  heroStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignSelf: 'center',
   },
 
-  // ─── SECTION DIVIDER ────────────────────────────────────────────────────
-  sectionDivider: {
+  // Divider
+  divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    marginTop: 28,
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 14,
     gap: 12,
   },
-  sectionDividerLine: {
+  dividerLine: {
     flex: 1,
     height: 1,
     backgroundColor: D.border,
   },
-  sectionDividerText: {
+  dividerText: {
     fontSize: 11,
     fontWeight: '700',
     color: D.textTertiary,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-  },
-
-  // ─── FOOTER ─────────────────────────────────────────────────────────────
-  footerSpace: {
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerText: {
-    fontSize: 11,
-    color: D.textTertiary,
-    fontWeight: '500',
   },
 });
