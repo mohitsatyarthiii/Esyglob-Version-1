@@ -85,9 +85,11 @@ const documentSchema = new mongoose.Schema({
   // Status
   status: {
     type: String,
-    enum: ['draft', 'generated', 'signed', 'shared', 'expired', 'archived'],
+    enum: ['draft', 'pending', 'approved', 'rejected', 'generated', 'signed', 'shared', 'expired', 'archived'],
     default: 'draft'
   },
+  rejectionReason: String,
+  reviewerNotes: String,
   
   // Sharing
   sharedWith: [{

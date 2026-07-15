@@ -1,28 +1,426 @@
 import React, { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { fetchAggregatedServiceActivity, ServiceRequest } from '../api/services';
+import {
+  fetchAggregatedServiceActivity,
+  ServiceRequest,
+} from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { getServiceHub, HubItem } from '../services/serviceHubs';
 import { EmptyState } from '../components/StateViews';
 import { colors, shadow } from '../theme';
 
-const TAB_ROUTES=new Set(['Account','Messages','Services','Categories','Home']);
-export default function ServiceHubScreen(){
- const navigation=useNavigation<any>(); const route=useRoute<any>(); const {activeRole}=useAuth(); const hub=getServiceHub(String(route.params?.hubKey??'')); const [search,setSearch]=useState('');
- const activity=useQuery({queryKey:['service-activity',activeRole],queryFn:()=>fetchAggregatedServiceActivity(activeRole),staleTime:30_000});
- const items=useMemo(()=>(hub?.items??[]).filter(i=>i.title.toLowerCase().includes(search.trim().toLowerCase())),[hub?.items,search]);
- const relevant=useMemo(()=>(activity.data??[]).filter(request=>hub?.items.some(i=>i.serviceKey&&[request.serviceKey,request.originalServiceKey].includes(i.serviceKey))),[activity.data,hub?.items]);
- if(!hub)return <View style={s.screen}><Header title="Service Hub"/><EmptyState title="Service hub unavailable"/></View>;
- const open=(entry:HubItem)=>{if(entry.serviceKey){const dedicated:Record<string,string>={shipping:'ShippingService','customs-brokerage':'CustomsService',warehousing:'WarehousingService','documentation-support':'DocumentationService',insurance:'InsuranceService',consulting:'ConsultingService',escrow:'EscrowService','trade-financing':'TradeFinanceService','quality-inspection':'InspectionService','dispute-resolution':'DisputeService','supplier-verification':'SupplierVerificationService','seller-verification':'BusinessVerificationService'};navigation.navigate(dedicated[entry.serviceKey]??'ServiceDetails',dedicated[entry.serviceKey]?undefined:{serviceKey:entry.serviceKey});return;}if(!entry.route)return;if(TAB_ROUTES.has(entry.route))navigation.navigate('MainTabs',{screen:entry.route});else navigation.navigate(entry.route,entry.params);};
- const counts={active:relevant.filter(x=>!['completed','cancelled','rejected'].includes(status(x))).length,pending:relevant.filter(x=>status(x).includes('pending')||status(x)==='submitted').length,completed:relevant.filter(x=>status(x)==='completed').length};
- return <View style={s.screen}><Header title={hub.title}/><FlatList data={items} keyExtractor={x=>x.title} numColumns={2} columnWrapperStyle={s.columns} contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={activity.isRefetching} onRefresh={()=>activity.refetch()}/>} ListHeaderComponent={<View><View style={[s.hero,{backgroundColor:hub.color}]}><View style={s.heroTop}><View style={s.heroIcon}><Icon name={hub.icon} size={29} color={hub.color}/></View><View style={s.heroBody}><Text style={s.heroTitle}>{hub.title}</Text><Text style={s.heroText}>{hub.description}</Text></View></View><View style={s.metrics}><Metric label="Active" value={counts.active}/><Metric label="Pending" value={counts.pending}/><Metric label="Completed" value={counts.completed}/></View></View><View style={s.search}><Icon name="magnify" size={19} color={colors.muted}/><TextInput value={search} onChangeText={setSearch} placeholder={`Search ${hub.title.toLowerCase()}`} placeholderTextColor={colors.muted} style={s.input}/>{search?<Pressable onPress={()=>setSearch('')}><Icon name="close-circle" size={18} color={colors.muted}/></Pressable>:null}</View>{relevant.length?<><SectionHeading title="Recent activity" action="View all" onAction={()=>navigation.navigate('BookedServiceDetails',{mode:'list'})}/><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.activityRail}>{relevant.slice(0,5).map(request=><ActivityCard key={requestId(request)} request={request} onPress={()=>navigation.navigate('BookedServiceDetails',{request})}/>)}</ScrollView></>:null}<SectionHeading title="Services and actions"/></View>} renderItem={({item})=><Pressable onPress={()=>open(item)} style={({pressed})=>[s.item,pressed&&s.pressed]}><View style={[s.itemIcon,{backgroundColor:hub.tint}]}><Icon name={item.icon} size={21} color={hub.color}/></View><Text style={s.itemTitle}>{item.title}</Text><Text style={s.itemAction}>{item.serviceKey?'Open service':'Open dashboard'}</Text><Icon name="arrow-top-right" size={15} color={colors.muted} style={s.arrow}/></Pressable>} ListEmptyComponent={<EmptyState title="No matching services" detail="Try another search term."/>}/></View>;
+const TAB_ROUTES = new Set([
+  'Account',
+  'Messages',
+  'Services',
+  'Categories',
+  'Home',
+]);
+export default function ServiceHubScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const { activeRole } = useAuth();
+  const hub = getServiceHub(String(route.params?.hubKey ?? ''));
+  const [search, setSearch] = useState('');
+  const activity = useQuery({
+    queryKey: ['service-activity', activeRole],
+    queryFn: () => fetchAggregatedServiceActivity(activeRole),
+    staleTime: 30_000,
+  });
+  const items = useMemo(
+    () =>
+      (hub?.items ?? []).filter(i =>
+        i.title.toLowerCase().includes(search.trim().toLowerCase()),
+      ),
+    [hub?.items, search],
+  );
+  const relevant = useMemo(
+    () =>
+      (activity.data ?? []).filter(request =>
+        hub?.items.some(
+          i =>
+            i.serviceKey &&
+            [request.serviceKey, request.originalServiceKey].includes(
+              i.serviceKey,
+            ),
+        ),
+      ),
+    [activity.data, hub?.items],
+  );
+  if (!hub)
+    return (
+      <View style={s.screen}>
+        <Header title="Service Hub" />
+        <EmptyState title="Service hub unavailable" />
+      </View>
+    );
+  const open = (entry: HubItem) => {
+    if (entry.serviceKey) {
+      const dedicated: Record<string, string> = {
+        shipping: 'ShippingService',
+        'customs-brokerage': 'CustomsService',
+        warehousing: 'WarehousingService',
+        'documentation-support': 'DocumentationManagement',
+        insurance: 'InsuranceService',
+        consulting: 'ConsultingService',
+        escrow: 'EscrowService',
+        'trade-financing': 'TradeFinanceService',
+        'quality-inspection': 'InspectionService',
+        'dispute-resolution': 'DisputeService',
+        'supplier-verification': 'SupplierVerificationService',
+        'seller-verification': 'BusinessVerificationService',
+      };
+      navigation.navigate(
+        dedicated[entry.serviceKey] ?? 'ServiceDetails',
+        dedicated[entry.serviceKey]
+          ? undefined
+          : { serviceKey: entry.serviceKey },
+      );
+      return;
+    }
+    if (!entry.route) return;
+    if (TAB_ROUTES.has(entry.route))
+      navigation.navigate('MainTabs', { screen: entry.route });
+    else navigation.navigate(entry.route, entry.params);
+  };
+  const counts = {
+    active: relevant.filter(
+      x => !['completed', 'cancelled', 'rejected'].includes(status(x)),
+    ).length,
+    pending: relevant.filter(
+      x => status(x).includes('pending') || status(x) === 'submitted',
+    ).length,
+    completed: relevant.filter(x => status(x) === 'completed').length,
+  };
+  return (
+    <View style={s.screen}>
+      <Header title={hub.title} />
+      <FlatList
+        data={items}
+        keyExtractor={x => x.title}
+        numColumns={2}
+        columnWrapperStyle={s.columns}
+        contentContainerStyle={s.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={activity.isRefetching}
+            onRefresh={() => activity.refetch()}
+          />
+        }
+        ListHeaderComponent={
+          <View>
+            <View style={[s.hero, { backgroundColor: hub.color }]}>
+              <View style={s.heroTop}>
+                <View style={s.heroIcon}>
+                  <Icon name={hub.icon} size={29} color={hub.color} />
+                </View>
+                <View style={s.heroBody}>
+                  <Text style={s.heroTitle}>{hub.title}</Text>
+                  <Text style={s.heroText}>{hub.description}</Text>
+                </View>
+              </View>
+              <View style={s.metrics}>
+                <Metric label="Active" value={counts.active} />
+                <Metric label="Pending" value={counts.pending} />
+                <Metric label="Completed" value={counts.completed} />
+              </View>
+            </View>
+            <View style={s.search}>
+              <Icon name="magnify" size={19} color={colors.muted} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={`Search ${hub.title.toLowerCase()}`}
+                placeholderTextColor={colors.muted}
+                style={s.input}
+              />
+              {search ? (
+                <Pressable onPress={() => setSearch('')}>
+                  <Icon name="close-circle" size={18} color={colors.muted} />
+                </Pressable>
+              ) : null}
+            </View>
+            {relevant.length ? (
+              <>
+                <SectionHeading
+                  title="Recent activity"
+                  action="View all"
+                  onAction={() =>
+                    navigation.navigate('BookedServiceDetails', {
+                      mode: 'list',
+                    })
+                  }
+                />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.activityRail}
+                >
+                  {relevant.slice(0, 5).map(request => (
+                    <ActivityCard
+                      key={requestId(request)}
+                      request={request}
+                      onPress={() =>
+                        navigation.navigate('BookedServiceDetails', { request })
+                      }
+                    />
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+            <SectionHeading title="Services and actions" />
+          </View>
+        }
+        renderItem={({ item }) => (
+          <Pressable
+            onPress={() => open(item)}
+            style={({ pressed }) => [s.item, pressed && s.pressed]}
+          >
+            <View style={[s.itemIcon, { backgroundColor: hub.tint }]}>
+              <Icon name={item.icon} size={21} color={hub.color} />
+            </View>
+            <Text style={s.itemTitle}>{item.title}</Text>
+            <Text style={s.itemAction}>
+              {item.serviceKey ? 'Open service' : 'Open dashboard'}
+            </Text>
+            <Icon
+              name="arrow-top-right"
+              size={15}
+              color={colors.muted}
+              style={s.arrow}
+            />
+          </Pressable>
+        )}
+        ListEmptyComponent={
+          <EmptyState
+            title="No matching services"
+            detail="Try another search term."
+          />
+        }
+      />
+    </View>
+  );
 }
-function Header({title}:{title:string}){const navigation=useNavigation<any>();return <View style={s.header}><Pressable onPress={()=>navigation.goBack()} style={s.headerBtn}><Icon name="arrow-left" size={23} color={colors.ink}/></Pressable><Text numberOfLines={1} style={s.headerTitle}>{title}</Text><View style={s.headerBtn}/></View>}
-function Metric({label,value}:{label:string;value:number}){return <View style={s.metric}><Text style={s.metricValue}>{value}</Text><Text style={s.metricLabel}>{label}</Text></View>}
-function SectionHeading({title,action,onAction}:{title:string;action?:string;onAction?:()=>void}){return <View style={s.sectionHead}><Text style={s.sectionTitle}>{title}</Text>{action?<Pressable onPress={onAction}><Text style={s.sectionAction}>{action}</Text></Pressable>:null}</View>}
-function ActivityCard({request,onPress}:{request:ServiceRequest;onPress:()=>void}){return <Pressable onPress={onPress} style={s.activity}><Text numberOfLines={1} style={s.activityTitle}>{request.serviceTitle??request.title??request.subject??'Service request'}</Text><Text numberOfLines={1} style={s.activityId}>{request.requestNumber??request.orderNumber??requestId(request)}</Text><View style={s.activityBottom}><Text style={s.activityStatus}>{status(request).replace(/_/g,' ')}</Text><Icon name="chevron-right" size={17} color={colors.primary}/></View></Pressable>}
-const status=(request:ServiceRequest)=>String(request.status??'pending').toLowerCase(); const requestId=(request:ServiceRequest)=>request._id??request.id??request.requestNumber??request.orderNumber??Math.random().toString(36);
-const s=StyleSheet.create({screen:{flex:1,backgroundColor:'#F5F7FA'},header:{paddingTop:52,paddingHorizontal:14,paddingBottom:11,backgroundColor:'#FFF',flexDirection:'row',alignItems:'center'},headerBtn:{width:42,height:42,alignItems:'center',justifyContent:'center'},headerTitle:{flex:1,textAlign:'center',fontSize:17,fontWeight:'900',color:colors.ink},content:{padding:14,paddingBottom:60},columns:{gap:9},hero:{borderRadius:20,padding:16,marginBottom:14,...shadow},heroTop:{flexDirection:'row',alignItems:'center',gap:12},heroIcon:{width:53,height:53,borderRadius:16,backgroundColor:'#FFF',alignItems:'center',justifyContent:'center'},heroBody:{flex:1},heroTitle:{fontSize:20,fontWeight:'900',color:'#FFF'},heroText:{fontSize:10.5,lineHeight:15,color:'rgba(255,255,255,.82)',marginTop:3},metrics:{flexDirection:'row',marginTop:15,paddingTop:12,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'rgba(255,255,255,.35)'},metric:{flex:1,alignItems:'center'},metricValue:{fontSize:18,fontWeight:'900',color:'#FFF'},metricLabel:{fontSize:8.5,fontWeight:'800',color:'rgba(255,255,255,.75)',textTransform:'uppercase'},search:{height:46,borderRadius:13,backgroundColor:'#FFF',paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:8,borderWidth:1,borderColor:colors.faint},input:{flex:1,color:colors.ink,fontSize:12,fontWeight:'700'},sectionHead:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginTop:18,marginBottom:10},sectionTitle:{fontSize:15,fontWeight:'900',color:colors.ink},sectionAction:{fontSize:10,fontWeight:'900',color:colors.primary},activityRail:{gap:8,paddingRight:14},activity:{width:190,backgroundColor:'#FFF',borderRadius:13,padding:12},activityTitle:{fontSize:12,fontWeight:'900',color:colors.ink},activityId:{fontSize:9,color:colors.muted,marginTop:3},activityBottom:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:9},activityStatus:{fontSize:9,fontWeight:'900',color:colors.primary,textTransform:'capitalize'},item:{flex:1,minHeight:126,backgroundColor:'#FFF',borderRadius:14,padding:12,marginBottom:9,borderWidth:1,borderColor:'#EEF2F7'},pressed:{opacity:.7},itemIcon:{width:38,height:38,borderRadius:12,alignItems:'center',justifyContent:'center'},itemTitle:{fontSize:12,fontWeight:'900',color:colors.ink,lineHeight:16,marginTop:8,paddingRight:12},itemAction:{fontSize:8.5,fontWeight:'800',color:colors.muted,marginTop:'auto'},arrow:{position:'absolute',right:9,top:10}});
+function Header({ title }: { title: string }) {
+  const navigation = useNavigation<any>();
+  return (
+    <View style={s.header}>
+      <Pressable onPress={() => navigation.goBack()} style={s.headerBtn}>
+        <Icon name="arrow-left" size={23} color={colors.ink} />
+      </Pressable>
+      <Text numberOfLines={1} style={s.headerTitle}>
+        {title}
+      </Text>
+      <View style={s.headerBtn} />
+    </View>
+  );
+}
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={s.metric}>
+      <Text style={s.metricValue}>{value}</Text>
+      <Text style={s.metricLabel}>{label}</Text>
+    </View>
+  );
+}
+function SectionHeading({
+  title,
+  action,
+  onAction,
+}: {
+  title: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <View style={s.sectionHead}>
+      <Text style={s.sectionTitle}>{title}</Text>
+      {action ? (
+        <Pressable onPress={onAction}>
+          <Text style={s.sectionAction}>{action}</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+function ActivityCard({
+  request,
+  onPress,
+}: {
+  request: ServiceRequest;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={s.activity}>
+      <Text numberOfLines={1} style={s.activityTitle}>
+        {request.serviceTitle ??
+          request.title ??
+          request.subject ??
+          'Service request'}
+      </Text>
+      <Text numberOfLines={1} style={s.activityId}>
+        {request.requestNumber ?? request.orderNumber ?? requestId(request)}
+      </Text>
+      <View style={s.activityBottom}>
+        <Text style={s.activityStatus}>
+          {status(request).replace(/_/g, ' ')}
+        </Text>
+        <Icon name="chevron-right" size={17} color={colors.primary} />
+      </View>
+    </Pressable>
+  );
+}
+const status = (request: ServiceRequest) =>
+  String(request.status ?? 'pending').toLowerCase();
+const requestId = (request: ServiceRequest) =>
+  request._id ??
+  request.id ??
+  request.requestNumber ??
+  request.orderNumber ??
+  Math.random().toString(36);
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F5F7FA' },
+  header: {
+    paddingTop: 52,
+    paddingHorizontal: 14,
+    paddingBottom: 11,
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerBtn: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '900',
+    color: colors.ink,
+  },
+  content: { padding: 14, paddingBottom: 60 },
+  columns: { gap: 9 },
+  hero: { borderRadius: 20, padding: 16, marginBottom: 14, ...shadow },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroIcon: {
+    width: 53,
+    height: 53,
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBody: { flex: 1 },
+  heroTitle: { fontSize: 20, fontWeight: '900', color: '#FFF' },
+  heroText: {
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: 'rgba(255,255,255,.82)',
+    marginTop: 3,
+  },
+  metrics: {
+    flexDirection: 'row',
+    marginTop: 15,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,.35)',
+  },
+  metric: { flex: 1, alignItems: 'center' },
+  metricValue: { fontSize: 18, fontWeight: '900', color: '#FFF' },
+  metricLabel: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,.75)',
+    textTransform: 'uppercase',
+  },
+  search: {
+    height: 46,
+    borderRadius: 13,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.faint,
+  },
+  input: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: '700' },
+  sectionHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 10,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '900', color: colors.ink },
+  sectionAction: { fontSize: 10, fontWeight: '900', color: colors.primary },
+  activityRail: { gap: 8, paddingRight: 14 },
+  activity: {
+    width: 190,
+    backgroundColor: '#FFF',
+    borderRadius: 13,
+    padding: 12,
+  },
+  activityTitle: { fontSize: 12, fontWeight: '900', color: colors.ink },
+  activityId: { fontSize: 9, color: colors.muted, marginTop: 3 },
+  activityBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 9,
+  },
+  activityStatus: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: colors.primary,
+    textTransform: 'capitalize',
+  },
+  item: {
+    flex: 1,
+    minHeight: 126,
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 9,
+    borderWidth: 1,
+    borderColor: '#EEF2F7',
+  },
+  pressed: { opacity: 0.7 },
+  itemIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: colors.ink,
+    lineHeight: 16,
+    marginTop: 8,
+    paddingRight: 12,
+  },
+  itemAction: {
+    fontSize: 8.5,
+    fontWeight: '800',
+    color: colors.muted,
+    marginTop: 'auto',
+  },
+  arrow: { position: 'absolute', right: 9, top: 10 },
+});

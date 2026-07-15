@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import controller from '../controllers/service-request.controller.js';
 import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 const router = Router();
 router.use(authenticate, requireAuth);
 router.post('/quote/:serviceKey', controller.quote);
 router.get('/', controller.list);
-router.post('/', controller.create);
+router.post('/', requireSubscriptionFeature('serviceBookings'), controller.create);
 router.get('/:id', controller.get);
 router.patch('/:id/cancel', controller.cancel);
 router.post('/:id/payment', controller.initiatePayment);

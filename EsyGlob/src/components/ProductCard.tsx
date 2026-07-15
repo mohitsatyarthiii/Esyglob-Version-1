@@ -137,7 +137,7 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
           )}
           <Pressable
             accessibilityLabel="Search using a product image"
-            onPress={event => { event.stopPropagation(); navigation.navigate('ImageSearch', { productId }); }}
+            onPress={event => { event.stopPropagation(); navigation.navigate('ProductSimilarSearch', { productId }); }}
             style={styles.imageSearchBtn}>
             <Icon name="qrcode-scan" size={15} color={PALETTE.primary} />
           </Pressable>

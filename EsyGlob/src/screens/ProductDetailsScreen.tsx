@@ -856,6 +856,7 @@ function ProductDetailsScreen() {
             style={styles.heartBtn} 
             iconColor={P.text} 
           />
+          <TouchableOpacity onPress={() => navigation.navigate('ProductSimilarSearch', { productId })} style={styles.similarBtn}><Icon name="qrcode-scan" size={17} color={P.primary} /></TouchableOpacity>
 
           {/* Pagination Dots */}
           {gallery.length > 1 && (
@@ -1324,6 +1325,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  similarBtn: { alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 20, elevation: 3, height: 36, justifyContent: 'center', position: 'absolute', right: 12, shadowColor: P.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, top: 56, width: 36 },
   paginationRow: {
     position: 'absolute',
     bottom: 16,

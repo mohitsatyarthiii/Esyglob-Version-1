@@ -1,36 +1,41 @@
 import SubscriptionRepository from '../repositories/subscription.repository.js';
-import { isValidPlan, getPlanPrice, getMonthsIncluded, getPlanDetails } from '../lib/subscription-pricing.js';
+import { getMonthsIncluded } from '../lib/subscription-pricing.js';
+import { getPlan, listPlans } from '../lib/subscription-plans.js';
+import { getSubscriptionContext } from '../lib/subscription-access.js';
 import Razorpay from 'razorpay';
 
 class SubscriptionService {
   /**
    * Get user subscription
    */
-  static async getSubscription(user) {
+  static async getSubscription(user, requestedRole) {
     const userId = user.id || user._id;
-    const userType = user.primaryRole || 'buyer';
+    const userType = requestedRole === 'seller' ? 'seller' : requestedRole === 'buyer' ? 'buyer' : user.primaryRole || 'buyer';
 
-    const subscription = await SubscriptionRepository.findOrCreate(userId, userType);
-    return { subscription };
+    const {subscription,plan}=await getSubscriptionContext(user,userType);
+    const usage=subscription.usage||{}; const limits=plan.limits||{};
+    return { subscription, plan, usage: { ...usage, aiCreditsRemaining: Math.max(0,Number(subscription.aiCreditsAllocated||plan.aiCredits)-Number(subscription.aiCreditsUsed||0)), aiCreditsUsed:Number(subscription.aiCreditsUsed||0), limits } };
   }
+
+  static async getPlans(user, role) { const resolved=role==='seller'?'seller':'buyer'; return {plans:await listPlans(resolved),role:resolved}; }
 
   /**
    * Create Razorpay order for subscription plan
    */
   static async createOrder(user, { planType, duration = 'monthly' }) {
-    // Validate plan
-    if (!planType || !isValidPlan(planType, duration)) {
+    const role=(planType||'').startsWith('seller_')?'seller':(planType||'').startsWith('buyer_')?'buyer':user.primaryRole==='seller'?'seller':'buyer';
+    const planDetails=await getPlan(planType,role);
+    if (!planDetails || !['monthly','quarterly','yearly'].includes(duration)) {
       throw Object.assign(new Error('Invalid plan type or duration'), { statusCode: 400 });
     }
 
     // Check Razorpay config
     if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-      throw Object.assign(new Error('Failed to create payment order'), { statusCode: 500 });
+      throw Object.assign(new Error('Payment service is not configured'), { statusCode: 503 });
     }
 
-    const planDetails = getPlanDetails(planType);
-    const amount = getPlanPrice(planType, duration);
-    const months = getMonthsIncluded(planType, duration);
+    const amount = Number(planDetails.prices?.[duration]||0);
+    const months = duration==='quarterly'?3:getMonthsIncluded(planType, duration);
     const userId = user.id || user._id;
 
     // Initialize Razorpay

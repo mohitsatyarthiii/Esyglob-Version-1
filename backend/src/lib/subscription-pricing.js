@@ -63,6 +63,7 @@ export const PLANS = {
 // Duration to months mapping
 export const DURATION_MONTHS = {
   monthly: 1,
+  quarterly: 3,
   yearly: 12,
   '3years': 36,
 };

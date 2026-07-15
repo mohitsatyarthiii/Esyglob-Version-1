@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as chatController from '../controllers/chat.controller.js';
 import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.post('/groups', authenticate, requireAuth, chatController.createGroupChat
 router.get('/:chatId', authenticate, requireAuth, chatController.getChatMessages);
 
 // POST /api/chat/:chatId - Send message
-router.post('/:chatId', authenticate, requireAuth, chatController.sendMessage);
+router.post('/:chatId', authenticate, requireAuth, requireSubscriptionFeature('messages'), chatController.sendMessage);
 
 // PATCH /api/chat/:chatId - Chat actions
 router.patch('/:chatId', authenticate, requireAuth, chatController.updateChat);

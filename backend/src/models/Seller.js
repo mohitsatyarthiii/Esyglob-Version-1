@@ -160,7 +160,6 @@ const sellerSchema = new mongoose.Schema(
     // Subscription
     subscriptionPlan: {
       type: String,
-      enum: ['free', 'starter', 'professional', 'enterprise'],
       default: 'free',
     },
     subscriptionStatus: {

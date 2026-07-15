@@ -175,7 +175,7 @@ export async function createProductEnquiry(input: EnquiryInput) {
 
 export async function startProductChat(input: {
   otherUserId: string;
-  productId: string;
+  productId?: string;
   role?: 'buyer' | 'seller';
   enquiry?: boolean;
 }) {
@@ -183,15 +183,12 @@ export async function startProductChat(input: {
   if (!input.otherUserId) {
     throw new Error('Seller user ID is required');
   }
-  if (!input.productId) {
-    throw new Error('Product ID is required');
-  }
 
   const payload = await apiRequest('/chat', {
     method: 'POST',
     body: {
       otherUserId: input.otherUserId,
-      productId: input.productId,
+      productId: input.productId || undefined,
       role: input.role || 'buyer',
       enquiry: input.enquiry || false,
     },

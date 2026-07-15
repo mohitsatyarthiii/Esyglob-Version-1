@@ -11,6 +11,7 @@ declare module 'react-native-razorpay' {
     name?: string;
     description?: string;
     order_id?: string;
+    prefill?: { name?: string; email?: string; contact?: string };
     theme?: { color?: string };
   };
   const RazorpayCheckout: {

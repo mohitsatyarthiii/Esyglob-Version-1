@@ -2,6 +2,7 @@ import { Router } from 'express';
 import ProductController from '../controllers/product.controller.js';
 import { authenticate, requireAuth, requireRole } from '../middlewares/auth.middleware.js';
 import rateLimit from 'express-rate-limit';
+import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.post(
   authenticate,
   requireAuth,
   requireRole('seller'),
+  requireSubscriptionFeature('products',{role:'seller'}),
   ProductController.createProduct
 );
 

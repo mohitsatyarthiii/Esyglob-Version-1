@@ -58,6 +58,9 @@ import EsyCalculatorScreen from './src/screens/EsyCalculatorScreen';
 import BlockedContactsScreen from './src/screens/BlockedContactsScreen';
 import ServiceHubScreen from './src/screens/ServiceHubScreen';
 import ServiceBookingSuccessScreen from './src/screens/ServiceBookingSuccessScreen';
+import SubscriptionCenterScreen from './src/screens/SubscriptionCenterScreen';
+import DocumentationManagementScreen from './src/screens/DocumentationManagementScreen';
+import ProductSimilarSearchScreen from './src/screens/ProductSimilarSearchScreen';
 import { BusinessVerificationServiceScreen, ConsultingServiceScreen, CustomsServiceScreen, DisputeServiceScreen, DocumentationServiceScreen, EscrowServiceScreen, InspectionServiceScreen, InsuranceServiceScreen, ShippingServiceScreen, SupplierVerificationServiceScreen, TradeFinanceServiceScreen, WarehousingServiceScreen } from './src/screens/serviceFlows/DedicatedServiceDetailScreens';
 
 export type RootStackParamList = {
@@ -98,6 +101,9 @@ export type RootStackParamList = {
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
   Tracking: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ServiceBookingSuccess: { request: ServiceRequest };
+  SubscriptionCenter: undefined;
+  DocumentationManagement: undefined;
+  ProductSimilarSearch: { productId: string };
   ShippingLogistics: undefined;
   Location: undefined;
   ImageSearch: { productId?: string } | undefined;
@@ -243,6 +249,9 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
               <Stack.Screen name="Tracking" component={BookedServiceDetailsScreen} initialParams={{ mode: 'list' }} />
               <Stack.Screen name="ServiceBookingSuccess" component={ServiceBookingSuccessScreen} />
+              <Stack.Screen name="SubscriptionCenter" component={SubscriptionCenterScreen} />
+              <Stack.Screen name="DocumentationManagement" component={DocumentationManagementScreen} />
+              <Stack.Screen name="ProductSimilarSearch" component={ProductSimilarSearchScreen} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
               <Stack.Screen name="Location" component={LocationScreen} />
               <Stack.Screen name="ImageSearch" component={ImageSearchScreen} />

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as rfqController from '../controllers/rfq.controller.js';
 import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 
 const router = Router();
 
@@ -19,6 +20,7 @@ router.post(
   '/',
   authenticate,
   requireAuth,
+  requireSubscriptionFeature('rfqs'),
   rfqController.createRfq
 );
 
@@ -27,6 +29,7 @@ router.post(
   '/product-enquiry',
   authenticate,
   requireAuth,
+  requireSubscriptionFeature('rfqs'),
   rfqController.createProductEnquiry
 );
 
@@ -35,6 +38,7 @@ router.post(
   '/enquiry',
   authenticate,
   requireAuth,
+  requireSubscriptionFeature('rfqs'),
   rfqController.createProductEnquiry
 );
 

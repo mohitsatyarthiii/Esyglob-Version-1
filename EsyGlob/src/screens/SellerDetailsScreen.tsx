@@ -5,6 +5,7 @@ import {
   Linking,
   Modal,
   ScrollView,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -173,7 +174,7 @@ function SellerDetailsScreen() {
   const chat = useMutation({
     mutationFn: () => {
       if (!sellerUserId) throw new Error('Supplier contact is unavailable.');
-      return startProductChat({ otherUserId: sellerUserId, productId: '', enquiry: false });
+      return startProductChat({ otherUserId: sellerUserId, enquiry: false });
     },
     onSuccess: result => navigation.navigate('ChatDetails', { chatId: getId(result.chat!), title }),
     onError: error => Alert.alert('Chat unavailable', error instanceof Error ? error.message : 'Unable to contact supplier.'),
@@ -215,6 +216,7 @@ function SellerDetailsScreen() {
         <Text numberOfLines={1} style={styles.headerTitle}>
           {title}
         </Text>
+        <Pressable onPress={() => Share.share({ title, message: `${title}\nhttps://esyglob.in/suppliers/${supplierId}` })} style={styles.backBtn}><Icon name="share-variant-outline" size={19} color={P.muted} /></Pressable>
         <SavedHeartButton
           type="supplier"
           itemId={supplierId}
@@ -315,7 +317,7 @@ function SellerDetailsScreen() {
             <Pressable
               onPress={() =>
                 navigation.navigate('RFQCreate', {
-                  prefill: { sellerId: supplierId, supplierName: title },
+                  prefill: { sellerId: supplierId, supplierName: title, sellerProductIds: allProducts.map(product => getId(product)).filter(Boolean) },
                 })
               }
               style={styles.rfqBtn}>

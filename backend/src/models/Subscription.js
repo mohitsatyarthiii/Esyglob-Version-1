@@ -19,35 +19,18 @@ const subscriptionSchema = new mongoose.Schema(
     // BUYER PLANS
     buyerPlan: {
       type: String,
-      enum: [
-        'free',
-        'basic',
-        'standard',
-        'prime',
-        'buyer_basic',
-        'buyer_standard',
-        'buyer_prime',
-      ],
       default: 'free',
     },
 
     buyerDuration: {
       type: String,
-      enum: ['monthly', 'yearly', '3years'],
+      enum: ['monthly', 'quarterly', 'yearly', '3years'],
       default: null,
     },
 
     // SELLER PLANS
     sellerPlan: {
       type: String,
-      enum: [
-        'free',
-        'basic',
-        'standard',
-        'prime',
-        'verified_supplier',
-        'verified_batch',
-      ],
       default: 'free',
     },
 
@@ -63,7 +46,7 @@ const subscriptionSchema = new mongoose.Schema(
 
     sellerDuration: {
       type: String,
-      enum: ['monthly', 'yearly', '3years'],
+      enum: ['monthly', 'quarterly', 'yearly', '3years'],
       default: null,
     },
 
@@ -100,7 +83,7 @@ const subscriptionSchema = new mongoose.Schema(
 
     billingCycle: {
       type: String,
-      enum: ['monthly', 'yearly', '3years'],
+      enum: ['monthly', 'quarterly', 'yearly', '3years'],
       default: null,
     },
 
@@ -116,6 +99,11 @@ const subscriptionSchema = new mongoose.Schema(
         ref: 'Payment',
       },
     ],
+    status: { type: String, enum: ['active', 'expiring_soon', 'expired', 'cancelled', 'pending', 'payment_failed', 'grace_period'], default: 'active', index: true },
+    planKey: String,
+    aiCreditsAllocated: { type: Number, default: 0 }, aiCreditsUsed: { type: Number, default: 0 }, creditsResetAt: Date,
+    usage: { type: mongoose.Schema.Types.Mixed, default: {} }, usageResetAt: Date,
+    gracePeriodEndsAt: Date,
   },
   {
     timestamps: true,

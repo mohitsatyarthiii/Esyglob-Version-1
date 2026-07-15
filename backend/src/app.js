@@ -45,6 +45,7 @@ import supportTicketRoutes from './routes/support-ticket.routes.js';
 import serviceRequestRoutes from './routes/service-request.routes.js';
 import warehouseRoutes from './routes/warehouse.routes.js';
 import locationRoutes from './routes/location.routes.js';
+import documentRoutes from './routes/document.routes.js';
 
 const app = express();
 
@@ -76,7 +77,7 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: config.jsonLimit }));
+app.use(express.json({ limit: config.jsonLimit, verify: (req, _res, buffer) => { req.rawBody = buffer; } }));
 app.use(express.urlencoded({ extended: true, limit: config.formLimit }));
 app.use(cookieParser());
 
@@ -140,6 +141,7 @@ app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/service-requests', serviceRequestRoutes);
 app.use('/api/warehousing', warehouseRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/documents', documentRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

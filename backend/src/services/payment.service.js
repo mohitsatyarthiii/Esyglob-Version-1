@@ -10,6 +10,8 @@ import Notification from '../models/Notification.js';
 import Seller from '../models/Seller.js';
 import Subscription from '../models/Subscription.js';
 import { getMonthsIncluded, getPlanDetails, getPlanPrice } from '../lib/subscription-pricing.js';
+import { getPlan } from '../lib/subscription-plans.js';
+import Invoice from '../models/Invoice.js';
 
 // Initialize Razorpay
 let razorpay = null;
@@ -308,18 +310,20 @@ class PaymentService {
     }
 
     // Plan details
-    const isSellerPlan = planType === 'verified_batch' || planType === 'verified_supplier';
-    const planDetails = getPlanDetails(planType);
+    const isSellerPlan = planType.startsWith('seller_') || planType === 'verified_batch' || planType === 'verified_supplier';
+    const role=isSellerPlan?'seller':'buyer';
+    const configuredPlan=await getPlan(planType,role);
+    const planDetails = configuredPlan || getPlanDetails(planType);
     if (!planDetails) {
       throw Object.assign(new Error('Invalid subscription plan'), { statusCode: 400 });
     }
 
-    const expectedAmount = getPlanPrice(planType, duration);
+    const expectedAmount = Number(configuredPlan?.prices?.[duration] ?? getPlanPrice(planType, duration));
     if (Number(subscriptionRzpPayment?.amount || 0) !== Math.round(expectedAmount * 100)) {
       throw Object.assign(new Error('Subscription amount mismatch'), { statusCode: 400 });
     }
 
-    const months = getMonthsIncluded(planType, duration);
+    const months = duration==='quarterly'?3:getMonthsIncluded(planType, duration);
     const startDate = new Date();
     const expiryDate = new Date(startDate);
     expiryDate.setMonth(expiryDate.getMonth() + months);
@@ -353,9 +357,18 @@ class PaymentService {
     subscription.billingCycle = duration;
     subscription.isActive = true;
     subscription.autoRenew = true;
+    subscription.status = 'active';
+    subscription.planKey = configuredPlan?.key || planType;
+    subscription.aiCreditsAllocated = Number(configuredPlan?.aiCredits || 0);
+    subscription.aiCreditsUsed = 0;
+    subscription.usage = {};
+    const usageResetAt = new Date(startDate); usageResetAt.setMonth(usageResetAt.getMonth()+1); subscription.usageResetAt=usageResetAt; subscription.creditsResetAt=usageResetAt;
     const amount = Number(subscriptionRzpPayment?.amount || 0) / 100;
     subscription.amountPaid = amount;
     await subscription.save();
+    if (isSellerPlan && configuredPlan) {
+      await Seller.findOneAndUpdate({ userId }, { $set: { subscriptionPlan: configuredPlan.key, subscriptionStatus: 'active', subscriptionExpiryDate: expiryDate, verificationStatus: 'verified', verificationLevel: Math.max(1, Number(configuredPlan.priorityRanking || 0) + 1) }, $inc: { trustScore: Number(configuredPlan.trustScoreBoost || 0) } });
+    }
 
     // Create payment record
     const paymentRecord = await PaymentRepository.create({
@@ -373,6 +386,9 @@ class PaymentService {
       transactionId: razorpayPaymentId,
       metadata: { planType, duration, months },
     });
+
+    const invoice = await Invoice.create({ invoiceNumber:`ESY-SUB-${Date.now()}`, buyerId:userId, currency:'INR', subtotal:amount, taxAmount:0, totalAmount:amount, status:'paid', paymentStatus:'paid', issuedAt:new Date(), transactionId:razorpayPaymentId, paymentMethod:'Razorpay', paymentDate:new Date(), lineItems:[{description:`${planDetails.name} subscription (${duration})`,quantity:1,unit:'plan',unitPrice:amount,total:amount}], serviceSnapshot:{type:'subscription',planKey:configuredPlan?.key||planType,duration}, terms:['Subscription benefits apply for the active billing period.'] });
+    paymentRecord.invoiceUrl=`/api/invoices/${invoice._id}`; await paymentRecord.save();
 
     // Update payment history
     if (!subscription.paymentHistoryIds) subscription.paymentHistoryIds = [];
@@ -400,7 +416,7 @@ class PaymentService {
       },
     });
 
-    return { success: true, message: 'Payment verified successfully', subscription, payment: paymentRecord };
+    return { success: true, message: 'Payment verified successfully', subscription, payment: paymentRecord, invoice };
   }
 }
 
