@@ -86,10 +86,9 @@ const serviceRequestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-serviceRequestSchema.pre('validate', async function setRequestNumber(next) {
+serviceRequestSchema.pre('validate', function setRequestNumber(next) {
   if (!this.requestNumber) {
-    const count = await mongoose.model('ServiceRequest').countDocuments();
-    this.requestNumber = `SRV${String(count + 1).padStart(8, '0')}`;
+    this.requestNumber = `SRV${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
   next();
 });

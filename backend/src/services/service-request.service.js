@@ -29,6 +29,18 @@ function quote(serviceKey, requirements = {}) {
 
 function ownedQuery(userId, id) { return { _id: id, userId }; }
 
+async function finalizeVerifiedServicePayment(request, payment, userId) {
+  let invoice = request.invoiceId ? await Invoice.findById(request.invoiceId) : await Invoice.findOne({ serviceRequestId: request._id, paymentStatus: 'paid' });
+  if (!invoice) {
+    const downloadToken = crypto.randomBytes(24).toString('hex');
+    invoice = await Invoice.create({ invoiceNumber: `ESY-SRV-${Date.now()}-${String(request._id).slice(-4)}`, serviceRequestId: request._id, buyerId: userId, currency: request.pricing.currency, subtotal: request.pricing.baseCost + request.pricing.additionalCharges, taxAmount: request.pricing.gstAmount + request.pricing.taxAmount, discountAmount: request.pricing.discount, totalAmount: request.pricing.totalPayable, status: 'paid', paymentStatus: 'paid', issuedAt: new Date(), transactionId: payment.transactionId, paymentMethod: 'Razorpay', paymentDate: payment.paidAt, downloadToken, documentUrl: `/api/invoices/public/${downloadToken}.pdf`, lineItems: [{ description: request.serviceTitle, quantity: 1, unit: 'service', unitPrice: request.pricing.baseCost, total: request.pricing.baseCost }], serviceSnapshot: { requestNumber: request.requestNumber, serviceKey: request.serviceKey, serviceTitle: request.serviceTitle, pricing: request.pricing }, terms: ['Services are subject to the accepted booking terms.'] });
+  }
+  request.paymentStatus = 'paid'; request.invoiceId = invoice._id; request.status = 'under_review'; request.progress = Math.max(25, Number(request.progress || 0));
+  if (!request.history.some(item => item.status === 'payment_verified')) request.history.push({ status: 'payment_verified', note: `Payment verified: ${payment.transactionId}` });
+  await request.save();
+  return { success: true, request, payment, invoice };
+}
+
 class ServiceRequestService {
   static getQuote(serviceKey, requirements) { return quote(serviceKey, requirements); }
 
@@ -87,17 +99,15 @@ class ServiceRequestService {
     const request = await ServiceRequest.findOne(ownedQuery(userId, id));
     const payment = request?.paymentId ? await Payment.findOne({ _id: request.paymentId, userId }) : null;
     if (!request || !payment) throw Object.assign(new Error('Payment session not found'), { statusCode: 404 });
-    if (payment.status === 'completed') return { success: true, request };
+    if (payment.status === 'completed') return finalizeVerifiedServicePayment(request, payment, userId);
     if (!body?.razorpayPaymentId || !body?.razorpayOrderId || !body?.razorpaySignature || body.razorpayOrderId !== payment.razorpayOrderId) throw Object.assign(new Error('Incomplete or mismatched payment verification payload'), { statusCode: 422 });
     const expected = crypto.createHmac('sha256', razorpaySecret).update(`${body.razorpayOrderId}|${body.razorpayPaymentId}`).digest('hex');
     if (expected.length !== String(body.razorpaySignature || '').length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(body.razorpaySignature))) throw Object.assign(new Error('Invalid payment signature'), { statusCode: 400 });
-    const gatewayPayment = await razorpay.payments.fetch(body.razorpayPaymentId);
+    let gatewayPayment;
+    try { gatewayPayment = await razorpay.payments.fetch(body.razorpayPaymentId); } catch (error) { console.error('[ServicePayment-RazorpayVerify]', { statusCode: error?.statusCode, description: error?.error?.description || error?.message }); throw Object.assign(new Error('Razorpay payment verification is temporarily unavailable'), { statusCode: 502 }); }
     if (gatewayPayment.status !== 'captured' || gatewayPayment.order_id !== payment.razorpayOrderId || gatewayPayment.amount !== Math.round(payment.amount * 100)) throw Object.assign(new Error('Payment verification failed'), { statusCode: 400 });
     Object.assign(payment, { status: 'completed', razorpayPaymentId: body.razorpayPaymentId, razorpaySignature: body.razorpaySignature, transactionId: body.razorpayPaymentId, paidAt: new Date() }); await payment.save();
-    const downloadToken = crypto.randomBytes(24).toString('hex');
-    const invoice = await Invoice.create({ invoiceNumber: `ESY-SRV-${Date.now()}`, serviceRequestId: request._id, buyerId: userId, currency: request.pricing.currency, subtotal: request.pricing.baseCost + request.pricing.additionalCharges, taxAmount: request.pricing.gstAmount + request.pricing.taxAmount, discountAmount: request.pricing.discount, totalAmount: request.pricing.totalPayable, status: 'paid', paymentStatus: 'paid', issuedAt: new Date(), transactionId: payment.transactionId, paymentMethod: 'Razorpay', paymentDate: payment.paidAt, downloadToken, documentUrl: `/api/invoices/public/${downloadToken}.pdf`, lineItems: [{ description: request.serviceTitle, quantity: 1, unit: 'service', unitPrice: request.pricing.baseCost, total: request.pricing.baseCost }], serviceSnapshot: { requestNumber: request.requestNumber, serviceKey: request.serviceKey, serviceTitle: request.serviceTitle, pricing: request.pricing }, terms: ['Services are subject to the accepted booking terms.'] });
-    request.paymentStatus = 'paid'; request.invoiceId = invoice._id; request.status = 'under_review'; request.progress = 25; request.history.push({ status: 'payment_verified', note: `Payment verified: ${payment.transactionId}` }); await request.save();
-    return { success: true, request, payment, invoice };
+    return finalizeVerifiedServicePayment(request, payment, userId);
   }
 
   static async setPaymentStatus(userId, id, status) {

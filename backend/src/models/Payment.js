@@ -102,17 +102,9 @@ const paymentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-paymentSchema.pre('validate', async function setPaymentNumber() {
-  try {
-    if (this.isNew && !this.paymentNumber) {
-      const PaymentModel = mongoose.models.Payment;
-      const count = PaymentModel ? await PaymentModel.countDocuments() : 0;
-      this.paymentNumber = `PAY${String(count + 1).padStart(8, '0')}`;
-    }
-  } catch (error) {
-    if (!this.paymentNumber) {
-      this.paymentNumber = `PAY${Date.now().toString(36).toUpperCase()}`;
-    }
+paymentSchema.pre('validate', function setPaymentNumber() {
+  if (this.isNew && !this.paymentNumber) {
+    this.paymentNumber = `PAY${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
 });
 

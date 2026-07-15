@@ -582,6 +582,12 @@ export async function updateServicePaymentStatus(requestId: string, status: 'fai
   return unwrapData(await apiRequest(`/service-requests/${requestId}/payment/status`, { method: 'PATCH', body: { status } }));
 }
 
+export function servicePaymentFailureStatus(error: unknown): 'failed' | 'cancelled' {
+  const item = error && typeof error === 'object' ? error as Record<string, unknown> : {};
+  const message = `${String(item.description ?? '')} ${String(item.message ?? error ?? '')}`.toLowerCase();
+  return message.includes('cancel') || message.includes('dismiss') || Number(item.code) === 0 ? 'cancelled' : 'failed';
+}
+
 export async function fetchAggregatedServiceActivity(role?: string | null): Promise<ServiceRequest[]> {
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
   const calls = [

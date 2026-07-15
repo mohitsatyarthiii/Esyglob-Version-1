@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState, useRef } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Dimensions,
   FlatList,
@@ -175,6 +174,21 @@ function buildMoqTiers(product: any): MoqTier[] {
   return tiers;
 }
 
+function findMoqTierIndex(tiers: MoqTier[], quantity: number) {
+  if (!tiers.length) return -1;
+  const index = tiers.findIndex((tier, tierIndex) => {
+    const nextMin = tiers[tierIndex + 1]?.minQty;
+    const upperBound = nextMin != null ? nextMin : tier.maxQty;
+    return quantity >= tier.minQty && (upperBound == null || (nextMin != null ? quantity < upperBound : quantity <= upperBound));
+  });
+  if (index >= 0) return index;
+  if (quantity < tiers[0].minQty) return 0;
+  for (let tierIndex = tiers.length - 1; tierIndex >= 0; tierIndex -= 1) {
+    if (quantity >= tiers[tierIndex].minQty) return tierIndex;
+  }
+  return 0;
+}
+
 function extractImages(product: any): string[] {
   if (!product) return [];
   
@@ -199,28 +213,19 @@ function MoqSelector({
 }: { 
   tiers: MoqTier[]; 
   selectedQty: number; 
-  onSelect: (qty: number) => void; 
+  onSelect: (tier: MoqTier, index: number) => void;
   currency?: string;
 }) {
   const { formatPrice } = useCurrency();
 
-  // Find which tier matches the selected quantity
-  const getActiveTier = useCallback(() => {
-    return tiers.find(tier => {
-      if (tier.maxQty) {
-        return selectedQty >= tier.minQty && selectedQty <= tier.maxQty;
-      }
-      return selectedQty >= tier.minQty;
-    });
-  }, [tiers, selectedQty]);
-
-  const activeTier = getActiveTier();
+  const activeTierIndex = useMemo(() => findMoqTierIndex(tiers, selectedQty), [tiers, selectedQty]);
+  const activeTier = activeTierIndex >= 0 ? tiers[activeTierIndex] : null;
 
   if (!tiers || tiers.length === 0) return null;
 
   // Handle tier selection - sets quantity to the tier's minimum
-  const handleTierSelect = (tier: MoqTier) => {
-    onSelect(tier.minQty);
+  const handleTierSelect = (tier: MoqTier, index: number) => {
+    onSelect(tier, index);
   };
 
   return (
@@ -237,10 +242,7 @@ function MoqSelector({
       >
         {tiers.map((tier, index) => {
           // Determine if this tier is active - compare exact tier object
-          const isActive = activeTier === tier || 
-            (activeTier && 
-             activeTier.minQty === tier.minQty && 
-             activeTier.maxQty === tier.maxQty);
+          const isActive = activeTierIndex === index;
           
           let label = '';
           if (tier.maxQty) {
@@ -252,7 +254,7 @@ function MoqSelector({
           return (
             <TouchableOpacity
               key={index}
-              onPress={() => handleTierSelect(tier)}
+              onPress={() => handleTierSelect(tier, index)}
               activeOpacity={0.7}
               style={[
                 moqStyles.card,
@@ -269,7 +271,7 @@ function MoqSelector({
                 moqStyles.price,
                 isActive && moqStyles.priceActive
               ]}>
-                {formatPrice(tier.price, 'INR')}
+                {formatPrice(tier.price, currency)}
               </Text>
               <Text style={[
                 moqStyles.perUnit,
@@ -296,7 +298,7 @@ function MoqSelector({
             </Text>
             {' at '}
             <Text style={moqStyles.summaryHighlight}>
-              {formatPrice(activeTier.price, 'INR')}
+              {formatPrice(activeTier.price, currency)}
             </Text>
             /unit
           </Text>
@@ -511,7 +513,6 @@ function ProductDetailsScreen() {
 
   const sellerUserId = useMemo(() => extractSellerUserId(product), [product]);
   const sellerRouteId = useMemo(() => extractSellerRouteId(product), [product]);
-  const seller = typeof product?.sellerId === 'object' && product.sellerId ? product.sellerId as Record<string, any> : undefined;
   const sellerName = useMemo(() => extractSellerName(product), [product]);
   const images = useMemo(() => extractImages(product), [product]);
   const moqTiers: MoqTier[] = useMemo(() => buildMoqTiers(product), [product]);
@@ -554,15 +555,7 @@ function ProductDetailsScreen() {
 
   const selectedTier = useMemo(() => {
     if (moqTiers.length === 0) return null;
-    const tier = moqTiers.find(t => {
-      if (t.maxQty) {
-        return quantity >= t.minQty && quantity <= t.maxQty;
-      }
-      return quantity >= t.minQty;
-    });
-    if (tier) return tier;
-    if (quantity < moqTiers[0].minQty) return moqTiers[0];
-    return [...moqTiers].reverse().find(item => quantity >= item.minQty) ?? moqTiers[0];
+    return moqTiers[findMoqTierIndex(moqTiers, quantity)] ?? moqTiers[0];
   }, [moqTiers, quantity]);
 
   // ── Initialize quantity ─────────────────────────────────────────────────
@@ -935,11 +928,8 @@ function ProductDetailsScreen() {
         <MoqSelector 
           tiers={moqTiers} 
           selectedQty={quantity} 
-          onSelect={(qty) => {
-            setQuantity(qty);
-            const tier = moqTiers.find(t => 
-              t.maxQty ? qty >= t.minQty && qty <= t.maxQty : qty >= t.minQty
-            );
+          onSelect={(tier) => {
+            setQuantity(tier.minQty);
             if (tier?.price) {
               setTargetPrice(String(tier.price));
             }

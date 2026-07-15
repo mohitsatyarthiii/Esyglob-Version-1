@@ -15,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import RazorpayCheckout from 'react-native-razorpay';
-import { createServiceBooking, fetchServiceQuote, getServiceByKey, initiateServicePayment, ServiceField, updateServicePaymentStatus, verifyServicePayment } from '../api/services';
+import { createServiceBooking, fetchServiceQuote, getServiceByKey, initiateServicePayment, ServiceField, servicePaymentFailureStatus, updateServicePaymentStatus, verifyServicePayment } from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { RootStackParamList } from '../../App';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
@@ -55,7 +55,7 @@ function ServiceBookingScreen() {
         const verified: any = await verifyServicePayment(requestId, { razorpayPaymentId: gateway.razorpay_payment_id, razorpayOrderId: gateway.razorpay_order_id, razorpaySignature: gateway.razorpay_signature });
         return verified?.request ?? request;
       } catch (error) {
-        await updateServicePaymentStatus(requestId, 'cancelled').catch(() => undefined);
+        await updateServicePaymentStatus(requestId, servicePaymentFailureStatus(error)).catch(() => undefined);
         throw error;
       }
     },
