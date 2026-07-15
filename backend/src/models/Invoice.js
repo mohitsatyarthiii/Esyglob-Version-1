@@ -3,9 +3,10 @@ import mongoose from 'mongoose';
 const invoiceSchema = new mongoose.Schema(
   {
     invoiceNumber: { type: String, required: true, unique: true, index: true },
-    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', index: true },
+    serviceRequestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ServiceRequest', index: true },
     buyerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', required: true, index: true },
+    sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', index: true },
     sellerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     currency: { type: String, default: 'INR' },
     subtotal: Number,
@@ -22,6 +23,12 @@ const invoiceSchema = new mongoose.Schema(
     buyerSnapshot: mongoose.Schema.Types.Mixed,
     sellerSnapshot: mongoose.Schema.Types.Mixed,
     shipmentSnapshot: mongoose.Schema.Types.Mixed,
+    serviceSnapshot: mongoose.Schema.Types.Mixed,
+    transactionId: String,
+    paymentMethod: String,
+    paymentDate: Date,
+    companySnapshot: mongoose.Schema.Types.Mixed,
+    terms: [String],
   },
   { timestamps: true }
 );

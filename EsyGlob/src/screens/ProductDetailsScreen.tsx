@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import {
   View,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Animated,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -36,8 +37,6 @@ import TradeAssurance from '../components/TradeAssurance';
 import ReviewsPanel from '../components/ReviewsPanel';
 import ProductCard from '../components/ProductCard';
 import { ErrorState, LoadingState } from '../components/StateViews';
-import {
-} from '../utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,25 +55,80 @@ type Attachment = {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// ─── Palette ────────────────────────────────────────────────────────────────
+// ─── Premium Design System ─────────────────────────────────────────────────
 
-const P = {
-  bg: '#FAFAFA',
+const DesignSystem = {
+  // Primary Palette
+  primary: '#1A56DB',
+  primaryDark: '#1E40AF',
+  primaryLight: '#EFF6FF',
+  primaryLighter: '#DBEAFE',
+  
+  // Neutral Palette
+  white: '#FFFFFF',
+  background: '#F8FAFC',
   surface: '#FFFFFF',
-  primary: '#FF6A00',
-  primaryLight: '#FFF3E8',
-  primaryDark: '#E05500',
-  emerald: '#00B578',
-  ink: '#1A1A1A',
-  text: '#333333',
-  textSecondary: '#666666',
-  muted: '#999999',
-  faint: '#E8E8E8',
-  border: 'rgba(0,0,0,0.05)',
-  cardMuted: '#F8F9FB',
-  amber: '#F59E0B',
-  blue: '#3B82F6',
-};
+  
+  // Text Palette
+  textPrimary: '#0F172A',
+  textSecondary: '#475569',
+  textTertiary: '#94A3B8',
+  
+  // Border & Divider
+  border: '#E2E8F0',
+  borderLight: '#F1F5F9',
+  
+  // Semantic Colors
+  success: '#059669',
+  warning: '#D97706',
+  star: '#F59E0B',
+  error: '#DC2626',
+  
+  // Shadows
+  shadowSm: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  shadowMd: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  shadowLg: {
+    shadowColor: '#1A56DB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  
+  // Typography
+  typography: {
+    h1: { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+    h2: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3 },
+    h3: { fontSize: 16, fontWeight: '600' },
+    body: { fontSize: 14, fontWeight: '400' },
+    bodyBold: { fontSize: 14, fontWeight: '600' },
+    caption: { fontSize: 12, fontWeight: '500' },
+    small: { fontSize: 11, fontWeight: '500' },
+  },
+  
+  // Border Radius
+  radius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    full: 999,
+  },
+} as const;
+
+const D = DesignSystem;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -138,29 +192,28 @@ function buildMoqTiers(product: any): MoqTier[] {
   
   if (product.priceTiers && Array.isArray(product.priceTiers) && product.priceTiers.length > 0) {
     const sortedTiers = [...product.priceTiers].sort((a, b) => {
-      const aMin = Number(a.minimumQuantity ?? a.minQty ?? 0);
-      const bMin = Number(b.minimumQuantity ?? b.minQty ?? 0);
+      const aMin = Number(a.minimumQuantity ?? 0);
+      const bMin = Number(b.minimumQuantity ?? 0);
       return aMin - bMin;
     });
 
     for (const t of sortedTiers) {
-      const minQty = Math.max(1, Number(t.minimumQuantity ?? t.minQuantity ?? t.minQty ?? t.minimum_order_quantity ?? 1));
-      const rawMax = t.maximumQuantity ?? t.maxQuantity ?? t.maxQty;
+      const minQty = Math.max(1, Number(t.minimumQuantity ?? 1));
+      const rawMax = t.maximumQuantity;
       const maxQty = rawMax != null ? Number(rawMax) : null;
-      const price = Number(t.unitPrice ?? t.pricePerUnit ?? t.price ?? product.price ?? 0);
-      const unit = t.unit || product.unit || 'pcs';
+      const price = Number(t.unitPrice ?? 0);
       
       tiers.push({
         minQty: Number.isFinite(minQty) ? minQty : 1,
         maxQty: (typeof maxQty === 'number' && Number.isFinite(maxQty) && maxQty >= minQty) ? maxQty : null,
         price: Number.isFinite(price) ? price : 0,
-        unit,
+        unit: product.unit || 'pcs',
       });
     }
   }
   
   if (tiers.length === 0) {
-    const moq = Number(product.minimumOrderQuantity ?? product.moq ?? 1);
+    const moq = Math.max(1, Number(product.minimumOrderQuantity ?? 1));
     tiers.push({
       minQty: moq,
       maxQty: null,
@@ -186,78 +239,789 @@ function extractImages(product: any): string[] {
   return [];
 }
 
-// ─── MOQ Selector Component ────────────────────────────────────────────────
+// ─── Quantity Stepper Component ─────────────────────────────────────────────
 
-function MoqSelector({ 
-  tiers, 
-  selectedQty, 
-  onSelect, 
-  currency = '₹' 
+function QuantityStepper({ 
+  value, 
+  min = 1,
+  onChange 
 }: { 
-  tiers: MoqTier[]; 
-  selectedQty: number; 
-  onSelect: (qty: number) => void; 
-  currency?: string;
+  value: number; 
+  min?: number;
+  onChange: (val: number) => void;
 }) {
-  const { formatPrice } = useCurrency();
-  if (!tiers || tiers.length === 0) return null;
+  const decrement = () => {
+    if (value > min) onChange(value - 1);
+  };
+  
+  const increment = () => {
+    onChange(value + 1);
+  };
 
   return (
-    <View style={styles.moqSection}>
-      <Text style={styles.moqTitle}>SELECT QUANTITY</Text>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.moqScrollContent}
+    <View style={stepperStyles.container}>
+      <TouchableOpacity 
+        onPress={decrement} 
+        style={[stepperStyles.button, value <= min && stepperStyles.buttonDisabled]}
+        disabled={value <= min}
+        activeOpacity={0.7}
       >
-        {tiers.map((tier, index) => {
-          const isActive = selectedQty >= tier.minQty && 
-            (tier.maxQty ? selectedQty <= tier.maxQty : true);
-          
-          let label = `${tier.minQty}`;
-          if (tier.maxQty) {
-            label = `${tier.minQty}-${tier.maxQty}`;
-          } else {
-            label = `${tier.minQty}+`;
-          }
-          label = `${label} UNITS`;
-
-          return (
-            <TouchableOpacity
-              key={index}
-              onPress={() => onSelect(tier.minQty)}
-              style={[
-                styles.moqCard,
-                isActive && styles.moqCardActive,
-              ]}
-            >
-              <View style={styles.moqCardContent}>
-                <Text style={[styles.moqCardLabel, isActive && styles.moqCardLabelActive]}>
-                  {label}
-                </Text>
-                {isActive && (
-                  <View style={styles.moqActiveBadge}>
-                    <Text style={styles.moqActiveBadgeText}>Active</Text>
-                  </View>
-                )}
-                <Text style={[styles.moqCardPrice, isActive && styles.moqCardPriceActive]}>
-                  {formatPrice(tier.price, currency === '₹' ? 'INR' : currency)}
-                </Text>
-                <Text style={styles.moqCardUnit}>per unit</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+        <Icon name="minus" size={18} color={value <= min ? D.textTertiary : D.primary} />
+      </TouchableOpacity>
+      
+      <View style={stepperStyles.valueContainer}>
+        <Text style={stepperStyles.value}>{value}</Text>
+      </View>
+      
+      <TouchableOpacity 
+        onPress={increment} 
+        style={stepperStyles.button}
+        activeOpacity={0.7}
+      >
+        <Icon name="plus" size={18} color={D.primary} />
+      </TouchableOpacity>
     </View>
   );
 }
 
-function InformationCard({ title, rows }: { title: string; rows: Array<[string, unknown]> }) {
+const stepperStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: D.surface,
+    borderRadius: D.radius.md,
+    borderWidth: 1,
+    borderColor: D.border,
+    overflow: 'hidden',
+  },
+  button: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: D.primaryLight,
+  },
+  buttonDisabled: {
+    backgroundColor: D.background,
+  },
+  valueContainer: {
+    paddingHorizontal: 16,
+    minWidth: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: D.border,
+    height: 40,
+  },
+  value: {
+    ...D.typography.bodyBold,
+    color: D.textPrimary,
+  },
+});
+
+// ─── Premium MOQ Selector ───────────────────────────────────────────────────
+
+function PremiumMoqSelector({ 
+  tiers, 
+  selectedQty, 
+  onSelect, 
+}: { 
+  tiers: MoqTier[]; 
+  selectedQty: number; 
+  onSelect: (qty: number) => void;
+}) {
+  const { formatPrice } = useCurrency();
+  
+  // Find active tier based on selected quantity
+  const activeTier = useMemo(() => {
+    return tiers.find(tier => {
+      if (tier.maxQty) {
+        return selectedQty >= tier.minQty && selectedQty <= tier.maxQty;
+      }
+      return selectedQty >= tier.minQty;
+    });
+  }, [tiers, selectedQty]);
+
+  // Check if a tier is the active one
+  const isTierActive = useCallback((tier: MoqTier) => {
+    if (!activeTier) return false;
+    return activeTier.minQty === tier.minQty && activeTier.maxQty === tier.maxQty;
+  }, [activeTier]);
+
+  // Handle tier press - set quantity to tier's minimum
+  const handleTierPress = useCallback((tier: MoqTier) => {
+    onSelect(tier.minQty);
+  }, [onSelect]);
+
+  if (!tiers || tiers.length === 0) return null;
+
+  const hasActiveTier = activeTier !== undefined;
+
+  return (
+    <View style={moqStyles.wrapper}>
+      {/* Header */}
+      <View style={moqStyles.header}>
+        <View style={moqStyles.headerLeft}>
+          <View style={moqStyles.iconCircle}>
+            <Icon name="package-variant" size={16} color={D.primary} />
+          </View>
+          <Text style={moqStyles.headerTitle}>Bulk Pricing</Text>
+        </View>
+        {hasActiveTier && (
+          <View style={moqStyles.selectedBadge}>
+            <Text style={moqStyles.selectedBadgeText}>
+              {selectedQty} {tiers[0]?.unit || 'units'} selected
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Tier Cards */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={moqStyles.tiersContainer}
+        decelerationRate="fast"
+      >
+        {tiers.map((tier, index) => {
+          const active = isTierActive(tier);
+          
+          return (
+            <TouchableOpacity
+              key={`tier-${tier.minQty}-${tier.maxQty}-${index}`}
+              onPress={() => handleTierPress(tier)}
+              activeOpacity={0.8}
+              style={[
+                moqStyles.tierCard,
+                active && moqStyles.tierCardActive,
+              ]}
+            >
+              {/* Active indicator */}
+              {active && (
+                <View style={moqStyles.activeRibbon}>
+                  <Icon name="check" size={10} color={D.white} />
+                </View>
+              )}
+              
+              {/* Quantity Range */}
+              <Text style={[
+                moqStyles.tierQty,
+                active && moqStyles.tierQtyActive
+              ]}>
+                {tier.maxQty 
+                  ? `${tier.minQty}-${tier.maxQty}` 
+                  : `${tier.minQty}+`
+                }
+              </Text>
+              <Text style={[
+                moqStyles.tierLabel,
+                active && moqStyles.tierLabelActive
+              ]}>
+                {tier.unit || 'units'}
+              </Text>
+              
+              {/* Price */}
+              <View style={moqStyles.priceContainer}>
+                <Text style={[
+                  moqStyles.tierPrice,
+                  active && moqStyles.tierPriceActive
+                ]}>
+                  {formatPrice(tier.price, 'INR')}
+                </Text>
+                <Text style={[
+                  moqStyles.tierPriceUnit,
+                  active && moqStyles.tierPriceUnitActive
+                ]}>
+                  /{tier.unit || 'unit'}
+                </Text>
+              </View>
+              
+              {/* Savings indicator */}
+              {active && tiers.length > 1 && (
+                <View style={moqStyles.savingsBadge}>
+                  <Icon name="tag" size={8} color={D.success} />
+                  <Text style={moqStyles.savingsText}>Best value</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Active Tier Summary */}
+      {hasActiveTier && (
+        <View style={moqStyles.summaryContainer}>
+          <View style={moqStyles.summaryRow}>
+            <View style={moqStyles.summaryItem}>
+              <Text style={moqStyles.summaryLabel}>Selected Range</Text>
+              <Text style={moqStyles.summaryValue}>
+                {activeTier.maxQty 
+                  ? `${activeTier.minQty} - ${activeTier.maxQty}` 
+                  : `${activeTier.minQty}+`
+                } {activeTier.unit || 'units'}
+              </Text>
+            </View>
+            
+            <View style={moqStyles.summaryDivider} />
+            
+            <View style={moqStyles.summaryItem}>
+              <Text style={moqStyles.summaryLabel}>Price Per Unit</Text>
+              <Text style={moqStyles.summaryValueHighlight}>
+                {formatPrice(activeTier.price, 'INR')}
+              </Text>
+            </View>
+            
+            <View style={moqStyles.summaryDivider} />
+            
+            <View style={moqStyles.summaryItem}>
+              <Text style={moqStyles.summaryLabel}>Total Amount</Text>
+              <Text style={moqStyles.summaryValueHighlight}>
+                {formatPrice(activeTier.price * selectedQty, 'INR')}
+              </Text>
+            </View>
+          </View>
+          
+          {/* Quantity Stepper */}
+          <View style={moqStyles.stepperRow}>
+            <Text style={moqStyles.stepperLabel}>Adjust quantity:</Text>
+            <QuantityStepper 
+              value={selectedQty} 
+              min={activeTier.minQty}
+              onChange={onSelect} 
+            />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const moqStyles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: D.surface,
+    marginTop: 6,
+    marginHorizontal: 12,
+    borderRadius: D.radius.lg,
+    ...D.shadowSm,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  iconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: D.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    ...D.typography.h3,
+    color: D.textPrimary,
+  },
+  selectedBadge: {
+    backgroundColor: D.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: D.radius.full,
+  },
+  selectedBadgeText: {
+    ...D.typography.small,
+    color: D.primary,
+    fontWeight: '600',
+  },
+  tiersContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 10,
+  },
+  tierCard: {
+    backgroundColor: D.background,
+    borderRadius: D.radius.md,
+    borderWidth: 2,
+    borderColor: D.borderLight,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minWidth: 100,
+    alignItems: 'center',
+    position: 'relative',
+    ...D.shadowSm,
+  },
+  tierCardActive: {
+    backgroundColor: D.primary,
+    borderColor: D.primaryDark,
+    transform: [{ scale: 1.05 }],
+    ...D.shadowLg,
+  },
+  activeRibbon: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: D.success,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: D.white,
+  },
+  tierQty: {
+    ...D.typography.h3,
+    color: D.textPrimary,
+    marginBottom: 2,
+  },
+  tierQtyActive: {
+    color: D.white,
+    fontSize: 18,
+  },
+  tierLabel: {
+    ...D.typography.caption,
+    color: D.textTertiary,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  tierLabelActive: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  priceContainer: {
+    alignItems: 'center',
+  },
+  tierPrice: {
+    ...D.typography.bodyBold,
+    color: D.textPrimary,
+  },
+  tierPriceActive: {
+    color: D.white,
+    fontWeight: '800',
+  },
+  tierPriceUnit: {
+    ...D.typography.small,
+    color: D.textTertiary,
+    marginTop: 2,
+  },
+  tierPriceUnitActive: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  savingsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: D.radius.full,
+  },
+  savingsText: {
+    ...D.typography.small,
+    color: D.white,
+    fontWeight: '600',
+  },
+  summaryContainer: {
+    borderTopWidth: 1,
+    borderTopColor: D.border,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: D.primaryLight,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  summaryDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: D.border,
+    marginHorizontal: 4,
+  },
+  summaryLabel: {
+    ...D.typography.small,
+    color: D.textSecondary,
+    marginBottom: 4,
+  },
+  summaryValue: {
+    ...D.typography.caption,
+    color: D.textPrimary,
+    fontWeight: '600',
+  },
+  summaryValueHighlight: {
+    ...D.typography.caption,
+    color: D.primaryDark,
+    fontWeight: '700',
+  },
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: D.border,
+  },
+  stepperLabel: {
+    ...D.typography.caption,
+    color: D.textSecondary,
+  },
+});
+
+// ─── Info Card Component ──────────────────────────────────────────────────
+
+function InfoCard({ title, rows }: { title: string; rows: Array<[string, unknown]> }) {
   const visible = rows.filter(([, value]) => value !== undefined && value !== null && value !== '');
   if (!visible.length) return null;
-  return <View style={styles.informationCard}><Text style={styles.informationTitle}>{title}</Text>{visible.map(([label, value], index) => <View key={label} style={[styles.informationRow, index === visible.length - 1 && styles.informationRowLast]}><Text style={styles.informationLabel}>{label}</Text><Text selectable style={styles.informationValue}>{String(value)}</Text></View>)}</View>;
+  
+  return (
+    <View style={infoStyles.wrapper}>
+      <View style={infoStyles.header}>
+        <Text style={infoStyles.title}>{title}</Text>
+        <View style={infoStyles.titleUnderline} />
+      </View>
+      <View style={infoStyles.content}>
+        {visible.map(([label, value], index) => (
+          <View key={label} style={[
+            infoStyles.row,
+            index === visible.length - 1 && infoStyles.rowLast
+          ]}>
+            <Text style={infoStyles.label}>{label}</Text>
+            <Text selectable style={infoStyles.value}>{String(value)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
+
+const infoStyles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    ...D.shadowSm,
+    overflow: 'hidden',
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  title: {
+    ...D.typography.h3,
+    color: D.textPrimary,
+    marginBottom: 8,
+  },
+  titleUnderline: {
+    width: 40,
+    height: 3,
+    backgroundColor: D.primary,
+    borderRadius: 2,
+  },
+  content: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  label: {
+    ...D.typography.caption,
+    color: D.textSecondary,
+    flex: 1,
+    textTransform: 'capitalize',
+  },
+  value: {
+    ...D.typography.caption,
+    color: D.textPrimary,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'right',
+  },
+});
+
+// ─── Trust Badges Component ─────────────────────────────────────────────────
+
+function TrustBadges() {
+  const badges = [
+    { icon: 'shield-check', label: 'Verified Supplier' },
+    { icon: 'earth', label: 'Global Shipping' },
+    { icon: 'certificate', label: 'Quality Assured' },
+    { icon: 'handshake', label: 'Secure Trade' },
+  ];
+
+  return (
+    <View style={trustStyles.container}>
+      {badges.map((badge, index) => (
+        <React.Fragment key={badge.label}>
+          <View style={trustStyles.badge}>
+            <View style={trustStyles.badgeIcon}>
+              <Icon name={badge.icon} size={14} color={D.success} />
+            </View>
+            <Text style={trustStyles.badgeLabel}>{badge.label}</Text>
+          </View>
+          {index < badges.length - 1 && <View style={trustStyles.divider} />}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+const trustStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    ...D.shadowSm,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  badgeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ECFDF5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeLabel: {
+    ...D.typography.small,
+    color: D.textSecondary,
+    fontWeight: '600',
+  },
+  divider: {
+    width: 1,
+    height: 24,
+    backgroundColor: D.borderLight,
+  },
+});
+
+// ─── Image Gallery Component ────────────────────────────────────────────────
+
+function ImageGallery({ 
+  images, 
+  selectedIndex, 
+  onIndexChange,
+  onOpenFullscreen 
+}: { 
+  images: string[]; 
+  selectedIndex: number;
+  onIndexChange: (index: number) => void;
+  onOpenFullscreen: () => void;
+}) {
+  const flatListRef = useRef<FlatList>(null);
+
+  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    if (index !== selectedIndex) onIndexChange(index);
+  };
+
+  const scrollToImage = (index: number) => {
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+    onIndexChange(index);
+  };
+
+  return (
+    <View style={galleryStyles.wrapper}>
+      {/* Main Slider */}
+      <FlatList
+        ref={flatListRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        data={images}
+        keyExtractor={(uri, i) => `${uri}-${i}`}
+        onMomentumScrollEnd={onScrollEnd}
+        getItemLayout={(_, index) => ({ 
+          length: SCREEN_WIDTH, 
+          offset: SCREEN_WIDTH * index, 
+          index 
+        })}
+        renderItem={({ item: uri }) => (
+          <Pressable onPress={onOpenFullscreen} style={galleryStyles.slide}>
+            <RemoteImage 
+              uri={uri} 
+              width={900} 
+              height={450} 
+              resizeMode="cover" 
+              style={galleryStyles.image} 
+              fallback={
+                <View style={galleryStyles.fallback}>
+                  <Icon name="image-off" size={48} color={D.textTertiary} />
+                </View>
+              } 
+            />
+          </Pressable>
+        )}
+      />
+
+      {/* Dots Pagination */}
+      {images.length > 1 && (
+        <View style={galleryStyles.dotsContainer}>
+          {images.map((_, i) => (
+            <TouchableOpacity 
+              key={i} 
+              onPress={() => scrollToImage(i)} 
+              activeOpacity={0.7}
+            >
+              <View style={[
+                galleryStyles.dot,
+                selectedIndex === i && galleryStyles.dotActive
+              ]} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Thumbnails */}
+      {images.length > 1 && (
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={galleryStyles.thumbnailsContainer}
+        >
+          {images.map((uri, index) => (
+            <TouchableOpacity
+              key={`thumb-${index}`}
+              onPress={() => scrollToImage(index)}
+              activeOpacity={0.8}
+              style={[
+                galleryStyles.thumbnail,
+                selectedIndex === index && galleryStyles.thumbnailActive
+              ]}
+            >
+              <RemoteImage 
+                uri={uri} 
+                width={72} 
+                height={72} 
+                resizeMode="cover" 
+                style={galleryStyles.thumbnailImage} 
+              />
+              {selectedIndex === index && (
+                <View style={galleryStyles.thumbnailOverlay}>
+                  <Icon name="check" size={12} color={D.white} />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const galleryStyles = StyleSheet.create({
+  wrapper: {
+    backgroundColor: D.surface,
+    position: 'relative',
+  },
+  slide: {
+    width: SCREEN_WIDTH,
+    height: 400,
+  },
+  image: {
+    width: SCREEN_WIDTH,
+    height: 400,
+    backgroundColor: D.background,
+  },
+  fallback: {
+    width: SCREEN_WIDTH,
+    height: 400,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: D.background,
+  },
+  dotsContainer: {
+    position: 'absolute',
+    bottom: 64,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  dotActive: {
+    backgroundColor: D.primary,
+    width: 24,
+    height: 8,
+    borderRadius: 4,
+  },
+  thumbnailsContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
+  },
+  thumbnail: {
+    width: 76,
+    height: 76,
+    borderRadius: D.radius.sm,
+    borderWidth: 2,
+    borderColor: D.border,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  thumbnailActive: {
+    borderColor: D.primary,
+    borderWidth: 2.5,
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbnailOverlay: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: D.primary,
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
@@ -268,7 +1032,6 @@ function ProductDetailsScreen() {
   const insets = useSafeAreaInsets();
   const { status, user, activeRole } = useAuth();
   const { productId } = route.params as { productId: string };
-  const flatListRef = useRef<FlatList>(null);
 
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
@@ -298,17 +1061,57 @@ function ProductDetailsScreen() {
 
   const sellerUserId = useMemo(() => extractSellerUserId(product), [product]);
   const sellerRouteId = useMemo(() => extractSellerRouteId(product), [product]);
-  const seller = typeof product?.sellerId === 'object' && product.sellerId ? product.sellerId as Record<string, any> : undefined;
   const sellerName = useMemo(() => extractSellerName(product), [product]);
   const images = useMemo(() => extractImages(product), [product]);
   const moqTiers: MoqTier[] = useMemo(() => buildMoqTiers(product), [product]);
-  const relatedQuery = useQuery({
-    queryKey: ['related-products', productId, product?.categoryId ?? product?.category],
-    queryFn: () => fetchProducts({ category: typeof product?.categoryId === 'object' ? String(product.categoryId._id ?? product.categoryId.id ?? product.categoryId.name ?? '') : String(product?.categoryId ?? product?.category ?? ''), limit: 10 }),
+  
+  // Related Products
+  const relatedQuery1 = useQuery({
+    queryKey: ['related-products-1', productId, product?.categoryId ?? product?.category],
+    queryFn: () => fetchProducts({ 
+      category: typeof product?.categoryId === 'object' 
+        ? String(product.categoryId._id ?? product.categoryId.id ?? product.categoryId.name ?? '') 
+        : String(product?.categoryId ?? product?.category ?? ''), 
+      limit: 10 
+    }),
     enabled: Boolean(product && (product.categoryId || product.category)),
     staleTime: 2 * 60_000,
   });
-  const relatedProducts = useMemo(() => (relatedQuery.data?.products ?? []).filter(item => String(item._id ?? item.id) !== String(productId)).slice(0, 8), [relatedQuery.data?.products, productId]);
+
+  const relatedQuery2 = useQuery({
+    queryKey: ['related-products-2', productId],
+    queryFn: () => fetchProducts({ limit: 10, exclude: productId }),
+    enabled: Boolean(product),
+    staleTime: 2 * 60_000,
+  });
+
+  const relatedQuery3 = useQuery({
+    queryKey: ['related-products-3', productId, product?.brand],
+    queryFn: () => fetchProducts({ brand: product?.brand, limit: 10 }),
+    enabled: Boolean(product && product?.brand),
+    staleTime: 2 * 60_000,
+  });
+
+  const relatedProducts1 = useMemo(
+    () => (relatedQuery1.data?.products ?? [])
+      .filter((item: any) => String(item._id ?? item.id) !== String(productId))
+      .slice(0, 8), 
+    [relatedQuery1.data?.products, productId]
+  );
+  
+  const relatedProducts2 = useMemo(
+    () => (relatedQuery2.data?.products ?? [])
+      .filter((item: any) => String(item._id ?? item.id) !== String(productId))
+      .slice(0, 8), 
+    [relatedQuery2.data?.products, productId]
+  );
+  
+  const relatedProducts3 = useMemo(
+    () => (relatedQuery3.data?.products ?? [])
+      .filter((item: any) => String(item._id ?? item.id) !== String(productId))
+      .slice(0, 8), 
+    [relatedQuery3.data?.products, productId]
+  );
 
   // ── Auth State ───────────────────────────────────────────────────────────
 
@@ -318,24 +1121,9 @@ function ProductDetailsScreen() {
   const isSelfContact = Boolean(currentUserId && sellerUserId && currentUserId === String(sellerUserId));
   const canAct = isBuyer && Boolean(sellerUserId) && !isSelfContact;
 
-  // ── Selected Tier ────────────────────────────────────────────────────────
-
-  const selectedTier = useMemo(() => {
-    if (moqTiers.length === 0) return null;
-    const tier = moqTiers.find(t => {
-      if (t.maxQty) {
-        return quantity >= t.minQty && quantity <= t.maxQty;
-      }
-      return quantity >= t.minQty;
-    });
-    if (tier) return tier;
-    if (quantity < moqTiers[0].minQty) return moqTiers[0];
-    return [...moqTiers].reverse().find(item => quantity >= item.minQty) ?? moqTiers[0];
-  }, [moqTiers, quantity]);
-
   // ── Initialize quantity ─────────────────────────────────────────────────
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (moqTiers.length > 0 && initializedMoqProductRef.current !== productId) {
       initializedMoqProductRef.current = productId;
       setQuantity(moqTiers[0].minQty);
@@ -347,7 +1135,7 @@ function ProductDetailsScreen() {
 
   // ── Track view ──────────────────────────────────────────────────────────
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (product && status === 'authenticated') {
       const id = product._id || product.id;
       if (id) trackProductView(id).catch(() => {});
@@ -418,7 +1206,7 @@ function ProductDetailsScreen() {
         packagingRequirements: packagingRequirements.trim() || undefined,
         deliveryRequirements: deliveryRequirements.trim() || undefined,
         additionalNotes: additionalNotes.trim() || undefined,
-        attachments: cloudFiles.map((file, index) => ({
+        attachments: cloudFiles.map((file: any, index: number) => ({
           filename: file.name ?? attachments[index]?.name ?? 'Attachment',
           type: file.mimeType ?? attachments[index]?.type ?? 'application/octet-stream',
           url: file.secure_url ?? file.url ?? file.location,
@@ -470,26 +1258,44 @@ function ProductDetailsScreen() {
     }
   }, [product, navigation]);
 
-  const shareProduct = () => {
+  const shareProduct = useCallback(() => {
     if (!product) return;
     Share.share({ 
       message: `${product.name || 'Product'}\n${formatPrice(Number(product.price ?? 0), product.currency ?? 'INR')}` 
     });
-  };
+  }, [product, formatPrice]);
 
-  // ── Gallery ─────────────────────────────────────────────────────────────
+  // ── Data for rendering ──────────────────────────────────────────────────
 
   const gallery: string[] = images.length > 0 ? images : [''];
+  const rating = product?.averageRating || 0;
+  const reviewCount = product?.reviewCount || 0;
+  const totalOrders = product?.totalOrders || 0;
+  const samplePrice = product?.samplePrice || product?.price || 2000;
 
-  const onMainImageScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    if (index !== selectedImage) setSelectedImage(index);
-  };
+  const productDetailsRows = [
+    ['Category', typeof product?.category === 'object' ? product.category?.name : product?.category],
+    ['Subcategory', typeof product?.subcategory === 'object' ? product.subcategory?.name : product?.subcategory],
+    ['Brand', product?.brand],
+    ['Model', product?.model ?? product?.modelNumber],
+    ['SKU', product?.sku],
+    ['HSN Code', product?.hsn ?? product?.hsnCode],
+    ['Country of Origin', product?.countryOfOrigin ?? product?.originCountry],
+    ['Stock Quantity', product?.stockQuantity ?? product?.stock],
+    ['Status', product?.status],
+    ['Warranty', product?.warranty],
+    ['Certifications', product?.certifications?.map((c: any) => c.name).join(', ')],
+    ['Sample Available', product?.sampleAvailable ? 'Yes' : 'No'],
+  ];
 
-  const scrollToImage = (index: number) => {
-    flatListRef.current?.scrollToIndex({ index, animated: true });
-    setSelectedImage(index);
-  };
+  const shippingRows = [
+    ['Lead Time', product?.leadTime ? `${product.leadTime.value} ${product.leadTime.unit}` : null],
+    ['Delivery Time', product?.deliveryTime ? `${product.deliveryTime.value} ${product.deliveryTime.unit}` : null],
+    ['Shipping Methods', product?.shipping?.methods?.join(', ')],
+    ['Origin Port', product?.shipping?.originPort],
+    ['Payment Terms', product?.paymentTerms],
+    ['Trade Terms', product?.tradeTerms?.join(', ')],
+  ];
 
   // ── Loading / Error ────────────────────────────────────────────────────
 
@@ -503,125 +1309,124 @@ function ProductDetailsScreen() {
     );
   }
 
-  // ── Data for rendering ──────────────────────────────────────────────────
+  // ── Render Section ─────────────────────────────────────────────────────
 
-  const currency = selectedCurrency;
-  const totalMoqValue = selectedTier 
-    ? selectedTier.price * quantity 
-    : (product.price || 0) * quantity;
-  const samplePrice = product.samplePrice || product.price || 2000;
-  const rating = product.averageRating || 0;
-  const reviewCount = product.reviewCount || 0;
-  const totalOrders = product.totalOrders || 0;
+  const renderRelatedSection = (products: any[], title: string) => {
+    if (products.length === 0) return null;
+    
+    return (
+      <View style={styles.relatedSection}>
+        <View style={styles.relatedHeader}>
+          <Text style={styles.relatedTitle}>{title}</Text>
+          <TouchableOpacity>
+            <Text style={styles.relatedSeeAll}>See All →</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.relatedList}
+          decelerationRate="fast"
+        >
+          {products.map((item: any) => (
+            <View key={String(item._id ?? item.id)} style={styles.relatedCard}>
+              <ProductCard product={item} variant="carousel" />
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={D.surface} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
-          <Icon name="arrow-left" size={22} color={P.ink} />
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()} 
+          style={styles.headerIconBtn}
+          activeOpacity={0.7}
+        >
+          <Icon name="arrow-left" size={22} color={D.textPrimary} />
         </TouchableOpacity>
+        
         <Text numberOfLines={1} style={styles.headerTitle}>
-          Home / Products / {product.name?.slice(0, 20)}...
+          Product Details
         </Text>
-        <TouchableOpacity onPress={shareProduct} style={styles.headerBtn}>
-          <Icon name="share-variant-outline" size={20} color={P.ink} />
-        </TouchableOpacity>
+        
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            onPress={shareProduct} 
+            style={styles.headerIconBtn}
+            activeOpacity={0.7}
+          >
+            <Icon name="share-variant-outline" size={20} color={D.textPrimary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Gallery */}
-        <View style={styles.galleryWrap}>
-          <FlatList
-            ref={flatListRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            data={gallery}
-            keyExtractor={(uri, i) => `${uri}-${i}`}
-            onMomentumScrollEnd={onMainImageScroll}
-            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
-            renderItem={({ item: uri }) => (
-              <Pressable onPress={() => setGalleryOpen(true)} style={styles.gallerySlide}>
-                <RemoteImage 
-                  uri={uri} 
-                  width={900} 
-                  height={400} 
-                  resizeMode="contain" 
-                  style={styles.galleryImage} 
-                  fallback={<Icon name="image-off" size={40} color={P.muted} />} 
-                />
-              </Pressable>
-            )}
+        {/* Image Gallery */}
+        <View style={styles.gallerySection}>
+          <ImageGallery 
+            images={gallery}
+            selectedIndex={selectedImage}
+            onIndexChange={setSelectedImage}
+            onOpenFullscreen={() => setGalleryOpen(true)}
           />
           
-          {/* Active Badge */}
-          <View style={styles.activeBadge}>
-            <Text style={styles.activeBadgeText}>Active</Text>
-          </View>
-
-          {/* Save Heart */}
+          {/* Saved Heart Button */}
           <SavedHeartButton 
             type="product" 
             itemId={product._id || product.id || ''} 
             target={product} 
             size={16} 
             style={styles.heartBtn} 
-            iconColor={P.ink} 
+            iconColor={D.textPrimary} 
           />
+        </View>
 
-          {/* Pagination Dots */}
-          {gallery.length > 1 && (
-            <View style={styles.paginationRow}>
-              {gallery.map((_, i) => (
-                <TouchableOpacity 
-                  key={i} 
-                  onPress={() => scrollToImage(i)} 
-                  style={[styles.dot, selectedImage === i && styles.dotActive]} 
-                />
-              ))}
+        {/* Product Header */}
+        <View style={styles.productHeader}>
+          <TouchableOpacity 
+            onPress={goToStore} 
+            style={styles.sellerRow}
+            activeOpacity={0.7}
+          >
+            <View style={styles.sellerAvatar}>
+              <Icon name="store" size={16} color={D.primary} />
             </View>
-          )}
-
-          {/* Image Counter */}
-          <View style={styles.imageCounter}>
-            <Text style={styles.imageCounterText}>{selectedImage + 1}/{gallery.length}</Text>
-          </View>
-        </View>
-
-        {gallery.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbnailRow}>{gallery.map((uri, index) => <TouchableOpacity accessibilityLabel={`Show product image ${index + 1}`} key={`${uri}-thumb-${index}`} onPress={() => scrollToImage(index)} style={[styles.thumbnailButton, selectedImage === index && styles.thumbnailButtonActive]}><RemoteImage uri={uri} width={58} height={58} resizeMode="cover" style={styles.thumbnailImage} /></TouchableOpacity>)}</ScrollView> : null}
-
-        {/* Product Name */}
-        <View style={styles.nameSection}>
+            <View style={styles.sellerInfo}>
+              <Text style={styles.sellerName}>{sellerName}</Text>
+              <View style={styles.sellerBadge}>
+                <Icon name="check-circle" size={10} color={D.success} />
+                <Text style={styles.sellerBadgeText}>Verified</Text>
+              </View>
+            </View>
+            <Icon name="chevron-right" size={18} color={D.textTertiary} />
+          </TouchableOpacity>
+          
           <Text style={styles.productName}>{product.name}</Text>
+          
+          {/* Rating */}
+          <View style={styles.ratingRow}>
+            <View style={styles.ratingBadge}>
+              <Icon name="star" size={12} color={D.white} />
+              <Text style={styles.ratingValue}>{rating.toFixed(1)}</Text>
+            </View>
+            <Text style={styles.reviewCount}>{reviewCount} reviews</Text>
+            <View style={styles.ratingDot} />
+            <Text style={styles.orderCount}>{totalOrders} orders</Text>
+          </View>
         </View>
 
-        {/* Category Chips */}
-        {product.variants && product.variants.length > 0 && (
-          <View style={styles.chipSection}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.variantScroll}>
-              {product.variants.map((variant: any, index: number) => {
-                const label = variant.name || variant.label || variant.value || `Option ${index + 1}`;
-                return (
-                  <TouchableOpacity
-                    key={`${label}-${index}`}
-                    style={styles.variantChip}
-                  >
-                    <Text style={styles.variantChipText}>{label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* MOQ Selector */}
-        <MoqSelector 
+        {/* Premium MOQ Selector */}
+        <PremiumMoqSelector 
           tiers={moqTiers} 
           selectedQty={quantity} 
           onSelect={(qty) => {
@@ -633,565 +1438,586 @@ function ProductDetailsScreen() {
               setTargetPrice(String(tier.price));
             }
           }} 
-          currency={currency}
         />
 
-        {/* Price and Metrics */}
-        <View style={styles.priceSection}>
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>
-              {formatPrice(Number(selectedTier?.price ?? product.price ?? 0), product.currency ?? 'INR')}
-              <Text style={styles.priceUnit}> /unit</Text>
-            </Text>
-          </View>
-
-          <View style={styles.metricsRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Total MOQ Value:</Text>
-              <Text style={styles.metricValue}>
-                {formatPrice(totalMoqValue, product.currency ?? 'INR')}
-              </Text>
-            </View>
-            <Text style={styles.metricSubtext}>Price updates instantly from selected MOQ</Text>
-          </View>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>MOQ</Text>
-              <Text style={styles.statValue}>{quantity}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>ORDERS</Text>
-              <Text style={styles.statValue}>{totalOrders}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statLabel}>RATING</Text>
-              <View style={styles.ratingRow}>
-                <Icon name="star" size={14} color={P.amber} />
-                <Text style={styles.statValue}>{rating.toFixed(1)} ({reviewCount})</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Sample Order Button */}
+        {/* Sample Order */}
+        {product.sampleAvailable && (
           <TouchableOpacity 
             onPress={goToSampleOrder} 
-            style={styles.sampleOrderBtn}
+            style={styles.sampleBtn}
+            activeOpacity={0.8}
           >
-            <Text style={styles.sampleOrderText}>
-              Sample Available {formatPrice(Number(samplePrice), product.currency ?? 'INR')} - Order Sample →
-            </Text>
+            <View style={styles.sampleBtnLeft}>
+              <View style={styles.sampleIconCircle}>
+                <Icon name="package-variant-closed" size={16} color={D.primary} />
+              </View>
+              <View>
+                <Text style={styles.sampleBtnTitle}>Order Sample</Text>
+                <Text style={styles.sampleBtnSubtitle}>
+                  Try before you buy at {formatPrice(Number(samplePrice), product.currency ?? 'INR')}
+                </Text>
+              </View>
+            </View>
+            <Icon name="chevron-right" size={20} color={D.primary} />
           </TouchableOpacity>
-        </View>
+        )}
 
         {/* Trust Badges */}
-        <View style={styles.trustRow}>
-          <View style={styles.trustItem}>
-            <Icon name="shield-check" size={16} color={P.primary} />
-            <Text style={styles.trustText}>Secure</Text>
-          </View>
-          <View style={styles.trustItem}>
-            <Icon name="earth" size={16} color={P.primary} />
-            <Text style={styles.trustText}>Global</Text>
-          </View>
-          <View style={styles.trustItem}>
-            <Icon name="star-four-points" size={16} color={P.primary} />
-            <Text style={styles.trustText}>Quality</Text>
-          </View>
-        </View>
-
-        <InformationCard title="Product information" rows={[
-          ['Category', typeof product.category === 'object' ? product.category?.name : product.category], ['Brand', product.brand], ['Model', product.model ?? product.modelNumber], ['SKU', product.sku], ['HSN', product.hsn ?? product.hsnCode], ['Origin', product.countryOfOrigin ?? product.originCountry], ['Available quantity', product.stock ?? product.availableQuantity], ['Status', product.status], ['Manufacturer', product.manufacturer], ['Supply ability', product.supplyAbility], ['Warranty', product.warranty],
-        ]} />
-        {product.description ? <View style={styles.informationCard}><Text style={styles.informationTitle}>Product description</Text><Text selectable style={styles.descriptionText}>{String(product.description).replace(/<[^>]*>/g, '')}</Text></View> : null}
-        <InformationCard title="Specifications" rows={Object.entries(product.specifications ?? product.attributes ?? {}).map(([key, value]) => [key.replace(/_/g, ' '), value])} />
-        <InformationCard title="Delivery & shipping" rows={[
-          ['Estimated delivery', product.estimatedDelivery ?? product.deliveryTime], ['Shipping method', product.shippingMethod], ['Dispatch time', product.dispatchTime ?? product.leadTime], ['Incoterms', Array.isArray(product.incoterms) ? product.incoterms.join(', ') : product.incoterms], ['Packaging', product.packagingDetails ?? product.packaging], ['Freight information', product.freightInformation], ['Shipping policy', product.shippingPolicy],
-        ]} />
-        <InformationCard title="Manufacturer" rows={[
-          ['Company', seller?.companyName ?? seller?.name], ['Location', seller?.location ?? seller?.country], ['Business type', seller?.businessType], ['Years in business', seller?.yearsInBusiness], ['Response rate', seller?.responseRate], ['Rating', seller?.rating], ['Completed orders', seller?.completedOrders],
-        ]} />
-        <View style={styles.informationCard}><ReviewsPanel productId={productId} sellerId={sellerRouteId} showForm title="Ratings & reviews" /></View>
-
-        <View style={styles.relatedSection}>
-          <View style={styles.relatedHeader}><View><Text style={styles.relatedEyebrow}>MORE TO EXPLORE</Text><Text style={styles.relatedTitle}>Related products</Text></View><Icon name="arrow-right" size={21} color={P.primary} /></View>
-          {relatedQuery.isLoading ? <ActivityIndicator color={P.primary} style={styles.relatedLoader} /> : relatedProducts.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedList}>{relatedProducts.map(item => <ProductCard key={String(item._id ?? item.id)} product={item} variant="carousel" />)}</ScrollView> : <Text style={styles.relatedEmpty}>No similar products are available yet.</Text>}
-        </View>
+        <TrustBadges />
 
         {/* Trade Assurance */}
-        <TradeAssurance />
+        <View style={styles.tradeAssuranceContainer}>
+          <TradeAssurance />
+        </View>
+
+        {/* Description */}
+        {product.description && (
+          <View style={styles.descriptionCard}>
+            <View style={styles.descriptionHeader}>
+              <Text style={styles.descriptionTitle}>About This Product</Text>
+              <View style={styles.descriptionUnderline} />
+            </View>
+            <Text selectable style={styles.descriptionText}>
+              {String(product.description).replace(/<[^>]*>/g, '')}
+            </Text>
+          </View>
+        )}
+
+        {/* Product Details */}
+        <InfoCard title="Product Details" rows={productDetailsRows} />
+
+        {/* Specifications */}
+        {product.specifications && Object.keys(product.specifications).length > 0 && (
+          <InfoCard 
+            title="Specifications" 
+            rows={Object.entries(product.specifications).map(([key, value]) => [
+              key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), 
+              value
+            ])} 
+          />
+        )}
+
+        {/* Shipping & Delivery */}
+        <InfoCard title="Shipping & Delivery" rows={shippingRows} />
+
+        {/* Reviews */}
+        <View style={styles.reviewsCard}>
+          <ReviewsPanel 
+            productId={productId} 
+            sellerId={sellerRouteId} 
+            showForm 
+            title="Ratings & Reviews" 
+          />
+        </View>
+
+        {/* Related Products */}
+        {renderRelatedSection(relatedProducts1, 'Similar Products')}
+        {renderRelatedSection(relatedProducts2, 'You May Also Like')}
+        {renderRelatedSection(relatedProducts3, 'More From This Brand')}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      <View style={styles.actionRow}>
-        <TouchableOpacity accessibilityLabel="View supplier store" disabled={!sellerRouteId} onPress={goToStore} style={styles.storeIconButton}><Icon name="storefront-outline" size={23} color={P.primary} /><Text style={styles.storeIconLabel}>Store</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => { if (!isAuth) { navigation.navigate('Auth', { initialMode: 'login' }); return; } if (!isBuyer) { Alert.alert('Switch Role', 'Please switch to buyer mode to chat.'); return; } chatNow.mutate(); }} style={[styles.chatBtn, (!canAct || chatNow.isPending) && styles.disabledBtn]} disabled={!canAct || chatNow.isPending}><Icon name="message-text-outline" size={18} color={P.primary} /><Text style={styles.chatButtonText}>{chatNow.isPending ? 'Opening…' : 'Chat Now'}</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => { if (!isAuth) { navigation.navigate('Auth', { initialMode: 'login' }); return; } if (!isBuyer) { Alert.alert('Switch Role', 'Please switch to buyer mode to send enquiry.'); return; } setEnquiryOpen(true); }} style={[styles.inquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]} disabled={!canAct || sendEnquiry.isPending}><Icon name="send-outline" size={18} color="#FFF" /><Text style={styles.inquiryPrimaryText}>{sendEnquiry.isPending ? 'Sending…' : 'Send Enquiry'}</Text></TouchableOpacity>
+      {/* Bottom Action Bar */}
+      <View style={[styles.actionBar, { paddingBottom: insets.bottom || 12 }]}>
+        <TouchableOpacity 
+          onPress={goToStore} 
+          style={styles.storeBtn}
+          activeOpacity={0.7}
+          disabled={!sellerRouteId}
+        >
+          <Icon name="storefront-outline" size={22} color={D.primary} />
+          <Text style={styles.storeBtnText}>Store</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          onPress={() => { 
+            if (!isAuth) { 
+              navigation.navigate('Auth', { initialMode: 'login' }); 
+              return; 
+            } 
+            if (!isBuyer) { 
+              Alert.alert('Switch Role', 'Please switch to buyer mode to chat.'); 
+              return; 
+            } 
+            chatNow.mutate(); 
+          }} 
+          style={[styles.chatBtn, (!canAct || chatNow.isPending) && styles.disabledBtn]} 
+          disabled={!canAct || chatNow.isPending}
+          activeOpacity={0.8}
+        >
+          <Icon name="message-text-outline" size={18} color={D.primary} />
+          <Text style={styles.chatBtnText}>
+            {chatNow.isPending ? 'Opening…' : 'Chat Now'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          onPress={() => { 
+            if (!isAuth) { 
+              navigation.navigate('Auth', { initialMode: 'login' }); 
+              return; 
+            } 
+            if (!isBuyer) { 
+              Alert.alert('Switch Role', 'Please switch to buyer mode to send enquiry.'); 
+              return; 
+            } 
+            setEnquiryOpen(true); 
+          }} 
+          style={[styles.enquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]} 
+          disabled={!canAct || sendEnquiry.isPending}
+          activeOpacity={0.8}
+        >
+          {sendEnquiry.isPending ? (
+            <ActivityIndicator size="small" color={D.white} />
+          ) : (
+            <Icon name="send-outline" size={18} color={D.white} />
+          )}
+          <Text style={styles.enquiryBtnText}>
+            {sendEnquiry.isPending ? 'Sending…' : 'Send Enquiry'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Gallery Lightbox */}
-      <Modal visible={galleryOpen} animationType="fade" onRequestClose={() => setGalleryOpen(false)}>
-        <View style={styles.lightbox}>
-          <TouchableOpacity onPress={() => setGalleryOpen(false)} style={styles.lightboxClose}>
-            <Icon name="close" size={26} color="#FFF" />
+      {/* Fullscreen Gallery */}
+      <Modal 
+        visible={galleryOpen} 
+        animationType="fade" 
+        statusBarTranslucent
+        onRequestClose={() => setGalleryOpen(false)}
+      >
+        <View style={styles.fullscreenGallery}>
+          <TouchableOpacity 
+            onPress={() => setGalleryOpen(false)} 
+            style={[styles.fullscreenClose, { top: insets.top + 16 }]}
+            activeOpacity={0.7}
+          >
+            <Icon name="close" size={24} color={D.white} />
           </TouchableOpacity>
+          
           <FlatList
             horizontal
             pagingEnabled
             data={gallery}
             initialScrollIndex={selectedImage}
             keyExtractor={(uri, index) => `${uri}-full-${index}`}
-            getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+            getItemLayout={(_, index) => ({ 
+              length: SCREEN_WIDTH, 
+              offset: SCREEN_WIDTH * index, 
+              index 
+            })}
             renderItem={({ item: uri }) => (
-              <View style={styles.lightboxSlide}>
+              <View style={styles.fullscreenSlide}>
                 <RemoteImage 
                   uri={uri} 
                   width={SCREEN_WIDTH} 
                   height={SCREEN_WIDTH} 
                   resizeMode="contain" 
-                  style={styles.lightboxImage} 
+                  style={styles.fullscreenImage} 
                 />
               </View>
             )}
           />
+          
+          {/* Fullscreen Pagination */}
+          <View style={styles.fullscreenPagination}>
+            <Text style={styles.fullscreenPaginationText}>
+              {selectedImage + 1} / {gallery.length}
+            </Text>
+          </View>
         </View>
       </Modal>
 
-      <EnquiryModal visible={enquiryOpen} productName={product.name || product.title || 'Product'} defaultQuantity={String(quantity)} defaultUnit={product.unit || 'piece'} pending={sendEnquiry.isPending} quantity={String(quantity)} targetPrice={targetPrice} destinationCountry={destinationCountry} additionalNotes={additionalNotes} customSpecifications={customSpecifications} packagingRequirements={packagingRequirements} deliveryRequirements={deliveryRequirements} attachments={attachments} onQuantityChange={value => setQuantity(Math.max(1, Number(value) || 1))} onTargetPriceChange={setTargetPrice} onDestinationChange={setDestinationCountry} onNotesChange={setAdditionalNotes} onSpecificationsChange={setCustomSpecifications} onPackagingChange={setPackagingRequirements} onDeliveryChange={setDeliveryRequirements} onAttachmentsChange={setAttachments} onClose={() => setEnquiryOpen(false)} onSubmit={() => sendEnquiry.mutate()} />
+      {/* Enquiry Modal */}
+      <EnquiryModal 
+        visible={enquiryOpen} 
+        productName={product.name || product.title || 'Product'} 
+        defaultQuantity={String(quantity)} 
+        defaultUnit={product.unit || 'piece'} 
+        pending={sendEnquiry.isPending} 
+        quantity={String(quantity)} 
+        targetPrice={targetPrice} 
+        destinationCountry={destinationCountry} 
+        additionalNotes={additionalNotes} 
+        customSpecifications={customSpecifications} 
+        packagingRequirements={packagingRequirements} 
+        deliveryRequirements={deliveryRequirements} 
+        attachments={attachments} 
+        onQuantityChange={value => setQuantity(Math.max(1, Number(value) || 1))} 
+        onTargetPriceChange={setTargetPrice} 
+        onDestinationChange={setDestinationCountry} 
+        onNotesChange={setAdditionalNotes} 
+        onSpecificationsChange={setCustomSpecifications} 
+        onPackagingChange={setPackagingRequirements} 
+        onDeliveryChange={setDeliveryRequirements} 
+        onAttachmentsChange={setAttachments} 
+        onClose={() => setEnquiryOpen(false)} 
+        onSubmit={() => sendEnquiry.mutate()} 
+      />
     </View>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// ─── Main Styles ────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: P.bg,
+    backgroundColor: D.background,
   },
+  
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: P.surface,
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: P.border,
+    backgroundColor: D.surface,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
   },
-  headerBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: P.cardMuted,
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: D.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     flex: 1,
-    fontSize: 11,
-    fontWeight: '500',
-    color: P.muted,
-    textAlign: 'center',
+    ...D.typography.bodyBold,
+    color: D.textPrimary,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  
   scrollContent: {
     paddingBottom: 120,
   },
   bottomSpacer: {
-    height: 100,
+    height: 40,
   },
   
-  // Gallery
-  galleryWrap: {
+  // Gallery Section
+  gallerySection: {
     position: 'relative',
-    backgroundColor: P.surface,
-    overflow: 'hidden',
-  },
-  gallerySlide: {
-    width: SCREEN_WIDTH,
-    height: 400,
-  },
-  galleryImage: {
-    width: SCREEN_WIDTH,
-    height: 400,
-    backgroundColor: P.surface,
-  },
-  activeBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    backgroundColor: P.emerald,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  activeBadgeText: {
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: '700',
   },
   heartBtn: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 16,
-    width: 32,
-    height: 32,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...D.shadowMd,
+    zIndex: 10,
+  },
+  
+  // Product Header
+  productHeader: {
+    backgroundColor: D.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: D.borderLight,
+  },
+  sellerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    backgroundColor: D.background,
+    padding: 10,
+    borderRadius: D.radius.md,
+  },
+  sellerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: D.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  paginationRow: {
-    position: 'absolute',
-    bottom: 12,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 5,
+  sellerInfo: {
+    flex: 1,
+    gap: 2,
   },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.5)',
+  sellerName: {
+    ...D.typography.bodyBold,
+    color: D.textPrimary,
   },
-  dotActive: {
-    backgroundColor: P.primary,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  imageCounter: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  imageCounterText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  thumbnailRow: { paddingHorizontal: 12, paddingVertical: 10, gap: 9, backgroundColor: P.surface },
-  thumbnailButton: { width: 62, height: 62, borderRadius: 9, borderWidth: 1, borderColor: P.border, padding: 2, overflow: 'hidden' },
-  thumbnailButtonActive: { borderColor: P.primary, borderWidth: 2 },
-  thumbnailImage: { width: '100%', height: '100%', borderRadius: 6 },
-
-  // Product Name
-  nameSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: P.surface,
-  },
-  productName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: P.ink,
-    lineHeight: 22,
-  },
-
-  // Category Chips
-  chipSection: {
-    backgroundColor: P.surface,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  variantScroll: {
-    flexDirection: 'row',
-  },
-  variantChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: P.cardMuted,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: P.faint,
-  },
-  variantChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: P.textSecondary,
-  },
-
-  // MOQ Selector
-  moqSection: {
-    backgroundColor: P.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  moqTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: P.muted,
-    letterSpacing: 0.5,
-    marginBottom: 10,
-  },
-  moqScrollContent: {
-    gap: 8,
-    paddingRight: 16,
-  },
-  moqCard: {
-    minWidth: 120,
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: P.cardMuted,
-    borderWidth: 1,
-    borderColor: P.faint,
-  },
-  moqCardActive: {
-    backgroundColor: P.primaryLight,
-    borderColor: P.primary,
-    borderWidth: 2,
-  },
-  moqCardContent: {
-    alignItems: 'center',
-  },
-  moqCardLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: P.textSecondary,
-    marginBottom: 2,
-  },
-  moqCardLabelActive: {
-    color: P.primaryDark,
-  },
-  moqActiveBadge: {
-    backgroundColor: P.primary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
-    marginBottom: 4,
-  },
-  moqActiveBadgeText: {
-    color: '#FFF',
-    fontSize: 8,
-    fontWeight: '700',
-  },
-  moqCardPrice: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: P.ink,
-  },
-  moqCardPriceActive: {
-    color: P.primaryDark,
-  },
-  moqCardUnit: {
-    fontSize: 9,
-    color: P.muted,
-    fontWeight: '500',
-  },
-
-  // Price Section
-  priceSection: {
-    backgroundColor: P.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginTop: 6,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 4,
-  },
-  price: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: P.ink,
-  },
-  priceUnit: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: P.muted,
-  },
-  metricsRow: {
-    marginBottom: 10,
-  },
-  metricItem: {
+  sellerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  metricLabel: {
-    fontSize: 12,
-    color: P.muted,
-    fontWeight: '500',
-  },
-  metricValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: P.ink,
-  },
-  metricSubtext: {
-    fontSize: 10,
-    color: P.muted,
-    marginTop: 2,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: P.cardMuted,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 12,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 9,
+  sellerBadgeText: {
+    ...D.typography.small,
+    color: D.success,
     fontWeight: '600',
-    color: P.muted,
-    textTransform: 'uppercase',
   },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: P.ink,
-    marginTop: 2,
+  productName: {
+    ...D.typography.h2,
+    color: D.textPrimary,
+    lineHeight: 28,
+    marginBottom: 10,
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: P.faint,
-  },
-  sampleOrderBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: P.primaryLight,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  sampleOrderText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: P.primaryDark,
-  },
-
-  // Action Buttons
-  actionRow: {
-    flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 14,
-    backgroundColor: P.surface,
-    borderTopWidth: 1,
-    borderTopColor: P.border,
   },
-  storeIconButton: { width: 54, minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: P.border, alignItems: 'center', justifyContent: 'center', backgroundColor: P.surface },
-  storeIconLabel: { color: P.primary, fontSize: 9, fontWeight: '700', marginTop: 2 },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: D.success,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: D.radius.sm,
+    gap: 4,
+  },
+  ratingValue: {
+    color: D.white,
+    ...D.typography.small,
+    fontWeight: '700',
+  },
+  reviewCount: {
+    ...D.typography.caption,
+    color: D.textSecondary,
+  },
+  ratingDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: D.textTertiary,
+  },
+  orderCount: {
+    ...D.typography.caption,
+    color: D.textSecondary,
+  },
+  
+  // Sample Button
+  sampleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: D.primaryLight,
+    borderStyle: 'dashed',
+  },
+  sampleBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sampleIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: D.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sampleBtnTitle: {
+    ...D.typography.bodyBold,
+    color: D.textPrimary,
+  },
+  sampleBtnSubtitle: {
+    ...D.typography.caption,
+    color: D.textSecondary,
+    marginTop: 2,
+  },
+  
+  // Trade Assurance
+  tradeAssuranceContainer: {
+    marginHorizontal: 12,
+    marginTop: 6,
+  },
+  
+  // Description
+  descriptionCard: {
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    padding: 16,
+    ...D.shadowSm,
+  },
+  descriptionHeader: {
+    marginBottom: 12,
+  },
+  descriptionTitle: {
+    ...D.typography.h3,
+    color: D.textPrimary,
+    marginBottom: 8,
+  },
+  descriptionUnderline: {
+    width: 40,
+    height: 3,
+    backgroundColor: D.primary,
+    borderRadius: 2,
+  },
+  descriptionText: {
+    ...D.typography.body,
+    color: D.textSecondary,
+    lineHeight: 22,
+  },
+  
+  // Reviews
+  reviewsCard: {
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    ...D.shadowSm,
+    overflow: 'hidden',
+  },
+  
+  // Related Products
+  relatedSection: {
+    backgroundColor: D.surface,
+    marginHorizontal: 12,
+    marginTop: 6,
+    borderRadius: D.radius.lg,
+    paddingVertical: 16,
+    ...D.shadowSm,
+  },
+  relatedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  relatedTitle: {
+    ...D.typography.h3,
+    color: D.textPrimary,
+  },
+  relatedSeeAll: {
+    ...D.typography.caption,
+    color: D.primary,
+    fontWeight: '600',
+  },
+  relatedList: {
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  relatedCard: {
+    width: 200,
+  },
+  
+  // Action Bar
+  actionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: D.surface,
+    borderTopWidth: 1,
+    borderTopColor: D.borderLight,
+    ...D.shadowMd,
+  },
+  storeBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    minWidth: 52,
+  },
+  storeBtnText: {
+    ...D.typography.small,
+    color: D.primary,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   chatBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: P.surface,
-    borderRadius: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: P.primary,
+    gap: 8,
+    backgroundColor: D.surface,
+    borderRadius: D.radius.md,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: D.primary,
   },
-  inquiryBtn: {
+  chatBtnText: {
+    ...D.typography.bodyBold,
+    color: D.primary,
+  },
+  enquiryBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: P.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: P.primary,
+    gap: 8,
+    backgroundColor: D.primary,
+    borderRadius: D.radius.md,
+    paddingVertical: 14,
+    ...D.shadowMd,
   },
-  btnText: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '700',
+  enquiryBtnText: {
+    ...D.typography.bodyBold,
+    color: D.white,
   },
-  inquiryBtnText: {
-    color: P.primary,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  chatButtonText: { color: P.primary, fontSize: 13, fontWeight: '800' },
-  inquiryPrimaryText: { color: '#FFF', fontSize: 13, fontWeight: '800' },
   disabledBtn: {
     opacity: 0.5,
   },
-  storeAction: { marginHorizontal: 16, marginBottom: 8, height: 42, borderRadius: 8, borderWidth: 1, borderColor: P.primary, backgroundColor: P.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  storeActionText: { color: P.primary, fontSize: 13, fontWeight: '700' },
-  informationCard: { backgroundColor: P.surface, marginTop: 8, paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: P.border },
-  relatedSection: { backgroundColor: P.surface, marginTop: 8, paddingVertical: 18, borderTopWidth: 1, borderBottomWidth: 1, borderColor: P.border },
-  relatedHeader: { paddingHorizontal: 16, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  relatedEyebrow: { color: P.primary, fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
-  relatedTitle: { color: P.ink, fontSize: 20, fontWeight: '900', marginTop: 2 },
-  relatedList: { paddingHorizontal: 16, gap: 12, paddingBottom: 4 },
-  relatedLoader: { paddingVertical: 30 },
-  relatedEmpty: { color: P.muted, fontSize: 13, paddingHorizontal: 16, paddingVertical: 18 },
-  informationTitle: { fontSize: 17, fontWeight: '800', color: P.ink, marginBottom: 12 },
-  informationRow: { flexDirection: 'row', gap: 16, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: P.faint },
-  informationRowLast: { borderBottomWidth: 0 },
-  informationLabel: { width: '38%', color: P.textSecondary, fontSize: 12, textTransform: 'capitalize' },
-  informationValue: { flex: 1, textAlign: 'right', color: P.ink, fontSize: 12, fontWeight: '600' },
-  descriptionText: { color: P.text, fontSize: 14, lineHeight: 22 },
-
-  // Trust Row
-  trustRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: P.surface,
-    marginTop: 6,
-  },
-  trustItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  trustText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: P.textSecondary,
-  },
-
-  // Lightbox
-  lightbox: {
+  
+  // Fullscreen Gallery
+  fullscreenGallery: {
     flex: 1,
     backgroundColor: '#000',
     justifyContent: 'center',
   },
-  lightboxClose: {
+  fullscreenClose: {
     position: 'absolute',
-    top: 40,
     right: 16,
     zIndex: 10,
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backdropFilter: 'blur(10px)',
   },
-  lightboxSlide: {
+  fullscreenSlide: {
     width: SCREEN_WIDTH,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  lightboxImage: {
+  fullscreenImage: {
     width: SCREEN_WIDTH,
     height: SCREEN_WIDTH,
+  },
+  fullscreenPagination: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: D.radius.full,
+  },
+  fullscreenPaginationText: {
+    ...D.typography.caption,
+    color: D.white,
+    fontWeight: '600',
   },
 });
 

@@ -8,7 +8,7 @@ import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { colors, radii, spacing } from '../theme';
 import { RootStackParamList } from '../../App';
-
+ss
 function BookedServiceDetailsScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'BookedServiceDetails'>>();
@@ -47,7 +47,8 @@ function BookedServiceDetailsScreen() {
 
   const timeline = buildTimeline(request);
   const canEdit = ['draft', 'submitted', 'pending', 'pending_seller'].includes(String(request.status ?? '').toLowerCase());
-  const canCancel = canEdit && request._serviceSource === 'shipping';
+  const canCancel = canEdit && ['shipping', 'service'].includes(String(request._serviceSource));
+  const invoiceId = typeof request.invoiceId === 'object' ? String((request.invoiceId as any)._id ?? '') : String(request.invoiceId ?? '');
 
   return (
     <View style={styles.screen}>
@@ -103,6 +104,7 @@ function BookedServiceDetailsScreen() {
           <View style={styles.infoRow}><Text style={styles.infoKey}>Payment status</Text><Text style={styles.infoValue}>{String(request.paymentStatus ?? 'Not requested')}</Text></View>
           <View style={styles.infoRow}><Text style={styles.infoKey}>Payment amount</Text><Text style={styles.infoValue}>{String(request.amount ?? request.totalAmount ?? request.estimatedCost ?? 'Pending quotation')}</Text></View>
           <View style={styles.infoRow}><Text style={styles.infoKey}>Invoice</Text><Text style={styles.infoValue}>{String(request.invoiceNumber ?? request.invoiceId ?? 'Not generated')}</Text></View>
+          {invoiceId ? <Pressable onPress={() => navigation.navigate('InvoiceDetails', { invoiceId })} style={styles.invoiceButton}><Icon name="file-pdf-box" size={19} color="#fff" /><Text style={styles.invoiceButtonText}>View invoice</Text></Pressable> : null}
         </Section>
         <View style={styles.actionRow}>
           <Pressable disabled={!canCancel || cancel.isPending} onPress={() => cancel.mutate()} style={[styles.outlineButton, !canCancel && styles.disabledButton]}>
@@ -265,6 +267,8 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.58 },
   disabledText: { color: colors.muted },
   lockReason: { color: colors.muted, fontSize: 12, fontWeight: '800', marginTop: spacing.sm, textAlign: 'center' },
+  invoiceButton: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: colors.primary, borderRadius: radii.pill, flexDirection: 'row', gap: spacing.xs, marginTop: spacing.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  invoiceButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
 });
 
 export default BookedServiceDetailsScreen;

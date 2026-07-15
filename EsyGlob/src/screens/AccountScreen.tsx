@@ -89,6 +89,7 @@ const NAV: Record<string, string> = {
   'Recently Viewed': 'ProductListing', Notifications: 'Notifications',
   'Trade Assurance': 'Services', 'Payment Methods': 'Wallet', 'Add Card': 'Wallet',
   'Location': 'Location',
+  'Tracking': 'Tracking',
 };
 
 // ─── Currency Data ─────────────────────────────────────
@@ -131,6 +132,7 @@ const BUYER_SECTIONS = [
       { icon: 'robot-outline', label: 'AI Sourcing', color: P.violet },
       { icon: 'account-search-outline', label: 'Find Suppliers', color: P.emerald },
       { icon: 'shield-check-outline', label: 'Trade Assurance', color: P.sky },
+      { icon: 'map-marker-path', label: 'Tracking', color: P.violet },
     ],
   },
   {
@@ -161,6 +163,7 @@ const SELLER_SECTIONS = [
       { icon: 'bullseye-arrow', label: 'RFQs', color: P.amber },
       { icon: 'robot-outline', label: 'AI Assistant', color: P.violet },
       { icon: 'check-decagram-outline', label: 'Verification', color: P.sky },
+      { icon: 'map-marker-path', label: 'Tracking', color: P.violet },
     ],
   },
   {

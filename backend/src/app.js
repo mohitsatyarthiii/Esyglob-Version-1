@@ -42,6 +42,7 @@ import contactLeadRoutes from './routes/contact-lead.routes.js';
 import consultingRoutes from './routes/consulting.routes.js';
 import buyerActivityRoutes from './routes/buyer-activity.routes.js';
 import supportTicketRoutes from './routes/support-ticket.routes.js';
+import serviceRequestRoutes from './routes/service-request.routes.js';
 import warehouseRoutes from './routes/warehouse.routes.js';
 import locationRoutes from './routes/location.routes.js';
 
@@ -136,6 +137,7 @@ app.use('/api/customs', customsRoutes);
 app.use('/api/consulting', consultingRoutes);
 app.use('/api/buyer', buyerActivityRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
+app.use('/api/service-requests', serviceRequestRoutes);
 app.use('/api/warehousing', warehouseRoutes);
 app.use('/api/location', locationRoutes);
 

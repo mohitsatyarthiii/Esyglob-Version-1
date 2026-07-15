@@ -139,7 +139,7 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
             accessibilityLabel="Search using a product image"
             onPress={event => { event.stopPropagation(); navigation.navigate('ImageSearch', { productId }); }}
             style={styles.imageSearchBtn}>
-            <Icon name="camera-outline" size={15} color={PALETTE.primary} />
+            <Icon name="qrcode-scan" size={15} color={PALETTE.primary} />
           </Pressable>
 
           {/* Verified badge */}

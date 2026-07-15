@@ -94,6 +94,7 @@ export type RootStackParamList = {
   ServiceDetails: { serviceKey: string };
   ServiceBooking: { serviceKey: string };
   BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
+  Tracking: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ShippingLogistics: undefined;
   Location: undefined;
   ImageSearch: { productId?: string } | undefined;
@@ -234,6 +235,7 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="ServiceDetails" component={ServiceDetailsScreen} />
               <Stack.Screen name="ServiceBooking" component={ServiceBookingScreen} />
               <Stack.Screen name="BookedServiceDetails" component={BookedServiceDetailsScreen} />
+              <Stack.Screen name="Tracking" component={BookedServiceDetailsScreen} initialParams={{ mode: 'list' }} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
               <Stack.Screen name="Location" component={LocationScreen} />
               <Stack.Screen name="ImageSearch" component={ImageSearchScreen} />

@@ -51,7 +51,7 @@ const paymentSchema = new mongoose.Schema({
 
   entityType: {
     type: String,
-    enum: ['order', 'escrow', 'shipping', 'inspection', 'verification', 'financing', 'customs'],
+    enum: ['order', 'escrow', 'shipping', 'inspection', 'verification', 'financing', 'customs', 'service'],
   },
   entityId: mongoose.Schema.Types.ObjectId,
 

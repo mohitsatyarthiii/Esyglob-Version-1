@@ -84,10 +84,10 @@ type ExploreAction = {
 };
 
 const EXPLORE_ACTIONS: ExploreAction[] = [
-  { icon: 'clipboard-list', title: 'Create RFQ', color: '#F59E0B', bg: '#FFFBEB', route: 'RFQCreate' },
-  { icon: 'calculator-variant-outline', title: 'Esy Calculator', color: '#6366F1', bg: '#EEF2FF', route: 'EsyCalculator' },
-  { icon: 'shape-outline', title: 'Explore Categories', color: '#10B981', bg: '#ECFDF5', route: 'Categories' },
-  { icon: 'camera-outline', title: 'QR / Image Search', color: '#F26A21', bg: '#FFF7ED', route: 'ImageSearch' },
+  { icon: 'bullseye-arrow', title: 'Create\nRFQ', color: '#F59E0B', bg: '#FFFBEB', route: 'RFQCreate' },
+  { icon: 'grid', title: 'Explore\nCategories', color: '#10B981', bg: '#ECFDF5', route: 'Categories' },
+  { icon: 'qrcode-scan', title: 'QR / Image\nSearch', color: '#F26A21', bg: '#FFF7ED', route: 'ImageSearch' },
+  { icon: 'calculator-variant-outline', title: 'Esy\nCalculator', color: '#6366F1', bg: '#EEF2FF', route: 'EsyCalculator' },
 ];
 
 const CACHE_CONFIG = { staleTime: 5 * 60_000, gcTime: 30 * 60_000, retry: 2 };
@@ -519,10 +519,31 @@ const renderAI = () => (
 
 const ExploreShortcuts = React.memo(({ actions, onPress }: { actions: ExploreAction[]; onPress: (a: ExploreAction) => void }) => (
   <View style={styles.exploreSection}>
-    <FlatList data={actions} horizontal keyExtractor={item => item.title} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.exploreRail}
+    <FlatList
+      data={actions}
+      horizontal
+      keyExtractor={item => item.title}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.exploreRail}
       renderItem={({ item }) => (
-        <Pressable onPress={() => onPress(item)}><View style={styles.exploreItem}><View style={[styles.exploreIconWrap, { backgroundColor: item.bg }]}><Icon name={item.icon} size={18} color={item.color} /></View><Text style={styles.exploreItemText} numberOfLines={1}>{item.title}</Text></View></Pressable>
-      )} />
+        <Pressable
+          onPress={() => onPress(item)}
+          style={({ pressed }) => [
+            styles.exploreCard,
+            pressed && styles.exploreCardPressed
+          ]}
+        >
+          {/* Left - Icon Box */}
+          <View style={[styles.exploreIconBox, { backgroundColor: item.bg }]}>
+            <Icon name={item.icon} size={20} color={item.color} />
+          </View>
+          {/* Right - Text (2 lines allowed) */}
+          <Text style={styles.exploreCardText} numberOfLines={2}>
+            {item.title}
+          </Text>
+        </Pressable>
+      )}
+    />
   </View>
 ));
 
@@ -803,11 +824,54 @@ const styles = StyleSheet.create({
   gridItem: { flex: 1, margin: 4, minWidth: 0 },
   listContent: { paddingHorizontal: 12, paddingBottom: 100 },
   footerLoader: { padding: 20 },
-  exploreSection: { paddingVertical: 12 },
-  exploreRail: { paddingHorizontal: 12, gap: 8 },
-  exploreItem: { alignItems: 'center', width: 68, paddingVertical: 4 },
-  exploreIconWrap: { width: 48, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  exploreItemText: { fontSize: 10, fontWeight: '600', color: P.text, textAlign: 'center', lineHeight: 14 },
+  
+  // ── Explore Section (Horizontal Swipeable Rectangular Cards) ─────────
+  exploreSection: {
+    paddingVertical: 12,
+  },
+  exploreRail: {
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  exploreCard: {
+    flexDirection: 'row', // Icon LEFT + Text RIGHT
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+    minWidth: 130, // Rectangular shape
+  },
+  exploreCardPressed: {
+    backgroundColor: '#FAFAFA',
+    borderColor: '#E5E5E5',
+    transform: [{ scale: 0.97 }],
+  },
+  exploreIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10, // Slightly rounded corners
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  exploreCardText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1E293B',
+    lineHeight: 14,
+    letterSpacing: -0.2,
+    flexShrink: 1,
+  },
+  
   sectionWrap: { paddingBottom: 16 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: P.ink, letterSpacing: -0.2, paddingHorizontal: 16, paddingBottom: 10 },
@@ -1088,8 +1152,6 @@ viewProfileText: {
   fontWeight: '700',
   color: '#FFF',
 },
-
-// Remove old chatBtn, rfqBtn, actionBtnText styles — no longer needed
 
   // ── AI Chat ───────────────────────────────────────────────────────────
 aiScreen: {

@@ -1,0 +1,14 @@
+import { Router } from 'express';
+import controller from '../controllers/service-request.controller.js';
+import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+const router = Router();
+router.use(authenticate, requireAuth);
+router.post('/quote/:serviceKey', controller.quote);
+router.get('/', controller.list);
+router.post('/', controller.create);
+router.get('/:id', controller.get);
+router.patch('/:id/cancel', controller.cancel);
+router.post('/:id/payment', controller.initiatePayment);
+router.post('/:id/payment/verify', controller.verifyPayment);
+router.patch('/:id/payment/status', controller.paymentStatus);
+export default router;

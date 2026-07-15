@@ -64,10 +64,19 @@ export type ServiceRequest = {
   history?: Array<{ status?: string; note?: string; message?: string; createdAt?: string; updatedAt?: string }>;
   notes?: string;
   expectedCompletionDate?: string;
+  pricing?: ServicePricing;
+  paymentStatus?: 'pending' | 'processing' | 'paid' | 'refunded' | 'failed' | 'cancelled';
+  paymentId?: string | Record<string, unknown>;
+  invoiceId?: string | Record<string, unknown>;
+  assignedTeam?: string;
+  assignedExecutive?: string;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
 };
+
+export type ServicePricing = { currency: string; baseCost: number; additionalCharges: number; taxAmount: number; gstRate: number; gstAmount: number; discount: number; platformFee: number; totalPayable: number };
+export type ServicePaymentSession = { razorpayOrderId: string; amount: number; currency: string; paymentId: string; keyId: string; requestNumber?: string };
 
 export type ShippingOrder = ServiceRequest & {
   type?: string;
@@ -479,7 +488,7 @@ export function getServiceByKey(key: string) {
 }
 
 export async function fetchServiceRequests(params: { role?: string; serviceKey?: string; status?: string; page?: number; limit?: number } = {}): Promise<ServiceRequestList> {
-  const payload = await apiRequest('/support-tickets', { query: { limit: 50, ...params } });
+  const payload = await apiRequest('/service-requests', { query: { limit: 50, ...params } });
   const data = unwrapData<{ requests?: ServiceRequest[]; pagination?: Pagination }>(payload);
 
   return {
@@ -489,7 +498,7 @@ export async function fetchServiceRequests(params: { role?: string; serviceKey?:
 }
 
 export async function fetchServiceRequestDetails(requestId: string): Promise<ServiceRequest> {
-  const payload = await apiRequest(`/support-tickets/${requestId}`);
+  const payload = await apiRequest(`/service-requests/${requestId}`);
   const data = unwrapData<{ request?: ServiceRequest } | ServiceRequest>(payload);
   return (data && typeof data === 'object' && 'request' in data ? data.request : data) as ServiceRequest;
 }
@@ -506,39 +515,6 @@ export async function fetchShipments(params: { status?: string; type?: string; p
 
 export async function createServiceBooking(service: ServiceCatalogItem, role: string, values: Record<string, string>) {
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
-  const sellerUsesGenericRequest = normalizedRole === 'seller' && service.key !== 'seller-verification';
-
-  if (sellerUsesGenericRequest) {
-    return createGenericServiceRequest(service, normalizedRole, values);
-  }
-
-  if (service.key === 'shipping') {
-    return createShipping(values);
-  }
-
-  if (service.key === 'quality-inspection') {
-    return createInspection(values);
-  }
-
-  if (service.key === 'escrow') {
-    return createEscrow(values);
-  }
-
-  if (service.key === 'customs-brokerage') {
-    return createCustoms(values);
-  }
-
-  if (service.key === 'trade-financing') {
-    return createFinancing(values);
-  }
-
-  if (service.key === 'dispute-resolution') {
-    return createDispute(values);
-  }
-
-  if (service.key === 'warehousing') {
-    return createWarehouseInventory(values);
-  }
 
   if (service.key === 'seller-verification') {
     return apiRequest('/suppliers/profile', {
@@ -568,8 +544,7 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
     : [];
   const details = values.details || values.specialRequirements || values.description || values.subject || service.title;
 
-  const endpoint = service.key === 'consulting' ? '/consulting' : '/support-tickets';
-  const payload = await apiRequest(endpoint, {
+  const payload = await apiRequest('/service-requests', {
     method: 'POST',
     body: {
       role: role === 'seller' ? 'seller' : 'buyer',
@@ -591,157 +566,26 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
   return unwrapData(payload);
 }
 
-async function createShipping(values: Record<string, string>) {
-  const payload = await apiRequest('/shipping', {
-    method: 'POST',
-    body: {
-      type: values.type,
-      pickup: { address: values.pickupAddress },
-      delivery: { address: values.deliveryAddress },
-      packages: [{
-        description: values.packageDescription,
-        quantity: Number(values.quantity || 1),
-        weight: Number(values.weight || 0),
-      }],
-      insurance: { isInsured: false },
-      specialInstructions: values.specialInstructions,
-    },
-  });
-  return unwrapData(payload);
+export async function fetchServiceQuote(serviceKey: string, requirements: Record<string, string>): Promise<ServicePricing> {
+  return unwrapData<ServicePricing>(await apiRequest(`/service-requests/quote/${serviceKey}`, { method: 'POST', body: { requirements } }));
 }
 
-async function createInspection(values: Record<string, string>) {
-  const payload = await apiRequest('/inspections', {
-    method: 'POST',
-    body: {
-      type: values.type,
-      supplierName: values.supplierName,
-      factoryName: values.factoryName,
-      factoryAddress: values.factoryAddress,
-      contactPerson: values.contactPerson,
-      contactPhone: values.contactPhone,
-      requestedDate: values.requestedDate,
-      standard: values.standard,
-      specialRequirements: values.specialRequirements,
-      products: [{ name: values.supplierName || 'Inspection product', quantity: 1 }],
-    },
-  });
-  return unwrapData(payload);
+export async function initiateServicePayment(requestId: string): Promise<ServicePaymentSession> {
+  return unwrapData<ServicePaymentSession>(await apiRequest(`/service-requests/${requestId}/payment`, { method: 'POST' }));
 }
 
-async function createEscrow(values: Record<string, string>) {
-  const payload = await apiRequest('/escrow', {
-    method: 'POST',
-    body: {
-      sellerId: values.sellerId,
-      orderId: values.orderId || undefined,
-      amount: Number(values.amount || 0),
-      currency: values.currency || 'USD',
-      paymentMethod: values.paymentMethod || 'bank_transfer',
-      description: values.description,
-      terms: values.terms,
-      milestones: [{ title: 'Release on completion', percentage: 100, condition: values.terms || 'Buyer approval' }],
-      inspectionPeriod: 7,
-    },
-  });
-  return unwrapData(payload);
+export async function verifyServicePayment(requestId: string, body: { razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }) {
+  return unwrapData(await apiRequest(`/service-requests/${requestId}/payment/verify`, { method: 'POST', body }));
 }
 
-async function createCustoms(values: Record<string, string>) {
-  const quantity = Number(values.quantity || 1);
-  const unitValue = Number(values.unitValue || 0);
-  const payload = await apiRequest('/customs', {
-    method: 'POST',
-    body: {
-      type: values.type,
-      carrier: values.carrier,
-      trackingNumber: values.trackingNumber,
-      originCountry: values.originCountry,
-      destinationCountry: values.destinationCountry,
-      portOfLoading: values.portOfLoading,
-      portOfDischarge: values.portOfDischarge,
-      products: [{
-        name: values.productName || 'Product',
-        hsCode: values.hsCode,
-        originCountry: values.originCountry,
-        quantity,
-        unit: values.unit || 'pieces',
-        unitValue,
-        totalValue: quantity * unitValue,
-      }],
-      documents: [],
-    },
-  });
-  return unwrapData(payload);
-}
-
-async function createFinancing(values: Record<string, string>) {
-  const payload = await apiRequest('/financing', {
-    method: 'POST',
-    body: {
-      type: values.type,
-      requestedAmount: Number(values.requestedAmount || 0),
-      currency: values.currency || 'USD',
-      termDays: Number(values.termDays || 90),
-      supplierId: values.supplierId || undefined,
-      purchaseOrder: {
-        orderNumber: values.purchaseOrderNumber,
-        amount: Number(values.requestedAmount || 0),
-        currency: values.currency || 'USD',
-      },
-      invoices: values.invoiceNumber ? [{ invoiceNumber: values.invoiceNumber, amount: Number(values.requestedAmount || 0) }] : [],
-      documents: [],
-      bankAccount: {
-        bankName: values.bankName,
-        accountNumber: values.accountNumber,
-        accountHolder: values.accountHolder,
-        swiftCode: values.swiftCode,
-      },
-    },
-  });
-  return unwrapData(payload);
-}
-
-async function createDispute(values: Record<string, string>) {
-  const payload = await apiRequest('/disputes', {
-    method: 'POST',
-    body: {
-      respondentId: values.respondentId,
-      transactionType: values.transactionType,
-      transactionId: values.transactionId,
-      type: values.type,
-      title: values.title,
-      description: values.description,
-      desiredResolution: values.desiredResolution,
-      claimAmount: Number(values.claimAmount || 0),
-      currency: values.currency || 'USD',
-      evidence: [],
-    },
-  });
-  return unwrapData(payload);
-}
-
-async function createWarehouseInventory(values: Record<string, string>) {
-  const payload = await apiRequest('/warehousing', {
-    method: 'POST',
-    body: {
-      action: 'add_inventory',
-      warehouseId: values.warehouseId,
-      sku: values.sku,
-      productName: values.productName,
-      quantity: Number(values.quantity || 0),
-      unitValue: Number(values.unitValue || 0),
-      storageType: values.storageType || 'standard',
-      notes: values.notes,
-    },
-  });
-  return unwrapData(payload);
+export async function updateServicePaymentStatus(requestId: string, status: 'failed' | 'cancelled' | 'pending') {
+  return unwrapData(await apiRequest(`/service-requests/${requestId}/payment/status`, { method: 'PATCH', body: { status } }));
 }
 
 export async function fetchAggregatedServiceActivity(role?: string | null): Promise<ServiceRequest[]> {
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
   const calls = [
-    fetchServiceRequests({ role: normalizedRole, limit: 30 }).then(result => tagServiceSource(result.requests, 'support')),
+    fetchServiceRequests({ role: normalizedRole, limit: 30 }).then(result => tagServiceSource(result.requests, 'service')),
     apiRequest('/shipping', { query: { limit: 10 } }).then(payload => tagServiceSource(normalizeList<ServiceRequest>(payload, ['shipments']), 'shipping')).catch(() => []),
     apiRequest('/escrow', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['transactions'])).catch(() => []),
     apiRequest('/inspections', { query: { limit: 10 } }).then(payload => normalizeList<ServiceRequest>(payload, ['inspections'])).catch(() => []),
@@ -764,6 +608,10 @@ function tagServiceSource(items: ServiceRequest[], source: string): ServiceReque
 export async function cancelServiceActivity(request: ServiceRequest) {
   const requestId = request._id ?? request.id;
   if (!requestId) throw new Error('Service request ID is unavailable.');
+  if (request._serviceSource === 'service') {
+    const payload = await apiRequest(`/service-requests/${requestId}/cancel`, { method: 'PATCH' });
+    return unwrapData(payload);
+  }
   if (request._serviceSource === 'shipping') {
     const payload = await apiRequest(`/shipping/${requestId}`, { method: 'PATCH', body: { action: 'cancel' } });
     return unwrapData(payload);

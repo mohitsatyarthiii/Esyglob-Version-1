@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createServiceBooking, getServiceByKey, ServiceField } from '../api/services';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import RazorpayCheckout from 'react-native-razorpay';
+import { createServiceBooking, fetchServiceQuote, getServiceByKey, initiateServicePayment, ServiceField, updateServicePaymentStatus, verifyServicePayment } from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { RootStackParamList } from '../../App';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
@@ -34,15 +35,33 @@ function ServiceBookingScreen() {
   const steps = useMemo(() => groupFieldsByWorkflow(service), [service]);
   const currentFields = steps[step] ?? [];
   const totalSteps = steps.length;
+  const isLastStep = step === totalSteps - 1;
+  const quote = useQuery({
+    queryKey: ['service-quote', service?.key, values],
+    queryFn: () => fetchServiceQuote(service!.key, values),
+    enabled: Boolean(service && isLastStep),
+  });
 
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!service) throw new Error('Service was not found.');
-      return createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values);
+      const booking: any = await createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values);
+      const request = booking?.request ?? booking;
+      const requestId = request?._id ?? request?.id;
+      if (!requestId) throw new Error('Booking was created without a service reference.');
+      try {
+        const payment = await initiateServicePayment(requestId);
+        const gateway = await RazorpayCheckout.open({ key: payment.keyId, amount: payment.amount, currency: payment.currency, name: 'EsyGlob', description: service.title, order_id: payment.razorpayOrderId, theme: { color: '#2563EB' } });
+        const verified: any = await verifyServicePayment(requestId, { razorpayPaymentId: gateway.razorpay_payment_id, razorpayOrderId: gateway.razorpay_order_id, razorpaySignature: gateway.razorpay_signature });
+        return verified?.request ?? request;
+      } catch (error) {
+        await updateServicePaymentStatus(requestId, 'cancelled').catch(() => undefined);
+        throw error;
+      }
     },
     onSuccess: data => {
       queryClient.invalidateQueries({ queryKey: ['service-activity'] });
-      Alert.alert('Request Submitted', 'Your booking request has been sent for review.', [
+      Alert.alert('Booking Confirmed', 'Payment verified and your invoice is ready.', [
         { text: 'View Status', onPress: () => navigation.replace('BookedServiceDetails', { request: data }) },
       ]);
     },
@@ -66,7 +85,6 @@ function ServiceBookingScreen() {
   const missingRequired = currentFields.fields.some(
     field => field.required && !values[field.key]?.trim()
   );
-  const isLastStep = step === totalSteps - 1;
 
   const submit = () => {
     const missing = service.fields.filter(field => field.required && !values[field.key]?.trim());
@@ -216,6 +234,19 @@ function ServiceBookingScreen() {
           </View>
         </View>
 
+        {isLastStep && <View style={styles.priceCard}>
+          <Text style={styles.priceTitle}>Pricing summary</Text>
+          {quote.isLoading ? <ActivityIndicator color="#2563EB" /> : quote.data ? <>
+            <PriceRow label="Base service cost" value={quote.data.baseCost} currency={quote.data.currency} />
+            <PriceRow label="Additional charges" value={quote.data.additionalCharges} currency={quote.data.currency} />
+            <PriceRow label={`GST (${quote.data.gstRate}%)`} value={quote.data.gstAmount} currency={quote.data.currency} />
+            <PriceRow label="Platform fee" value={quote.data.platformFee} currency={quote.data.currency} />
+            <PriceRow label="Discount" value={-quote.data.discount} currency={quote.data.currency} />
+            <View style={styles.priceDivider} />
+            <PriceRow label="Total payable" value={quote.data.totalPayable} currency={quote.data.currency} total />
+          </> : <Text style={styles.errorText}>Pricing is temporarily unavailable.</Text>}
+        </View>}
+
         {/* Error */}
         {mutation.isError && (
           <View style={styles.errorBox}>
@@ -239,7 +270,7 @@ function ServiceBookingScreen() {
           </Pressable>
         )}
         <Pressable
-          disabled={mutation.isPending || missingRequired}
+          disabled={mutation.isPending || missingRequired || (isLastStep && !quote.data)}
           onPress={() => isLastStep ? submit() : setStep(current => current + 1)}
           style={[
             styles.continueBtn,
@@ -252,7 +283,7 @@ function ServiceBookingScreen() {
           ) : (
             <>
               <Text style={styles.continueBtnText}>
-                {isLastStep ? 'Submit Booking' : 'Continue'}
+                {isLastStep ? 'Pay & Book' : 'Continue'}
               </Text>
               <Icon name={isLastStep ? 'check' : 'arrow-right'} size={18} color="#fff" />
             </>
@@ -261,6 +292,10 @@ function ServiceBookingScreen() {
       </View>
     </KeyboardAvoidingView>
   );
+}
+
+function PriceRow({ label, value, currency, total }: { label: string; value: number; currency: string; total?: boolean }) {
+  return <View style={styles.priceRow}><Text style={[styles.priceLabel, total && styles.priceTotal]}>{label}</Text><Text style={[styles.priceValue, total && styles.priceTotal]}>{currency} {value.toFixed(2)}</Text></View>;
 }
 
 // Header Component
@@ -358,6 +393,13 @@ function groupFieldsByWorkflow(service?: { fields: ServiceField[]; workflowSteps
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
+  priceCard: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderRadius: 14, borderWidth: 1, marginTop: 16, padding: 16 },
+  priceTitle: { color: '#0f172a', fontSize: 16, fontWeight: '800', marginBottom: 12 },
+  priceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
+  priceLabel: { color: '#64748b', fontSize: 13 },
+  priceValue: { color: '#334155', fontSize: 13, fontWeight: '700' },
+  priceTotal: { color: '#0f172a', fontSize: 15, fontWeight: '900' },
+  priceDivider: { backgroundColor: '#e2e8f0', height: 1, marginVertical: 8 },
 
   // Header
   header: {
