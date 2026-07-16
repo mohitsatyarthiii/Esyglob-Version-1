@@ -38,6 +38,8 @@ export default function SubscriptionCenterScreen() {
         : 'buyer';
   const [cycle, setCycle] = useState<BillingCycle>('yearly');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [upgradingPlanKey, setUpgradingPlanKey] = useState<string | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string>('AI Features');
 
   const overview = useQuery({
     queryKey: ['subscription', role],
@@ -72,11 +74,15 @@ export default function SubscriptionCenterScreen() {
       });
     },
     onSuccess: async () => {
+      setUpgradingPlanKey(null);
       await qc.invalidateQueries({ queryKey: ['subscription'] });
       await qc.invalidateQueries({ queryKey: ['invoices'] });
-      Alert.alert('Subscription Activated', 'Your plan, credits and limits are now active.');
+      Alert.alert('🎉 Subscription Activated', 'Your plan is now active. Enjoy premium features!');
     },
-    onError: (e: Error) => Alert.alert('Payment Not Completed', e.message),
+    onError: (e: Error) => {
+      setUpgradingPlanKey(null);
+      Alert.alert('Payment Failed', e.message);
+    },
   });
 
   const renew = useMutation({
@@ -85,11 +91,11 @@ export default function SubscriptionCenterScreen() {
   });
 
   if (overview.isLoading || plansQuery.isLoading)
-    return <LoadingState label="Loading subscription center" />;
+    return <LoadingState label="Loading subscription center..." />;
   if (overview.isError || plansQuery.isError)
     return (
       <ErrorState
-        message="Subscription details could not be loaded."
+        message="Could not load subscription details."
         onRetry={() => {
           overview.refetch();
           plansQuery.refetch();
@@ -103,339 +109,312 @@ export default function SubscriptionCenterScreen() {
   const remaining = Number(data.usage.aiCreditsRemaining || 0);
   const plans = plansQuery.data!;
 
-  // Sort plans so free comes last (bottom), premium on top
-  const sortedPlans = [...plans].sort((a, b) => {
-    const order = ['free', 'pro', 'business', 'enterprise'];
-    return order.indexOf(b.key) - order.indexOf(a.key);
-  });
+  const sortedPlans = [...plans].sort((a, b) => a.priorityRanking - b.priorityRanking);
 
-  const getPlanTier = (planKey: string): string => {
-    const tiers: Record<string, string> = {
-      free: 'Starter',
-      pro: 'Pro',
-      business: 'Business',
-      enterprise: 'Enterprise',
+  const getAiTierInfo = (aiTier: string) => {
+    const tiers: Record<string, { name: string; icon: string; color: string; bg: string }> = {
+      esyai_lite: { name: 'EsyAI Lite', icon: 'cpu-32-bit', color: '#64748B', bg: '#F1F5F9' },
+      esyai_pro: { name: 'EsyAI Pro', icon: 'cpu-64-bit', color: '#2563EB', bg: '#EFF6FF' },
+      esyai_advanced: { name: 'EsyAI Advanced', icon: 'memory', color: '#7C3AED', bg: '#F5F3FF' },
+      esyai_enterprise: { name: 'EsyAI Enterprise', icon: 'server', color: '#DB2777', bg: '#FDF2F8' },
     };
-    return tiers[planKey] || planKey;
+    return tiers[aiTier] || tiers.esyai_lite;
+  };
+
+  const handleUpgrade = (plan: SubscriptionPlan) => {
+    setUpgradingPlanKey(plan.key);
+    buy.mutate(plan);
   };
 
   return (
     <View style={s.screen}>
-      {/* Premium Header */}
+      {/* Header */}
       <View style={s.header}>
-        <View style={s.headerGlow} />
-        <Pressable onPress={() => nav.goBack()} style={s.headerIcon}>
-          <Icon name="arrow-left" size={22} color="#FFFFFF" />
+        <Pressable onPress={() => nav.goBack()} style={s.headerBtn}>
+          <Icon name="arrow-left" size={22} color="#1E293B" />
         </Pressable>
         <View style={s.headerCenter}>
           <Text style={s.headerTitle}>
             {role === 'seller' ? 'Seller Plans' : 'Buyer Plans'}
           </Text>
-          <Text style={s.headerSubtitle}>Unlock your business potential</Text>
+          <Text style={s.headerSub}>Choose your growth plan</Text>
         </View>
-        <Pressable
-          onPress={() => nav.navigate('InvoiceDetails', {})}
-          style={s.headerIcon}>
-          <Icon name="receipt-text-outline" size={22} color="#FFFFFF" />
+        <Pressable onPress={() => nav.navigate('InvoiceDetails', {})} style={s.headerBtn}>
+          <Icon name="receipt-text-outline" size={22} color="#1E293B" />
         </Pressable>
       </View>
 
-      <ScrollView
-        style={s.scroll}
-        contentContainerStyle={s.scrollContent}
-        showsVerticalScrollIndicator={false}>
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* Current Plan Card - Premium Badge */}
-        <View style={s.currentPlanCard}>
-          <View style={s.currentPlanGlow} />
-          <View style={s.currentPlanHeader}>
+        {/* Current Plan Card */}
+        <View style={s.currentCard}>
+          <View style={s.currentCardTop}>
             <View style={s.currentBadgeRow}>
               <View style={s.activeBadge}>
                 <View style={s.activeDot} />
                 <Text style={s.activeBadgeText}>ACTIVE PLAN</Text>
               </View>
               {sub.autoRenew && (
-                <View style={s.autoRenewBadge}>
-                  <Icon name="autorenew" size={12} color="#10B981" />
-                  <Text style={s.autoRenewText}>Auto-renew</Text>
+                <View style={s.autoBadge}>
+                  <Icon name="autorenew" size={12} color="#059669" />
+                  <Text style={s.autoBadgeText}>Auto-renew</Text>
                 </View>
               )}
             </View>
             <Pressable
               onPress={() => renew.mutate(!sub.autoRenew)}
-              style={s.autoRenewToggle}>
-              <Text style={s.autoRenewLabel}>
-                {sub.autoRenew ? 'ON' : 'OFF'}
-              </Text>
-              <View
-                style={[
-                  s.toggleTrack,
-                  sub.autoRenew && s.toggleTrackActive,
-                ]}>
-                <View
-                  style={[
-                    s.toggleThumb,
-                    sub.autoRenew && s.toggleThumbActive,
-                  ]}
-                />
+              style={s.toggleRow}>
+              <Text style={s.toggleLabel}>{sub.autoRenew ? 'ON' : 'OFF'}</Text>
+              <View style={[s.toggleTrack, sub.autoRenew && s.toggleTrackOn]}>
+                <View style={[s.toggleThumb, sub.autoRenew && s.toggleThumbOn]} />
               </View>
             </Pressable>
           </View>
 
-          <View style={s.planIdentity}>
-            <View style={s.planIconContainer}>
+          {/* Current Plan Identity */}
+          <View style={s.currentIdentity}>
+            <View style={s.currentIconBox}>
               <Icon
-                name={
-                  role === 'seller' ? 'storefront-outline' : 'briefcase-outline'
-                }
-                size={28}
-                color="#FFFFFF"
+                name={role === 'seller' ? 'storefront-outline' : 'briefcase-outline'}
+                size={26}
+                color="#2563EB"
               />
             </View>
-            <View style={s.planNameBlock}>
+            <View style={s.currentNameBlock}>
               <Text style={s.currentPlanName}>{current.name}</Text>
-              <Text style={s.currentPlanTier}>
-                EsyGlob {getPlanTier(current.key)}
-              </Text>
+              <View style={s.aiTierBadge}>
+                <Icon name={getAiTierInfo(current.aiTier || 'esyai_lite').icon} size={12} color={getAiTierInfo(current.aiTier || 'esyai_lite').color} />
+                <Text style={[s.aiTierText, { color: getAiTierInfo(current.aiTier || 'esyai_lite').color }]}>
+                  {getAiTierInfo(current.aiTier || 'esyai_lite').name}
+                </Text>
+              </View>
             </View>
-            <Icon name="shield-check" size={24} color="#10B981" />
+            <Icon name="shield-check" size={24} color="#059669" />
           </View>
 
-          {/* Metrics Grid */}
+          {/* Metrics */}
           <View style={s.metricsGrid}>
-            <View style={s.metricBox}>
-              <Icon name="brain" size={16} color="#818CF8" />
-              <Text style={s.metricValue}>
-                {remaining}/{sub.aiCreditsAllocated || current.aiCredits}
-              </Text>
+            <View style={s.metricItem}>
+              <Icon name="brain" size={16} color="#7C3AED" />
+              <Text style={s.metricValue}>{remaining}/{sub.aiCreditsAllocated || current.aiCredits}</Text>
               <Text style={s.metricLabel}>AI Credits</Text>
             </View>
             <View style={s.metricDivider} />
-            <View style={s.metricBox}>
-              <Icon name="database-outline" size={16} color="#34D399" />
+            <View style={s.metricItem}>
+              <Icon name="database-outline" size={16} color="#2563EB" />
               <Text style={s.metricValue}>{current.storageLimitMb} MB</Text>
               <Text style={s.metricLabel}>Storage</Text>
             </View>
             <View style={s.metricDivider} />
-            <View style={s.metricBox}>
-              <Icon name="calendar-outline" size={16} color="#F472B6" />
+            <View style={s.metricItem}>
+              <Icon name="calendar-outline" size={16} color="#F59E0B" />
               <Text style={s.metricValue}>
                 {sub.expiryDate
-                  ? new Date(sub.expiryDate).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                    })
+                  ? new Date(sub.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
                   : 'Free'}
               </Text>
               <Text style={s.metricLabel}>Expires</Text>
             </View>
           </View>
 
+          <View style={s.dashboardDetails}>
+            <DashboardDetail icon="calendar-sync" label="Billing" value={String(sub.billingCycle || sub.duration || cycle)} />
+            <DashboardDetail icon="robot-outline" label="AI model" value={current.aiModel || getAiTierInfo(current.aiTier || 'esyai_lite').name} />
+            <DashboardDetail icon="trending-up" label="Growth score" value={`${current.businessGrowthScore || 0}/100`} />
+          </View>
+
           {role === 'seller' && (
-            <View style={s.verificationRow}>
+            <View style={s.trustRow}>
               <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={s.verificationText}>
+              <Text style={s.trustText}>
                 {current.verificationLevel} Verification · Trust Score +{current.trustScoreBoost}
               </Text>
             </View>
           )}
-        </View>
-
-        {/* Billing Cycle Selector */}
-        <View style={s.cycleContainer}>
-          <Text style={s.cycleLabel}>Billing Cycle</Text>
-          <View style={s.cycleRow}>
-            {(['monthly', 'quarterly', 'yearly'] as BillingCycle[]).map(
-              (item) => {
-                const isActive = cycle === item;
-                const savings =
-                  item === 'yearly'
-                    ? 'Save 25%'
-                    : item === 'quarterly'
-                      ? 'Save 12%'
-                      : null;
-                return (
-                  <Pressable
-                    key={item}
-                    onPress={() => setCycle(item)}
-                    style={[s.cycleChip, isActive && s.cycleChipActive]}>
-                    <Text
-                      style={[
-                        s.cycleChipText,
-                        isActive && s.cycleChipTextActive,
-                      ]}>
-                      {item}
-                    </Text>
-                    {savings && (
-                      <Text
-                        style={[
-                          s.cycleSavings,
-                          isActive && s.cycleSavingsActive,
-                        ]}>
-                        {savings}
-                      </Text>
-                    )}
-                  </Pressable>
-                );
-              },
-            )}
+          <View style={s.manageRow}>
+            <Pressable onPress={() => setSelectedPlan(current)} style={s.manageButton}><Icon name="cog-outline" size={16} color="#2563EB" /><Text style={s.manageButtonText}>Manage Plan</Text></Pressable>
+            <Pressable onPress={() => nav.navigate('InvoiceDetails', {})} style={s.manageButton}><Icon name="download-outline" size={16} color="#2563EB" /><Text style={s.manageButtonText}>Invoices</Text></Pressable>
           </View>
         </View>
 
-        {/* Available Plans */}
+        {/* Billing Cycle */}
+        <View style={s.cycleSection}>
+          <Text style={s.cycleSectionTitle}>Billing Cycle</Text>
+          <View style={s.cycleRow}>
+            {(['monthly', 'quarterly', 'yearly'] as BillingCycle[]).map((item) => {
+              const isActive = cycle === item;
+              const savings = item === 'yearly' ? '25%' : item === 'quarterly' ? '12%' : null;
+              return (
+                <Pressable
+                  key={item}
+                  onPress={() => setCycle(item)}
+                  style={[s.cycleBtn, isActive && s.cycleBtnActive]}>
+                  <Text style={[s.cycleBtnText, isActive && s.cycleBtnTextActive]}>
+                    {item}
+                  </Text>
+                  {savings && (
+                    <Text style={[s.cycleSave, isActive && s.cycleSaveActive]}>
+                      Save {savings}
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Plans List */}
         <Text style={s.sectionTitle}>Available Plans</Text>
-        <Text style={s.sectionSubtitle}>
-          Every plan includes EsyAI Business Copilot
-        </Text>
+        <Text style={s.sectionSub}>Every plan includes EsyAI Business Copilot</Text>
 
         {sortedPlans.map((plan, index) => {
           const isCurrent = current.key === plan.key;
-          const isPopular = plan.key === 'pro' || plan.key === 'gold';
+          const isPopular = Boolean(plan.popular);
+          const isLoadingThis = upgradingPlanKey === plan.key && buy.isPending;
+          const aiInfo = getAiTierInfo(plan.aiTier || 'esyai_lite');
+          const prevPlan = index < sortedPlans.length - 1 ? sortedPlans[index + 1] : null;
+
           return (
-            <PlanCardPremium
+            <PlanCard
               key={plan.key}
               plan={plan}
               cycle={cycle}
               isCurrent={isCurrent}
               isPopular={isPopular}
-              isPending={buy.isPending}
-              onSelect={() => setSelectedPlan(plan)}
-              tier={getPlanTier(plan.key)}
-              role={role}
-              previousPlanName={
-                index < sortedPlans.length - 1
-                  ? sortedPlans[index + 1].name
-                  : undefined
-              }
+              isLoading={isLoadingThis}
+              onUpgrade={() => setSelectedPlan(plan)}
+              onViewDetails={() => setSelectedPlan(plan)}
+              aiInfo={aiInfo}
+              prevPlanName={prevPlan?.name}
             />
           );
         })}
 
-        {/* Billing History Link */}
+        <PlanComparison plans={sortedPlans} />
+
+        {/* Billing History */}
         <Pressable
           onPress={() => nav.navigate('InvoiceDetails', {})}
           style={s.billingLink}>
           <View style={s.billingLinkLeft}>
-            <Icon name="file-document-outline" size={20} color="#6366F1" />
-            <Text style={s.billingLinkText}>Billing History & Invoices</Text>
+            <View style={s.billingIconBox}>
+              <Icon name="file-document-outline" size={18} color="#2563EB" />
+            </View>
+            <Text style={s.billingText}>Billing History & Invoices</Text>
           </View>
           <Icon name="chevron-right" size={20} color="#94A3B8" />
         </Pressable>
 
-        <View style={s.bottomSpacer} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Upgrade Modal */}
+      {/* Detail Modal */}
       <Modal
         transparent
         animationType="slide"
         visible={Boolean(selectedPlan)}
         onRequestClose={() => setSelectedPlan(null)}>
-        <Pressable
-          style={s.modalBackdrop}
-          onPress={() => setSelectedPlan(null)}>
+        <Pressable style={s.modalOverlay} onPress={() => setSelectedPlan(null)}>
           <Pressable style={s.modalSheet} onPress={() => undefined}>
             <View style={s.modalHandle} />
             {selectedPlan && (
               <>
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView showsVerticalScrollIndicator={false} style={s.modalScroll}>
+                  {/* Hero */}
                   <View style={s.modalHero}>
-                    <View style={s.modalHeroGlow} />
-                    <View style={s.modalIconBox}>
-                      <Icon name="crown" size={32} color="#F59E0B" />
+                    <View style={s.modalIconCircle}>
+                      <Icon name="crown" size={30} color="#F59E0B" />
                     </View>
                     <Text style={s.modalPlanName}>{selectedPlan.name}</Text>
-                    <Text style={s.modalTier}>
-                      EsyGlob {getPlanTier(selectedPlan.key)}
-                    </Text>
+                    <View style={[s.modalAiBadge, { backgroundColor: getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').bg }]}>
+                      <Icon name={getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').icon} size={14} color={getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').color} />
+                      <Text style={[s.modalAiText, { color: getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').color }]}>
+                        {getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').name}
+                      </Text>
+                    </View>
                     <View style={s.modalPriceRow}>
                       <Text style={s.modalPrice}>
-                        ₹
-                        {Number(
-                          selectedPlan.prices[cycle] || 0,
-                        ).toLocaleString('en-IN')}
+                        ₹{Number(selectedPlan.prices[cycle] || 0).toLocaleString('en-IN')}
                       </Text>
                       <Text style={s.modalPeriod}>/{cycle}</Text>
                     </View>
+                    {cycle !== 'monthly' && selectedPlan.prices.monthly > 0 ? (
+                      <Text style={s.savingsText}>You save ₹{Math.max(0, selectedPlan.prices.monthly * (cycle === 'quarterly' ? 3 : 12) - Number(selectedPlan.prices[cycle] || 0)).toLocaleString('en-IN')} with this billing cycle</Text>
+                    ) : null}
+                    <Text style={s.modalModel}>{selectedPlan.aiModel || getAiTierInfo(selectedPlan.aiTier || 'esyai_lite').name} · Growth score {selectedPlan.businessGrowthScore || 0}/100</Text>
                   </View>
 
+                  {/* Features */}
                   <View style={s.modalSection}>
-                    <Text style={s.modalSectionTitle}>What's Included</Text>
-                    {selectedPlan.features.map((feature, i) => (
-                      <View key={i} style={s.modalFeature}>
-                        <Icon name="check-circle" size={18} color="#10B981" />
-                        <Text style={s.modalFeatureText}>{feature}</Text>
-                      </View>
+                    <Text style={s.modalSectionTitle}>Plan capabilities</Text>
+                    {Object.entries(groupFeatures(selectedPlan.features)).map(([section, features]) => (
+                      <FeatureSection key={section} title={section} features={features} expanded={expandedSection === section} onPress={() => setExpandedSection(expandedSection === section ? '' : section)} />
                     ))}
                   </View>
 
-                  <View style={s.modalSection}>
-                    <Text style={s.modalSectionTitle}>AI Capabilities</Text>
-                    <View style={s.aiModelBadge}>
-                      <Icon name="cpu-64-bit" size={16} color="#6366F1" />
-                      <Text style={s.aiModelText}>
-                        {selectedPlan.key === 'free'
-                          ? 'EsyAI Lite'
-                          : selectedPlan.key === 'pro' || selectedPlan.key === 'verified'
-                            ? 'EsyAI Pro'
-                            : selectedPlan.key === 'business' || selectedPlan.key === 'gold'
-                              ? 'EsyAI Advanced'
-                              : 'EsyAI Enterprise'}
-                      </Text>
+                  {/* Quick Stats */}
+                  <View style={s.modalStats}>
+                    <View style={s.modalStat}>
+                      <Icon name="brain" size={16} color="#7C3AED" />
+                      <Text style={s.modalStatValue}>{selectedPlan.aiCredits}</Text>
+                      <Text style={s.modalStatLabel}>AI Credits</Text>
+                    </View>
+                    <View style={s.modalStat}>
+                      <Icon name="database" size={16} color="#2563EB" />
+                      <Text style={s.modalStatValue}>{selectedPlan.storageLimitMb} MB</Text>
+                      <Text style={s.modalStatLabel}>Storage</Text>
+                    </View>
+                    <View style={s.modalStat}>
+                      <Icon name="headset" size={16} color="#059669" />
+                      <Text style={s.modalStatValue}>{selectedPlan.supportLevel}</Text>
+                      <Text style={s.modalStatLabel}>Support</Text>
                     </View>
                   </View>
 
-                  <View style={s.modalPayment}>
-                    <Text style={s.modalPaymentTitle}>Secure Payment</Text>
-                    <View style={s.paymentMethods}>
-                      {['UPI', 'Cards', 'Net Banking', 'Wallet'].map((m) => (
-                        <View key={m} style={s.paymentPill}>
-                          <Icon
-                            name={
-                              m === 'UPI'
-                                ? 'qrcode'
-                                : m === 'Cards'
-                                  ? 'credit-card'
-                                  : m === 'Net Banking'
-                                    ? 'bank'
-                                    : 'wallet'
-                            }
-                            size={14}
-                            color="#6366F1"
-                          />
-                          <Text style={s.paymentPillText}>{m}</Text>
+                  {/* Payment */}
+                  <View style={s.modalSection}>
+                    <Text style={s.modalSectionTitle}>🔒 Secure Payment</Text>
+                    <View style={s.paymentPills}>
+                      {[
+                        { icon: 'qrcode', label: 'UPI' },
+                        { icon: 'credit-card', label: 'Visa' },
+                        { icon: 'credit-card', label: 'Mastercard' },
+                        { icon: 'credit-card-chip', label: 'RuPay' },
+                        { icon: 'bank', label: 'Net Banking' },
+                        { icon: 'wallet', label: 'Wallet' },
+                        { icon: 'shield-lock-outline', label: 'Razorpay' },
+                      ].map((p) => (
+                        <View key={p.label} style={s.paymentPill}>
+                          <Icon name={p.icon} size={14} color="#2563EB" />
+                          <Text style={s.paymentPillText}>{p.label}</Text>
                         </View>
                       ))}
                     </View>
-                    <Text style={s.gatewayNote}>
-                      Secured by Razorpay · Instant activation
-                    </Text>
+                    <Text style={s.razorpayText}>Powered by Razorpay · Instant Activation</Text>
                   </View>
                 </ScrollView>
 
+                {/* CTA */}
                 <Pressable
-                  disabled={
-                    buy.isPending || !selectedPlan.prices[cycle] || isCurrentAndSameCycle()
-                  }
+                  disabled={!selectedPlan.prices[cycle]}
                   onPress={() => {
                     const plan = selectedPlan;
                     setSelectedPlan(null);
-                    buy.mutate(plan);
+                    handleUpgrade(plan);
                   }}
                   style={[
-                    s.modalButton,
-                    (!selectedPlan.prices[cycle] || buy.isPending) &&
-                      s.modalButtonDisabled,
+                    s.modalCta,
+                    !selectedPlan.prices[cycle] && s.modalCtaDisabled,
                   ]}>
-                  {buy.isPending ? (
+                  {upgradingPlanKey === selectedPlan.key && buy.isPending ? (
                     <ActivityIndicator color="#FFFFFF" />
                   ) : (
-                    <Text style={s.modalButtonText}>
+                    <Text style={s.modalCtaText}>
                       {current.key === selectedPlan.key
                         ? 'Renew Plan'
                         : selectedPlan.prices[cycle]
-                          ? `Upgrade to ${getPlanTier(selectedPlan.key)}`
-                          : 'Current Plan'}
+                          ? 'Upgrade Now'
+                          : 'Free Plan'}
                     </Text>
                   )}
                 </Pressable>
@@ -446,233 +425,240 @@ export default function SubscriptionCenterScreen() {
       </Modal>
     </View>
   );
-
-  function isCurrentAndSameCycle(): boolean {
-    return current.key === selectedPlan?.key;
-  }
 }
 
-// Premium Plan Card Component
-function PlanCardPremium({
+function DashboardDetail({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return <View style={s.dashboardDetail}><Icon name={icon} size={15} color="#2563EB" /><View><Text style={s.dashboardLabel}>{label}</Text><Text numberOfLines={1} style={s.dashboardValue}>{value}</Text></View></View>;
+}
+
+const featureSections = [
+  { title: 'AI Features', icon: 'robot-outline', words: ['ai ', 'esyai', 'suggestion', 'forecast'] },
+  { title: 'Marketplace Features', icon: 'storefront-outline', words: ['marketplace', 'search', 'product', 'seller', 'listing', 'wishlist'] },
+  { title: 'Trade Benefits', icon: 'shield-check-outline', words: ['trade', 'rfq', 'quotation', 'escrow', 'shipment', 'customs', 'export', 'import'] },
+  { title: 'Analytics', icon: 'chart-box-outline', words: ['analytic', 'insight', 'report', 'trend', 'dashboard'] },
+  { title: 'Verification Benefits', icon: 'badge-account-outline', words: ['verification', 'verified', 'kyc', 'badge', 'trust', 'gst', 'pan', 'aadhaar', 'license'] },
+  { title: 'Support & Business', icon: 'briefcase-outline', words: ['support', 'team', 'api', 'erp', 'workspace', 'manager', 'integration'] },
+];
+
+function groupFeatures(features: string[]) {
+  const grouped: Record<string, string[]> = {};
+  features.forEach(feature => {
+    const normalized = feature.toLowerCase();
+    const section = featureSections.find(item => item.words.some(word => normalized.includes(word)))?.title || 'Business Features';
+    (grouped[section] ||= []).push(feature);
+  });
+  return grouped;
+}
+
+function FeatureSection({ title, features, expanded, onPress }: { title: string; features: string[]; expanded: boolean; onPress: () => void }) {
+  const icon = featureSections.find(item => item.title === title)?.icon || 'diamond-stone';
+  return <View style={s.featureSection}>
+    <Pressable onPress={onPress} style={s.featureSectionHeader}><View style={s.featureSectionIcon}><Icon name={icon} size={19} color="#2563EB" /></View><View style={s.featureSectionHeading}><Text style={s.featureSectionTitle}>{title}</Text><Text style={s.featureSectionCount}>{features.length} capabilities</Text></View><Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={21} color="#64748B" /></Pressable>
+    {expanded ? <View style={s.featureCards}>{features.map(feature => <View key={feature} style={s.featureCard}><Icon name="check-decagram" size={18} color="#16A34A" /><View style={s.featureCardBody}><Text style={s.featureCardTitle}>{feature}</Text><Text style={s.featureCardDescription}>Included with this plan and ready to use.</Text></View><Text style={s.includedBadge}>INCLUDED</Text></View>)}</View> : null}
+  </View>;
+}
+
+const comparisonRows = [
+  ['AI', ['ai ', 'esyai']], ['Marketplace', ['marketplace', 'search', 'product']], ['RFQs', ['rfq']], ['Messaging', ['messag', 'smart repl']],
+  ['Market Insights', ['insight', 'market intelligence']], ['Trade Assurance', ['trade assurance']], ['Escrow', ['escrow']], ['Analytics', ['analytic', 'dashboard']],
+  ['Support', ['support', 'manager']], ['Verification', ['verification', 'verified', 'kyc']], ['Business Tools', ['business', 'calculator', 'team']], ['Priority Ranking', ['priority', 'ranking']], ['API Access', ['api access']],
+] as const;
+
+function PlanComparison({ plans }: { plans: SubscriptionPlan[] }) {
+  const has = (plan: SubscriptionPlan, words: readonly string[]) => plan.features.some(feature => words.some(word => feature.toLowerCase().includes(word)));
+  return <View style={s.comparisonCard}><Text style={s.comparisonTitle}>Compare plans</Text><Text style={s.comparisonSubtitle}>See how every tier expands your business capabilities.</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>
+    <View><View style={s.compareRow}><Text style={[s.compareCell, s.compareLabel]}>Capability</Text>{plans.map(plan => <Text key={plan.key} numberOfLines={1} style={[s.compareCell, s.comparePlan]}>{plan.name}</Text>)}</View>
+      {comparisonRows.map(([label, words]) => <View key={label} style={s.compareRow}><Text style={[s.compareCell, s.compareLabel]}>{label}</Text>{plans.map(plan => <View key={plan.key} style={s.compareIconCell}><Icon name={has(plan, words) ? 'check-circle' : 'minus-circle-outline'} size={18} color={has(plan, words) ? '#16A34A' : '#CBD5E1'} /></View>)}</View>)}
+      <View style={s.compareRow}><Text style={[s.compareCell, s.compareLabel]}>AI Model</Text>{plans.map(plan => <Text key={plan.key} numberOfLines={2} style={[s.compareCell, s.compareValue]}>{plan.aiModel || plan.aiTier}</Text>)}</View>
+      <View style={s.compareRow}><Text style={[s.compareCell, s.compareLabel]}>Storage</Text>{plans.map(plan => <Text key={plan.key} style={[s.compareCell, s.compareValue]}>{plan.storageLimitMb} MB</Text>)}</View>
+    </View>
+  </ScrollView></View>;
+}
+
+// Plan Card Component
+function PlanCard({
   plan,
   cycle,
   isCurrent,
   isPopular,
-  isPending,
-  onSelect,
-  tier,
-  role,
-  previousPlanName,
+  isLoading,
+  onUpgrade,
+  onViewDetails,
+  aiInfo,
+  prevPlanName,
 }: {
   plan: SubscriptionPlan;
   cycle: BillingCycle;
   isCurrent: boolean;
   isPopular: boolean;
-  isPending: boolean;
-  onSelect: () => void;
-  tier: string;
-  role: string;
-  previousPlanName?: string;
+  isLoading: boolean;
+  onUpgrade: () => void;
+  onViewDetails: () => void;
+  aiInfo: { name: string; icon: string; color: string; bg: string };
+  prevPlanName?: string;
 }) {
   const price = plan.prices[cycle];
-  const isFree = plan.key === 'free';
-
-  const aiModels: Record<string, { name: string; icon: string; color: string }> = {
-    free: { name: 'EsyAI Lite', icon: 'cpu-32-bit', color: '#94A3B8' },
-    pro: { name: 'EsyAI Pro', icon: 'cpu-64-bit', color: '#6366F1' },
-    business: { name: 'EsyAI Advanced', icon: 'memory', color: '#8B5CF6' },
-    enterprise: { name: 'EsyAI Enterprise', icon: 'server', color: '#EC4899' },
-    verified: { name: 'EsyAI Pro', icon: 'cpu-64-bit', color: '#6366F1' },
-    gold: { name: 'EsyAI Advanced', icon: 'memory', color: '#8B5CF6' },
-  };
-
-  const aiModel = aiModels[plan.key] || aiModels.free;
+  const isFree = plan.key.includes('free');
 
   return (
-    <View style={[s.planCard, isCurrent && s.planCardCurrent, isPopular && !isCurrent && s.planCardPopular]}>
+    <Pressable onPress={onViewDetails} style={[s.planCard, isCurrent && s.planCardCurrent]}>
       {/* Popular Badge */}
       {isPopular && !isCurrent && (
-        <View style={s.popularBadge}>
+        <View style={s.popularStrip}>
           <Icon name="star" size={12} color="#FFFFFF" />
-          <Text style={s.popularBadgeText}>MOST POPULAR</Text>
+          <Text style={s.popularStripText}>MOST POPULAR</Text>
         </View>
       )}
 
-      {/* Current Plan Banner */}
+      {/* Current Badge */}
       {isCurrent && (
-        <View style={s.currentBanner}>
-          <Icon name="check-circle" size={14} color="#FFFFFF" />
-          <Text style={s.currentBannerText}>YOUR CURRENT PLAN</Text>
+        <View style={s.currentStrip}>
+          <Icon name="check-circle" size={12} color="#FFFFFF" />
+          <Text style={s.currentStripText}>YOUR PLAN</Text>
         </View>
       )}
 
-      <View style={s.planCardContent}>
-        {/* Plan Header */}
+      <View style={s.planCardBody}>
+        <View style={s.planBadges}><Text style={s.premiumBadge}>{plan.premiumBadge || 'PREMIUM'}</Text>{plan.recommended ? <Text style={s.recommendedBadge}>RECOMMENDED</Text> : null}</View>
+        {/* Header */}
         <View style={s.planCardHeader}>
-          <View>
-            <Text style={s.planCardTier}>EsyGlob {tier}</Text>
-            <Text style={s.planCardName}>{plan.name}</Text>
+          <View style={s.planCardLeft}>
+            <View style={[s.planIconMini, { backgroundColor: aiInfo.bg }]}>
+              <Icon name={aiInfo.icon} size={20} color={aiInfo.color} />
+            </View>
+            <View>
+              <Text style={s.planCardName}>{plan.name}</Text>
+              {prevPlanName && (
+                <Text style={s.planUpgradeHint}>Everything in {prevPlanName} +</Text>
+              )}
+            </View>
           </View>
           {!isFree && (
-            <View style={s.priceBlock}>
-              <Text style={s.priceAmount}>
-                ₹{Number(price || 0).toLocaleString('en-IN')}
-              </Text>
-              <Text style={s.pricePeriod}>/{cycle}</Text>
+            <View style={s.planPriceBlock}>
+              <Text style={s.planPrice}>₹{Number(price || 0).toLocaleString('en-IN')}</Text>
+              <Text style={s.planPricePeriod}>/{cycle}</Text>
             </View>
           )}
         </View>
 
-        {/* AI Model Indicator */}
-        <View style={[s.aiModelStrip, { backgroundColor: aiModel.color + '15' }]}>
-          <Icon name={aiModel.icon} size={18} color={aiModel.color} />
-          <Text style={[s.aiModelStripText, { color: aiModel.color }]}>
-            {aiModel.name}
-          </Text>
-          {previousPlanName && (
-            <Text style={s.aiUpgradeText}>↑ from {previousPlanName}</Text>
-          )}
+        {/* AI Tier */}
+        <View style={[s.aiStrip, { backgroundColor: aiInfo.bg }]}>
+          <Icon name={aiInfo.icon} size={14} color={aiInfo.color} />
+          <Text style={[s.aiStripText, { color: aiInfo.color }]}>{aiInfo.name}</Text>
+          <Text style={[s.aiModelName, { color: aiInfo.color }]}>{plan.aiModel || aiInfo.name}</Text>
         </View>
 
-        {/* Description */}
-        <Text style={s.planCardDesc}>{plan.description}</Text>
+        <View style={s.growthRow}><Icon name="trending-up" size={15} color="#2563EB" /><Text style={s.growthLabel}>Business Growth Score</Text><Text style={s.growthValue}>{plan.businessGrowthScore || 0}/100</Text></View>
 
-        {/* Key Features Preview */}
-        <View style={s.featuresPreview}>
+        {/* Description */}
+        <Text style={s.planDesc}>{plan.description}</Text>
+
+        {/* Features Preview */}
+        <View style={s.featuresList}>
           {plan.features.slice(0, 4).map((feature, i) => (
-            <View key={i} style={s.featureRow}>
-              <Icon name="check" size={14} color="#10B981" />
-              <Text style={s.featureRowText}>{feature}</Text>
+            <View key={i} style={s.featureItem}>
+              <Icon name="star-four-points" size={6} color="#F59E0B" />
+              <Text style={s.featureItemText} numberOfLines={1}>{feature}</Text>
             </View>
           ))}
           {plan.features.length > 4 && (
-            <Text style={s.moreFeatures}>
-              +{plan.features.length - 4} more features
-            </Text>
+            <Pressable onPress={onViewDetails}>
+              <Text style={s.viewMoreText}>+{plan.features.length - 4} more features</Text>
+            </Pressable>
           )}
         </View>
 
-        {/* CTA Button */}
-        <Pressable
-          disabled={isPending || (!price && !isFree)}
-          onPress={onSelect}
-          style={[
-            s.planCta,
-            isCurrent && s.planCtaCurrent,
-            isFree && s.planCtaFree,
-            (!price && !isFree) && s.planCtaDisabled,
-          ]}>
-          <Text
+        {/* Buttons */}
+        <View style={s.planActions}>
+          <Pressable
+            onPress={onUpgrade}
+            disabled={isLoading || isCurrent}
             style={[
-              s.planCtaText,
-              isCurrent && s.planCtaTextCurrent,
-              isFree && s.planCtaTextFree,
+              s.upgradeBtn,
+              isCurrent && s.upgradeBtnDisabled,
+              isFree && s.upgradeBtnFree,
             ]}>
-            {isPending
-              ? 'Processing...'
-              : isFree
-                ? 'Current Plan'
-                : isCurrent
-                  ? 'Manage Plan'
-                  : `Upgrade to ${tier}`}
-          </Text>
-          {!isCurrent && !isFree && (
-            <Icon name="arrow-right" size={16} color="#FFFFFF" />
-          )}
-        </Pressable>
+            {isLoading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={[s.upgradeBtnText, isCurrent && s.upgradeBtnTextDisabled]}>
+                {isFree ? 'Free' : isCurrent ? 'Active' : 'Upgrade'}
+              </Text>
+            )}
+          </Pressable>
+          <Pressable onPress={onViewDetails} style={s.detailsBtn}>
+            <Text style={s.detailsBtnText}>Details</Text>
+          </Pressable>
+        </View>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
 const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
+    backgroundColor: '#F8FAFC',
   },
 
   // Header
   header: {
-    paddingTop: 56,
-    paddingBottom: 24,
-    paddingHorizontal: 20,
-    backgroundColor: '#1E293B',
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    position: 'relative',
-    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  headerGlow: {
-    position: 'absolute',
-    top: -60,
-    right: -60,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#6366F1',
-    opacity: 0.15,
-    blurRadius: 60,
-  },
-  headerIcon: {
+  headerBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#FFFFFF15',
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 16,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#94A3B8',
-    marginTop: 4,
+  headerSub: {
+    fontSize: 11,
+    color: '#64748B',
     fontWeight: '500',
+    marginTop: 2,
+  },
+
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
   },
 
   // Current Plan Card
-  currentPlanCard: {
-    marginHorizontal: 16,
-    marginTop: -20,
-    backgroundColor: '#1E293B',
-    borderRadius: 24,
+  currentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
-    position: 'relative',
-    overflow: 'hidden',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
+    borderColor: '#E2E8F0',
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    marginBottom: 20,
   },
-  currentPlanGlow: {
-    position: 'absolute',
-    top: -40,
-    left: -40,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#6366F1',
-    opacity: 0.08,
-  },
-  currentPlanHeader: {
+  currentCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -687,45 +673,43 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#10B98115',
+    backgroundColor: '#ECFDF5',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#10B98130',
   },
   activeDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
+    backgroundColor: '#059669',
   },
   activeBadgeText: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#10B981',
+    color: '#059669',
     letterSpacing: 0.5,
   },
-  autoRenewBadge: {
+  autoBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#10B98110',
+    backgroundColor: '#F0FDF4',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 12,
   },
-  autoRenewText: {
+  autoBadgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#10B981',
+    color: '#059669',
   },
-  autoRenewToggle: {
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  autoRenewLabel: {
+  toggleLabel: {
     fontSize: 10,
     fontWeight: '700',
     color: '#94A3B8',
@@ -734,506 +718,529 @@ const s = StyleSheet.create({
     width: 36,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#334155',
+    backgroundColor: '#E2E8F0',
     justifyContent: 'center',
     paddingHorizontal: 2,
   },
-  toggleTrackActive: {
-    backgroundColor: '#10B98130',
+  toggleTrackOn: {
+    backgroundColor: '#05966920',
   },
   toggleThumb: {
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#64748B',
+    backgroundColor: '#94A3B8',
   },
-  toggleThumbActive: {
-    backgroundColor: '#10B981',
+  toggleThumbOn: {
+    backgroundColor: '#059669',
     alignSelf: 'flex-end',
   },
-  planIdentity: {
+  currentIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    marginBottom: 18,
+    gap: 12,
+    marginBottom: 16,
   },
-  planIconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#6366F1',
+  currentIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  planNameBlock: {
+  currentNameBlock: {
     flex: 1,
   },
   currentPlanName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
+    color: '#0F172A',
   },
-  currentPlanTier: {
-    fontSize: 12,
-    color: '#818CF8',
+  aiTierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  aiTierText: {
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 2,
   },
   metricsGrid: {
     flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
     padding: 4,
   },
-  metricBox: {
+  metricItem: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 12,
     gap: 4,
   },
   metricValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 2,
   },
   metricLabel: {
     fontSize: 10,
-    color: '#64748B',
+    color: '#94A3B8',
     fontWeight: '500',
   },
   metricDivider: {
     width: 1,
-    backgroundColor: '#1E293B',
-    marginVertical: 8,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 6,
   },
-  verificationRow: {
+  trustRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 14,
-    backgroundColor: '#F59E0B10',
+    marginTop: 12,
+    backgroundColor: '#FFFBEB',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
   },
-  verificationText: {
+  trustText: {
     fontSize: 11,
-    color: '#F59E0B',
+    color: '#B45309',
     fontWeight: '600',
   },
+  dashboardDetails: { flexDirection: 'row', gap: 7, marginTop: 12 },
+  dashboardDetail: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 10, flex: 1, flexDirection: 'row', gap: 6, minWidth: 0, padding: 8 },
+  dashboardLabel: { color: '#64748B', fontSize: 8, fontWeight: '700', textTransform: 'uppercase' },
+  dashboardValue: { color: '#0F172A', fontSize: 10, fontWeight: '800', maxWidth: 72, textTransform: 'capitalize' },
+  manageRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  manageButton: { alignItems: 'center', borderColor: '#BFDBFE', borderRadius: 10, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', paddingVertical: 9 },
+  manageButtonText: { color: '#1D4ED8', fontSize: 10, fontWeight: '800' },
 
-  // Cycle Selector
-  cycleContainer: {
-    marginHorizontal: 16,
-    marginTop: 24,
+  // Cycle
+  cycleSection: {
+    marginBottom: 24,
   },
-  cycleLabel: {
+  cycleSectionTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#94A3B8',
-    marginBottom: 10,
-    letterSpacing: 0.5,
+    color: '#64748B',
+    marginBottom: 8,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   cycleRow: {
     flexDirection: 'row',
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 14,
     padding: 4,
     gap: 4,
   },
-  cycleChip: {
+  cycleBtn: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 13,
-    backgroundColor: 'transparent',
+    paddingVertical: 10,
+    borderRadius: 12,
   },
-  cycleChipActive: {
-    backgroundColor: '#6366F1',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+  cycleBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  cycleChipText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#94A3B8',
-    textTransform: 'capitalize',
-  },
-  cycleChipTextActive: {
-    color: '#FFFFFF',
-  },
-  cycleSavings: {
-    fontSize: 10,
+  cycleBtnText: {
+    fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
+    textTransform: 'capitalize',
+  },
+  cycleBtnTextActive: {
+    color: '#0F172A',
+    fontWeight: '700',
+  },
+  cycleSave: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#94A3B8',
     marginTop: 2,
   },
-  cycleSavingsActive: {
-    color: '#C7D2FE',
+  cycleSaveActive: {
+    color: '#2563EB',
   },
 
-  // Section Title
+  // Section
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 28,
+    color: '#0F172A',
     marginBottom: 4,
-    paddingHorizontal: 16,
     letterSpacing: -0.3,
   },
-  sectionSubtitle: {
+  sectionSub: {
     fontSize: 12,
     color: '#64748B',
     marginBottom: 16,
-    paddingHorizontal: 16,
     fontWeight: '500',
   },
 
   // Plan Card
   planCard: {
-    marginHorizontal: 16,
-    marginBottom: 14,
-    backgroundColor: '#1E293B',
-    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
     overflow: 'hidden',
-    position: 'relative',
   },
   planCardCurrent: {
-    borderColor: '#6366F1',
+    borderColor: '#2563EB',
     borderWidth: 2,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  planCardPopular: {
-    borderColor: '#F59E0B',
-    borderWidth: 1.5,
-  },
-  popularBadge: {
+  popularStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 6,
     backgroundColor: '#F59E0B',
-    paddingVertical: 6,
+    paddingVertical: 7,
   },
-  popularBadgeText: {
+  popularStripText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 1,
   },
-  currentBanner: {
+  currentStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#6366F1',
-    paddingVertical: 6,
+    backgroundColor: '#2563EB',
+    paddingVertical: 7,
   },
-  currentBannerText: {
+  currentStripText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
-  planCardContent: {
-    padding: 18,
+  planCardBody: {
+    padding: 16,
   },
+  planBadges: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+  premiumBadge: { backgroundColor: '#EEF2FF', borderRadius: 7, color: '#4338CA', fontSize: 8, fontWeight: '900', letterSpacing: 0.4, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5, textTransform: 'uppercase' },
+  recommendedBadge: { backgroundColor: '#ECFDF5', borderRadius: 7, color: '#047857', fontSize: 8, fontWeight: '900', letterSpacing: 0.4, overflow: 'hidden', paddingHorizontal: 8, paddingVertical: 5 },
   planCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  planCardTier: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#818CF8',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  planCardName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    marginTop: 2,
-    letterSpacing: -0.3,
-  },
-  priceBlock: {
-    alignItems: 'flex-end',
-  },
-  priceAmount: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  pricePeriod: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontWeight: '500',
-    textTransform: 'capitalize',
-  },
-  aiModelStrip: {
+  planCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  aiModelStripText: {
-    fontSize: 12,
-    fontWeight: '700',
+    gap: 10,
     flex: 1,
   },
-  aiUpgradeText: {
-    fontSize: 10,
-    color: '#94A3B8',
-    fontWeight: '500',
-  },
-  planCardDesc: {
-    fontSize: 12,
-    color: '#94A3B8',
-    lineHeight: 18,
-    marginBottom: 14,
-  },
-  featuresPreview: {
-    gap: 8,
-    marginBottom: 16,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  featureRowText: {
-    fontSize: 12,
-    color: '#CBD5E1',
-    fontWeight: '500',
-  },
-  moreFeatures: {
-    fontSize: 11,
-    color: '#6366F1',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  planCta: {
-    flexDirection: 'row',
+  planIconMini: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  planCardName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  planUpgradeHint: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  planPriceBlock: {
+    alignItems: 'flex-end',
+  },
+  planPrice: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  planPricePeriod: {
+    fontSize: 10,
+    color: '#94A3B8',
+    textTransform: 'capitalize',
+  },
+  aiStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
-    backgroundColor: '#6366F1',
-    paddingVertical: 14,
-    borderRadius: 14,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
   },
-  planCtaCurrent: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: '#6366F1',
-    shadowOpacity: 0,
-    elevation: 0,
+  aiStripText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
-  planCtaFree: {
-    backgroundColor: '#334155',
-    shadowOpacity: 0,
-    elevation: 0,
+  aiModelName: { flex: 1, fontSize: 10, fontWeight: '800', textAlign: 'right' },
+  growthRow: { alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 9, flexDirection: 'row', gap: 6, marginBottom: 11, padding: 9 },
+  growthLabel: { color: '#475569', flex: 1, fontSize: 10, fontWeight: '700' },
+  growthValue: { color: '#1D4ED8', fontSize: 11, fontWeight: '900' },
+  planDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginBottom: 12,
   },
-  planCtaDisabled: {
-    backgroundColor: '#334155',
-    opacity: 0.5,
-    shadowOpacity: 0,
-    elevation: 0,
+  featuresList: {
+    gap: 5,
+    marginBottom: 14,
   },
-  planCtaText: {
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  featureItemText: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '500',
+    flex: 1,
+  },
+  viewMoreText: {
+    fontSize: 11,
+    color: '#2563EB',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  planActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  upgradeBtn: {
+    flex: 1,
+    backgroundColor: '#2563EB',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  upgradeBtnDisabled: {
+    backgroundColor: '#E2E8F0',
+  },
+  upgradeBtnFree: {
+    backgroundColor: '#94A3B8',
+  },
+  upgradeBtnText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  planCtaTextCurrent: {
-    color: '#818CF8',
-  },
-  planCtaTextFree: {
+  upgradeBtnTextDisabled: {
     color: '#94A3B8',
   },
+  detailsBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailsBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  comparisonCard: { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: 18, borderWidth: 1, marginBottom: 14, marginTop: 10, padding: 16 },
+  comparisonTitle: { color: '#0F172A', fontSize: 17, fontWeight: '900' },
+  comparisonSubtitle: { color: '#64748B', fontSize: 11, marginBottom: 13, marginTop: 3 },
+  compareRow: { borderBottomColor: '#F1F5F9', borderBottomWidth: 1, flexDirection: 'row', minHeight: 45 },
+  compareCell: { paddingHorizontal: 8, paddingVertical: 11, width: 108 },
+  compareLabel: { color: '#475569', fontSize: 10, fontWeight: '800', width: 120 },
+  comparePlan: { color: '#1D4ED8', fontSize: 10, fontWeight: '900', textAlign: 'center' },
+  compareValue: { color: '#334155', fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  compareIconCell: { alignItems: 'center', justifyContent: 'center', width: 108 },
 
-  // Billing Link
+  // Billing
   billingLink: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginHorizontal: 16,
-    marginTop: 20,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#FFFFFF',
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#E2E8F0',
+    marginTop: 6,
   },
   billingLinkLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  billingLinkText: {
+  billingIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billingText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#CBD5E1',
-  },
-  bottomSpacer: {
-    height: 40,
+    color: '#0F172A',
   },
 
   // Modal
-  modalBackdrop: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: '#00000099',
+    backgroundColor: '#00000080',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#1E293B',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: '88%',
-    paddingBottom: 30,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    paddingBottom: 24,
   },
   modalHandle: {
     alignSelf: 'center',
-    width: 40,
+    width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#475569',
+    backgroundColor: '#E2E8F0',
     marginTop: 12,
     marginBottom: 8,
   },
+  modalScroll: {
+    paddingHorizontal: 20,
+  },
   modalHero: {
     alignItems: 'center',
-    paddingVertical: 24,
-    position: 'relative',
-    overflow: 'hidden',
+    paddingVertical: 20,
   },
-  modalHeroGlow: {
-    position: 'absolute',
-    top: -40,
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#6366F1',
-    opacity: 0.1,
-  },
-  modalIconBox: {
-    width: 64,
-    height: 64,
+  modalIconCircle: {
+    width: 60,
+    height: 60,
     borderRadius: 20,
-    backgroundColor: '#F59E0B15',
+    backgroundColor: '#FFFBEB',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#F59E0B30',
+    borderColor: '#FDE68A',
   },
   modalPlanName: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
+    color: '#0F172A',
   },
-  modalTier: {
-    fontSize: 13,
-    color: '#818CF8',
+  modalAiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginTop: 8,
+  },
+  modalAiText: {
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 4,
   },
   modalPriceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginTop: 8,
-    gap: 2,
+    marginTop: 10,
   },
   modalPrice: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -1,
+    color: '#0F172A',
   },
   modalPeriod: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#94A3B8',
-    fontWeight: '500',
     textTransform: 'capitalize',
   },
+  savingsText: { backgroundColor: '#ECFDF5', borderRadius: 8, color: '#047857', fontSize: 10, fontWeight: '800', marginTop: 8, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 6 },
+  modalModel: { color: '#475569', fontSize: 10, fontWeight: '700', marginTop: 8 },
   modalSection: {
-    paddingHorizontal: 24,
-    marginTop: 20,
+    marginTop: 16,
   },
   modalSectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#94A3B8',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: '#0F172A',
+    marginBottom: 10,
   },
   modalFeature: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    marginBottom: 10,
+    marginBottom: 7,
   },
   modalFeatureText: {
     fontSize: 13,
-    color: '#CBD5E1',
+    color: '#334155',
     fontWeight: '500',
     flex: 1,
     lineHeight: 18,
   },
-  aiModelBadge: {
+  featureSection: { borderColor: '#E2E8F0', borderRadius: 13, borderWidth: 1, marginBottom: 8, overflow: 'hidden' },
+  featureSectionHeader: { alignItems: 'center', flexDirection: 'row', padding: 11 },
+  featureSectionIcon: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 10, height: 36, justifyContent: 'center', width: 36 },
+  featureSectionHeading: { flex: 1, marginLeft: 9 },
+  featureSectionTitle: { color: '#0F172A', fontSize: 12, fontWeight: '900' },
+  featureSectionCount: { color: '#94A3B8', fontSize: 9, marginTop: 2 },
+  featureCards: { backgroundColor: '#F8FAFC', gap: 7, padding: 9 },
+  featureCard: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 10, flexDirection: 'row', padding: 10 },
+  featureCardBody: { flex: 1, marginLeft: 8 },
+  featureCardTitle: { color: '#1E293B', fontSize: 10, fontWeight: '800' },
+  featureCardDescription: { color: '#94A3B8', fontSize: 8, marginTop: 2 },
+  includedBadge: { color: '#15803D', fontSize: 7, fontWeight: '900' },
+  modalStats: {
     flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 16,
     gap: 8,
-    backgroundColor: '#6366F115',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#6366F130',
   },
-  aiModelText: {
-    fontSize: 13,
+  modalStat: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  modalStatValue: {
+    fontSize: 14,
     fontWeight: '700',
-    color: '#818CF8',
+    color: '#0F172A',
+    textTransform: 'capitalize',
   },
-  modalPayment: {
-    paddingHorizontal: 24,
-    marginTop: 20,
-  },
-  modalPaymentTitle: {
-    fontSize: 12,
-    fontWeight: '700',
+  modalStatLabel: {
+    fontSize: 10,
     color: '#94A3B8',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontWeight: '500',
   },
-  paymentMethods: {
+  paymentPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
@@ -1242,46 +1249,38 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#EFF6FF',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
   },
   paymentPillText: {
     fontSize: 11,
     fontWeight: '600',
-    color: '#CBD5E1',
+    color: '#2563EB',
   },
-  gatewayNote: {
+  razorpayText: {
     fontSize: 10,
-    color: '#64748B',
+    color: '#94A3B8',
     marginTop: 10,
     textAlign: 'center',
   },
-  modalButton: {
-    marginHorizontal: 24,
-    marginTop: 20,
-    backgroundColor: '#6366F1',
-    paddingVertical: 16,
-    borderRadius: 16,
+  modalCta: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    backgroundColor: '#2563EB',
+    paddingVertical: 15,
+    borderRadius: 14,
     alignItems: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
+    justifyContent: 'center',
+    minHeight: 50,
   },
-  modalButtonDisabled: {
-    backgroundColor: '#334155',
-    shadowOpacity: 0,
-    elevation: 0,
+  modalCtaDisabled: {
+    backgroundColor: '#E2E8F0',
   },
-  modalButtonText: {
-    fontSize: 15,
-    fontWeight: '800',
+  modalCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: -0.3,
   },
 });
