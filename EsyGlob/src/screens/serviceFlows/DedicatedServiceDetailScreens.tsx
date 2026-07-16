@@ -1,4 +1,5 @@
 import React from 'react';
+import DisputeResolutionScreen from '../DisputeResolutionScreen';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -52,7 +53,7 @@ export const ConsultingServiceScreen = () => <ServiceProductPage profile={profil
 export const EscrowServiceScreen = () => <ServiceProductPage profile={profiles.escrow} />;
 export const TradeFinanceServiceScreen = () => <ServiceProductPage profile={profiles.finance} />;
 export const InspectionServiceScreen = () => <ServiceProductPage profile={profiles.inspection} />;
-export const DisputeServiceScreen = () => <ServiceProductPage profile={profiles.dispute} />;
+export const DisputeServiceScreen = DisputeResolutionScreen;
 export const SupplierVerificationServiceScreen = () => <ServiceProductPage profile={profiles.supplier} />;
 export const BusinessVerificationServiceScreen = () => <ServiceProductPage profile={profiles.business} />;
 

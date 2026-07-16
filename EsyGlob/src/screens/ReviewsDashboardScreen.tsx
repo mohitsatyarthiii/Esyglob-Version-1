@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ function ReviewsDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { activeRole } = useAuth();
   const isSeller = activeRole === 'seller';
+  const scrollRef = useRef<ScrollView>(null);
 
   return (
     <View style={styles.screen}>
@@ -24,8 +25,8 @@ function ReviewsDashboardScreen() {
           <Text style={styles.subtitle}>{isSeller ? 'Respond to supplier feedback' : 'Manage your product and supplier reviews'}</Text>
         </View>
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <ReviewsPanel mine={!isSeller} sellerDashboard={isSeller} title={isSeller ? 'Supplier Feedback' : 'My Reviews'} />
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <ReviewsPanel mine={!isSeller} sellerDashboard={isSeller} title={isSeller ? 'Supplier Feedback' : 'My Reviews'} onEditRequested={() => requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: 0, animated: true }))} />
       </ScrollView>
     </View>
   );

@@ -183,12 +183,12 @@ export const SERVICE_HUBS: ServiceHub[] = [
     color: '#EA580C',
     tint: '#FFEDD5',
     stats: [
-      { label: 'Orders', value: '50K+', icon: 'package-variant-closed' },
+      { label: 'Protected Trade Orders', value: '50K+', icon: 'package-variant-closed' },
       { label: 'Claims', value: '99%', icon: 'check-circle-outline' },
       { label: 'Coverage', value: 'Full', icon: 'umbrella-outline' },
     ],
     items: [
-      item('Protected Orders', 'shield-check-outline', {
+      item('Protected Trade Orders', 'shield-check-outline', {
         route: 'Orders',
         description: 'Track order coverage, quality & delivery guarantees',
         stats: 'Real-time status',
@@ -248,14 +248,12 @@ export const SERVICE_HUBS: ServiceHub[] = [
       { label: 'Languages', value: '15+', icon: 'translate' },
     ],
     items: [
-      item('Raise Support Ticket', 'ticket-confirmation-outline', {
-        route: 'HelpSupport',
-        params: { focus: 'ticket' },
-        description: 'Create a support ticket and track its status',
-        stats: 'All statuses',
-        badge: 'Track',
-        badgeColor: '#6366f1',
-        popular: true,
+       item('File a Dispute', 'clipboard-alert-outline', {
+        serviceKey: 'dispute-resolution',
+        description: 'Resolve quality, delivery or payment disputes quickly',
+        stats: '7-15 days resolution',
+        badge: 'Priority',
+        badgeColor: '#ef4444',
       }),
       item('Service History', 'briefcase-clock-outline', {
         route: 'BookedServiceDetails',

@@ -75,26 +75,14 @@ type LocalMessage = MessageItem & {
 };
 
 const buyerActions = [
-  ['camera-outline', 'Camera', 'camera'],
-  ['image-outline', 'Gallery', 'gallery'],
-  ['file-document-outline', 'Documents', 'document'],
-  ['folder-outline', 'Files', 'file'],
-  ['microphone-outline', 'Voice', 'voice'],
-  ['package-variant-closed', 'Product', 'product'],
-  ['storefront-outline', 'Store', 'store'],
+  ['camera-outline', 'Camera', 'media'],
+  ['file-document-outline', 'Documents & Files', 'document'],
   ['clipboard-list-outline', 'RFQ', 'rfq'],
 ] as const;
 
 const sellerActions = [
-  ['camera-outline', 'Camera', 'camera'],
-  ['image-outline', 'Gallery', 'gallery'],
-  ['file-document-outline', 'Documents', 'document'],
-  ['folder-outline', 'Files', 'file'],
-  ['microphone-outline', 'Voice', 'voice'],
-  ['package-variant-closed', 'Product', 'product'],
-  ['storefront-outline', 'Store', 'store'],
-  ['cash-multiple', 'Quotation', 'quotation'],
-  ['rocket-launch-outline', 'Order', 'start_order'],
+  ['camera-outline', 'Camera', 'media'],
+  ['file-document-outline', 'Documents & Files', 'document'],
 ] as const;
 
 // ─── Safe Helper Functions ────────────────────────────────────────────────
@@ -459,6 +447,15 @@ function ChatDetailsScreen() {
   };
 
   const openAction = (action: string) => {
+    if (action === 'media') {
+      setSheetMode(null);
+      Alert.alert('Camera', 'Take a photo or choose existing images.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Gallery', onPress: pickGallery },
+        { text: 'Take Photo', onPress: pickCamera },
+      ]);
+      return;
+    }
     if (action === 'camera') { pickCamera(); return; }
     if (action === 'gallery') { pickGallery(); return; }
     if (action === 'document' || action === 'file') { pickDocument(); return; }
@@ -505,25 +502,29 @@ function ChatDetailsScreen() {
     const response = await launchImageLibrary({
       mediaType: 'photo',
       quality: 0.8,
-      selectionLimit: 1,
+      selectionLimit: 10,
       includeBase64: false,
     });
-    const asset = response.assets?.[0];
-    if (response.didCancel || !asset?.uri) return;
-    await uploadAndSend(
-      { uri: asset.uri, name: asset.fileName ?? `gallery-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' },
-      'image',
-    );
+    const assets = (response.assets ?? []).filter(asset => asset.uri);
+    if (response.didCancel || !assets.length) return;
+    for (const asset of assets) {
+      await uploadAndSend(
+        { uri: asset.uri!, name: asset.fileName ?? `gallery-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' },
+        'image',
+      );
+    }
   };
 
   const pickDocument = async () => {
     try {
-      const [file] = await pick({ allowMultiSelection: false, type: [documentTypes.allFiles] });
-      if (!file?.uri) return;
-      await uploadAndSend(
-        { uri: file.uri, name: file.name ?? `doc-${Date.now()}`, type: file.type ?? 'application/octet-stream' },
-        'file',
-      );
+      const files = await pick({ allowMultiSelection: true, type: [documentTypes.allFiles] });
+      for (const file of files) {
+        if (!file?.uri) continue;
+        await uploadAndSend(
+          { uri: file.uri, name: file.name ?? `doc-${Date.now()}`, type: file.type ?? 'application/octet-stream' },
+          'file',
+        );
+      }
     } catch (error) {
       const maybe = error as { code?: string };
       if (maybe.code !== 'OPERATION_CANCELED') {
@@ -730,11 +731,6 @@ function ChatDetailsScreen() {
           multiline
           style={styles.input}
         />
-        <Pressable
-          onPress={() => Alert.alert('Emoji', 'Use device emoji keyboard.')}
-          style={styles.composerBtn}>
-          <Icon name="emoticon-outline" size={24} color={WP.muted} />
-        </Pressable>
         {draft.trim() ? (
           <Pressable
             onPress={submit}

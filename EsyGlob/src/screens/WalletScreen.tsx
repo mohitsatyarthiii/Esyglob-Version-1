@@ -67,23 +67,28 @@ const D = {
 
 const getTransactionIcon = (item: ActivityItem): { icon: string; bg: string; color: string } => {
   const type = String(item.type || item.section || '').toLowerCase();
-  
-  if (type.includes('payment') || type.includes('debit') || item.section === 'Payment') {
-    return { icon: 'arrow-up-right', bg: D.dangerLight, color: D.danger };
-  }
+  const credit = Number(item.amount ?? item.totalAmount ?? 0) >= 0 && !type.includes('debit');
+  if (type.includes('subscription')) return { icon: 'crown-outline', bg: D.dangerLight, color: D.danger };
+  if (type.includes('service')) return { icon: 'briefcase-check-outline', bg: D.dangerLight, color: D.danger };
   if (type.includes('withdrawal') || item.section === 'Withdrawal') {
-    return { icon: 'bank-transfer-out', bg: '#FFF7ED', color: '#F97316' };
+    return { icon: 'bank-transfer-out', bg: D.dangerLight, color: D.danger };
   }
   if (type.includes('refund')) {
-    return { icon: 'cash-refund', bg: '#F5F3FF', color: '#7C3AED' };
+    return { icon: 'cash-refund', bg: D.successLight, color: D.success };
   }
   if (type.includes('escrow')) {
-    return { icon: 'shield-lock', bg: D.primaryLight, color: D.primary };
+    return { icon: 'shield-lock-outline', bg: credit ? D.successLight : D.dangerLight, color: credit ? D.success : D.danger };
+  }
+  if (type.includes('topup') || type.includes('top_up') || type.includes('wallet_credit')) {
+    return { icon: 'wallet-plus-outline', bg: D.successLight, color: D.success };
+  }
+  if (type.includes('payment') || type.includes('debit') || item.section === 'Payment') {
+    return { icon: 'credit-card-check-outline', bg: D.dangerLight, color: D.danger };
   }
   if (type.includes('commission') || type.includes('fee')) {
     return { icon: 'receipt-text-minus', bg: '#FEFCE8', color: '#CA8A04' };
   }
-  return { icon: 'arrow-down-left', bg: D.successLight, color: D.success };
+  return { icon: credit ? 'cash-plus' : 'cash-minus', bg: credit ? D.successLight : D.dangerLight, color: credit ? D.success : D.danger };
 };
 
 // ─── Main Component ─────────────────────────────────────────────────────────

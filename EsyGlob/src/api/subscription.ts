@@ -1,7 +1,22 @@
 import { apiRequest } from './client';
 import { unwrapData } from './normalizers';
 export type BillingCycle='monthly'|'quarterly'|'yearly';
-export type SubscriptionPlan={_id:string;key:string;role:'buyer'|'seller';name:string;description?:string;prices:Record<BillingCycle,number>;features:string[];aiCredits:number;storageLimitMb:number;limits:Record<string,number>;supportLevel:string;priorityRanking:number;verificationLevel:string;trustScoreBoost:number;aiProvider:string};
+export interface SubscriptionPlan {
+  key: string;
+  role: 'buyer' | 'seller';
+  name: string;
+  description: string;
+  prices: Record<BillingCycle, number>;
+  aiCredits: number;
+  storageLimitMb: number;
+  supportLevel: string;
+  trustScoreBoost: number;
+  verificationLevel: string;
+  aiTier: 'esyai_lite' | 'esyai_pro' | 'esyai_advanced' | 'esyai_enterprise';
+  priorityRanking: number;
+  features: string[];
+  limits: Record<string, number>;
+}
 export type SubscriptionOverview={subscription:Record<string,any>;plan:SubscriptionPlan;usage:Record<string,any>};
 export async function fetchSubscription(role:'buyer'|'seller'){return unwrapData<SubscriptionOverview>(await apiRequest('/subscription',{query:{role}}));}
 export async function fetchSubscriptionPlans(role:'buyer'|'seller'){const data=unwrapData<{plans:SubscriptionPlan[]}>(await apiRequest('/subscription/plans',{query:{role}}));return data.plans||[];}

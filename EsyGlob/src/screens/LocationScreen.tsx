@@ -13,6 +13,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useLocationTracking } from '../hooks/useLocationTracking';
 import { formatDistanceToNow } from '../utils/date';
+import { useNetInfo } from '@react-native-community/netinfo';
+import { useQuery } from '@tanstack/react-query';
 
 // ─── Palette ────────────────────────────────────────────────────────────
 
@@ -41,6 +43,8 @@ const P = {
 
 function LocationScreen() {
   const navigation = useNavigation<any>();
+  const network = useNetInfo();
+  const publicIp = useQuery({ queryKey: ['public-ip'], queryFn: async () => { const response = await fetch('https://api.ipify.org?format=json'); if (!response.ok) throw new Error('IP unavailable'); return (await response.json()) as { ip?: string }; }, staleTime: 300_000, retry: 1 });
   const {
     currentLocation,
     isTracking,
@@ -132,6 +136,16 @@ function LocationScreen() {
             <Text style={styles.statusText}>
               {isTracking ? 'Live Tracking Active' : 'Tracking Inactive'}
             </Text>
+          </View>
+        </View>
+
+        <View style={styles.networkCard}>
+          <View style={styles.networkHeader}><View style={styles.networkIcon}><Icon name="access-point-network" size={22} color={P.accent} /></View><View><Text style={styles.cardTitle}>Network & Location</Text><Text style={styles.networkSub}>Connection details for this device</Text></View></View>
+          <View style={styles.networkGrid}>
+            <NetworkMetric label="Public IP" value={publicIp.data?.ip ?? (publicIp.isLoading ? 'Detecting…' : 'Unavailable')} icon="ip-network-outline" />
+            <NetworkMetric label="Current Network" value={network.type === 'unknown' ? 'Detecting…' : network.type} icon="wifi" />
+            <NetworkMetric label="Approx. Location" value={[address?.city,address?.country].filter(Boolean).join(', ') || 'Not detected'} icon="map-marker-radius-outline" />
+            <NetworkMetric label="Status" value={network.isConnected ? 'Connected' : 'Offline'} icon={network.isConnected ? 'check-circle-outline' : 'alert-circle-outline'} good={Boolean(network.isConnected)} />
           </View>
         </View>
 
@@ -275,6 +289,8 @@ function LocationScreen() {
   );
 }
 
+function NetworkMetric({label,value,icon,good}:{label:string;value:string;icon:string;good?:boolean}) { return <View style={styles.networkMetric}><Icon name={icon} size={17} color={good ? P.emerald : P.accent} /><View style={styles.networkMetricBody}><Text style={styles.addressLabel}>{label}</Text><Text numberOfLines={1} style={styles.networkValue}>{value}</Text></View></View>; }
+
 // ─── Styles ──────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -308,6 +324,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   content: { padding: 14, paddingBottom: 40 },
+  networkCard: { backgroundColor: P.surface, borderColor: '#BFDBFE', borderRadius: 16, borderWidth: 1, marginBottom: 12, padding: 15 },
+  networkHeader: { alignItems: 'center', flexDirection: 'row', gap: 10, marginBottom: 13 },
+  networkIcon: { alignItems: 'center', backgroundColor: P.accentLight, borderRadius: 12, height: 42, justifyContent: 'center', width: 42 },
+  networkSub: { color: P.muted, fontSize: 10, marginTop: 2 },
+  networkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  networkMetric: { alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 11, flexDirection: 'row', gap: 8, minWidth: '47%', padding: 10 },
+  networkMetricBody: { flex: 1 },
+  networkValue: { color: P.text, fontSize: 11, fontWeight: '800', marginTop: 2, textTransform: 'capitalize' },
 
   // Map Card
   mapCard: {

@@ -11,11 +11,13 @@ import {
   Text,
   TextInput,
   View,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
 import {
   AIChat,
@@ -54,6 +56,7 @@ function AIChatScreen() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [attachments, setAttachments] = useState<UploadAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [failedFiles, setFailedFiles] = useState<
     Array<{ uri: string; name: string; type: string }>
   >([]);
@@ -286,6 +289,16 @@ function AIChatScreen() {
         })),
     );
   };
+  const pickCamera = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
+    }
+    const result = await launchCamera({ mediaType: 'photo', quality: 0.8, includeBase64: false });
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+    await uploadSelected([{ uri: asset.uri, name: asset.fileName ?? `ai-camera-${Date.now()}.jpg`, type: asset.type ?? 'image/jpeg' }]);
+  };
   const pickDocuments = async () => {
     const files = await pick({
       allowMultiSelection: true,
@@ -461,18 +474,11 @@ function AIChatScreen() {
       ) : null}
       <View style={styles.composer}>
         <Pressable
-          onPress={pickImages}
+          onPress={() => setAttachmentMenuOpen(true)}
           disabled={uploading}
           style={styles.attachButton}
         >
-          <Icon name="image-plus" size={21} color={colors.primaryDark} />
-        </Pressable>
-        <Pressable
-          onPress={pickDocuments}
-          disabled={uploading}
-          style={styles.attachButton}
-        >
-          <Icon name="paperclip" size={21} color={colors.primaryDark} />
+          <Icon name="plus" size={23} color={colors.primaryDark} />
         </Pressable>
         <TextInput
           value={input}
@@ -504,6 +510,25 @@ function AIChatScreen() {
           )}
         </Pressable>
       </View>
+      <Modal transparent visible={attachmentMenuOpen} animationType="slide" onRequestClose={() => setAttachmentMenuOpen(false)}>
+        <Pressable style={styles.attachmentBackdrop} onPress={() => setAttachmentMenuOpen(false)}>
+          <View style={styles.attachmentMenu}>
+            <View style={styles.attachmentHandle} />
+            <Text style={styles.attachmentMenuTitle}>Add to your message</Text>
+            {[
+              ['camera-outline', 'Camera', pickCamera],
+              ['image-multiple-outline', 'Gallery', pickImages],
+              ['file-document-multiple-outline', 'Documents & Files', pickDocuments],
+            ].map(([icon, label, action]) => (
+              <Pressable key={String(label)} onPress={() => { setAttachmentMenuOpen(false); void (action as () => Promise<void>)(); }} style={styles.attachmentMenuItem}>
+                <View style={styles.attachmentMenuIcon}><Icon name={String(icon)} size={22} color={colors.primary} /></View>
+                <Text style={styles.attachmentMenuText}>{String(label)}</Text>
+                <Icon name="chevron-right" size={19} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
       <Modal
         visible={historyOpen}
         transparent
@@ -1044,6 +1069,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 28,
   },
+  attachmentBackdrop: { backgroundColor: '#0008', flex: 1, justifyContent: 'flex-end' },
+  attachmentMenu: { backgroundColor: '#FFF', borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 18, paddingBottom: 30 },
+  attachmentHandle: { alignSelf: 'center', backgroundColor: '#CBD5E1', borderRadius: 2, height: 4, marginBottom: 15, width: 42 },
+  attachmentMenuTitle: { color: colors.ink, fontSize: 15, fontWeight: '900', marginBottom: 8 },
+  attachmentMenuItem: { alignItems: 'center', borderBottomColor: colors.faint, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', gap: 11, minHeight: 58 },
+  attachmentMenuIcon: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 12, height: 40, justifyContent: 'center', width: 40 },
+  attachmentMenuText: { color: colors.ink, flex: 1, fontSize: 12, fontWeight: '800' },
   attachmentTray: {
     backgroundColor: colors.card,
     borderTopColor: colors.faint,

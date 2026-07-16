@@ -45,7 +45,7 @@ export default function ImageSearchScreen() {
   const openGallery = useCallback(async () => {
     try {
       setLabel('Opening gallery…');
-      const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 1 });
+      const response = await launchImageLibrary({ mediaType: 'photo', quality: 0.8, selectionLimit: 10 });
       if (response.didCancel) { navigation.goBack(); return; }
       if (response.errorCode) throw new Error(response.errorMessage ?? 'The gallery could not be opened.');
       const asset = response.assets?.[0];

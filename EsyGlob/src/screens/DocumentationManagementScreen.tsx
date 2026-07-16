@@ -22,6 +22,19 @@ import {
 } from '../api/documents';
 import { uploadFiles } from '../api/marketplace';
 import { ErrorState, LoadingState, EmptyState } from '../components/StateViews';
+
+async function openDocumentUrl(url: string, preview = true) {
+  try {
+    const officeFile = /\.(docx?|xlsx?|pptx?)(\?|$)/i.test(url);
+    const target = preview && officeFile
+      ? `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(url)}`
+      : url;
+    if (!(await Linking.canOpenURL(target))) throw new Error('No compatible document viewer is installed.');
+    await Linking.openURL(target);
+  } catch (error) {
+    Alert.alert('Unable to open document', error instanceof Error ? error.message : 'Please try again.');
+  }
+}
 export default function DocumentationManagementScreen() {
   const nav = useNavigation<any>();
   const qc = useQueryClient();
@@ -174,7 +187,7 @@ function DocumentCard({
       <View style={s.actions}>
         {url ? (
           <>
-            <Pressable onPress={() => Linking.openURL(url)} style={s.action}>
+            <Pressable onPress={() => openDocumentUrl(url)} style={s.action}>
               <Icon name="eye-outline" size={16} color="#2563EB" />
               <Text style={s.actionText}>View</Text>
             </Pressable>
@@ -182,7 +195,7 @@ function DocumentCard({
               <Icon name="file-eye-outline" size={16} color="#2563EB" />
               <Text style={s.actionText}>Preview</Text>
             </Pressable>
-            <Pressable onPress={() => Linking.openURL(url)} style={s.action}>
+            <Pressable onPress={() => openDocumentUrl(url, false)} style={s.action}>
               <Icon name="download-outline" size={16} color="#2563EB" />
               <Text style={s.actionText}>Download</Text>
             </Pressable>
@@ -238,7 +251,7 @@ function DocumentPreview({
             </View>
           )}
           {url ? (
-            <Pressable onPress={() => Linking.openURL(url)} style={s.openButton}>
+            <Pressable onPress={() => openDocumentUrl(url)} style={s.openButton}>
               <Icon name="open-in-new" size={18} color="#fff" />
               <Text style={s.openButtonText}>Open document</Text>
             </Pressable>

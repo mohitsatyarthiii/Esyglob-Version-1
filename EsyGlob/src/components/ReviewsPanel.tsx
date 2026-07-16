@@ -18,6 +18,7 @@ type Props = {
   sellerDashboard?: boolean;
   showForm?: boolean;
   title?: string;
+  onEditRequested?: () => void;
 };
 
 type ReviewForm = {
@@ -43,7 +44,7 @@ const blankForm: ReviewForm = {
   images: [],
 };
 
-function ReviewsPanel({ productId, sellerId, orderId, mine, sellerDashboard, showForm, title = 'Ratings & Reviews' }: Props) {
+function ReviewsPanel({ productId, sellerId, orderId, mine, sellerDashboard, showForm, title = 'Ratings & Reviews', onEditRequested }: Props) {
   const { activeRole, status } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ReviewForm>(blankForm);
@@ -146,6 +147,7 @@ function ReviewsPanel({ productId, sellerId, orderId, mine, sellerDashboard, sho
       comment: review.comment ?? '',
       images: review.images ?? [],
     });
+    onEditRequested?.();
   };
 
   const data = reviews.data;
