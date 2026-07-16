@@ -450,19 +450,6 @@ export async function ensureSubscriptionPlans() {
   if (!count) {
     await SubscriptionPlan.insertMany(DEFAULT_PLANS);
   }
-  const experience = {
-    buyer_free: { aiModel: 'EsyAI Lite', premiumBadge: 'Essential', businessGrowthScore: 15 },
-    buyer_pro: { aiModel: 'DeepSeek AI', premiumBadge: 'Professional', popular: true, businessGrowthScore: 45 },
-    buyer_business: { aiModel: 'ChatGPT AI', premiumBadge: 'Business Intelligence', recommended: true, businessGrowthScore: 75 },
-    buyer_enterprise: { aiModel: 'Claude AI', premiumBadge: 'Enterprise', businessGrowthScore: 100 },
-    seller_free: { aiModel: 'EsyAI Lite', premiumBadge: 'Starter', businessGrowthScore: 15 },
-    seller_verified: { aiModel: 'DeepSeek AI', premiumBadge: 'Verified', popular: true, businessGrowthScore: 45 },
-    seller_gold: { aiModel: 'ChatGPT AI', premiumBadge: 'Gold Growth', recommended: true, businessGrowthScore: 75 },
-    seller_enterprise: { aiModel: 'Claude AI', premiumBadge: 'Enterprise', businessGrowthScore: 100 },
-  };
-  await Promise.all(Object.entries(experience).map(([key, metadata]) =>
-    SubscriptionPlan.updateOne({ key }, { $set: metadata }),
-  ));
 }
 
 export async function getPlan(key, role) {
