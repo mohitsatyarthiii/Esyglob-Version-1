@@ -415,3 +415,8 @@ export async function fetchMarketInsightsDashboard(): Promise<MarketInsightsDash
     dataFreshness: data?.dataFreshness,
   };
 }
+
+export async function fetchSavedMarketResearch(): Promise<MarketInsightReport[]> {
+  const payload = await apiRequest('/market-insights/reports', { cache: true, cacheTtlMs: 60_000 });
+  return normalizeList<MarketInsightReport>(payload, ['reports', 'items']);
+}

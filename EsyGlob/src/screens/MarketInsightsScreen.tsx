@@ -2,6 +2,7 @@ import React, { memo, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -15,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   fetchMarketInsightsDashboard,
+  fetchSavedMarketResearch,
   MarketInsightReport,
   MarketResearchEvent,
   streamMarketResearch,
@@ -64,6 +66,11 @@ function MarketInsightsScreen() {
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
+  const savedQuery = useQuery({ queryKey: ['saved-market-research'], queryFn: fetchSavedMarketResearch, staleTime: 60_000 });
+  const savedReports = useMemo(() => {
+    const rows = [...(savedQuery.data || []), ...saved];
+    return rows.filter((item, index) => rows.findIndex(candidate => (candidate.id || candidate.title) === (item.id || item.title)) === index).slice(0, 20);
+  }, [saved, savedQuery.data]);
   const startResearch = async () => {
     setResearching(true);
     setResearchError('');
@@ -299,7 +306,7 @@ function MarketInsightsScreen() {
             onSave={saveReport}
           />
         ) : null}
-        {saved.length ? (
+        {savedReports.length ? (
           <View style={s.card}>
             <View style={s.sectionHead}>
               <View style={s.sectionIcon}>
@@ -311,7 +318,7 @@ function MarketInsightsScreen() {
               </View>
               <Text style={s.sectionTitle}>Saved reports</Text>
             </View>
-            {saved.map((item, index) => (
+            {savedReports.map((item, index) => (
               <Pressable
                 key={item.id ?? `${item.title}-${index}`}
                 onPress={() => setReport(item)}
@@ -380,6 +387,7 @@ const ReportView = memo(function ReportPanel({
 }) {
   const distribution = report.demographics?.distribution ?? [];
   const regional = report.demographics?.regionalComparison ?? [];
+  const sourceRecords = normalizeSourceRecords(report.sources ?? report.sourceChips ?? report.dataSources, sources);
   return (
     <View>
       <View style={s.reportHero}>
@@ -503,11 +511,12 @@ const ReportView = memo(function ReportPanel({
           <Text style={s.sectionTitle}>Sources</Text>
         </View>
         <View style={s.sources}>
-          {sources.map(source => (
-            <View key={source} style={s.source}>
+          {sourceRecords.map(source => (
+            <Pressable key={`${source.name}-${source.url}`} disabled={!source.url} onPress={() => source.url && Linking.openURL(source.url)} style={s.source}>
               <Icon name="link-variant" size={15} color="#4F46E5" />
-              <Text style={s.sourceText}>{source}</Text>
-            </View>
+              <Text style={s.sourceText}>{source.name}</Text>
+              {source.url ? <Icon name="open-in-new" size={12} color="#6366F1" /> : null}
+            </Pressable>
           ))}
         </View>
       </View>
@@ -522,7 +531,13 @@ function sectionIcon(type?: string) {
 
 function GenericResearchTable({ title, rows, columns }: { title: string; rows: Record<string, unknown>[]; columns?: string[] }) {
   const keys = columns?.length ? columns : [...new Set(rows.flatMap(row => Object.keys(row)))].slice(0, 6);
-  return <View style={s.card}><Text style={s.sectionTitle}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View>{<View style={[s.genericTableRow, s.tableHeader]}>{keys.map(key => <Text key={key} style={s.genericTableCellHead}>{humanize(key)}</Text>)}</View>}{rows.slice(0, 20).map((row, index) => <View key={index} style={s.genericTableRow}>{keys.map(key => <Text key={key} numberOfLines={3} style={s.genericTableCell}>{typeof row[key] === 'object' ? JSON.stringify(row[key]) : String(row[key] ?? '—')}</Text>)}</View>)}</View></ScrollView></View>;
+  return <View style={s.card}><Text style={s.sectionTitle}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View>{<View style={[s.genericTableRow, s.tableHeader]}>{keys.map(key => <Text key={key} style={s.genericTableCellHead}>{humanize(key)}</Text>)}</View>}{rows.slice(0, 20).map((row, index) => <View key={index} style={s.genericTableRow}>{keys.map(key => {
+    const value = row[key];
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—');
+    return /^https?:\/\//i.test(text)
+      ? <Pressable key={key} onPress={() => Linking.openURL(text)} style={s.genericTableCell}><Text style={s.tableLink}>Open</Text></Pressable>
+      : <Text key={key} numberOfLines={3} style={s.genericTableCell}>{text}</Text>;
+  })}</View>)}</View></ScrollView></View>;
 }
 
 function LabeledInput({
@@ -806,8 +821,7 @@ function InlineError({
 }
 
 function normalizeSources(value: unknown): string[] {
-  if (!Array.isArray(value))
-    return ['Marketplace DB', 'World Bank', 'Exchange-rate data'];
+  if (!Array.isArray(value)) return [];
   return value
     .map(item =>
       typeof item === 'string'
@@ -817,6 +831,10 @@ function normalizeSources(value: unknown): string[] {
           ),
     )
     .filter(Boolean);
+}
+function normalizeSourceRecords(value: unknown, fallback: string[]) {
+  if (!Array.isArray(value)) return fallback.map(name => ({ name, url: '' }));
+  return value.map(item => typeof item === 'string' ? { name: item, url: '' } : { name: String(item?.label ?? item?.name ?? item?.url ?? 'Connected data source'), url: typeof item?.url === 'string' ? item.url : '' });
 }
 function friendlyError(error: unknown) {
   const text =
@@ -1239,6 +1257,7 @@ const s = StyleSheet.create({
   genericTableRow: { borderBottomColor: '#E2E8F0', borderBottomWidth: 1, flexDirection: 'row' },
   genericTableCellHead: { color: '#475569', fontSize: 9, fontWeight: '900', padding: 9, width: 120 },
   genericTableCell: { color: '#334155', fontSize: 9, lineHeight: 13, padding: 9, width: 120 },
+  tableLink: { color: '#4F46E5', fontSize: 10, fontWeight: '800', textDecorationLine: 'underline' },
   error: {
     backgroundColor: '#FEF2F2',
     borderRadius: 13,

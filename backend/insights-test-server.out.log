@@ -1,0 +1,7 @@
+◇ injected env (16) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+MongoDB connected successfully
+Database connected successfully
+Pre-warming database queries...
+Database warmup complete
+Server running on port 5000 in production mode
+[AI] Ollama warm-up complete

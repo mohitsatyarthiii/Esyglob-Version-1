@@ -2,16 +2,16 @@ import crypto from 'crypto';
 import AIChatService from './ai-chat.service.js';
 import MarketInsightsRepository from '../repositories/market-insights.repository.js';
 import SavedResearchReport from '../models/SavedResearchReport.js';
-import { getAISearchResults } from '../lib/ai-marketplace-context.js';
+import { getAISearchResults, getSearchTerms } from '../lib/ai-marketplace-context.js';
 import { getCountriesData } from './market-insights.service.js';
 
 const cache = new Map();
 const CACHE_TTL = Number(process.env.MARKET_RESEARCH_CACHE_TTL_MS || 15 * 60 * 1000);
+const WEB_URL = String(process.env.PUBLIC_WEB_URL || 'https://esyglob.in').replace(/\/$/, '');
 
-const AGENTS = {
-  planner: 'Planner Agent', marketplace: 'Marketplace Data Agent', government: 'Government Data Agent',
-  reasoning: 'Trade Intelligence Agent', visualization: 'Visualization Agent', report: 'Report Generator', review: 'Review Agent',
-};
+function absolute(path) {
+  return path ? `${WEB_URL}${path.startsWith('/') ? path : `/${path}`}` : '';
+}
 
 function extractJson(text) {
   const raw = String(text || '').replace(/```json|```/gi, '').trim();
@@ -21,18 +21,77 @@ function extractJson(text) {
   try { return JSON.parse(raw.slice(start, end + 1)); } catch { return null; }
 }
 
-function compact(value, max = 28000) {
-  const text = JSON.stringify(value, (_key, item) => {
-    if (typeof item === 'string' && item.length > 1200) return `${item.slice(0, 1200)}…`;
-    return item;
-  });
-  return text.length > max ? text.slice(0, max) : text;
-}
-
 function roleContext(session) {
   if (session?.roles?.includes('seller')) return 'seller';
   if (session?.roles?.includes('buyer')) return 'buyer';
   return 'general';
+}
+
+function productRows(results) {
+  return (results.products || []).map(product => ({
+    product: product.name || 'Product',
+    category: product.category || 'General',
+    price: product.price != null ? `${product.currency || 'INR'} ${product.price}` : 'Request price',
+    moq: product.minimumOrderQuantity != null ? `${product.minimumOrderQuantity} ${product.unit || 'units'}` : 'Ask seller',
+    seller: product.sellerId?.companyName || 'Seller',
+    verified: product.sellerId?.isVerified ? 'Yes' : 'No',
+    link: absolute(`/products/${product._id}`),
+    sellerLink: product.sellerId?._id ? absolute(`/manufacturers/${product.sellerId._id}`) : '',
+  }));
+}
+
+function sellerRows(results) {
+  return (results.suppliers || []).map(seller => ({
+    seller: seller.companyName || seller.businessName || seller.userId?.fullName || 'Seller',
+    type: seller.companyType || 'supplier',
+    country: seller.address?.country || 'Not specified',
+    verified: seller.isVerified ? 'Yes' : 'No',
+    trustScore: seller.trustScore ?? 'N/A',
+    rating: seller.rating ?? 'N/A',
+    link: absolute(`/manufacturers/${seller._id}`),
+  }));
+}
+
+function categoryRows(results) {
+  return (results.categories || []).map(category => ({
+    category: category.name,
+    link: absolute(`/categories/${encodeURIComponent(category.slug || category.name || '')}`),
+  }));
+}
+
+function serviceRows(results) {
+  return (results.services || []).map(service => ({
+    service: service.title,
+    description: service.description || '',
+    link: absolute(`/services/${service.key}`),
+  }));
+}
+
+function sourceRecords(results, includeWorldBank) {
+  const records = [
+    { name: 'EsyGlob Marketplace', type: 'internal', url: WEB_URL },
+    ...productRows(results).map(item => ({ name: `Product: ${item.product}`, type: 'product', url: item.link })),
+    ...sellerRows(results).map(item => ({ name: `Seller: ${item.seller}`, type: 'seller', url: item.link })),
+    ...categoryRows(results).map(item => ({ name: `Category: ${item.category}`, type: 'category', url: item.link })),
+    ...serviceRows(results).map(item => ({ name: `Service: ${item.service}`, type: 'service', url: item.link })),
+  ];
+  if (includeWorldBank) records.push({ name: 'World Bank Open Data', type: 'official', url: 'https://data.worldbank.org/' });
+  return records;
+}
+
+function fallbackAnalysis(query, metrics, results) {
+  const productCount = results.products?.length || 0;
+  const sellerCount = results.suppliers?.length || 0;
+  return {
+    executiveSummary: `EsyGlob found ${productCount} matching products and ${sellerCount} matching sellers for “${query}”. Review verified sellers, MOQ, pricing and delivery terms through the linked records before purchasing.`,
+    insights: [
+      `${metrics.verifiedSupplierCount || 0} matched suppliers are verified in the current marketplace dataset.`,
+      metrics.averagePrice != null ? `The listed-product average price signal is ${Math.round(metrics.averagePrice)}; compare currency and unit before using it.` : 'Comparable listed pricing is limited; request quotations from matched sellers.',
+      `${metrics.rfqCount || 0} relevant active RFQ signals were found.`,
+    ],
+    recommendations: ['Open the best matching products and compare MOQ and seller verification.', 'Request current quotations and confirm specifications directly with sellers.'],
+    risks: ['Marketplace prices and availability can change; reconfirm before ordering.'],
+  };
 }
 
 class MarketResearchService {
@@ -54,69 +113,75 @@ class MarketResearchService {
     }
 
     const researchId = `research-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-    this.emit(emit, startedAt, { type: 'research_started', researchId, query: researchQuery, model: process.env.OLLAMA_MODEL || 'qwen2.5:3b', progress: 1 });
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.planner, operation: 'Understanding intent and planning research', status: 'running', progress: 5, sourceCount: 0, datasetsCollected: 0 });
+    this.emit(emit, startedAt, { type: 'research_started', researchId, query: researchQuery, model: process.env.OLLAMA_MODEL || 'qwen2.5:3b', progress: 2 });
+    this.emit(emit, startedAt, { type: 'step', agent: 'Marketplace Search', operation: 'Finding matching products, sellers and services', status: 'running', progress: 12, sourceCount: 1, datasetsCollected: 0 });
 
-    const plannerPrompt = `Plan a B2B market research investigation for this request: ${researchQuery}\nReturn JSON only: {"intent":"", "questions":[""], "dataNeeded":[""], "recommendedSections":[""], "searchTerms":[""]}. Make the plan specific to the request.`;
-    const planResult = await AIChatService.callOllama(plannerPrompt, [], 'You are the Planner Agent for EsyGlob market research. Do not invent facts.', { maxTokens: 650, temperature: 0.2 }).catch(() => null);
-    const plan = extractJson(planResult?.message) || { intent: researchQuery, searchTerms: [productName, category, country].filter(Boolean), recommendedSections: [] };
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.planner, operation: 'Research plan ready', status: 'success', progress: 13, plan, sourceCount: 0, datasetsCollected: 0 });
-
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.marketplace, operation: 'Collecting authorized marketplace data', status: 'running', progress: 18, sourceCount: 1, datasetsCollected: 0 });
-    const filters = { keywords: Array.isArray(plan.searchTerms) ? plan.searchTerms.slice(0, 10) : [], categories: category ? [category] : [], countries: country ? [country] : [] };
-    const [marketplaceResults, marketplaceMetrics, countries] = await Promise.all([
+    const terms = getSearchTerms(researchQuery, { keywords: [productName, category].filter(Boolean), countries: country ? [country] : [] });
+    const filters = { keywords: terms, categories: category ? [category] : [], countries: country ? [country] : [] };
+    const countryPromise = country ? getCountriesData().catch(() => []) : Promise.resolve([]);
+    const [results, metrics, countries] = await Promise.all([
       getAISearchResults({ query: researchQuery, filters, userId }),
       MarketInsightsRepository.getMarketplaceData(productName || researchQuery, category, country),
-      getCountriesData(),
+      countryPromise,
     ]);
-    const authorizedMarketplace = {
-      products: marketplaceResults.products,
-      suppliers: marketplaceResults.suppliers,
-      manufacturers: marketplaceResults.manufacturers,
-      categories: marketplaceResults.categories,
-      rfqs: marketplaceResults.rfqs,
-      quotations: marketplaceResults.quotations,
-      orders: marketplaceResults.orders,
-      services: marketplaceResults.services,
-      metrics: marketplaceMetrics,
+    const selectedCountry = countries.find(item => item.name?.toLowerCase() === country.toLowerCase());
+    const counts = { products: results.products.length, sellers: results.suppliers.length, categories: results.categories.length, services: results.services.length };
+    this.emit(emit, startedAt, { type: 'step', agent: 'Marketplace Search', operation: 'Relevant platform data and links collected', status: 'success', progress: 48, sourceCount: 1 + Object.values(counts).reduce((sum, value) => sum + value, 0), datasetsCollected: 1, counts });
+    this.emit(emit, startedAt, { type: 'step', agent: 'EsyAI Insights', operation: 'Writing concise product insights', status: 'running', progress: 58, sourceCount: 1, datasetsCollected: selectedCountry ? 2 : 1 });
+
+    const evidence = {
+      request: researchQuery,
+      counts,
+      metrics,
+      products: productRows(results).slice(0, 6).map(({ link, sellerLink, ...item }) => item),
+      sellers: sellerRows(results).slice(0, 5).map(({ link, ...item }) => item),
+      countryIndicator: selectedCountry || null,
     };
-    const sourceCount = 2;
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.marketplace, operation: 'Marketplace dataset collected', status: 'success', progress: 32, sourceCount, datasetsCollected: 1, counts: { products: marketplaceResults.products.length, suppliers: marketplaceResults.suppliers.length, rfqs: marketplaceResults.rfqs.length } });
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.government, operation: 'Validating official economic and trade indicators', status: 'success', progress: 43, sourceCount, datasetsCollected: 2, countryCount: countries.length });
+    const prompt = `Using only this evidence, return concise JSON: {"executiveSummary":"max 30 words","insights":["max 12 words"],"recommendations":["max 12 words"],"risks":["max 12 words"]}. Use 3 insights, 2 recommendations and 1 risk. Never invent facts or links. Evidence: ${JSON.stringify(evidence).slice(0, 1800)}`;
+    let result = null;
+    let generated = null;
+    try {
+      result = await AIChatService.callOllama(prompt, [], 'You are a concise B2B marketplace analyst. Output a small valid JSON object only.', { maxTokens: 180, temperature: 0.1, timeoutMs: 45000, jsonMode: true });
+      generated = extractJson(result.message);
+    } catch {
+      // Retrieval remains useful even if the local model is temporarily unavailable.
+    }
+    generated ||= fallbackAnalysis(researchQuery, metrics, results);
 
-    const sourceContext = {
-      request: { researchQuery, productName, country, category, mode, role: roleContext(session) },
-      plan,
-      marketplace: authorizedMarketplace,
-      officialCountryData: country ? countries.filter(item => item.name?.toLowerCase() === country.toLowerCase()).slice(0, 3) : countries.slice(0, 12),
-    };
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.reasoning, operation: 'Comparing data and reasoning about the market', status: 'running', progress: 50, sourceCount, datasetsCollected: 2 });
-
-    const reportPrompt = `Conduct the research yourself using ONLY the supplied authorized datasets. Build a dynamic report for the user's actual request; omit irrelevant sections. Never invent numbers, companies, certifications, HS codes, tariffs, sources, or URLs. Clearly mark unavailable evidence. Return valid JSON only with this shape:
-{"title":"","executiveSummary":"","kpis":[{"label":"","value":"","trend":"up|down|stable","note":""}],"sections":[{"type":"narrative|risks|opportunities|strategy|suppliers|buyers|trade","title":"","summary":"","points":[""],"confidence":0}],"charts":[{"type":"bar|line|pie","title":"","data":[{"label":"","value":0}]}],"tables":[{"title":"","columns":[""],"rows":[{}]}],"recommendations":[""],"risks":[{"label":"","level":"low|medium|high","reason":""}],"sources":[{"name":"EsyGlob Marketplace|World Bank Open Data","type":"internal|official","url":""}],"dataGaps":[""]}.
-Research plan and datasets:\n${compact(sourceContext)}`;
-    const result = await AIChatService.callOllama(reportPrompt, [], 'You are EsyGlob Trade Intelligence Agent and Report Generator. Evidence first. Produce decision-useful research, not generic prose.', { maxTokens: 2600, temperature: 0.25 });
-    const generated = extractJson(result.message);
-    if (!generated) throw Object.assign(new Error('The research model returned an invalid structured report. Please retry.'), { statusCode: 502 });
-
-    const sections = Array.isArray(generated.sections) ? generated.sections : [];
-    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', section, index, progress: 58 + Math.round(((index + 1) / Math.max(sections.length, 1)) * 24), sourceCount, datasetsCollected: 2 }));
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.visualization, operation: 'Preparing charts and tables', status: 'success', progress: 86, sourceCount, datasetsCollected: 2, chartCount: generated.charts?.length || 0, tableCount: generated.tables?.length || 0 });
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.review, operation: 'Reviewing evidence and final report', status: 'running', progress: 91, sourceCount, datasetsCollected: 2 });
-
+    const insights = Array.isArray(generated.insights) ? generated.insights.slice(0, 4) : [];
+    const sections = [{ type: 'opportunities', title: 'Product insights', summary: '', points: insights, confidence: 85 }];
+    const products = productRows(results);
+    const sellers = sellerRows(results);
+    const tables = [
+      ...(products.length ? [{ title: 'Matching products', columns: ['product', 'category', 'price', 'moq', 'seller', 'verified', 'link', 'sellerLink'], rows: products }] : []),
+      ...(sellers.length ? [{ title: 'Matching sellers', columns: ['seller', 'type', 'country', 'verified', 'trustScore', 'rating', 'link'], rows: sellers }] : []),
+      ...(results.categories.length ? [{ title: 'Related categories', columns: ['category', 'link'], rows: categoryRows(results) }] : []),
+      ...(results.services.length ? [{ title: 'Relevant services', columns: ['service', 'description', 'link'], rows: serviceRows(results) }] : []),
+    ];
+    const sources = sourceRecords(results, Boolean(selectedCountry));
     const report = {
-      id: researchId, reportType: mode, query: researchQuery, title: generated.title || `Research: ${researchQuery}`,
-      executiveSummary: generated.executiveSummary || '', kpis: generated.kpis || [], sections,
-      charts: generated.charts || [], tables: generated.tables || [], recommendations: generated.recommendations || [],
-      risks: generated.risks || [], sources: generated.sources || [], dataGaps: generated.dataGaps || [],
-      marketplaceSnapshot: marketplaceMetrics, model: result.model, provider: result.provider,
-      sourceCount, datasetsCollected: 2, createdAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+      id: researchId, reportType: mode, query: researchQuery, title: `Insights for ${productName || category || researchQuery}`,
+      executiveSummary: generated.executiveSummary || fallbackAnalysis(researchQuery, metrics, results).executiveSummary,
+      kpis: [
+        { label: 'Products', value: counts.products, trend: 'stable', note: 'Matching live listings' },
+        { label: 'Sellers', value: counts.sellers, trend: 'stable', note: 'Matching platform profiles' },
+        { label: 'Verified', value: metrics.verifiedSupplierCount || 0, trend: 'stable', note: 'Verified matched suppliers' },
+        { label: 'Active RFQs', value: metrics.rfqCount || 0, trend: 'stable', note: 'Current demand signal' },
+      ],
+      sections, charts: [], tables,
+      recommendations: (generated.recommendations || []).slice(0, 3),
+      risks: (generated.risks || []).slice(0, 2).map((risk, index) => ({ label: `Check ${index + 1}`, level: 'medium', reason: String(risk) })),
+      sources, dataGaps: [], marketplaceSnapshot: metrics,
+      model: result?.model || process.env.OLLAMA_MODEL || 'qwen2.5:3b', provider: result?.provider || 'ollama',
+      sourceCount: sources.length, datasetsCollected: selectedCountry ? 2 : 1, createdAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
     };
+
+    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', section, index, progress: 82, sourceCount: sources.length, datasetsCollected: report.datasetsCollected }));
     const saved = await SavedResearchReport.create({ userId, roleContext: roleContext(session), reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd', title: report.title, productName, country, query: researchQuery, reportData: report });
     report.savedReportId = String(saved._id);
     cache.set(cacheKey, { createdAt: Date.now(), report });
-    this.emit(emit, startedAt, { type: 'step', agent: AGENTS.review, operation: 'Research completed and saved', status: 'success', progress: 98, sourceCount, datasetsCollected: 2 });
-    this.emit(emit, startedAt, { type: 'report', report, progress: 100, sourceCount, datasetsCollected: 2 });
+    this.emit(emit, startedAt, { type: 'step', agent: 'Result Builder', operation: 'Insights and verified platform links ready', status: 'success', progress: 98, sourceCount: sources.length, datasetsCollected: report.datasetsCollected });
+    this.emit(emit, startedAt, { type: 'report', report, progress: 100, sourceCount: sources.length, datasetsCollected: report.datasetsCollected });
     return report;
   }
 }

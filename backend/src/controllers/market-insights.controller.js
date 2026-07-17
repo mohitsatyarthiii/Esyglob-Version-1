@@ -1,7 +1,17 @@
 import MarketInsightsService from '../services/market-insights.service.js';
 import MarketResearchService from '../services/market-research.service.js';
+import SavedResearchReport from '../models/SavedResearchReport.js';
+import { refundUsage } from '../lib/subscription-access.js';
 
 class MarketInsightsController {
+  static async listResearchReports(req, res) {
+    try {
+      const rows = await SavedResearchReport.find({ userId: req.user._id, status: 'active' }).select('title reportType productName country query reportData isBookmarked isFavorite createdAt updatedAt').sort({ updatedAt: -1 }).limit(40).lean();
+      return res.json({ reports: rows.map(row => ({ ...row.reportData, savedReportId: String(row._id), isBookmarked: row.isBookmarked, isFavorite: row.isFavorite })) });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || 'Unable to load research reports' });
+    }
+  }
   static async streamResearch(req, res) {
     const userId = req.user?._id;
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -14,6 +24,7 @@ class MarketInsightsController {
       send({ type: 'done' });
     } catch (error) {
       console.error('[Market-Research-Stream] Error:', error);
+      await refundUsage(req.user, 'marketInsights', 1, { ai: true }).catch(() => undefined);
       send({ type: 'error', message: error.message || 'Research failed', status: error.statusCode || 500 });
     } finally {
       clearInterval(heartbeat);

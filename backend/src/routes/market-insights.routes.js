@@ -12,7 +12,9 @@ router.use(requireAuth);
 // GET - Dashboard data
 router.get('/', MarketInsightsController.getDashboard);
 
-router.post('/research/stream', requireSubscriptionFeature('marketInsights', { ai: true, aiFeature: 'research' }), MarketInsightsController.streamResearch);
+router.get('/reports', MarketInsightsController.listResearchReports);
+
+router.post('/research/stream', requireSubscriptionFeature('marketInsights', { ai: true, aiFeature: 'market_trends' }), MarketInsightsController.streamResearch);
 
 // POST - Generate report
 router.post('/', MarketInsightsController.generateReport);

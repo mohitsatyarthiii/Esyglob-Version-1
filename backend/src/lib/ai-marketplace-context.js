@@ -173,14 +173,14 @@ async function getAISearchResultsUncached({
 
   const [rawProducts, suppliers, categories, rfqs] = await Promise.all([
     Product.find(productQuery)
-      .select('name slug category subcategory price currency minimumOrderQuantity unit images averageRating totalOrders sellerId tags description specifications sampleAvailable samplePrice leadTime')
+      .select('name slug category subcategory price currency minimumOrderQuantity unit images documents averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
       .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
       .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
       .limit(productLimit)
       .lean()
       .exec(),
     Seller.find(sellerQuery)
-      .select('companyName companyType companyDescription address isVerified trustScore rating productCategories exportMarkets userId')
+      .select('companyName businessName companyType companyDescription address factoryInfo companyDetails certifications verificationStatus isVerified trustScore rating reviewCount productCategories exportMarkets shippingInfo totalProducts responseRate averageResponseTimeHours onTimeDeliveryRate userId')
       .populate('userId', 'fullName')
       .sort({ isVerified: -1, trustScore: -1, rating: -1, createdAt: -1 })
       .limit(supplierLimit)
@@ -193,7 +193,7 @@ async function getAISearchResultsUncached({
       .lean()
       .exec(),
     RFQ.find(rfqQuery)
-      .select('title description category subcategory quantity unit targetPrice currency deliveryCountry status quotationCount createdAt')
+      .select('title description category subcategory quantity unit targetPrice currency deliveryCountry deliveryPort deliveryTimeline specifications buyerRequirements certificationsRequired status quotationCount createdAt')
       .sort({ createdAt: -1 })
       .limit(rfqLimit)
       .lean()
