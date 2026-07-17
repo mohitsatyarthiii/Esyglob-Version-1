@@ -1,7 +1,7 @@
 import { matchKnowledgeResponse } from './marketplace-knowledge.js';
 
 function isAdvancedReasoning(message) {
-  return /compare|recommend|best|better|analy[sz]e|analysis|forecast|trend|strategy|competitor|opportunit|risk|growth|why|should i|which country|lowest price|highest demand/i.test(message || '');
+  return /compare|recommend|best|better|analy[sz]e|analysis|forecast|trend|strategy|competitor|opportunit|risk|growth|why|should i|which country|lowest price|highest demand|subscription|membership|premium|plan pricing|payment method|dispute.*status|shipment.*status|trade assurance.*status/i.test(message || '');
 }
 
 function isProductInfoIntent(message) {

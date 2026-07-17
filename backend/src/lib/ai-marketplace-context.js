@@ -10,6 +10,9 @@ import { listServices } from './services-catalog.js';
 const STOP_WORDS = new Set([
   'find', 'show', 'need', 'with', 'from', 'for', 'the', 'and', 'best', 'top', 'help', 'me',
   'supplier', 'suppliers', 'category', 'categories', 'manufacturer', 'manufacturers', 'product', 'products',
+  'compare', 'comparison', 'matching', 'verified', 'seller', 'sellers', 'price', 'pricing', 'moq',
+  'rating', 'trust', 'explain', 'membership', 'option', 'options', 'give', 'app', 'action', 'actions',
+  'open', 'each', 'result', 'results', 'best', 'better', 'available', 'platform',
 ]);
 
 const PUBLIC_SERVICE_KEYS = new Set([
@@ -173,7 +176,7 @@ async function getAISearchResultsUncached({
 
   const [rawProducts, suppliers, categories, rfqs] = await Promise.all([
     Product.find(productQuery)
-      .select('name slug category subcategory price currency minimumOrderQuantity unit images documents averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
+      .select('name slug category subcategory price currency minimumOrderQuantity unit images documents variants averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
       .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
       .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
       .limit(productLimit)

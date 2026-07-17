@@ -744,6 +744,14 @@ type MarketplaceSupplier = {
 type MarketplaceSnapshot = {
   topProducts?: MarketplaceProduct[];
   topSuppliers?: MarketplaceSupplier[];
+  navigationActions?: Array<{
+    id?: string;
+    label?: string;
+    route?: string;
+    params?: Record<string, unknown>;
+    icon?: string;
+    entityType?: string;
+  }>;
 };
 
 function MarketplaceResults({ snapshot }: { snapshot: MarketplaceSnapshot }) {
@@ -751,7 +759,8 @@ function MarketplaceResults({ snapshot }: { snapshot: MarketplaceSnapshot }) {
   const { formatPrice } = useCurrency();
   const products = snapshot.topProducts?.slice(0, 4) ?? [];
   const suppliers = snapshot.topSuppliers?.slice(0, 4) ?? [];
-  if (!products.length && !suppliers.length) return null;
+  const actions = snapshot.navigationActions?.filter(action => action.route).slice(0, 12) ?? [];
+  if (!products.length && !suppliers.length && !actions.length) return null;
   return (
     <View style={styles.marketResults}>
       {products.length ? (
@@ -833,6 +842,24 @@ function MarketplaceResults({ snapshot }: { snapshot: MarketplaceSnapshot }) {
             </Pressable>
           ))}
         </>
+      ) : null}
+      {actions.length ? (
+        <View style={styles.platformActions}>
+          <Text style={styles.marketTitle}>Open in EsyGlob</Text>
+          <View style={styles.platformActionGrid}>
+            {actions.map(action => (
+              <Pressable
+                key={action.id ?? `${action.route}-${action.label}`}
+                onPress={() => action.route && navigation.navigate(action.route, action.params ?? {})}
+                style={styles.platformAction}
+              >
+                <Icon name={action.icon ?? 'arrow-right-circle-outline'} size={16} color={colors.primary} />
+                <Text numberOfLines={2} style={styles.platformActionText}>{action.label ?? 'Open'}</Text>
+                <Icon name="chevron-right" size={15} color={colors.muted} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : null}
     </View>
   );
@@ -1239,6 +1266,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 3,
   },
+  platformActions: { marginTop: 8 },
+  platformActionGrid: { gap: 6 },
+  platformAction: {
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    minHeight: 42,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  platformActionText: { color: colors.ink, flex: 1, fontSize: 10, fontWeight: '800' },
   followUps: {
     borderTopColor: colors.faint,
     borderTopWidth: StyleSheet.hairlineWidth,

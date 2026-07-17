@@ -2,6 +2,7 @@ import AIService from '../lib/ai-service.js';
 import { getAISearchResults, summarizeMarketplaceResults } from '../lib/ai-marketplace-context.js';
 import { resolveSmartResponse } from '../lib/smart-intelligence.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
+import AIPlatformContextService from './ai-platform-context.service.js';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
@@ -33,9 +34,12 @@ class AIChatService {
    * Determine role context
    */
   static getRoleContext(requestedRole, session) {
-    if (['buyer', 'seller', 'admin', 'general'].includes(requestedRole)) return requestedRole;
-    if (session?.roles?.includes('seller')) return 'seller';
-    if (session?.roles?.includes('buyer')) return 'buyer';
+    const roles = Array.isArray(session?.roles) ? session.roles : [session?.primaryRole].filter(Boolean);
+    if (requestedRole === 'admin' && roles.includes('admin')) return 'admin';
+    if (requestedRole === 'seller' && roles.includes('seller')) return 'seller';
+    if (requestedRole === 'buyer' && (roles.includes('buyer') || !roles.length)) return 'buyer';
+    if (roles.includes('seller')) return 'seller';
+    if (roles.includes('buyer')) return 'buyer';
     return 'general';
   }
 
@@ -46,8 +50,8 @@ class AIChatService {
     const text = message.toLowerCase().trim();
     if (!text) return false;
     if (/^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|who are you|what can you do)[\s.!?]*$/.test(text)) return false;
-    const marketplaceNoun = /product|supplier|manufacturer|category|factory|service|rfq|quotation|quote|order/;
-    const discoveryIntent = /find|search|show|recommend|compare|source|sourcing|shortlist|alternative|available|marketplace/;
+    const marketplaceNoun = /product|supplier|manufacturer|category|subcategory|factory|service|rfq|quotation|quote|order|certification|variant|specification|trade assurance|shipping|logistics|membership|subscription|plan|payment|refund|dispute|market insight|hs code|import|export|support|help|faq|policy/;
+    const discoveryIntent = /find|search|show|recommend|compare|source|sourcing|shortlist|alternative|available|marketplace|explain|what|how|which|open|price|status|track|feature/;
     const accountIntent = /\b(my|our)\b.*\b(rfq|quotation|quote|order|payment|shipment)\b|\b(rfq|quotation|quote|order|payment|shipment)\b.*\b(status|track|manage|history)\b/;
     return (marketplaceNoun.test(text) && discoveryIntent.test(text)) || accountIntent.test(text);
   }
@@ -56,20 +60,18 @@ class AIChatService {
    * Build platform context for AI
    */
   static async buildPlatformContext(message, role, userId) {
-    if (!this.needsMarketplaceContext(message)) {
-      return {
-        snapshot: { terms: [], productCount: 0, supplierCount: 0, rfqCount: 0, quotationCount: 0, topProducts: [], topSuppliers: [], topRfqs: [] },
-        text: `${role} assistant context: no marketplace lookup needed.`,
-        results: { terms: [], products: [], suppliers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] },
-      };
+    const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
+    let results = emptyResults;
+    if (this.needsMarketplaceContext(message)) {
+      const filters = AIService.deriveSearchFilters(message);
+      results = await getAISearchResults({ query: message, filters, userId });
     }
-
-    const filters = AIService.deriveSearchFilters(message);
-    const results = await getAISearchResults({ query: message, filters, userId });
+    const knowledge = await AIPlatformContextService.enrich({ message, role, results, userId });
 
     return {
       results,
       snapshot: {
+        roleContext: role,
         terms: results.terms,
         productCount: results.products.length,
         supplierCount: results.suppliers.length,
@@ -94,18 +96,18 @@ class AIChatService {
           rating: s.rating,
           link: `/manufacturers/${s._id}`,
         })),
-        topCategories: results.categories.slice(0, 4).map(c => ({
-          id: c._id, name: c.name, link: `/categories/${encodeURIComponent(c.slug || c.name)}`,
-        })),
-        topRfqs: results.rfqs.slice(0, 3).map(r => ({
-          id: r._id, title: r.title, category: r.category, quantity: r.quantity,
-          deliveryCountry: r.deliveryCountry,
-        })),
         topOrders: results.orders.slice(0, 3).map(o => ({
           id: o._id, orderNumber: o.orderNumber, status: o.status, paymentStatus: o.paymentStatus,
         })),
+        topRfqs: results.rfqs.slice(0, 4).map(r => ({ id: r._id, title: r.title, category: r.category, quantity: r.quantity, unit: r.unit, deliveryCountry: r.deliveryCountry })),
+        topQuotations: results.quotations.slice(0, 4).map(q => ({ id: q._id, title: q.rfqId?.title || q.productId?.name || 'Quotation', status: q.status, price: q.unitPrice || q.totalPrice, currency: q.currency })),
+        topCategories: results.categories.slice(0, 4).map(c => ({ id: c._id, name: c.name, slug: c.slug })),
+        topServices: (knowledge.services.length ? knowledge.services : results.services).slice(0, 6).map(s => ({ key: s.key, title: s.title, description: s.description })),
+        plans: knowledge.plans,
+        account: knowledge.account,
+        navigationActions: knowledge.navigationActions,
       },
-      text: `${role} assistant context:\n${summarizeMarketplaceResults(results)}`,
+      text: `${role} assistant context:\n${summarizeMarketplaceResults(results).slice(0, 1900)}${knowledge.text ? `\n${knowledge.text.slice(0, 1500)}` : ''}`,
     };
   }
 
@@ -257,7 +259,7 @@ class AIChatService {
   /**
    * Send message in AI chat (non-streaming)
    */
-  static async sendMessage(userId, body) {
+  static async sendMessage(userId, body, session = {}) {
     const message = body.message?.trim();
     const displayMessage = body.displayMessage?.trim() || message;
 
@@ -265,7 +267,7 @@ class AIChatService {
       throw Object.assign(new Error('Message is required'), { statusCode: 400 });
     }
 
-    const roleContext = this.getRoleContext(body.role, body);
+    const roleContext = this.getRoleContext(body.role, session);
     let chat;
 
     // Find or create chat

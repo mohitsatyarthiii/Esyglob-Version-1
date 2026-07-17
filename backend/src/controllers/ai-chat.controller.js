@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
-const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 420);
+const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 260);
 
 // Provider health tracking
 const providerHealth = {
@@ -47,7 +47,7 @@ class AIChatController {
    */
   static async sendMessage(req, res) {
     try {
-      const result = await AIChatService.sendMessage(req.user._id, req.body);
+      const result = await AIChatService.sendMessage(req.user._id, req.body, req.user);
       return res.json(result);
     } catch (error) {
       console.error('[AI-Chat-POST] Error:', error);
@@ -196,7 +196,7 @@ class AIChatController {
               const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 90000)),
+                signal: AbortSignal.timeout(Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 65000)),
                 body: JSON.stringify({
                   model: OLLAMA_MODEL,
                   keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
