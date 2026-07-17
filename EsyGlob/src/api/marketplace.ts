@@ -718,6 +718,12 @@ export async function updateOrderStatus(
   ) as Order;
 }
 
+export async function addOrderProductionUpdate(orderId: string, input: { stage: string; note?: string; attachments?: string[] }): Promise<Order> {
+  const payload = await apiRequest(`/orders/${orderId}/production-updates`, { method: 'POST', body: input });
+  const data = unwrapData<{ order?: Order } | Order>(payload);
+  return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;
+}
+
 export async function fetchOrders(
   params: {
     type?: 'buyer' | 'seller';

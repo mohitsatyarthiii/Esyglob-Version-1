@@ -38,11 +38,17 @@ export async function fetchSubscription(role: 'buyer' | 'seller') {
   );
 }
 
+/**
+ * ✅ FIXED: Fetch subscription plans from backend
+ * Backend returns: { plans: SubscriptionPlan[] }
+ * apiRequest already unwraps the response, so we just access data.plans
+ */
 export async function fetchSubscriptionPlans(role: 'buyer' | 'seller') {
-  const data = unwrapData<{ plans: SubscriptionPlan[] }>(
-    await apiRequest('/subscription/plans', { query: { role } })
-  );
-  return data.plans || [];
+  // apiRequest returns the already unwrapped data (which is { plans: [...] })
+  const data = await apiRequest('/subscription/plans', { query: { role } });
+  
+  // Return the plans array, or empty array if something goes wrong
+  return (data as { plans: SubscriptionPlan[] })?.plans || [];
 }
 
 export async function createSubscriptionOrder(

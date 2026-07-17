@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { fetchOrderDetails, updateOrderStatus } from '../api/marketplace';
+import { addOrderProductionUpdate, fetchOrderDetails, updateOrderStatus } from '../api/marketplace';
 import { Order } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
@@ -14,6 +14,7 @@ import { firstImage } from '../utils/images';
 import { useCurrency } from '../currency/CurrencyContext';
 
 const sellerNextStatuses = ['confirmed', 'processing', 'production', 'ready_to_ship', 'shipped', 'delivered', 'completed'];
+const productionStages = ['raw_material_purchased', 'manufacturing_started', 'assembly_running', 'quality_control', 'packaging', 'production_completed'];
 
 function OrderDetailsScreen() {
   const { formatPrice } = useCurrency();
@@ -39,6 +40,14 @@ function OrderDetailsScreen() {
     },
     onError: error => Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to update order.'),
   });
+  const productionUpdate = useMutation({
+    mutationFn: (stage: string) => addOrderProductionUpdate(orderId, { stage, note: notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-details', orderId] });
+      Alert.alert('Production updated', 'The buyer timeline and workflow were updated.');
+    },
+    onError: error => Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to update production.'),
+  });
 
   const item = order.data;
   const product = useMemo(() => (item ? getOrderProduct(item) : null), [item]);
@@ -60,6 +69,17 @@ function OrderDetailsScreen() {
   const seller = asRecord(item.sellerId);
   const buyer = asRecord(item.buyerId);
   const services = Array.isArray(item.platformServices) ? item.platformServices : Array.isArray(item.automatedServices) ? item.automatedServices : [];
+  const workflow = asRecord((item as unknown as Record<string, unknown>).workflowSnapshot);
+  const allowedNextStages = Array.isArray(workflow?.allowedNextStages) ? workflow.allowedNextStages.map(String) : sellerNextStatuses;
+  const orchestration = [
+    ['Escrow', 'bank-lock-outline', workflow?.escrow],
+    ['Production', 'factory', workflow?.production],
+    ['Inspection', 'clipboard-check-outline', workflow?.inspection],
+    ['Shipment', 'truck-fast-outline', workflow?.shipment],
+    ['Customs', 'passport', workflow?.customs],
+    ['Financing', 'finance', workflow?.financing],
+    ['Dispute', 'scale-balance', workflow?.dispute],
+  ] as Array<[string, string, unknown]>;
 
   return (
     <View style={styles.screen}>
@@ -95,6 +115,17 @@ function OrderDetailsScreen() {
             </View>
           </View>
         </View>
+
+        {workflow ? (
+          <View style={styles.workflowCard}>
+            <View style={styles.workflowHeader}><View><Text style={styles.workflowEyebrow}>TRADE WORKFLOW</Text><Text style={styles.sectionTitle}>Platform Orchestration</Text></View><Icon name="transit-connection-variant" size={28} color="#2563EB" /></View>
+            <InfoGrid items={[["Trade ID", workflow.tradeId], ["Current stage", workflow.currentStage], ["Next stage", workflow.nextStage], ["Responsible", workflow.responsibleParty]]} />
+            {Array.isArray(workflow.pendingActions) && workflow.pendingActions.length ? <View style={styles.pendingBox}><Icon name="clock-alert-outline" size={18} color="#B45309" /><Text style={styles.pendingText}>{workflow.pendingActions.map(String).join(' · ')}</Text></View> : null}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orchestrationRow}>
+              {orchestration.map(([label, icon, value]) => { const record = asRecord(value); const status = record?.status ?? record?.result ?? (value ? 'Active' : 'Pending'); return <View key={label} style={styles.orchestrationTile}><Icon name={icon} size={21} color={value ? '#16A34A' : '#94A3B8'} /><Text style={styles.orchestrationLabel}>{label}</Text><Text style={styles.orchestrationStatus}>{String(status).replace(/_/g, ' ')}</Text></View>; })}
+            </ScrollView>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Payment and logistics</Text>
@@ -157,16 +188,17 @@ function OrderDetailsScreen() {
 
         {canManage ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Seller shipment update</Text>
+            <Text style={styles.sectionTitle}>Seller workflow actions</Text>
             <TextInput value={trackingNumber} onChangeText={setTrackingNumber} placeholder="Tracking number" placeholderTextColor={colors.muted} style={styles.input} />
             <TextInput value={notes} onChangeText={setNotes} placeholder="Notes" placeholderTextColor={colors.muted} style={styles.input} />
             <View style={styles.statusGrid}>
-              {sellerNextStatuses.map(status => (
+              {allowedNextStages.map(status => (
                 <Pressable key={status} disabled={update.isPending} onPress={() => update.mutate(status)} style={[styles.statusButton, update.isPending && styles.disabled]}>
                   <Text style={styles.statusButtonText}>{status.replace(/_/g, ' ')}</Text>
                 </Pressable>
               ))}
             </View>
+            {['confirmed', 'processing', 'production'].includes(String(item.status)) ? <><Text style={styles.actionSubheading}>Structured production update</Text><View style={styles.statusGrid}>{productionStages.map(stage => <Pressable key={stage} disabled={productionUpdate.isPending} onPress={() => productionUpdate.mutate(stage)} style={[styles.productionButton, productionUpdate.isPending && styles.disabled]}><Icon name="factory" size={14} color="#1D4ED8" /><Text style={styles.productionButtonText}>{stage.replace(/_/g, ' ')}</Text></Pressable>)}</View></> : null}
           </View>
         ) : null}
       </ScrollView>
@@ -252,6 +284,15 @@ const styles = StyleSheet.create({
   headerTitle: { color: colors.ink, flex: 1, fontSize: 18, fontWeight: '900', textAlign: 'center' },
   content: { padding: spacing.lg, paddingBottom: spacing.xxl },
   hero: { backgroundColor: colors.card, borderRadius: radii.md, marginBottom: spacing.lg, padding: spacing.lg, ...shadow },
+  workflowCard: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE', borderRadius: radii.md, borderWidth: 1, marginBottom: spacing.lg, padding: spacing.lg },
+  workflowHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
+  workflowEyebrow: { color: '#2563EB', fontSize: 9, fontWeight: '900', letterSpacing: 1, marginBottom: 4 },
+  pendingBox: { alignItems: 'center', backgroundColor: '#FFFBEB', borderRadius: radii.sm, flexDirection: 'row', gap: 7, marginTop: spacing.sm, padding: spacing.md },
+  pendingText: { color: '#92400E', flex: 1, fontSize: 11, fontWeight: '800' },
+  orchestrationRow: { gap: spacing.sm, paddingTop: spacing.md },
+  orchestrationTile: { alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: radii.sm, minWidth: 105, padding: spacing.md },
+  orchestrationLabel: { color: colors.ink, fontSize: 11, fontWeight: '900', marginTop: 6 },
+  orchestrationStatus: { color: colors.muted, fontSize: 9, marginTop: 2, textTransform: 'capitalize' },
   heroTop: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
   heroTitleBlock: { flex: 1 },
   orderNumber: { color: colors.ink, fontSize: 21, fontWeight: '900' },
@@ -294,6 +335,9 @@ const styles = StyleSheet.create({
   statusButton: { backgroundColor: colors.ink, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   disabled: { opacity: 0.55 },
   statusButtonText: { color: '#fff', fontSize: 12, fontWeight: '900', textTransform: 'capitalize' },
+  actionSubheading: { color: colors.ink, fontSize: 13, fontWeight: '900', marginBottom: spacing.sm, marginTop: spacing.lg },
+  productionButton: { alignItems: 'center', backgroundColor: '#DBEAFE', borderRadius: radii.pill, flexDirection: 'row', gap: 5, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  productionButtonText: { color: '#1D4ED8', fontSize: 10, fontWeight: '900', textTransform: 'capitalize' },
 });
 
 export default OrderDetailsScreen;

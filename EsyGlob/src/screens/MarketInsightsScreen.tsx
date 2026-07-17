@@ -11,12 +11,13 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {
   fetchMarketInsightsDashboard,
-  generateMarketInsight,
   MarketInsightReport,
+  MarketResearchEvent,
+  streamMarketResearch,
 } from '../api/ai';
 import { readJson, writeJson } from '../storage/appStorage';
 
@@ -54,24 +55,34 @@ function MarketInsightsScreen() {
     () => readJson<MarketInsightReport[]>(REPORT_KEY) ?? [],
   );
   const [report, setReport] = useState<MarketInsightReport | null>(null);
+  const [researching, setResearching] = useState(false);
+  const [researchEvents, setResearchEvents] = useState<MarketResearchEvent[]>([]);
+  const [researchError, setResearchError] = useState('');
   const dashboard = useQuery({
     queryKey: ['market-insights-dashboard'],
     queryFn: fetchMarketInsightsDashboard,
     staleTime: 5 * 60_000,
     gcTime: 30 * 60_000,
   });
-  const mutation = useMutation({
-    mutationFn: () =>
-      generateMarketInsight({
-        reportType,
-        product,
-        country,
-        category,
-        timeframe: '12m',
-      }),
-    onSuccess: setReport,
-    onError: error => Alert.alert('Report unavailable', friendlyError(error)),
-  });
+  const startResearch = async () => {
+    setResearching(true);
+    setResearchError('');
+    setResearchEvents([]);
+    setReport({ title: `Researching ${product}`, sections: [], charts: [], tables: [] });
+    try {
+      await streamMarketResearch({ reportType, product, country, category, timeframe: '12m', query: [product, category, country].filter(Boolean).join(' ') }, event => {
+        setResearchEvents(items => [...items.slice(-39), event]);
+        if (event.type === 'section' && event.section) setReport(current => ({ ...(current || {}), sections: [...(current?.sections || []), event.section!] }));
+        if (event.type === 'report' && event.report) setReport(event.report);
+      });
+    } catch (error) {
+      const message = friendlyError(error);
+      setResearchError(message);
+      Alert.alert('Research unavailable', message);
+    } finally {
+      setResearching(false);
+    }
+  };
   const productMatches = useMemo(
     () =>
       product.trim().length < 2
@@ -115,7 +126,7 @@ function MarketInsightsScreen() {
     if (!report) return;
     await Share.share({ title: report.title, message: buildShareText(report) });
   };
-  const canGenerate = product.trim().length > 1 && !mutation.isPending;
+  const canGenerate = product.trim().length > 1 && !researching;
 
   return (
     <View style={s.screen}>
@@ -260,18 +271,16 @@ function MarketInsightsScreen() {
           ) : null}
           <Pressable
             disabled={!canGenerate}
-            onPress={() => mutation.mutate()}
+            onPress={startResearch}
             style={[s.generate, !canGenerate && s.disabled]}
           >
-            {mutation.isPending ? (
+            {researching ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <Icon name="creation" size={19} color="#FFF" />
             )}
             <Text style={s.generateText}>
-              {mutation.isPending
-                ? 'Analyzing connected sources…'
-                : 'Generate Market Intelligence'}
+              {researching ? 'AI researcher is working…' : 'Start AI Deep Research'}
             </Text>
           </Pressable>
         </View>
@@ -281,8 +290,8 @@ function MarketInsightsScreen() {
             retry={() => dashboard.refetch()}
           />
         ) : null}
-        {mutation.isPending ? <ReportSkeleton /> : null}
-        {report && !mutation.isPending ? (
+        {researching || researchEvents.length ? <ResearchWorkspace events={researchEvents} active={researching} error={researchError} /> : null}
+        {report ? (
           <ReportView
             report={report}
             sources={sourceNames}
@@ -325,6 +334,37 @@ function MarketInsightsScreen() {
       </ScrollView>
     </View>
   );
+}
+
+function ResearchWorkspace({ events, active, error }: { events: MarketResearchEvent[]; active: boolean; error: string }) {
+  const operational = events.filter(event => event.type === 'step');
+  const latest = [...events].reverse().find(event => event.type === 'step' || event.type === 'research_started');
+  const progress = Number(latest?.progress || (active ? 2 : events.length ? 100 : 0));
+  const elapsed = Number(latest?.elapsedMs || 0);
+  return (
+    <View style={s.researchWorkspace}>
+      <View style={s.researchTop}>
+        <View style={s.researchOrb}>{active ? <ActivityIndicator color="#FFFFFF" /> : <Icon name={error ? 'alert' : 'check-bold'} size={19} color="#FFFFFF" />}</View>
+        <View style={s.researchTopCopy}><Text style={s.researchKicker}>LIVE RESEARCH WORKSPACE</Text><Text style={s.researchTitle}>{String(latest?.operation || (active ? 'Starting research agents…' : error ? 'Research interrupted' : 'Research completed'))}</Text></View>
+        <Text style={s.progressValue}>{Math.min(100, progress)}%</Text>
+      </View>
+      <View style={s.progressTrack}><View style={[s.progressFill, { width: `${Math.min(100, progress)}%` }]} /></View>
+      <View style={s.researchMetrics}>
+        <ResearchMetric icon="timer-outline" label="Elapsed" value={`${Math.round(elapsed / 1000)}s`} />
+        <ResearchMetric icon="link-variant" label="Sources" value={String(latest?.sourceCount || 0)} />
+        <ResearchMetric icon="database-outline" label="Datasets" value={String(latest?.datasetsCollected || 0)} />
+        <ResearchMetric icon="account-group-outline" label="Agents" value={String(new Set(operational.map(item => item.agent)).size)} />
+      </View>
+      {error ? <Text style={s.researchError}>{error}</Text> : null}
+      <View style={s.agentTimeline}>
+        {operational.map((event, index) => <View key={`${event.agent}-${index}`} style={s.agentRow}><View style={[s.agentDot, event.status === 'success' && s.agentDotDone]}>{event.status === 'success' ? <Icon name="check" size={10} color="#FFFFFF" /> : null}</View><View style={s.agentCopy}><Text style={s.agentName}>{event.agent}</Text><Text style={s.agentOperation}>{event.operation}</Text></View><Text style={[s.agentStatus, event.status === 'success' && s.agentStatusDone]}>{event.status === 'success' ? 'DONE' : 'WORKING'}</Text></View>)}
+      </View>
+    </View>
+  );
+}
+
+function ResearchMetric({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return <View style={s.researchMetric}><Icon name={icon} size={15} color="#6366F1" /><Text style={s.researchMetricValue}>{value}</Text><Text style={s.researchMetricLabel}>{label}</Text></View>;
 }
 
 const ReportView = memo(function ReportPanel({
@@ -370,6 +410,12 @@ const ReportView = memo(function ReportPanel({
           </Pressable>
         </View>
       </View>
+      {report.kpis?.length ? <View style={s.kpiGrid}>{report.kpis.map((kpi, index) => <View key={`${kpi.label}-${index}`} style={s.kpiCard}><Icon name={kpi.trend === 'up' ? 'trending-up' : kpi.trend === 'down' ? 'trending-down' : 'minus'} size={18} color={kpi.trend === 'down' ? '#DC2626' : '#059669'} /><Text style={s.kpiValue}>{String(kpi.value ?? 'N/A')}</Text><Text style={s.kpiLabel}>{kpi.label}</Text>{kpi.note ? <Text style={s.kpiNote}>{kpi.note}</Text> : null}</View>)}</View> : null}
+      {report.sections?.map((section, index) => <View key={`${section.title}-${index}`} style={s.card}><View style={s.generatedSectionHead}><View style={s.sectionIcon}><Icon name={sectionIcon(section.type)} size={19} color="#4F46E5" /></View><View style={s.generatedSectionCopy}><Text style={s.sectionTitle}>{section.title}</Text>{section.confidence != null ? <Text style={s.confidence}>{Math.round(Number(section.confidence))}% confidence</Text> : null}</View></View>{section.content || section.summary ? <Text style={s.longText}>{section.content || section.summary}</Text> : null}{(section.points || section.bullets || []).map((point, pointIndex) => <View key={`${point}-${pointIndex}`} style={s.generatedPoint}><Icon name="check-circle-outline" size={16} color="#059669" /><Text style={s.generatedPointText}>{point}</Text></View>)}</View>)}
+      {report.charts?.map((chart, index) => <BarChart key={`${chart.title}-${index}`} title={chart.title || 'Research chart'} data={(chart.data || []).map(item => ({ label: item.label, value: Number(item.value || 0) }))} />)}
+      {report.tables?.map((table, index) => <GenericResearchTable key={`${table.title}-${index}`} title={table.title || 'Research table'} rows={table.rows || []} columns={table.columns} />)}
+      {report.recommendations?.length ? <View style={s.card}><Text style={s.sectionTitle}>Recommended action plan</Text>{report.recommendations.map((item, index) => <View key={`${item}-${index}`} style={s.actionRow}><Text style={s.actionNumber}>{index + 1}</Text><Text style={s.actionText}>{item}</Text></View>)}</View> : null}
+      {report.risks?.length ? <View style={s.card}><Text style={s.sectionTitle}>Risk indicators</Text>{report.risks.map((risk, index) => <View key={`${risk.label}-${index}`} style={s.riskRow}><View style={[s.riskLevel, risk.level === 'high' ? s.riskHigh : risk.level === 'medium' ? s.riskMedium : s.riskLow]}><Text style={s.riskLevelText}>{risk.level || 'review'}</Text></View><View style={s.riskCopy}><Text style={s.riskTitle}>{risk.label}</Text><Text style={s.riskReason}>{risk.reason}</Text></View></View>)}</View> : null}
       {report.scoring ? <ScoreGrid data={report.scoring} /> : null}
       {report.countryAnalysis ? (
         <MetricGrid
@@ -468,6 +514,16 @@ const ReportView = memo(function ReportPanel({
     </View>
   );
 });
+
+function sectionIcon(type?: string) {
+  const icons: Record<string, string> = { risks: 'shield-alert-outline', opportunities: 'target', strategy: 'chess-knight', suppliers: 'factory', buyers: 'account-tie-outline', trade: 'earth' };
+  return icons[String(type || '')] || 'text-box-search-outline';
+}
+
+function GenericResearchTable({ title, rows, columns }: { title: string; rows: Record<string, unknown>[]; columns?: string[] }) {
+  const keys = columns?.length ? columns : [...new Set(rows.flatMap(row => Object.keys(row)))].slice(0, 6);
+  return <View style={s.card}><Text style={s.sectionTitle}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View>{<View style={[s.genericTableRow, s.tableHeader]}>{keys.map(key => <Text key={key} style={s.genericTableCellHead}>{humanize(key)}</Text>)}</View>}{rows.slice(0, 20).map((row, index) => <View key={index} style={s.genericTableRow}>{keys.map(key => <Text key={key} numberOfLines={3} style={s.genericTableCell}>{typeof row[key] === 'object' ? JSON.stringify(row[key]) : String(row[key] ?? '—')}</Text>)}</View>)}</View></ScrollView></View>;
+}
 
 function LabeledInput({
   label,
@@ -728,19 +784,6 @@ function TextInsight({ title, text }: { title: string; text: string }) {
     <View style={s.card}>
       <Text style={s.sectionTitle}>{title}</Text>
       <Text style={s.longText}>{text}</Text>
-    </View>
-  );
-}
-function ReportSkeleton() {
-  return (
-    <View style={s.card}>
-      <View style={s.loadingHead}>
-        <ActivityIndicator color="#4F46E5" />
-        <Text style={s.loadingTitle}>Building your intelligence report</Text>
-      </View>
-      {[90, 65, 78, 48, 84].map((width, index) => (
-        <View key={index} style={[s.skeleton, { width: `${width}%` }]} />
-      ))}
     </View>
   );
 }
@@ -1148,6 +1191,54 @@ const s = StyleSheet.create({
     backgroundColor: '#E8EDF5',
     marginBottom: 10,
   },
+  researchWorkspace: { backgroundColor: '#111827', borderRadius: 20, marginBottom: 14, overflow: 'hidden', padding: 16 },
+  researchTop: { alignItems: 'center', flexDirection: 'row' },
+  researchOrb: { alignItems: 'center', backgroundColor: '#4F46E5', borderRadius: 15, height: 42, justifyContent: 'center', width: 42 },
+  researchTopCopy: { flex: 1, marginLeft: 10 },
+  researchKicker: { color: '#A5B4FC', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  researchTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', marginTop: 3 },
+  progressValue: { color: '#C7D2FE', fontSize: 16, fontWeight: '900' },
+  progressTrack: { backgroundColor: '#374151', borderRadius: 4, height: 7, marginTop: 13, overflow: 'hidden' },
+  progressFill: { backgroundColor: '#818CF8', borderRadius: 4, height: '100%' },
+  researchMetrics: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  researchMetric: { alignItems: 'center', backgroundColor: '#1F2937', borderRadius: 10, flex: 1, padding: 8 },
+  researchMetricValue: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', marginTop: 3 },
+  researchMetricLabel: { color: '#9CA3AF', fontSize: 7, marginTop: 1 },
+  researchError: { color: '#FCA5A5', fontSize: 10, lineHeight: 15, marginTop: 10 },
+  agentTimeline: { borderTopColor: '#374151', borderTopWidth: 1, marginTop: 13, paddingTop: 5 },
+  agentRow: { alignItems: 'center', flexDirection: 'row', paddingVertical: 8 },
+  agentDot: { alignItems: 'center', borderColor: '#818CF8', borderRadius: 9, borderWidth: 2, height: 18, justifyContent: 'center', width: 18 },
+  agentDotDone: { backgroundColor: '#059669', borderColor: '#059669' },
+  agentCopy: { flex: 1, marginLeft: 9 },
+  agentName: { color: '#E5E7EB', fontSize: 9, fontWeight: '900' },
+  agentOperation: { color: '#9CA3AF', fontSize: 8, marginTop: 2 },
+  agentStatus: { color: '#A5B4FC', fontSize: 7, fontWeight: '900' },
+  agentStatusDone: { color: '#6EE7B7' },
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  kpiCard: { backgroundColor: '#FFFFFF', borderRadius: 15, padding: 12, width: '48%' },
+  kpiValue: { color: '#0F172A', fontSize: 18, fontWeight: '900', marginTop: 5 },
+  kpiLabel: { color: '#475569', fontSize: 9, fontWeight: '800', marginTop: 2 },
+  kpiNote: { color: '#94A3B8', fontSize: 8, lineHeight: 12, marginTop: 4 },
+  generatedSectionHead: { alignItems: 'center', flexDirection: 'row', marginBottom: 10 },
+  generatedSectionCopy: { flex: 1, marginLeft: 8 },
+  confidence: { color: '#059669', fontSize: 8, fontWeight: '800', marginTop: 2 },
+  generatedPoint: { alignItems: 'flex-start', flexDirection: 'row', gap: 7, marginTop: 8 },
+  generatedPointText: { color: '#475569', flex: 1, fontSize: 10, lineHeight: 16 },
+  actionRow: { alignItems: 'flex-start', flexDirection: 'row', marginTop: 10 },
+  actionNumber: { backgroundColor: '#4F46E5', borderRadius: 10, color: '#FFFFFF', fontSize: 9, fontWeight: '900', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
+  actionText: { color: '#334155', flex: 1, fontSize: 10, lineHeight: 16, marginLeft: 8 },
+  riskRow: { alignItems: 'flex-start', borderTopColor: '#E2E8F0', borderTopWidth: StyleSheet.hairlineWidth, flexDirection: 'row', paddingVertical: 10 },
+  riskLevel: { borderRadius: 8, minWidth: 56, paddingHorizontal: 7, paddingVertical: 5 },
+  riskHigh: { backgroundColor: '#FEE2E2' },
+  riskMedium: { backgroundColor: '#FEF3C7' },
+  riskLow: { backgroundColor: '#D1FAE5' },
+  riskLevelText: { color: '#7F1D1D', fontSize: 7, fontWeight: '900', textAlign: 'center', textTransform: 'uppercase' },
+  riskCopy: { flex: 1, marginLeft: 9 },
+  riskTitle: { color: '#1E293B', fontSize: 10, fontWeight: '900' },
+  riskReason: { color: '#64748B', fontSize: 9, lineHeight: 14, marginTop: 2 },
+  genericTableRow: { borderBottomColor: '#E2E8F0', borderBottomWidth: 1, flexDirection: 'row' },
+  genericTableCellHead: { color: '#475569', fontSize: 9, fontWeight: '900', padding: 9, width: 120 },
+  genericTableCell: { color: '#334155', fontSize: 9, lineHeight: 13, padding: 9, width: 120 },
   error: {
     backgroundColor: '#FEF2F2',
     borderRadius: 13,

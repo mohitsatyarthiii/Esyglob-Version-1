@@ -1,6 +1,25 @@
 import MarketInsightsService from '../services/market-insights.service.js';
+import MarketResearchService from '../services/market-research.service.js';
 
 class MarketInsightsController {
+  static async streamResearch(req, res) {
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.flushHeaders?.();
+    const send = event => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`); };
+    const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': keep-alive\n\n'); }, 10000);
+    try {
+      await MarketResearchService.run({ userId, session: req.user, ...req.body }, send);
+      send({ type: 'done' });
+    } catch (error) {
+      console.error('[Market-Research-Stream] Error:', error);
+      send({ type: 'error', message: error.message || 'Research failed', status: error.statusCode || 500 });
+    } finally {
+      clearInterval(heartbeat);
+      if (!res.writableEnded) res.end();
+    }
+  }
   /**
    * GET - Dashboard data (products + countries)
    */

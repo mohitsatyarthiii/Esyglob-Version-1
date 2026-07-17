@@ -166,6 +166,22 @@ const orderSchema = new mongoose.Schema({
   sourceSnapshot: mongoose.Schema.Types.Mixed,
   platformServices: mongoose.Schema.Types.Mixed,
   documents: [mongoose.Schema.Types.Mixed],
+  production: {
+    status: { type: String, default: 'not_started' },
+    updates: [{ stage: String, note: String, attachments: [String], updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, timestamp: { type: Date, default: Date.now } }],
+    startedAt: Date,
+    completedAt: Date,
+  },
+  workflow: {
+    currentStage: { type: String, default: 'order_created' },
+    previousStage: String,
+    nextStage: String,
+    responsibleParty: String,
+    pendingActions: [String],
+    blockedReasons: [String],
+    lastEvaluatedAt: Date,
+  },
+  auditLogs: [{ action: String, fromStatus: String, toStatus: String, actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, actorRole: String, note: String, metadata: mongoose.Schema.Types.Mixed, timestamp: { type: Date, default: Date.now } }],
 
   timeline: [{
     status: String,

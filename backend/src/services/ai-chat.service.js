@@ -165,7 +165,7 @@ class AIChatService {
   /**
    * Call Ollama API (non-streaming)
    */
-  static async callOllama(prompt, messages = [], systemPrompt = '') {
+  static async callOllama(prompt, messages = [], systemPrompt = '', options = {}) {
     if (!OLLAMA_ENABLED) {
       throw new Error('Ollama is disabled');
     }
@@ -190,9 +190,9 @@ class AIChatService {
           messages: ollamaMessages,
           stream: false,
           options: {
-            temperature: 0.35,
+            temperature: options.temperature ?? 0.35,
             top_p: 0.9,
-            num_predict: 520,
+            num_predict: options.maxTokens || 520,
           },
         }),
       });

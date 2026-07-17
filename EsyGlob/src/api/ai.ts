@@ -59,9 +59,13 @@ export type MarketInsightReport = {
   hasRealData?: boolean;
   sources?: string[];
   sections?: Array<{
+    type?: string;
     title?: string;
     content?: string;
+    summary?: string;
     bullets?: string[];
+    points?: string[];
+    confidence?: number;
     data?: Record<string, unknown>[];
   }>;
   charts?: Array<{
@@ -69,7 +73,7 @@ export type MarketInsightReport = {
     type?: string;
     data?: Array<{ label?: string; value?: number | string }>;
   }>;
-  tables?: Array<{ title?: string; rows?: Record<string, unknown>[] }>;
+  tables?: Array<{ title?: string; columns?: string[]; rows?: Record<string, unknown>[] }>;
   opportunities?: Array<Record<string, unknown>>;
   generatedAt?: string;
   createdAt?: string;
@@ -95,6 +99,10 @@ export type MarketInsightReport = {
   };
   tariffInfo?: Record<string, any>;
   dataIntegrityNotes?: string[];
+  kpis?: Array<{ label?: string; value?: string | number; trend?: string; note?: string }>;
+  recommendations?: string[];
+  risks?: Array<{ label?: string; level?: string; reason?: string }>;
+  dataGaps?: string[];
   [key: string]: unknown;
 };
 
@@ -124,6 +132,57 @@ export async function searchMarketplaceByImage(
     categories: data.categories ?? results.categories ?? [],
     imageSearch: data.imageSearch ?? null,
   };
+}
+
+export type MarketResearchEvent = {
+  type?: 'research_started' | 'step' | 'section' | 'report' | 'done' | 'error';
+  agent?: string;
+  operation?: string;
+  status?: string;
+  progress?: number;
+  elapsedMs?: number;
+  sourceCount?: number;
+  datasetsCollected?: number;
+  section?: NonNullable<MarketInsightReport['sections']>[number];
+  report?: MarketInsightReport;
+  message?: string;
+  [key: string]: unknown;
+};
+
+export async function streamMarketResearch(
+  input: MarketInsightInput & { query?: string },
+  onEvent: (event: MarketResearchEvent) => void,
+): Promise<void> {
+  const mode = input.reportType === 'country' ? 'country_rd' : input.reportType === 'opportunity' ? 'opportunity_finder' : 'product_rd';
+  return streamSse('/market-insights/research/stream', { mode, query: input.query, productName: input.product?.trim(), country: input.country?.trim(), category: input.category?.trim() }, onEvent);
+}
+
+function streamSse(path: string, body: Record<string, unknown>, onEvent: (event: MarketResearchEvent) => void) {
+  return new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let consumed = 0;
+    let buffer = '';
+    const process = (flush = false) => {
+      buffer += xhr.responseText.slice(consumed).replace(/\r\n/g, '\n');
+      consumed = xhr.responseText.length;
+      const frames = buffer.split('\n\n');
+      const remainder = frames.pop() || '';
+      if (flush && remainder) frames.push(remainder);
+      buffer = flush ? '' : remainder;
+      frames.forEach(frame => frame.split('\n').forEach(line => {
+        if (!line.startsWith('data:')) return;
+        try { const event = JSON.parse(line.replace(/^data:\s*/, '')) as MarketResearchEvent; if (event.type === 'error') reject(new ApiError(String(event.message || 'Research failed'), Number(event.status || 500), event)); else onEvent(event); } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+      }));
+    };
+    xhr.open('POST', buildApiUrl(path));
+    Object.entries(getApiHeaders({ Accept: 'text/event-stream', 'Content-Type': 'application/json' })).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+    xhr.timeout = 180_000;
+    xhr.onprogress = () => process();
+    xhr.onload = () => { process(true); if (xhr.status >= 200 && xhr.status < 300) resolve(); else reject(new ApiError(`Research failed with status ${xhr.status}`, xhr.status, xhr.responseText)); };
+    xhr.onerror = () => reject(new ApiError('Unable to reach the research service.', 0));
+    xhr.ontimeout = () => reject(new ApiError('Research took too long. Please retry.', 408));
+    xhr.send(JSON.stringify(body));
+  });
 }
 
 export async function fetchAIChats(role?: string | null): Promise<AIChat[]> {

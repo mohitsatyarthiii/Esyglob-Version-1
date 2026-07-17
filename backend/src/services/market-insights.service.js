@@ -100,7 +100,7 @@ async function fetchExchangeRates() {
   }
 }
 
-async function getCountriesData() {
+export async function getCountriesData() {
   const cached = getCached('countries:v2');
   if (cached) return cached;
 

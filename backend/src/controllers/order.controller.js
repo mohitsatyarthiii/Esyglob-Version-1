@@ -86,6 +86,14 @@ class OrderController {
       return res.status(500).json({ error: 'Failed to update order' });
     }
   }
+
+  static async addProductionUpdate(req, res) {
+    try {
+      return res.json(await OrderService.addProductionUpdate(req.user._id, req.user.roles, req.params.orderId, req.body));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to update production' });
+    }
+  }
 }
 
 export default OrderController;

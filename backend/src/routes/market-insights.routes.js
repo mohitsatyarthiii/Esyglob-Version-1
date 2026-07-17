@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import MarketInsightsController from '../controllers/market-insights.controller.js';
 import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 
 const router = Router();
 
@@ -10,6 +11,8 @@ router.use(requireAuth);
 
 // GET - Dashboard data
 router.get('/', MarketInsightsController.getDashboard);
+
+router.post('/research/stream', requireSubscriptionFeature('marketInsights', { ai: true, aiFeature: 'research' }), MarketInsightsController.streamResearch);
 
 // POST - Generate report
 router.post('/', MarketInsightsController.generateReport);

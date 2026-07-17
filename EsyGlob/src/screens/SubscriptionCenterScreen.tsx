@@ -1,23 +1,22 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  LayoutAnimation,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   View,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import LinearGradient from 'react-native-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import RazorpayCheckout from 'react-native-razorpay';
+import LinearGradient from 'react-native-linear-gradient';
 import {
-  BillingCycle,
   createSubscriptionOrder,
   fetchSubscription,
   fetchSubscriptionPlans,
@@ -27,45 +26,83 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { ErrorState } from '../components/StateViews';
 
-const CYCLES: Array<{ key: BillingCycle; title: string; period: string; discount?: string }> = [
-  { key: 'monthly', title: 'Monthly', period: '/mo' },
-  { key: 'quarterly', title: 'Quarterly', period: '/qtr', discount: '-15%' },
-  { key: 'yearly', title: 'Yearly', period: '/yr', discount: '-35%' },
-];
-
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-export default function SubscriptionCenterScreen() {
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
-  const queryClient = useQueryClient();
-  const { activeRole } = useAuth();
-  const role: 'buyer' | 'seller' =
-    route.params?.role === 'seller' || route.params?.role === 'buyer'
-      ? route.params.role
-      : activeRole === 'seller'
-        ? 'seller'
-        : 'buyer';
-  const [cycle, setCycle] = useState<BillingCycle>('monthly');
-  const [expandedPlans, setExpandedPlans] = useState<Record<string, boolean>>({});
+// ─── Helpers ──────────────────────────────────────────────
+const AI_TIER_MAP: Record<string, { name: string; icon: string; color: string; bg: string }> = {
+  esyai_lite: { name: 'EsyAI Lite', icon: 'chip', color: '#64748B', bg: '#F1F5F9' },
+  esyai_pro: { name: 'EsyAI Pro', icon: 'chip', color: '#2563EB', bg: '#EFF6FF' },
+  esyai_advanced: { name: 'EsyAI Advanced', icon: 'chip', color: '#7C3AED', bg: '#F5F3FF' },
+  esyai_enterprise: { name: 'EsyAI Enterprise', icon: 'chip', color: '#D97706', bg: '#FFFBEB' },
+};
 
-  const overviewQuery = useQuery({
+function getAiTierFromPlanKey(key: string): string {
+  if (key.includes('free')) return 'esyai_lite';
+  if (key.includes('pro') || key.includes('verified')) return 'esyai_pro';
+  if (key.includes('business') || key.includes('gold')) return 'esyai_advanced';
+  if (key.includes('enterprise')) return 'esyai_enterprise';
+  return 'esyai_lite';
+}
+
+function getAiTierInfo(plan: SubscriptionPlan | null) {
+  if (!plan) return AI_TIER_MAP.esyai_lite;
+  const tier = plan.aiTier || (plan as any).aiProvider || getAiTierFromPlanKey(plan.key);
+  const oldMapping: Record<string, string> = {
+    ollama: 'esyai_lite', deepseek: 'esyai_pro', openai: 'esyai_advanced',
+    chatgpt: 'esyai_advanced', claude: 'esyai_enterprise',
+  };
+  const mapped = oldMapping[(tier || '').toLowerCase()] || tier;
+  return AI_TIER_MAP[mapped] || AI_TIER_MAP.esyai_lite;
+}
+
+function getAiModelName(plan: SubscriptionPlan | null): string {
+  if (!plan) return 'EsyAI Lite';
+  if (plan.aiModel) return plan.aiModel;
+  const aiTier = plan.aiTier || getAiTierFromPlanKey(plan.key);
+  const names: Record<string, string> = {
+    esyai_lite: 'EsyAI Lite', esyai_pro: 'EsyAI Pro',
+    esyai_advanced: 'EsyAI Advanced', esyai_enterprise: 'EsyAI Enterprise',
+  };
+  return names[aiTier] || 'EsyAI Lite';
+}
+
+function getDefaultGrowthScore(key: string): number {
+  if (key.includes('free')) return 15;
+  if (key.includes('pro') || key.includes('verified')) return 45;
+  if (key.includes('business') || key.includes('gold')) return 75;
+  if (key.includes('enterprise')) return 100;
+  return 15;
+}
+
+// ─── Main Component ───────────────────────────────────────
+export default function SubscriptionCenterScreen() {
+  const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const qc = useQueryClient();
+  const { activeRole } = useAuth();
+  const role = route.params?.role || (activeRole === 'seller' ? 'seller' : 'buyer');
+  
+  const [activeTab, setActiveTab] = useState<'monthly' | 'quarterly' | 'yearly'>('yearly');
+  const [expandedPlanKey, setExpandedPlanKey] = useState<string | null>(null);
+  const [upgradingPlanKey, setUpgradingPlanKey] = useState<string | null>(null);
+
+  const overview = useQuery({
     queryKey: ['subscription', role],
     queryFn: () => fetchSubscription(role),
   });
+
   const plansQuery = useQuery({
     queryKey: ['subscription-plans', role],
     queryFn: () => fetchSubscriptionPlans(role),
   });
 
-  const purchase = useMutation({
+  const buy = useMutation({
     mutationFn: async (plan: SubscriptionPlan) => {
-      const price = Number(plan.prices?.[cycle] || 0);
-      if (price <= 0) throw new Error('This plan cannot be purchased for the selected billing cycle.');
-      const order = await createSubscriptionOrder(plan.key, cycle);
-      const result = await RazorpayCheckout.open({
+      if (!plan.prices[activeTab]) throw new Error('This billing cycle is unavailable.');
+      const order = await createSubscriptionOrder(plan.key, activeTab);
+      const gateway = await RazorpayCheckout.open({
         key: order.key,
         order_id: order.orderId,
         amount: order.amount,
@@ -73,270 +110,406 @@ export default function SubscriptionCenterScreen() {
         name: 'EsyGlob',
         description: `${plan.name} subscription`,
         prefill: order.user,
-        theme: { color: '#2563EB' },
+        theme: { color: '#F59E0B' }, // Golden theme for CTA
       });
       return verifySubscriptionPayment({
-        planType: plan.key,
-        duration: cycle,
-        razorpayPaymentId: result.razorpay_payment_id,
-        razorpayOrderId: result.razorpay_order_id,
-        razorpaySignature: result.razorpay_signature,
+        planType: plan.key, duration: activeTab,
+        razorpayPaymentId: gateway.razorpay_payment_id,
+        razorpayOrderId: gateway.razorpay_order_id,
+        razorpaySignature: gateway.razorpay_signature,
       });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['subscription', role] });
-      await queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      Alert.alert('Subscription activated', 'Your subscription is now active.');
+      setUpgradingPlanKey(null);
+      await qc.invalidateQueries({ queryKey: ['subscription'] });
+      Alert.alert('🎉 Subscription Activated', 'Your plan is now active.');
     },
-    onError: (error: Error) => Alert.alert('Payment not completed', error.message),
+    onError: (e: Error) => {
+      setUpgradingPlanKey(null);
+      Alert.alert('Payment Failed', e.message);
+    },
   });
 
-  const plans = useMemo(
-    () => [...(plansQuery.data || [])].sort((a, b) => Number(a.priorityRanking || 0) - Number(b.priorityRanking || 0)),
-    [plansQuery.data],
-  );
-  const currentPlan = overviewQuery.data?.plan;
-  const subscription = overviewQuery.data?.subscription;
-  const remainingCredits = Number(overviewQuery.data?.usage?.aiCreditsRemaining || 0);
+  if (overview.isLoading || plansQuery.isLoading) return <SkeletonLoader />;
+  if (overview.isError || plansQuery.isError)
+    return <ErrorState message="Could not load subscription details." onRetry={() => { overview.refetch(); plansQuery.refetch(); }} />;
 
-  const toggleFeatures = (key: string) => {
+  const data = overview.data!;
+  const current = data.plan;
+  const remaining = Number(data.usage?.aiCreditsRemaining ?? 0);
+  const plans = plansQuery.data!;
+  const sortedPlans = [...plans].sort((a, b) => a.priorityRanking - b.priorityRanking);
+
+  const handleExpand = (key: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedPlans(value => ({ ...value, [key]: !value[key] }));
+    setExpandedPlanKey(expandedPlanKey === key ? null : key);
   };
 
-  if (overviewQuery.isLoading || plansQuery.isLoading) return <SubscriptionSkeleton />;
-  if (overviewQuery.isError || plansQuery.isError) {
-    return (
-      <ErrorState
-        message="Subscription plans could not be loaded."
-        onRetry={() => {
-          overviewQuery.refetch();
-          plansQuery.refetch();
-        }}
-      />
-    );
-  }
+  const handleUpgrade = (plan: SubscriptionPlan) => {
+    if (plan.key === current.key) return;
+    setUpgradingPlanKey(plan.key);
+    buy.mutate(plan);
+  };
+
+  const getPriceForTab = (plan: SubscriptionPlan) => plan.prices[activeTab] || 0;
 
   return (
-    <View style={styles.screen}>
-      <View style={styles.header}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Icon name="arrow-left" size={22} color="#0F172A" />
+    <View style={s.screen}>
+      {/* Header */}
+      <View style={s.header}>
+        <Pressable onPress={() => nav.goBack()} style={s.headerBtn}>
+          <Icon name="arrow-left" size={24} color="#1A1A2E" />
         </Pressable>
-        <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>Subscription Pricing</Text>
-          <Text style={styles.headerSubtitle}>{role === 'seller' ? 'Seller' : 'Buyer'} plans from EsyGlob</Text>
+        <View style={s.headerTitleContainer}>
+          <Text style={s.headerTitle}>Pricing</Text>
         </View>
-        <Pressable onPress={() => navigation.navigate('InvoiceDetails', {})} style={styles.headerButton}>
-          <Icon name="receipt-text-outline" size={21} color="#2563EB" />
+        <Pressable onPress={() => nav.navigate('InvoiceDetails', {})} style={s.headerBtn}>
+          <Icon name="receipt-text-outline" size={24} color="#1A1A2E" />
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {currentPlan ? (
-          <LinearGradient colors={['#EFF6FF', '#FFFFFF']} style={styles.currentBanner}>
-            <View style={styles.currentIcon}><Icon name="crown-outline" size={24} color="#2563EB" /></View>
-            <View style={styles.currentCopy}>
-              <Text style={styles.currentEyebrow}>CURRENT PLAN</Text>
-              <Text style={styles.currentName}>{currentPlan.name}</Text>
-              <Text style={styles.currentMeta}>{remainingCredits.toLocaleString('en-IN')} AI credits remaining</Text>
-            </View>
-            <View style={styles.expiryBox}>
-              <Text style={styles.expiryLabel}>EXPIRY</Text>
-              <Text style={styles.expiryValue}>{subscription?.expiryDate ? new Date(subscription.expiryDate).toLocaleDateString('en-IN') : 'No expiry'}</Text>
-            </View>
-          </LinearGradient>
-        ) : null}
-
-        <View style={styles.tabs}>
-          {CYCLES.map(item => (
-            <Pressable key={item.key} onPress={() => setCycle(item.key)} style={[styles.tab, cycle === item.key && styles.activeTab]}>
-              {item.discount ? <Text style={[styles.discount, cycle === item.key && styles.activeDiscount]}>{item.discount}</Text> : null}
-              <Text style={[styles.tabText, cycle === item.key && styles.activeTabText]}>{item.title}</Text>
-            </Pressable>
-          ))}
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {/* Hero Tagline */}
+        <View style={s.heroSection}>
+          <Text style={s.heroTitle}>Pricing on your terms</Text>
+          <Text style={s.heroSubtitle}>
+            Whichever plan you pick, it's free until you love your docs.
+          </Text>
         </View>
 
-        <Text style={styles.sectionTitle}>Choose the right plan</Text>
-        <Text style={styles.sectionSubtitle}>All information below is loaded from your subscription API.</Text>
+        {/* Billing Tabs */}
+        <View style={s.tabContainer}>
+          <Pressable onPress={() => setActiveTab('monthly')} style={[s.tabBtn, activeTab === 'monthly' && s.tabBtnActive]}>
+            <Text style={[s.tabText, activeTab === 'monthly' && s.tabTextActive]}>Monthly</Text>
+          </Pressable>
+          <Pressable onPress={() => setActiveTab('quarterly')} style={[s.tabBtn, activeTab === 'quarterly' && s.tabBtnActive]}>
+            <Text style={[s.tabText, activeTab === 'quarterly' && s.tabTextActive]}>Quarterly</Text>
+          </Pressable>
+          <Pressable onPress={() => setActiveTab('yearly')} style={[s.tabBtn, activeTab === 'yearly' && s.tabBtnActive]}>
+            <Text style={[s.tabText, activeTab === 'yearly' && s.tabTextActive]}>Yearly</Text>
+            {activeTab === 'yearly' && (
+              <View style={s.saveBadge}><Text style={s.saveBadgeText}>Save 35%</Text></View>
+            )}
+          </Pressable>
+        </View>
 
-        {plans.map(plan => (
-          <PricingCard
-            key={plan._id || plan.key}
-            plan={plan}
-            cycle={cycle}
-            current={currentPlan?.key === plan.key}
-            expanded={Boolean(expandedPlans[plan.key])}
-            purchasing={purchase.isPending && purchase.variables?.key === plan.key}
-            onToggle={() => toggleFeatures(plan.key)}
-            onPurchase={() => purchase.mutate(plan)}
-          />
-        ))}
+        {/* Current Active Plan Banner */}
+        <View style={s.activeBanner}>
+          <View style={s.activeBannerLeft}>
+            <Icon name="check-circle" size={20} color="#10B981" />
+            <View>
+              <Text style={s.activeBannerLabel}>Current Plan</Text>
+              <Text style={s.activeBannerName}>{current.name || 'Free'}</Text>
+            </View>
+          </View>
+          <View style={s.activeBannerRight}>
+            <View style={s.creditsPill}>
+              <Icon name="lightning-bolt" size={14} color="#F59E0B" />
+              <Text style={s.creditsText}>{remaining} Credits left</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Premium Plan Cards */}
+        <View style={s.cardsContainer}>
+          {sortedPlans.map((plan) => {
+            const isCurrent = current.key === plan.key;
+            const isLoadingThis = upgradingPlanKey === plan.key && buy.isPending;
+            const price = getPriceForTab(plan);
+            const isFree = plan.key.includes('free');
+            const isExpanded = expandedPlanKey === plan.key;
+
+            // PREMIUM GOLDEN/ORANGE GRADIENTS
+            let tierColors = { 
+              gradient: ['#FFF7ED', '#FFFFFF'], // Light Orange/Gold Base
+              border: '#FDBA74', 
+              highlight: '#F97316',
+              text: '#9A3412',
+              glow: '#FED7AA'
+            };
+            
+            if (plan.priorityRanking >= 3) { 
+              tierColors = { 
+                gradient: ['#FFFBEB', '#FEF3C7'], // Rich Gold
+                border: '#F59E0B', 
+                highlight: '#D97706',
+                text: '#92400E',
+                glow: '#FDE68A'
+              };
+            } else if (plan.priorityRanking >= 2) { 
+              tierColors = { 
+                gradient: ['#F0FDF4', '#DCFCE7'], // Premium Green/Orange mix
+                border: '#34D399', 
+                highlight: '#10B981',
+                text: '#065F46',
+                glow: '#A7F3D0'
+              };
+            }
+
+            const aiInfo = getAiTierInfo(plan);
+            const features = Array.isArray(plan.features) ? plan.features : [];
+            
+            // First 5 features
+            const initialFeatures = features.slice(0, 5);
+            // Remaining features
+            const remainingFeatures = features.slice(5);
+            // Last 5-6 features (Highlighted with Golden Star)
+            const highlightedFeatures = remainingFeatures.slice(-6);
+
+            return (
+              <View key={plan.key} style={[s.planCard, { borderColor: tierColors.border }]}>
+                
+                {/* Premium Glow Background */}
+                <LinearGradient 
+                  colors={tierColors.gradient} 
+                  style={s.planGradient} 
+                  start={{ x: 0, y: 0 }} 
+                  end={{ x: 1, y: 1 }} 
+                />
+                <View style={[s.glowOrb, { backgroundColor: tierColors.glow }]} />
+
+                {/* Top Row */}
+                <View style={s.planTopRow}>
+                  <View style={[s.planTierBadge, { backgroundColor: tierColors.text + '20' }]}>
+                    <Icon name={aiInfo.icon} size={14} color={tierColors.text} />
+                    <Text style={[s.planTierText, { color: tierColors.text }]}>{aiInfo.name}</Text>
+                  </View>
+                  <View style={[s.statusBadge, isCurrent ? s.activeBadge : s.popularBadge]}>
+                    <Text style={[s.statusText, { color: isCurrent ? '#047857' : '#B45309' }]}>
+                      {isCurrent ? '● ACTIVE' : '★ POPULAR'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={s.planName}>{plan.name}</Text>
+
+                <View style={s.priceRow}>
+                  <Text style={s.currencySymbol}>₹</Text>
+                  <Text style={s.priceAmount}>{isFree ? '0' : price.toLocaleString('en-IN')}</Text>
+                  <Text style={s.pricePeriod}>/{activeTab === 'monthly' ? 'mo' : activeTab === 'quarterly' ? 'qtr' : 'yr'}</Text>
+                  {!isFree && activeTab === 'yearly' && <Text style={s.discountBadge}>-35%</Text>}
+                  {!isFree && activeTab === 'quarterly' && <Text style={s.discountBadge}>-15%</Text>}
+                </View>
+
+                <Text style={s.planTagline}>{plan.description || 'Premium tier features'}</Text>
+
+                {/* Only 4 Limits: AI Credits, Storage, Support, Growth Score */}
+                <View style={s.statsGrid}>
+                  <View style={s.statItem}>
+                    <Icon name="brain" size={16} color="#2563EB" />
+                    <Text style={s.statLabel}>AI Credits</Text>
+                    <Text style={s.statValue}>{plan.aiCredits || 0}</Text>
+                  </View>
+                  <View style={s.statItem}>
+                    <Icon name="database" size={16} color="#2563EB" />
+                    <Text style={s.statLabel}>Storage</Text>
+                    <Text style={s.statValue}>{plan.storageLimitMb || 0} MB</Text>
+                  </View>
+                  <View style={s.statItem}>
+                    <Icon name="headset" size={16} color="#2563EB" />
+                    <Text style={s.statLabel}>Support</Text>
+                    <Text style={s.statValue}>{plan.supportLevel || 'Standard'}</Text>
+                  </View>
+                  <View style={s.statItem}>
+                    <Icon name="trending-up" size={16} color="#2563EB" />
+                    <Text style={s.statLabel}>Growth</Text>
+                    <Text style={s.statValue}>{plan.businessGrowthScore || getDefaultGrowthScore(plan.key)}%</Text>
+                  </View>
+                </View>
+
+                {/* Features Section */}
+                <View style={s.featuresContainer}>
+                  {/* First 5 Features (Green Tick) */}
+                  {initialFeatures.map((f, i) => (
+                    <View key={`${plan.key}-init-${i}`} style={s.featureRow}>
+                      <Icon name="check-circle" size={16} color="#10B981" />
+                      <Text style={s.featureText}>{f}</Text>
+                    </View>
+                  ))}
+                  
+                  {/* View All Toggle */}
+                  {remainingFeatures.length > 0 && (
+                    <Pressable onPress={() => handleExpand(plan.key)} style={s.expandToggle}>
+                      <Text style={[s.expandText, { color: tierColors.highlight }]}>
+                        {isExpanded ? 'Hide details' : `View all ${remainingFeatures.length} more features`}
+                      </Text>
+                      <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={tierColors.highlight} />
+                    </Pressable>
+                  )}
+
+                  {/* Expanded Features */}
+                  {isExpanded && (
+                    <View style={s.expandedFeatures}>
+                      {/* Normal Remaining Features (Green Tick) */}
+                      {remainingFeatures.slice(0, remainingFeatures.length - 6).map((f, i) => (
+                        <View key={`${plan.key}-mid-${i}`} style={s.featureRow}>
+                          <Icon name="check-circle" size={16} color="#10B981" />
+                          <Text style={s.featureText}>{f}</Text>
+                        </View>
+                      ))}
+                      
+                      {/* LAST 5-6 FEATURES - PREMIUM HIGHLIGHT (GOLDEN STAR) */}
+                      {highlightedFeatures.map((f, i) => (
+                        <View key={`${plan.key}-highlight-${i}`} style={[s.featureRow, s.highlightedFeatureRow]}>
+                          <Icon name="star" size={18} color="#F59E0B" />
+                          <Text style={s.highlightedFeatureText}>{f}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* CTA Button */}
+                <Pressable
+                  onPress={() => handleUpgrade(plan)}
+                  disabled={isLoadingThis || isCurrent}
+                  style={[
+                    s.ctaButton, 
+                    { backgroundColor: isCurrent ? '#E2E8F0' : tierColors.highlight },
+                    isCurrent && s.ctaDisabled
+                  ]}>
+                  {isLoadingThis ? (
+                    <ActivityIndicator color={isCurrent ? '#64748B' : '#FFFFFF'} />
+                  ) : (
+                    <Text style={[s.ctaText, { color: isCurrent ? '#64748B' : '#FFFFFF' }]}>
+                      {isCurrent ? 'Current Plan' : 'Get it now'}
+                    </Text>
+                  )}
+                </Pressable>
+
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Trust Footer */}
+        <View style={s.trustFooter}>
+          <Icon name="shield-check-outline" size={16} color="#94A3B8" />
+          <Text style={s.trustText}>Secure payments · Instant activation · 24/7 support</Text>
+        </View>
       </ScrollView>
     </View>
   );
 }
 
-function PricingCard({ plan, cycle, current, expanded, purchasing, onToggle, onPurchase }: {
-  plan: SubscriptionPlan;
-  cycle: BillingCycle;
-  current: boolean;
-  expanded: boolean;
-  purchasing: boolean;
-  onToggle: () => void;
-  onPurchase: () => void;
-}) {
-  const rank = Number(plan.priorityRanking || 0);
-  const palette = rank >= 3
-    ? { colors: ['#FFFBEB', '#FEF3C7', '#FFFFFF'], border: '#F59E0B', accent: '#B45309', tier: 'LEGENDARY' }
-    : rank >= 2
-      ? { colors: ['#EFF6FF', '#DBEAFE', '#FFFFFF'], border: '#3B82F6', accent: '#1D4ED8', tier: 'PREMIUM' }
-      : { colors: ['#F8FAFC', '#E2E8F0', '#FFFFFF'], border: '#CBD5E1', accent: '#475569', tier: 'COMMON' };
-  const price = Number(plan.prices?.[cycle] || 0);
-  const period = CYCLES.find(item => item.key === cycle)?.period || '';
-  const features = Array.isArray(plan.features) ? plan.features : [];
-
+// ─── Skeleton Loader ──────────────────────────────────────
+function SkeletonLoader() {
   return (
-    <LinearGradient colors={palette.colors} style={[styles.card, { borderColor: palette.border }]}>
-      <View style={styles.badgeRow}>
-        <View style={[styles.aiBadge, { backgroundColor: `${palette.border}20` }]}>
-          <Icon name="robot-outline" size={14} color={palette.accent} />
-          <Text style={[styles.aiBadgeText, { color: palette.accent }]}>{formatAiTier(plan.aiTier)}</Text>
-        </View>
-        <View style={[styles.statusBadge, current ? styles.activeBadge : styles.popularBadge]}>
-          <Icon name={current ? 'check-circle' : 'star'} size={12} color={current ? '#047857' : '#B45309'} />
-          <Text style={[styles.statusText, { color: current ? '#047857' : '#B45309' }]}>{current ? 'ACTIVE' : 'POPULAR'}</Text>
-        </View>
-      </View>
-
-      <Text style={[styles.tierLabel, { color: palette.accent }]}>{palette.tier}</Text>
-      <Text style={styles.planName}>{plan.name}</Text>
-      <Text style={styles.description}>{plan.description || 'No description provided.'}</Text>
-      <View style={styles.priceRow}>
-        <Text style={styles.currency}>₹</Text>
-        <Text style={styles.price}>{price.toLocaleString('en-IN')}</Text>
-        <Text style={styles.period}>{period}</Text>
-      </View>
-
-      <View style={styles.statsGrid}>
-        <QuickStat icon="brain" value={Number(plan.aiCredits || 0).toLocaleString('en-IN')} label="AI credits" />
-        <QuickStat icon="database-outline" value={`${Number(plan.storageLimitMb || 0).toLocaleString('en-IN')} MB`} label="Storage" />
-        <QuickStat icon="headset" value={plan.supportLevel || 'N/A'} label="Support" />
-        <QuickStat icon="trending-up" value={`+${Number(plan.trustScoreBoost || 0)}`} label="Trust score" />
-      </View>
-
-      <Pressable onPress={onToggle} style={styles.featureToggle}>
-        <View style={styles.featureToggleCopy}>
-          <Icon name="format-list-checks" size={19} color="#2563EB" />
-          <Text style={styles.featureToggleText}>{expanded ? 'Hide features' : `View all ${features.length} features`}</Text>
-        </View>
-        <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size={22} color="#64748B" />
-      </Pressable>
-
-      {expanded ? (
-        <View style={styles.featureList}>
-          {features.map((feature, index) => (
-            <View key={`${plan.key}-${index}-${feature}`} style={styles.featureRow}>
-              <View style={styles.featureIcon}><Icon name="check" size={13} color="#FFFFFF" /></View>
-              <Text style={styles.featureText}>{feature}</Text>
-            </View>
-          ))}
-          {!features.length ? <Text style={styles.noFeatures}>No features returned by the backend.</Text> : null}
-        </View>
-      ) : null}
-
-      <Pressable disabled={current || purchasing || price <= 0} onPress={onPurchase} style={[styles.cta, (current || price <= 0) && styles.ctaDisabled]}>
-        {purchasing ? <ActivityIndicator color="#FFFFFF" /> : <Text style={[styles.ctaText, (current || price <= 0) && styles.ctaTextDisabled]}>{current ? 'Current Plan' : price <= 0 ? 'Free Plan' : 'Get it now'}</Text>}
-      </Pressable>
-      <View style={styles.footerBadge}>
-        <Icon name="shield-check-outline" size={15} color={palette.accent} />
-        <Text style={[styles.footerText, { color: palette.accent }]}>Verification: {String(plan.verificationLevel || 'N/A').toUpperCase()}</Text>
-      </View>
-    </LinearGradient>
+    <View style={s.skeletonContainer}>
+      <View style={s.skeletonHeader} />
+      <View style={s.skeletonTab} />
+      <View style={s.skeletonCard} />
+      <View style={s.skeletonCard} />
+    </View>
   );
 }
 
-function QuickStat({ icon, value, label }: { icon: string; value: string; label: string }) {
-  return <View style={styles.stat}><Icon name={icon} size={17} color="#2563EB" /><Text numberOfLines={1} style={styles.statValue}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>;
-}
+// ─── Styles ───────────────────────────────────────────────
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 48, paddingBottom: 16, paddingHorizontal: 20, backgroundColor: '#F8FAFC',
+  },
+  headerBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  headerTitleContainer: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: '#0F172A', letterSpacing: -0.5 },
+  
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-function formatAiTier(value?: string) {
-  return String(value || 'AI tier unavailable').replace(/^esyai_/i, 'EsyAI ').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
-}
+  heroSection: { paddingVertical: 20, alignItems: 'center' },
+  heroTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A', textAlign: 'center', letterSpacing: -0.8, marginBottom: 6 },
+  heroSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', fontWeight: '400' },
 
-function SubscriptionSkeleton() {
-  useEffect(() => {
-    const timer = setInterval(() => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut), 900);
-    return () => clearInterval(timer);
-  }, []);
-  return <View style={styles.screen}><View style={styles.skeletonHeader} /><View style={styles.skeletonContent}><View style={styles.skeletonBanner} />{[0, 1, 2].map(item => <View key={item} style={styles.skeletonCard}><View style={styles.skeletonLineWide} /><View style={styles.skeletonLine} /><View style={styles.skeletonBlocks}><View style={styles.skeletonBlock} /><View style={styles.skeletonBlock} /><View style={styles.skeletonBlock} /><View style={styles.skeletonBlock} /></View></View>)}</View></View>;
-}
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 30, padding: 4, marginBottom: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
+  },
+  tabBtn: { flex: 1, paddingVertical: 12, borderRadius: 26, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  tabBtnActive: { backgroundColor: '#0F172A' },
+  tabText: { fontSize: 14, fontWeight: '600', color: '#94A3B8' },
+  tabTextActive: { color: '#FFFFFF' },
+  saveBadge: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 },
+  saveBadgeText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: '#F8FAFC', flex: 1 },
-  header: { alignItems: 'center', backgroundColor: '#FFFFFF', borderBottomColor: '#E2E8F0', borderBottomWidth: 1, flexDirection: 'row', paddingBottom: 12, paddingHorizontal: 14, paddingTop: 48 },
-  headerButton: { alignItems: 'center', height: 40, justifyContent: 'center', width: 40 },
-  headerCopy: { alignItems: 'center', flex: 1 },
-  headerTitle: { color: '#0F172A', fontSize: 18, fontWeight: '900' },
-  headerSubtitle: { color: '#64748B', fontSize: 10, marginTop: 2 },
-  content: { padding: 16, paddingBottom: 70 },
-  currentBanner: { alignItems: 'center', borderColor: '#BFDBFE', borderRadius: 18, borderWidth: 1, flexDirection: 'row', marginBottom: 16, padding: 16 },
-  currentIcon: { alignItems: 'center', backgroundColor: '#DBEAFE', borderRadius: 13, height: 44, justifyContent: 'center', width: 44 },
-  currentCopy: { flex: 1, marginLeft: 11 },
-  currentEyebrow: { color: '#2563EB', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
-  currentName: { color: '#0F172A', fontSize: 16, fontWeight: '900', marginTop: 2 },
-  currentMeta: { color: '#475569', fontSize: 10, marginTop: 2 },
-  expiryBox: { alignItems: 'flex-end' },
-  expiryLabel: { color: '#94A3B8', fontSize: 8, fontWeight: '800' },
-  expiryValue: { color: '#334155', fontSize: 10, fontWeight: '800', marginTop: 3 },
-  tabs: { backgroundColor: '#E2E8F0', borderRadius: 14, flexDirection: 'row', marginBottom: 22, padding: 4 },
-  tab: { alignItems: 'center', borderRadius: 11, flex: 1, justifyContent: 'center', minHeight: 51, paddingVertical: 7 },
-  activeTab: { backgroundColor: '#FFFFFF', elevation: 2, shadowColor: '#0F172A', shadowOffset: { height: 1, width: 0 }, shadowOpacity: 0.08, shadowRadius: 4 },
-  tabText: { color: '#64748B', fontSize: 11, fontWeight: '800' },
-  activeTabText: { color: '#0F172A' },
-  discount: { color: '#64748B', fontSize: 8, fontWeight: '900', marginBottom: 2 },
-  activeDiscount: { color: '#16A34A' },
-  sectionTitle: { color: '#0F172A', fontSize: 19, fontWeight: '900' },
-  sectionSubtitle: { color: '#64748B', fontSize: 11, marginBottom: 15, marginTop: 3 },
-  card: { borderRadius: 20, borderWidth: 1.5, marginBottom: 16, overflow: 'hidden', padding: 17 },
-  badgeRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  aiBadge: { alignItems: 'center', borderRadius: 20, flexDirection: 'row', gap: 5, paddingHorizontal: 9, paddingVertical: 6 },
-  aiBadgeText: { fontSize: 9, fontWeight: '900' },
-  statusBadge: { alignItems: 'center', borderRadius: 20, flexDirection: 'row', gap: 4, paddingHorizontal: 9, paddingVertical: 6 },
+  // Active Plan Banner
+  activeBanner: {
+    flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 24,
+    borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'space-between',
+  },
+  activeBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  activeBannerLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+  activeBannerName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  activeBannerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  creditsPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEF3C7', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  creditsText: { fontSize: 12, fontWeight: '600', color: '#D97706' },
+
+  // Plan Cards
+  cardsContainer: { gap: 20, marginBottom: 20 },
+  
+  planCard: {
+    borderRadius: 24, borderWidth: 1, overflow: 'hidden',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3,
+    backgroundColor: '#FFFFFF', padding: 20, position: 'relative',
+  },
+  planGradient: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.6 },
+  glowOrb: { position: 'absolute', top: -40, right: -40, width: 120, height: 120, borderRadius: 60, opacity: 0.4 },
+  
+  // Top Row
+  planTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, zIndex: 1 },
+  planTierBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  planTierText: { fontSize: 11, fontWeight: '700' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   activeBadge: { backgroundColor: '#D1FAE5' },
   popularBadge: { backgroundColor: '#FEF3C7' },
-  statusText: { fontSize: 8, fontWeight: '900' },
-  tierLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1, marginTop: 15 },
-  planName: { color: '#0F172A', fontSize: 24, fontWeight: '900', marginTop: 3 },
-  description: { color: '#475569', fontSize: 11, lineHeight: 17, marginTop: 5 },
-  priceRow: { alignItems: 'flex-end', flexDirection: 'row', marginVertical: 15 },
-  currency: { color: '#0F172A', fontSize: 18, fontWeight: '900', marginBottom: 5 },
-  price: { color: '#0F172A', fontSize: 34, fontWeight: '900' },
-  period: { color: '#64748B', fontSize: 11, fontWeight: '700', marginBottom: 6, marginLeft: 3 },
-  statsGrid: { flexDirection: 'row', gap: 6 },
-  stat: { alignItems: 'center', backgroundColor: '#FFFFFFB8', borderColor: '#FFFFFF', borderRadius: 11, borderWidth: 1, flex: 1, minWidth: 0, paddingHorizontal: 3, paddingVertical: 10 },
-  statValue: { color: '#0F172A', fontSize: 9, fontWeight: '900', marginTop: 4, textTransform: 'capitalize' },
-  statLabel: { color: '#64748B', fontSize: 7, marginTop: 2, textAlign: 'center' },
-  featureToggle: { alignItems: 'center', backgroundColor: '#FFFFFFB8', borderColor: '#E2E8F0', borderRadius: 12, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, padding: 12 },
-  featureToggleCopy: { alignItems: 'center', flexDirection: 'row', gap: 8 },
-  featureToggleText: { color: '#1E293B', fontSize: 11, fontWeight: '900' },
-  featureList: { backgroundColor: '#FFFFFFA6', borderRadius: 12, gap: 9, marginTop: 8, padding: 12 },
-  featureRow: { alignItems: 'center', flexDirection: 'row' },
-  featureIcon: { alignItems: 'center', backgroundColor: '#16A34A', borderRadius: 9, height: 19, justifyContent: 'center', width: 19 },
-  featureText: { color: '#334155', flex: 1, fontSize: 10, fontWeight: '600', lineHeight: 15, marginLeft: 8 },
-  noFeatures: { color: '#64748B', fontSize: 10, textAlign: 'center' },
-  cta: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 12, justifyContent: 'center', marginTop: 14, minHeight: 48 },
-  ctaDisabled: { backgroundColor: '#E2E8F0' },
-  ctaText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  ctaTextDisabled: { color: '#64748B' },
-  footerBadge: { alignItems: 'center', flexDirection: 'row', gap: 6, justifyContent: 'center', marginTop: 11 },
-  footerText: { fontSize: 9, fontWeight: '900' },
-  skeletonHeader: { backgroundColor: '#E2E8F0', height: 101 },
-  skeletonContent: { padding: 16 },
-  skeletonBanner: { backgroundColor: '#E2E8F0', borderRadius: 18, height: 86, marginBottom: 16 },
-  skeletonCard: { backgroundColor: '#E2E8F0', borderRadius: 20, height: 280, marginBottom: 16, padding: 18 },
-  skeletonLineWide: { backgroundColor: '#CBD5E1', borderRadius: 7, height: 24, width: '62%' },
-  skeletonLine: { backgroundColor: '#CBD5E1', borderRadius: 5, height: 12, marginTop: 12, width: '88%' },
-  skeletonBlocks: { flexDirection: 'row', gap: 6, marginTop: 80 },
-  skeletonBlock: { backgroundColor: '#CBD5E1', borderRadius: 10, flex: 1, height: 62 },
+  statusText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+
+  planName: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 4, zIndex: 1 },
+  
+  // Price
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 4, zIndex: 1 },
+  currencySymbol: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  priceAmount: { fontSize: 34, fontWeight: '800', color: '#0F172A', marginLeft: 2 },
+  pricePeriod: { fontSize: 14, color: '#64748B', fontWeight: '500', marginLeft: 4 },
+  discountBadge: { backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginLeft: 12, fontSize: 12, fontWeight: '700', color: '#FFFFFF', overflow: 'hidden' },
+
+  planTagline: { fontSize: 13, color: '#64748B', marginBottom: 16, zIndex: 1 },
+
+  // Stats Grid (Only 4)
+  statsGrid: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', zIndex: 1 },
+  statItem: { flex: 1, alignItems: 'center', gap: 4 },
+  statLabel: { fontSize: 9, color: '#64748B', fontWeight: '700', textTransform: 'uppercase' },
+  statValue: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+
+  // Features Section
+  featuresContainer: { marginBottom: 8, zIndex: 1 },
+  featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  featureText: { fontSize: 13, color: '#334155', fontWeight: '500', flex: 1 },
+  
+  // Highlighted Features (Golden Star)
+  highlightedFeatureRow: { marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: '#FEF3C7' },
+  highlightedFeatureText: { fontSize: 13, color: '#B45309', fontWeight: '700', flex: 1 },
+
+  expandToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingVertical: 4 },
+  expandText: { fontSize: 13, fontWeight: '700' },
+  expandedFeatures: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+
+  // CTA
+  ctaButton: { paddingVertical: 16, borderRadius: 30, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
+  ctaDisabled: { opacity: 0.7 },
+  ctaText: { fontSize: 16, fontWeight: '700' },
+
+  // Trust
+  trustFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10 },
+  trustText: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
+
+  // Skeleton
+  skeletonContainer: { flex: 1, padding: 20, backgroundColor: '#F8FAFC' },
+  skeletonHeader: { height: 60, backgroundColor: '#E2E8F0', borderRadius: 12, marginBottom: 20 },
+  skeletonTab: { height: 40, backgroundColor: '#E2E8F0', borderRadius: 20, marginBottom: 20 },
+  skeletonCard: { height: 220, backgroundColor: '#E2E8F0', borderRadius: 24, marginBottom: 16 },
 });

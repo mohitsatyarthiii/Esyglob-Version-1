@@ -5,29 +5,7 @@ import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
 import mongoose from 'mongoose';
 import { getIO } from '../lib/socket.js';
-
-const allowedTransitions = {
-  draft: ['pending_approval', 'cancelled'],
-  pending_approval: ['awaiting_payment', 'rejected', 'cancelled'],
-  awaiting_payment: ['payment_confirmed', 'cancelled'],
-  pending_payment: ['payment_confirmed', 'confirmed', 'processing', 'production', 'preparing_shipment', 'cancelled'],
-  payment_success: ['payment_confirmed', 'confirmed', 'cancelled', 'refunded'],
-  payment_confirmed: ['confirmed', 'processing', 'preparing_shipment', 'cancelled', 'refunded'],
-  confirmed: ['processing', 'preparing_shipment', 'production', 'cancelled'],
-  processing: ['production', 'preparing_shipment', 'ready_to_ship', 'cancelled'],
-  production: ['ready_to_ship', 'preparing_shipment', 'cancelled'],
-  ready_to_ship: ['pickup_scheduled', 'shipped', 'cancelled'],
-  preparing_shipment: ['pickup_scheduled', 'picked_up', 'cancelled'],
-  pickup_scheduled: ['picked_up', 'cancelled'],
-  picked_up: ['warehouse_processing', 'in_transit', 'cancelled'],
-  warehouse_processing: ['in_transit', 'custom_clearance', 'cancelled'],
-  custom_clearance: ['in_transit', 'out_for_delivery', 'cancelled'],
-  in_transit: ['custom_clearance', 'out_for_delivery', 'delivered', 'returned'],
-  out_for_delivery: ['delivered', 'returned'],
-  shipped: ['in_transit', 'delivered', 'disputed'],
-  delivered: ['completed', 'disputed'],
-  disputed: ['refunded', 'completed'],
-};
+import TradeWorkflowService from './trade-workflow.service.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -103,6 +81,7 @@ class OrderService {
     const payload = order.toObject();
     payload.shipment = fulfillment.shipment;
     payload.invoice = fulfillment.invoice;
+    payload.workflowSnapshot = await TradeWorkflowService.snapshot(order);
 
     return { order: payload };
   }
@@ -352,7 +331,7 @@ class OrderService {
     }
 
     if (status) {
-      const permitted = allowedTransitions[order.status] || [];
+      const permitted = TradeWorkflowService.allowedNext(order.status);
       if (!permitted.includes(status) && !isAdmin) {
         throw Object.assign(
           new Error(`Cannot move order from ${order.status} to ${status}`),
@@ -366,11 +345,7 @@ class OrderService {
         );
       }
 
-      order.status = status;
-      order.timeline.push({
-        status, timestamp: new Date(),
-        note: notes || '', updatedBy: userId,
-      });
+      await TradeWorkflowService.transition({ order, toStatus: status, actorId: userId, actorRole: isAdmin ? 'admin' : 'seller', note: notes || '', isAdmin });
 
       await notifyOrderStatus(order, { status, userId });
     }
@@ -388,6 +363,7 @@ class OrderService {
     const payload = order.toObject();
     payload.shipment = fulfillment.shipment;
     payload.invoice = fulfillment.invoice;
+    payload.workflowSnapshot = await TradeWorkflowService.snapshot(order);
 
     const io = getIO();
     if (io) {
@@ -397,6 +373,30 @@ class OrderService {
       if (order.chatId) io.to(`chat_${order.chatId}`).emit('order_updated', event);
     }
 
+    return { order: payload };
+  }
+
+  static async addProductionUpdate(userId, roles, orderId, data) {
+    const stages = ['raw_material_purchased', 'manufacturing_started', 'assembly_running', 'quality_control', 'packaging', 'production_completed'];
+    if (!stages.includes(data.stage)) throw Object.assign(new Error('Invalid production stage'), { statusCode: 400 });
+    const order = await OrderRepository.findByIdFull(orderId);
+    if (!order) throw Object.assign(new Error('Order not found'), { statusCode: 404 });
+    const seller = await OrderRepository.findSellerByUserId(userId);
+    const isSeller = String(order.sellerId?._id || order.sellerId || '') === String(seller?._id || '');
+    const isAdmin = roles?.includes('admin');
+    if (!isSeller && !isAdmin) throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+    if (!['confirmed', 'processing', 'production'].includes(order.status)) throw Object.assign(new Error('Production updates are not available at this workflow stage'), { statusCode: 409 });
+    order.production ||= { status: 'not_started', updates: [] };
+    order.production.status = data.stage;
+    order.production.updates.push({ stage: data.stage, note: data.note || '', attachments: Array.isArray(data.attachments) ? data.attachments : [], updatedBy: userId, timestamp: new Date() });
+    if (!order.production.startedAt) order.production.startedAt = new Date();
+    if (data.stage === 'production_completed') order.production.completedAt = new Date();
+    const target = data.stage === 'production_completed' ? 'ready_to_ship' : 'production';
+    if (order.status !== target) await TradeWorkflowService.transition({ order, toStatus: target, actorId: userId, actorRole: isAdmin ? 'admin' : 'seller', note: data.note || data.stage.replace(/_/g, ' '), isAdmin });
+    else order.timeline.push({ status: data.stage, timestamp: new Date(), note: data.note || '', updatedBy: userId });
+    await OrderRepository.save(order);
+    const payload = order.toObject();
+    payload.workflowSnapshot = await TradeWorkflowService.snapshot(order);
     return { order: payload };
   }
 }

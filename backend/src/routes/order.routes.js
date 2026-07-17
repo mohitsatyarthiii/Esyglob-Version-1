@@ -16,6 +16,8 @@ router.post('/', OrderController.create);
 // GET - Single order
 router.get('/:orderId', OrderController.getById);
 
+router.post('/:orderId/production-updates', OrderController.addProductionUpdate);
+
 // PATCH - Update order status
 router.patch('/:orderId', OrderController.updateStatus);
 

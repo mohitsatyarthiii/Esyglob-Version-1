@@ -1,6 +1,7 @@
 import ShipmentRepository from '../repositories/shipment.repository.js';
 import { shipmentCreateSchema } from '../validators/shipment.validator.js';
 import { getLogisticsProvider } from '../lib/integrations/logistics.js';
+import TradeWorkflowService from './trade-workflow.service.js';
 
 class ShipmentService {
   /**
@@ -69,7 +70,9 @@ class ShipmentService {
       order.estimatedDeliveryDate = estimatedDeliveryAt;
     }
     if (trackingNumber) {
-      order.status = 'ready_to_ship';
+      if (TradeWorkflowService.allowedNext(order.status).includes('ready_to_ship')) {
+        await TradeWorkflowService.transition({ order, toStatus: 'ready_to_ship', actorId: userId, actorRole: 'seller', note: 'Shipment created and label is ready', isAdmin: roles?.includes('admin') });
+      }
     }
     await ShipmentRepository.saveOrder(order);
 

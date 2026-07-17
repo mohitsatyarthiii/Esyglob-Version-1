@@ -104,6 +104,14 @@ export async function getNormalizedLogisticsRates({
       available: provider?.status !== 'inactive',
       priority: provider?.priority || 100,
       productTotal,
+      estimatedCost: Number(rule.amount || rule.price || 0),
+      deliveryTime: rule.deliveryTime || rule.eta || '',
+      coverage: rule.coverage || rule.countries || [],
+      includedServices: rule.includedServices || rule.services || [],
+      transitType: rule.transitType || rule.mode || '',
+      trackingAvailable: rule.trackingAvailable !== false,
+      insuranceAvailable: Boolean(rule.insuranceAvailable || rule.internalBreakdown?.insurance),
+      pickupAvailable: rule.pickupAvailable !== false,
     };
   });
 }

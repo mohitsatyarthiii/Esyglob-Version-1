@@ -64,6 +64,12 @@ type LogisticsOption = {
   variableCharges?: number;
   internalBreakdown?: Record<string, number>;
   providerLabel?: string;
+  coverage?: string[] | string;
+  includedServices?: string[];
+  transitType?: string;
+  trackingAvailable?: boolean;
+  insuranceAvailable?: boolean;
+  pickupAvailable?: boolean;
 };
 
 type QuoteData = {
@@ -563,6 +569,13 @@ function OrderCheckoutScreen() {
                           {option.providerLabel && (
                             <Text style={styles.providerText}>{option.providerLabel}</Text>
                           )}
+                          <View style={styles.capabilityRow}>
+                            {option.transitType || option.mode ? <Capability icon="swap-horizontal" label={String(option.transitType || option.mode)} /> : null}
+                            {option.trackingAvailable ? <Capability icon="map-marker-path" label="Tracking" /> : null}
+                            {option.insuranceAvailable ? <Capability icon="shield-check-outline" label="Insurance" /> : null}
+                            {option.pickupAvailable ? <Capability icon="truck-delivery-outline" label="Pickup" /> : null}
+                          </View>
+                          {Array.isArray(option.includedServices) && option.includedServices.length ? <View style={styles.inclusionBox}><Text style={styles.inclusionTitle}>Included services</Text>{option.includedServices.map(service => <View key={service} style={styles.inclusionRow}><Icon name="check-circle" size={13} color="#16A34A" /><Text style={styles.inclusionText}>{service}</Text></View>)}</View> : null}
                         </Pressable>
                       );
                     })}
@@ -603,6 +616,10 @@ function OrderCheckoutScreen() {
       </Modal>
     </View>
   );
+}
+
+function Capability({ icon, label }: { icon: string; label: string }) {
+  return <View style={styles.capability}><Icon name={icon} size={13} color="#1D4ED8" /><Text style={styles.capabilityText}>{label}</Text></View>;
 }
 
 // ─── Field Components ───────────────────────────────────────────────────────
@@ -1048,6 +1065,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'right',
   },
+  capabilityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 9 },
+  capability: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 14, flexDirection: 'row', gap: 4, paddingHorizontal: 8, paddingVertical: 5 },
+  capabilityText: { color: '#1D4ED8', fontSize: 9, fontWeight: '800', textTransform: 'capitalize' },
+  inclusionBox: { backgroundColor: '#F8FAFC', borderRadius: 10, marginTop: 9, padding: 9 },
+  inclusionTitle: { color: '#334155', fontSize: 9, fontWeight: '900', marginBottom: 5, textTransform: 'uppercase' },
+  inclusionRow: { alignItems: 'center', flexDirection: 'row', gap: 5, marginTop: 3 },
+  inclusionText: { color: '#475569', fontSize: 9, fontWeight: '700' },
 
   // Order Button
   orderBtn: {

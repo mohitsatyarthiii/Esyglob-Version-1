@@ -1,5 +1,7 @@
 import EscrowRepository from '../repositories/escrow.repository.js';
 import NotificationService from './notification.service.js';
+import Order from '../models/Order.js';
+import TradeWorkflowService from './trade-workflow.service.js';
 import {
   escrowCreateSchema,
   escrowPatchSchema,
@@ -155,6 +157,14 @@ class EscrowService {
       throw Object.assign(new Error('Forbidden'), { statusCode: 403 });
     }
 
+    const linkedOrder = transaction.orderId ? await Order.findById(transaction.orderId) : null;
+    if (body.action === 'approve' && linkedOrder) {
+      if (!TradeWorkflowService.allowedNext(linkedOrder.status).includes('completed')) throw Object.assign(new Error('Escrow cannot be released before delivery and workflow completion'), { statusCode: 409 });
+      const context = await TradeWorkflowService.getContext(linkedOrder);
+      const blockers = TradeWorkflowService.blockers(linkedOrder, 'completed', context);
+      if (blockers.length) throw Object.assign(new Error(blockers.join('. ')), { statusCode: 409 });
+    }
+
     return { transaction };
   }
 
@@ -204,6 +214,22 @@ class EscrowService {
     }
 
     await EscrowRepository.save(transaction);
+
+    if (transaction.orderId) {
+      const order = linkedOrder;
+      if (order) {
+        if (body.action === 'deposit') {
+          order.paymentStatus = 'paid';
+          order.escrowId = transaction._id;
+          if (TradeWorkflowService.allowedNext(order.status).includes('payment_confirmed')) await TradeWorkflowService.transition({ order, toStatus: 'payment_confirmed', actorId: session.userId, actorRole: 'buyer', note: 'Escrow funded' });
+        } else if (body.action === 'dispute' && TradeWorkflowService.allowedNext(order.status).includes('disputed')) {
+          await TradeWorkflowService.transition({ order, toStatus: 'disputed', actorId: session.userId, actorRole: 'buyer', note: body.reason || 'Escrow disputed' });
+        } else if (body.action === 'approve' && TradeWorkflowService.allowedNext(order.status).includes('completed')) {
+          await TradeWorkflowService.transition({ order, toStatus: 'completed', actorId: session.userId, actorRole: 'platform', note: 'Escrow released after workflow validation' });
+        }
+        await order.save();
+      }
+    }
 
     // Notify buyer
     await NotificationService.createNotification({

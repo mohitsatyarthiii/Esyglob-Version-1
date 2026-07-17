@@ -41,7 +41,6 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     <View style={[styles.tabShell, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
-        const options = descriptors[route.key].options;
         const meta = tabMeta[route.name as keyof RootTabParamList];
 
         const onPress = () => {
@@ -60,29 +59,42 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           <Pressable
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
-            accessibilityLabel={options.tabBarAccessibilityLabel}
+            accessibilityLabel={meta.label}
             key={route.key}
             onPress={onPress}
             style={({ pressed }) => [styles.tabItem, pressed && styles.tabPressed]}>
+            
+            {/* Active Indicator Line */}
+            {isFocused && <View style={styles.activeIndicator} />}
+            
+            {/* Icon */}
             {route.name === 'Account' && accountImage ? (
-              <View style={[styles.accountBubble, isFocused && styles.accountBubbleActive]}>
+              <View style={styles.accountIconWrap}>
                 <RemoteImage
                   uri={accountImage}
                   width={72}
                   height={72}
-                  style={styles.accountAvatar}
-                  fallback={<Text style={[styles.accountInitial, isFocused && styles.accountInitialActive]}>{accountInitial}</Text>}
+                  style={[styles.accountAvatar, isFocused && styles.accountAvatarActive]}
+                  fallback={
+                    <View style={[styles.accountFallback, isFocused && styles.accountFallbackActive]}>
+                      <Text style={[styles.accountInitial, isFocused && styles.accountInitialActive]}>
+                        {accountInitial}
+                      </Text>
+                    </View>
+                  }
                 />
               </View>
             ) : (
-              <View style={[styles.iconBubble, isFocused && styles.activeBubble]}>
+              <View style={styles.iconWrap}>
                 <Icon
                   name={isFocused ? meta.activeIcon : meta.icon}
                   size={24}
-                  color={isFocused ? '#fff' : colors.ink}
+                  color={isFocused ? '#EA580C' : colors.ink}
                 />
               </View>
             )}
+            
+            {/* Label */}
             <Text numberOfLines={1} style={[styles.tabLabel, isFocused && styles.activeLabel]}>
               {meta.label}
             </Text>
@@ -114,7 +126,7 @@ function AppTabs() {
 
 const styles = StyleSheet.create({
   tabShell: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: colors.card,
     borderTopColor: colors.faint,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -122,8 +134,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     left: 0,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingTop: 0,
     position: 'absolute',
     right: 0,
     ...shadow,
@@ -131,53 +143,87 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
     flex: 1,
-    minHeight: 58,
+    paddingTop: 8,
+    paddingBottom: 4,
+    minHeight: 56,
+    position: 'relative',
   },
   tabPressed: {
-    opacity: 0.72,
+    opacity: 0.8,
   },
-  iconBubble: {
+  
+  // Active Indicator Line (Top)
+  activeIndicator: {
+    position: 'absolute',
+    top: 0,
+    height: 3,
+    width: 32,
+    backgroundColor: '#EA580C',
+    borderRadius: 2,
+    alignSelf: 'center',
+  },
+  
+  // Icon Wrapper
+  iconWrap: {
+    width: 40,
+    height: 28,
     alignItems: 'center',
-    borderRadius: radii.pill,
-    height: 38,
     justifyContent: 'center',
-    width: 46,
+    marginBottom: 2,
   },
-  activeBubble: {
-    backgroundColor: colors.primary,
-  },
-  accountBubble: {
+  
+  // Account Icon
+  accountIconWrap: {
+    width: 40,
+    height: 28,
     alignItems: 'center',
-    borderRadius: radii.pill,
-    height: 38,
     justifyContent: 'center',
-    width: 46,
-  },
-  accountBubbleActive: {
-    backgroundColor: colors.primary,
+    marginBottom: 2,
   },
   accountAvatar: {
-    borderRadius: radii.pill,
-    height: 32,
-    width: 32,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: colors.faint,
+  },
+  accountAvatarActive: {
+    borderColor: '#EA580C',
+    borderWidth: 2,
+  },
+  accountFallback: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.faint,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.faint,
+  },
+  accountFallbackActive: {
+    borderColor: '#EA580C',
+    borderWidth: 2,
+    backgroundColor: '#FFF7ED',
   },
   accountInitial: {
     color: colors.primaryDark,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '900',
   },
   accountInitialActive: {
-    color: '#fff',
+    color: '#EA580C',
   },
+  
+  // Label
   tabLabel: {
     color: colors.ink,
     fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
+    fontWeight: '600',
   },
   activeLabel: {
-    color: colors.primaryDark,
-    fontWeight: '900',
+    color: '#EA580C',
+    fontWeight: '700',
   },
 });
 
