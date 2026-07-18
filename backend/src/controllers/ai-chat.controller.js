@@ -2,12 +2,14 @@ import AIChatService from '../services/ai-chat.service.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
+import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 
 // Ollama streaming configuration
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
-const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 260);
+// Large enough to finish normal trade answers while remaining bounded for the 3B provider.
+const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
 // Provider health tracking
 const providerHealth = {
@@ -241,7 +243,6 @@ class AIChatController {
                       if (token) {
                         if (!firstTokenAt) firstTokenAt = Date.now();
                         assistantText += token;
-                        sendSSE({ type: 'token', content: token });
                       }
                       if (data.eval_count) tokensUsed = data.eval_count;
                     } catch (e) {
@@ -287,15 +288,65 @@ class AIChatController {
           assistantText = fallbackText;
           tokensUsed = 0;
 
-          // Stream words for fallback
-          const words = String(fallbackText || '').match(/\S+\s*|\n+/g) || [];
-          for (const word of words) {
-            if (!firstTokenAt) firstTokenAt = Date.now();
-            sendSSE({ type: 'token', content: word });
+        }
+
+        let cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
+        const intelligence = platformContext.snapshot.intelligence || {};
+        let validation = validateAIResponse({
+          message,
+          response: cleanText,
+          intelligence,
+          snapshot: platformContext.snapshot,
+        });
+        let regenerated = false;
+
+        // Never expose an unvalidated draft. One bounded repair pass prevents loops.
+        if (!validation.passed) {
+          try {
+            const repair = await AIChatService.callOllama(
+              buildRepairPrompt({ message, response: cleanText, validation, intelligence }),
+              chat.messages.slice(-4),
+              systemPrompt,
+              { maxTokens: CHAT_MAX_TOKENS, temperature: 0.2 },
+            );
+            const repairedText = String(repair.message || '').trim();
+            const repairedValidation = validateAIResponse({
+              message,
+              response: repairedText,
+              intelligence,
+              snapshot: platformContext.snapshot,
+            });
+            regenerated = true;
+            if (repairedValidation.passed) {
+              cleanText = repairedText;
+              validation = repairedValidation;
+              tokensUsed += Number(repair.tokensUsed || 0);
+              activeProvider = repair.provider || activeProvider;
+              activeModel = repair.model || activeModel;
+            } else {
+              validation = repairedValidation;
+            }
+          } catch (repairError) {
+            debugLog('[Validator] Repair failed:', repairError.message);
           }
         }
 
-        const cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
+        if (!validation.passed) {
+          const critical = validation.issues.some(issue => issue.severity === 'critical');
+          if (critical) {
+            cleanText = intelligence.language === 'hi'
+              ? 'मैं इस अनुरोध का सुरक्षित और सत्यापित उत्तर नहीं दे सका। कृपया निजी जानकारी साझा किए बिना अनुरोध को दोबारा लिखें।'
+              : intelligence.language === 'hinglish'
+                ? 'Main is request ka safe aur verified answer generate nahi kar saka. Private details ke bina request dobara likhein.'
+                : 'I could not produce a safe, verified answer for this request. Please rephrase it without including private information.';
+          }
+        }
+
+        // Only the validated/repaired final response is streamed to the client.
+        for (const word of cleanText.match(/\S+\s*|\n+/g) || []) {
+          if (!firstTokenAt) firstTokenAt = Date.now();
+          sendSSE({ type: 'token', content: word });
+        }
         const providerMs = Date.now() - providerStartedAt;
         const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({
           message,
@@ -327,6 +378,11 @@ class AIChatController {
               card: body.responseCard || undefined,
               marketplace: platformContext.snapshot,
               suggestedFollowUps,
+              validation: {
+                passed: validation.passed,
+                regenerated,
+                issues: validation.issues.map(issue => issue.code),
+              },
             },
           },
           provider: activeProvider,
@@ -347,6 +403,11 @@ class AIChatController {
           tokensUsed,
           marketplace: platformContext.snapshot,
           suggestedFollowUps,
+          validation: {
+            passed: validation.passed,
+            regenerated,
+            issues: validation.issues.map(issue => issue.code),
+          },
           timing: {
             retrievalMs,
             providerMs,

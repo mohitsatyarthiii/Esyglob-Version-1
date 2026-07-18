@@ -5,6 +5,7 @@ import {
   Animated,
   Dimensions,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
@@ -26,7 +27,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { FlashList } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchCategories } from '../api/categories';
-import { fetchSellers } from '../api/marketplace';
+import { fetchNotifications, fetchSellers } from '../api/marketplace';
 import { fetchProducts } from '../api/products';
 import { Category, Product, SellerSummary } from '../api/types';
 import LiveSearchDropdown from '../components/LiveSearchDropdown';
@@ -41,6 +42,7 @@ import { getId, getStableKey } from '../utils/format';
 import { firstImage } from '../utils/images';
 import { streamAIChat } from '../api/ai';
 import { getActiveAIChatId, setActiveAIChatId } from '../ai/aiSession';
+import { useAuth } from '../auth/AuthContext';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -53,9 +55,9 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const D = {
   bg: '#F8FAFC',
   surface: '#FFFFFF',
-  primary: '#4F46E5',
-  primaryLight: '#EEF2FF',
-  primaryDark: '#3730A3',
+  primary: '#2563EB',
+  primaryLight: '#EFF6FF',
+  primaryDark: '#1D4ED8',
   accent: '#F97316',
   accentLight: '#FFF7ED',
   success: '#10B981',
@@ -102,19 +104,7 @@ type ChatMessage = {
   content: string;
   timestamp: number;
   isStreaming?: boolean;
-  thinkingSteps?: string[];
 };
-
-// ─── AI Thinking Steps ──────────────────────────────────────────────────────
-
-const THINKING_STEPS = [
-  'Analyzing your query...',
-  'Searching trade database...',
-  'Finding best matches...',
-  'Verifying supplier data...',
-  'Calculating estimates...',
-  'Preparing response...',
-];
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
@@ -122,6 +112,7 @@ function HomeScreen() {
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
+  const { status } = useAuth();
 
   const [activeTab, setActiveTab] = useState<HomeTab>('Products');
   const [showSearch, setShowSearch] = useState(false);
@@ -141,10 +132,7 @@ function HomeScreen() {
   const [inputText, setInputText] = useState('');
   const [chatId, setChatId] = useState<string | undefined>(() => getActiveAIChatId('buyer'));
   const [isStreaming, setIsStreaming] = useState(false);
-  const [_thinkingStep, setThinkingStep] = useState(0);
-  const [showThinking, setShowThinking] = useState(false);
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
-  const thinkingInterval = useRef<NodeJS.Timeout | null>(null);
 
   // ── Prefetch ──────────────────────────────────────────────────────────
 
@@ -156,6 +144,20 @@ function HomeScreen() {
       queryClient.prefetchQuery({ queryKey: ['manufacturers-directory'], queryFn: () => fetchSellers({ limit: 30, sort: 'verified' }), ...CACHE_CONFIG }),
     ]);
   }, [queryClient]);
+
+  // ── Notification Query ────────────────────────────────────────────────
+
+  const notifQuery = useQuery({
+    queryKey: ['home-notif'],
+    queryFn: fetchNotifications,
+    enabled: status === 'authenticated',
+    ...CACHE_CONFIG,
+    select: (d: any) => ({
+      unread: Array.isArray(d) ? d.filter((i: any) => !i.isRead).length : 0,
+    }),
+  });
+
+  const unread = notifQuery.data?.unread ?? 0;
 
   // ── Tab Animation ─────────────────────────────────────────────────────
 
@@ -203,38 +205,15 @@ function HomeScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
   }, []);
 
-  // Start thinking animation
-  const startThinking = useCallback(() => {
-    setShowThinking(true);
-    setThinkingStep(0);
-    let step = 0;
-    thinkingInterval.current = setInterval(() => {
-      step++;
-      if (step < THINKING_STEPS.length) {
-        setThinkingStep(step);
-      } else {
-        if (thinkingInterval.current) clearInterval(thinkingInterval.current);
-      }
-    }, 800);
-  }, []);
-
-  // Stop thinking animation
-  const stopThinking = useCallback(() => {
-    if (thinkingInterval.current) clearInterval(thinkingInterval.current);
-    setShowThinking(false);
-    setThinkingStep(0);
-  }, []);
-
   const sendMessage = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
     setInputText('');
 
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: trimmed, timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
-    
-    // Add thinking placeholder
-    startThinking();
+    const assistantMsg: ChatMessage = { id: `a-${Date.now()}`, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true };
+    setMessages(prev => [...prev, userMsg, assistantMsg]);
+    scrollToBottom();
     
     setIsStreaming(true);
     let full = '';
@@ -249,13 +228,6 @@ function HomeScreen() {
         context: { feature: 'Home AI', sourcePath: '/mobile/home/ai' } 
       }, chunk => {
         if (chunk.type === 'token') {
-          if (showThinking) {
-            stopThinking();
-            // Add AI message when first token arrives
-            const aiMsg: ChatMessage = { id: `a-${Date.now()}`, role: 'assistant', content: '', timestamp: Date.now(), isStreaming: true };
-            setMessages(prev => [...prev, aiMsg]);
-            scrollToBottom();
-          }
           full += String(chunk.content ?? '');
           setMessages(prev => {
             const u = [...prev];
@@ -278,22 +250,17 @@ function HomeScreen() {
       full = `Unable to process request. Please try again.`;
     }
 
-    stopThinking();
-    
     setMessages(prev => {
       const u = [...prev];
       const l = u[u.length - 1];
       if (l?.role === 'assistant' && l.isStreaming) {
         u[u.length - 1] = { ...l, content: full || 'No response.', isStreaming: false };
-      } else if (!l || l.role !== 'assistant') {
-        // Fallback: add message if not added
-        u.push({ id: `a-${Date.now()}`, role: 'assistant', content: full || 'No response.', timestamp: Date.now() });
       }
       return u;
     });
     setIsStreaming(false);
     scrollToBottom();
-  }, [isStreaming, chatId, showThinking, startThinking, stopThinking, scrollToBottom]);
+  }, [isStreaming, chatId, scrollToBottom]);
 
   const resetChat = useCallback(() => {
     setMessages([{
@@ -304,17 +271,11 @@ function HomeScreen() {
     }]);
     setChatId(undefined);
     setActiveAIChatId('buyer');
-    stopThinking();
-  }, [stopThinking]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => { if (thinkingInterval.current) clearInterval(thinkingInterval.current); };
   }, []);
 
-  const showSuggestions = messages.length === 1 && !isStreaming && !showThinking;
+  const showSuggestions = messages.length === 1 && !isStreaming;
 
-  // ── AI Chat Render ────────────────────────────────────────────────────
+  // ── AI Chat Tab ───────────────────────────────────────────────────────
 
   const renderAI = () => (
     <KeyboardAvoidingView
@@ -322,45 +283,25 @@ function HomeScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
     >
-      {/* ── Premium AI Header ── */}
-      <LinearGradient
-        colors={['#4F46E5', '#7C3AED', '#A78BFA']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={aiStyles.header}
-      >
-        <View style={aiStyles.headerContent}>
+      <View style={aiStyles.header}>
+        <View style={aiStyles.headerRow}>
           <View style={aiStyles.headerLeft}>
-            <View style={aiStyles.avatarGlow}>
-              <LinearGradient
-                colors={['#818CF8', '#4F46E5']}
-                style={aiStyles.avatar}
-              >
-                <Icon name="robot" size={20} color="#FFF" />
-              </LinearGradient>
+            <View style={aiStyles.avatarBox}>
+              <Icon name="robot" size={18} color="#FFF" />
             </View>
             <View>
-              <Text style={aiStyles.headerTitle}>Trade AI Assistant</Text>
-              <View style={aiStyles.statusRow}>
-                <View style={[aiStyles.statusDot, { backgroundColor: isStreaming ? '#FBBF24' : '#34D399' }]} />
-                <Text style={aiStyles.statusText}>
-                  {isStreaming ? 'Processing...' : showThinking ? 'Thinking...' : 'Online'}
-                </Text>
-              </View>
+              <Text style={aiStyles.headerTitle}>Esy AI</Text>
+              <Text style={aiStyles.headerStatus}>
+                {isStreaming ? 'Typing...' : 'Online'}
+              </Text>
             </View>
           </View>
-          <TouchableOpacity onPress={resetChat} style={aiStyles.newChatBtn}>
-            <Icon name="plus" size={18} color="#FFF" />
+          <TouchableOpacity onPress={resetChat} style={aiStyles.newBtn}>
+            <Icon name="plus" size={16} color="#2563EB" />
           </TouchableOpacity>
         </View>
-        {/* Subtle wave pattern */}
-        <View style={aiStyles.wavePattern}>
-          <View style={[aiStyles.wave, { opacity: 0.1 }]} />
-          <View style={[aiStyles.wave, { opacity: 0.06, marginTop: 8 }]} />
-        </View>
-      </LinearGradient>
+      </View>
 
-      {/* ── Messages ── */}
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -370,114 +311,71 @@ function HomeScreen() {
         showsVerticalScrollIndicator={false}
         renderItem={({ item, index }) => {
           const isUser = item.role === 'user';
-          const isSystem = item.role === 'system';
           const time = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const showAvatar = !isUser && (index === 0 || messages[index - 1]?.role !== 'assistant');
 
-          if (isSystem) return null;
-
           return (
-            <View style={[aiStyles.messageRow, isUser ? aiStyles.messageRowUser : aiStyles.messageRowAI]}>
+            <View style={[aiStyles.msgRow, isUser && aiStyles.msgRowUser]}>
               {!isUser && (
-                <View style={[aiStyles.messageAvatar, !showAvatar && aiStyles.messageAvatarHidden]}>
-                  {showAvatar && (
-                    <LinearGradient colors={['#818CF8', '#4F46E5']} style={aiStyles.messageAvatarGradient}>
-                      <Icon name="robot" size={12} color="#FFF" />
-                    </LinearGradient>
-                  )}
+                <View style={[aiStyles.msgAvatar, !showAvatar && aiStyles.msgAvatarHidden]}>
+                  {showAvatar && <Icon name="robot" size={12} color="#2563EB" />}
                 </View>
               )}
-
               <View style={[aiStyles.bubble, isUser ? aiStyles.bubbleUser : aiStyles.bubbleAI]}>
                 {!isUser && item.isStreaming && !item.content && (
-                  <View style={aiStyles.typingIndicator}>
+                  <View style={aiStyles.typing}>
                     <View style={aiStyles.typingDot} />
-                    <View style={[aiStyles.typingDot, { animationDelay: '0.2s' }]} />
-                    <View style={[aiStyles.typingDot, { animationDelay: '0.4s' }]} />
+                    <View style={aiStyles.typingDot} />
+                    <View style={aiStyles.typingDot} />
                   </View>
                 )}
                 <Text style={[aiStyles.bubbleText, isUser && aiStyles.bubbleTextUser]} selectable>
                   {item.content}
                 </Text>
-                <View style={aiStyles.bubbleFooter}>
-                  <Text style={[aiStyles.timeText, isUser && aiStyles.timeTextUser]}>{time}</Text>
-                  {isUser && <Icon name="check-all" size={10} color="rgba(255,255,255,0.5)" />}
-                </View>
+                <Text style={[aiStyles.time, isUser && aiStyles.timeUser]}>{time}</Text>
               </View>
-
-              {isUser && (
-                <View style={[aiStyles.messageAvatar, aiStyles.messageAvatarUser]}>
-                  <Icon name="account" size={12} color="#FFF" />
-                </View>
-              )}
             </View>
           );
         }}
         ListFooterComponent={
-          <>
-            {/* Thinking State */}
-            {showThinking && (
-              <CompactAIStatus steps={THINKING_STEPS} />
-            )}
-
-            {/* Suggestions */}
-            {showSuggestions && (
-              <View style={aiStyles.suggestionsSection}>
-                <Text style={aiStyles.suggestionsTitle}>Suggested queries</Text>
-                <View style={aiStyles.suggestionsGrid}>
-                  {[
-                    { icon: 'magnify', text: 'Find electronics suppliers', color: '#4F46E5' },
-                    { icon: 'calculator', text: 'Calculate import duties', color: '#7C3AED' },
-                    { icon: 'trending-up', text: 'Trending products now', color: '#F97316' },
-                    { icon: 'shield-check', text: 'How to verify supplier', color: '#10B981' },
-                    { icon: 'truck-delivery', text: 'Shipping to India', color: '#3B82F6' },
-                  ].map((suggestion, i) => (
-                    <TouchableOpacity
-                      key={i}
-                      style={aiStyles.suggestionChip}
-                      onPress={() => sendMessage(suggestion.text)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[aiStyles.suggestionIcon, { backgroundColor: suggestion.color + '15' }]}>
-                        <Icon name={suggestion.icon} size={16} color={suggestion.color} />
-                      </View>
-                      <Text style={aiStyles.suggestionText} numberOfLines={2}>{suggestion.text}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-            <View style={{ height: 8 }} />
-          </>
+          showSuggestions ? (
+            <View style={aiStyles.suggestions}>
+              <Text style={aiStyles.suggTitle}>Try asking</Text>
+              {[
+                { icon: 'magnify', text: 'Find electronics suppliers' },
+                { icon: 'calculator', text: 'Calculate import duties' },
+                { icon: 'trending-up', text: 'Trending products now' },
+                { icon: 'shield-check', text: 'How to verify supplier' },
+                { icon: 'truck-delivery', text: 'Shipping to India' },
+              ].map((s, i) => (
+                <TouchableOpacity key={i} style={aiStyles.suggChip} onPress={() => sendMessage(s.text)} activeOpacity={0.7}>
+                  <Icon name={s.icon} size={14} color="#2563EB" />
+                  <Text style={aiStyles.suggText}>{s.text}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null
         }
       />
 
-      {/* ── Input Bar ── */}
       <View style={[aiStyles.inputBar, { paddingBottom: Math.max(insets.bottom, 8) + 72 }]}>
         <View style={aiStyles.inputRow}>
           <TextInput
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask anything about trade..."
+            placeholder="Ask anything..."
             placeholderTextColor={D.textTertiary}
             style={aiStyles.input}
             multiline
             maxLength={500}
-            returnKeyType="send"
-            blurOnSubmit
             onSubmitEditing={() => sendMessage(inputText)}
           />
           <TouchableOpacity
             onPress={() => sendMessage(inputText)}
             disabled={!inputText.trim() || isStreaming}
-            style={[aiStyles.sendBtn, (!inputText.trim() || isStreaming) && aiStyles.sendBtnDisabled]}
+            style={[aiStyles.sendBtn, (!inputText.trim() || isStreaming) && aiStyles.sendDisabled]}
           >
-            <LinearGradient
-              colors={(!inputText.trim() || isStreaming) ? ['#CBD5E1', '#CBD5E1'] : ['#4F46E5', '#7C3AED']}
-              style={aiStyles.sendBtnGradient}
-            >
-              <Icon name="arrow-up" size={18} color="#FFF" />
-            </LinearGradient>
+            <Icon name="arrow-up" size={16} color="#FFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -490,18 +388,24 @@ function HomeScreen() {
     <View style={styles.screen}>
       <StatusBar barStyle="dark-content" backgroundColor={D.surface} />
 
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.brandRow}>
-            <LinearGradient colors={['#4F46E5', '#7C3AED']} style={styles.brandIcon}>
-              <Icon name="earth" size={16} color="#FFF" />
-            </LinearGradient>
+            <Image 
+              source={require('../../esyglob-logo.jpeg')} 
+              resizeMode="contain" 
+              style={styles.logoImg}
+            />
             <Text style={styles.brand}>EsyGlob</Text>
           </View>
           <View style={styles.headerActions}>
             <Pressable onPress={() => navigation.navigate('Notifications')} style={styles.iconBtn}>
               <Icon name="bell-outline" size={20} color={D.textSecondary} />
+              {unread > 0 && (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>{unread > 99 ? '99+' : unread}</Text>
+                </View>
+              )}
             </Pressable>
             <Pressable onPress={() => navigation.navigate('Messages')} style={styles.iconBtn}>
               <Icon name="message-text-outline" size={20} color={D.textSecondary} />
@@ -509,7 +413,6 @@ function HomeScreen() {
           </View>
         </View>
 
-        {/* Tabs */}
         <View style={styles.tabTrack}>
           {tabWidths.length === TABS.length && (
             <Animated.View style={[styles.tabIndicator, { transform: [{ translateX: tabPosition }], width: (tabWidths[TABS.indexOf(activeTab)] || 80) - 8 }]} />
@@ -526,13 +429,12 @@ function HomeScreen() {
             <Icon name="magnify" size={18} color={D.textTertiary} />
             <Text style={styles.searchPlaceholder}>Search products, suppliers...</Text>
             <Pressable onPress={event => { event.stopPropagation(); navigation.navigate('ImageSearch'); }} style={styles.searchCamera}>
-              <Icon name="camera-outline" size={16} color={D.primary} />
+              <Icon name="camera-outline" size={16} color="#2563EB" />
             </Pressable>
           </Pressable>
         )}
       </View>
 
-      {/* Content */}
       <View style={styles.content}>
         {activeTab === 'AI' && renderAI()}
 
@@ -541,6 +443,7 @@ function HomeScreen() {
             data={productFeed}
             keyExtractor={(item: Product) => getId(item) || Math.random().toString()}
             numColumns={2}
+            estimatedItemSize={280}
             contentContainerStyle={styles.gridContent}
             refreshControl={<RefreshControl refreshing={products.isRefetching && !products.isFetchingNextPage} onRefresh={() => products.refetch()} tintColor={D.primary} />}
             onEndReachedThreshold={0.4}
@@ -563,6 +466,7 @@ function HomeScreen() {
           <FlashList
             data={manufacturers}
             keyExtractor={(item: SellerSummary) => getStableKey(item)}
+            estimatedItemSize={350}
             contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={sellers.isRefetching} onRefresh={refreshAll} tintColor={D.primary} />}
             ListHeaderComponent={<SectionHeader title="Verified Manufacturers" />}
@@ -612,13 +516,13 @@ const CategorySlider = React.memo(({ categories, loading, navigation }: any) => 
     <View style={{ paddingBottom: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: D.text }}>Categories</Text>
-        <Pressable onPress={() => navigation.navigate('Categories')}><Text style={{ fontSize: 12, fontWeight: '600', color: D.primary }}>See all</Text></Pressable>
+        <Pressable onPress={() => navigation.navigate('Categories')}><Text style={{ fontSize: 12, fontWeight: '600', color: '#2563EB' }}>See all</Text></Pressable>
       </View>
       <FlatList data={categories.slice(0, 30)} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 12 }}
         renderItem={({ item }) => (
           <Pressable onPress={() => navigation.navigate('ProductListing', { category: item.name ?? item.slug, categoryName: item.name })} style={{ alignItems: 'center', width: 68 }}>
             <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: D.primaryLight, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 6 }}>
-              {firstImage(item.image, item.icon) ? <RemoteImage uri={firstImage(item.image, item.icon)} width={64} height={64} style={{ width: 58, height: 58, borderRadius: 29 }} /> : <Icon name="view-grid-outline" size={20} color={D.primary} />}
+              {firstImage(item.image, item.icon) ? <RemoteImage uri={firstImage(item.image, item.icon)} width={64} height={64} style={{ width: 58, height: 58, borderRadius: 29 }} /> : <Icon name="view-grid-outline" size={20} color="#2563EB" />}
             </View>
             <Text style={{ fontSize: 10, fontWeight: '600', color: D.text, textAlign: 'center' }} numberOfLines={1}>{item.name ?? item.slug}</Text>
           </Pressable>
@@ -634,7 +538,7 @@ const ProductSection = React.memo(({ title, products: items, loading, navigation
     <View style={{ paddingBottom: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10 }}>
         <Text style={{ fontSize: 14, fontWeight: '700', color: D.text }}>{title}</Text>
-        <Pressable onPress={() => navigation.navigate('ProductListing')}><Text style={{ fontSize: 12, fontWeight: '600', color: D.primary }}>View all</Text></Pressable>
+        <Pressable onPress={() => navigation.navigate('ProductListing')}><Text style={{ fontSize: 12, fontWeight: '600', color: '#2563EB' }}>View all</Text></Pressable>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 10 }}>
         {items.map((product: Product) => <ProductCard key={getId(product)} product={product} />)}
@@ -643,73 +547,51 @@ const ProductSection = React.memo(({ title, products: items, loading, navigation
   );
 });
 
-// ─── Redesigned Seller Card ─────────────────────────────────────────────────
-
-// ─── Redesigned Seller Card (Complete Update) ──────────────────────────────
+// ─── Seller Card ────────────────────────────────────────────────────────────
 
 const SellerCard = React.memo(({ seller, navigation }: any) => {
   const sellerId = getStableKey(seller);
   
-  // ── Company Info ──────────────────────────────────────────────────────
   const title = seller.companyName ?? seller.businessName ?? seller.displayName ?? 'Supplier';
-  const companyType = seller.companyType; // manufacturer, wholesaler, distributor, trader, exporter
+  const companyType = seller.companyType;
   const description = seller.companyDescription ?? seller.companyIntroduction ?? seller.description ?? '';
   const yearEstablished = seller.yearEstablished ?? seller.establishedYear;
   const employeeCount = seller.employeeCount ?? seller.employees;
-  const companyWebsite = seller.companyWebsite;
   
-  // ── Location ──────────────────────────────────────────────────────────
   const country = seller.address?.country ?? seller.country;
-  const state = seller.address?.state;
   const city = seller.address?.city;
   const location = [city, country].filter(Boolean).join(', ') || 'Worldwide';
   
-  // ── Verification ──────────────────────────────────────────────────────
   const verified = seller.isVerified || seller.verificationStatus === 'verified';
   const isTrusted = seller.isTrustedSeller;
-  const verificationLevel = seller.verificationLevel ?? 0; // 0-6
-  const trustScore = seller.trustScore ?? 0; // 0-100
+  const verificationLevel = seller.verificationLevel ?? 0;
+  const trustScore = seller.trustScore ?? 0;
   
-  // ── Images ────────────────────────────────────────────────────────────
-  const sellerImage = firstImage(
-    seller.logo,
-    seller.companyLogo,
-    seller.logoUrl,
-    seller.factoryImages,
-  );
+  const sellerImage = firstImage(seller.logo, seller.companyLogo, seller.logoUrl, seller.factoryImages);
   const factoryImages = (seller.factoryImages ?? []).filter(Boolean).slice(0, 2);
   
-  // ── Ratings & Performance ─────────────────────────────────────────────
   const rating = seller.rating ? Number(seller.rating).toFixed(1) : null;
   const reviewCount = seller.reviewCount ?? 0;
   const responseRate = seller.responseRate ?? 0;
   const responseTime = seller.averageResponseTimeHours;
   const onTimeDelivery = seller.onTimeDeliveryRate ?? 0;
   
-  // ── Business Metrics ──────────────────────────────────────────────────
   const totalProducts = seller.totalProducts ?? seller.productCount ?? 0;
   const totalOrders = seller.totalOrders ?? 0;
   const totalRevenue = seller.totalRevenue ?? seller.annualRevenue ?? seller.revenue;
   const repeatBuyerRate = seller.tradeHistorySummary?.repeatBuyerRate ?? 0;
   const countriesServed = seller.tradeHistorySummary?.countriesServed ?? 0;
   
-  // ── Trade Info ────────────────────────────────────────────────────────
-  const annualRevenueRange = seller.annualRevenueRange;
-  const monthlyCapacity = seller.monthlyCapacity;
   const exportMarkets = seller.exportMarkets ?? [];
   const productCategories = seller.productCategories ?? seller.mainCategories ?? [];
   const certifications = seller.certifications ?? [];
   
-  // ── Subscription ──────────────────────────────────────────────────────
   const subscriptionPlan = seller.subscriptionPlan ?? 'free';
   const subscriptionStatus = seller.subscriptionStatus;
   
-  // ── Shipping ──────────────────────────────────────────────────────────
   const originPort = seller.shippingInfo?.originPort;
-  const exportCountries = seller.shippingInfo?.exportCountries ?? [];
   const handlingTime = seller.shippingInfo?.handlingTime;
   
-  // ── Business Hours ────────────────────────────────────────────────────
   const isCurrentlyOpen = useMemo(() => {
     if (!seller.businessHours) return null;
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -725,12 +607,8 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
     return currentTime >= openTime && currentTime <= closeTime;
   }, [seller.businessHours]);
 
-  // ── Years in Business ─────────────────────────────────────────────────
-  const yearsInBusiness = seller.yearsInBusiness ?? (yearEstablished 
-    ? new Date().getFullYear() - yearEstablished 
-    : null);
+  const yearsInBusiness = seller.yearsInBusiness ?? (yearEstablished ? new Date().getFullYear() - yearEstablished : null);
 
-  // ── Blue themes for card variety ──────────────────────────────────────
   const blueThemes = [
     { primary: '#1E40AF', light: '#EFF6FF', accent: '#3B82F6' },
     { primary: '#1D4ED8', light: '#EEF2FF', accent: '#4F46E5' },
@@ -739,7 +617,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
   const hash = sellerId.split('').reduce((s: number, c: string) => s + c.charCodeAt(0), 0);
   const theme = blueThemes[hash % blueThemes.length];
 
-  // ── Format helpers ────────────────────────────────────────────────────
   const formatRevenue = (val: any): string => {
     if (!val) return '';
     if (typeof val === 'string') return val;
@@ -751,11 +628,8 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
 
   const getCompanyTypeLabel = (type: string): string => {
     const labels: Record<string, string> = {
-      manufacturer: 'Manufacturer',
-      wholesaler: 'Wholesaler',
-      distributor: 'Distributor',
-      trader: 'Trader',
-      exporter: 'Exporter',
+      manufacturer: 'Manufacturer', wholesaler: 'Wholesaler',
+      distributor: 'Distributor', trader: 'Trader', exporter: 'Exporter',
     };
     return labels[type] || type;
   };
@@ -763,26 +637,15 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
   return (
     <Pressable
       onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
-      style={({ pressed }) => [
-        sellerStyles.card,
-        pressed && { transform: [{ scale: 0.985 }] },
-      ]}
+      style={({ pressed }) => [sellerStyles.card, pressed && { transform: [{ scale: 0.985 }] }]}
     >
-      {/* ── Blue Header ── */}
       <View style={[sellerStyles.header, { backgroundColor: theme.primary }]}>
         <View style={sellerStyles.headerContent}>
-          {/* Logo */}
           <View style={sellerStyles.logoWrap}>
-            <RemoteImage
-              uri={sellerImage}
-              width={60}
-              height={60}
-              style={sellerStyles.logo}
+            <RemoteImage uri={sellerImage} width={60} height={60} style={sellerStyles.logo}
               fallback={
                 <View style={[sellerStyles.logoFallback, { backgroundColor: theme.accent }]}>
-                  <Text style={sellerStyles.logoFallbackText}>
-                    {title.slice(0, 2).toUpperCase()}
-                  </Text>
+                  <Text style={sellerStyles.logoFallbackText}>{title.slice(0, 2).toUpperCase()}</Text>
                 </View>
               }
             />
@@ -792,28 +655,16 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
               </View>
             )}
           </View>
-
-          {/* Company Info */}
           <View style={sellerStyles.headerInfo}>
             <View style={sellerStyles.nameRow}>
               <Text style={sellerStyles.name} numberOfLines={2}>{title}</Text>
               {isCurrentlyOpen !== null && (
-                <View style={[sellerStyles.openBadge, { 
-                  backgroundColor: isCurrentlyOpen ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' 
-                }]}>
-                  <View style={[sellerStyles.openDot, { 
-                    backgroundColor: isCurrentlyOpen ? '#10B981' : '#EF4444' 
-                  }]} />
-                  <Text style={[sellerStyles.openText, { 
-                    color: isCurrentlyOpen ? '#6EE7B7' : '#FCA5A5' 
-                  }]}>
-                    {isCurrentlyOpen ? 'Open' : 'Closed'}
-                  </Text>
+                <View style={[sellerStyles.openBadge, { backgroundColor: isCurrentlyOpen ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)' }]}>
+                  <View style={[sellerStyles.openDot, { backgroundColor: isCurrentlyOpen ? '#10B981' : '#EF4444' }]} />
+                  <Text style={[sellerStyles.openText, { color: isCurrentlyOpen ? '#6EE7B7' : '#FCA5A5' }]}>{isCurrentlyOpen ? 'Open' : 'Closed'}</Text>
                 </View>
               )}
             </View>
-            
-            {/* Location */}
             <View style={sellerStyles.locationRow}>
               <Icon name="map-marker" size={10} color="rgba(255,255,255,0.8)" />
               <Text style={sellerStyles.location} numberOfLines={1}>{location}</Text>
@@ -825,15 +676,11 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
                 </>
               )}
             </View>
-            
-            {/* Badges */}
             <View style={sellerStyles.badgeRow}>
               {companyType && (
                 <View style={[sellerStyles.miniBadge, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
                   <Icon name="domain" size={7} color="rgba(255,255,255,0.8)" />
-                  <Text style={[sellerStyles.miniBadgeText, { color: 'rgba(255,255,255,0.9)' }]}>
-                    {getCompanyTypeLabel(companyType)}
-                  </Text>
+                  <Text style={[sellerStyles.miniBadgeText, { color: 'rgba(255,255,255,0.9)' }]}>{getCompanyTypeLabel(companyType)}</Text>
                 </View>
               )}
               {verified && (
@@ -856,7 +703,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       </View>
 
-      {/* ── Key Metrics Row ── */}
       <View style={sellerStyles.metricsRow}>
         <View style={sellerStyles.metric}>
           <Icon name="star" size={14} color="#F59E0B" />
@@ -883,35 +729,25 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       </View>
 
-      {/* ── Performance Info Grid ── */}
       <View style={sellerStyles.infoGrid}>
-        {/* Response Rate */}
         <View style={sellerStyles.infoItem}>
           <View style={[sellerStyles.infoIcon, { backgroundColor: '#EFF6FF' }]}>
             <Icon name="message-reply-text" size={13} color="#2563EB" />
           </View>
           <View>
             <Text style={sellerStyles.infoLabel}>Response</Text>
-            <Text style={sellerStyles.infoValue}>
-              {responseRate > 0 ? `${responseRate}%` : responseTime ? `${responseTime}h` : '—'}
-            </Text>
+            <Text style={sellerStyles.infoValue}>{responseRate > 0 ? `${responseRate}%` : responseTime ? `${responseTime}h` : '—'}</Text>
           </View>
         </View>
-
-        {/* On-Time Delivery */}
         <View style={sellerStyles.infoItem}>
           <View style={[sellerStyles.infoIcon, { backgroundColor: '#ECFDF5' }]}>
             <Icon name="truck-check" size={13} color="#10B981" />
           </View>
           <View>
             <Text style={sellerStyles.infoLabel}>Delivery</Text>
-            <Text style={sellerStyles.infoValue}>
-              {onTimeDelivery > 0 ? `${onTimeDelivery}%` : '—'}
-            </Text>
+            <Text style={sellerStyles.infoValue}>{onTimeDelivery > 0 ? `${onTimeDelivery}%` : '—'}</Text>
           </View>
         </View>
-
-        {/* Revenue */}
         {totalRevenue > 0 && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#FFF7ED' }]}>
@@ -923,8 +759,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
             </View>
           </View>
         )}
-
-        {/* Employee Count */}
         {employeeCount && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#F5F3FF' }]}>
@@ -936,8 +770,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
             </View>
           </View>
         )}
-
-        {/* Countries Served */}
         {countriesServed > 0 && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#ECFEFF' }]}>
@@ -949,8 +781,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
             </View>
           </View>
         )}
-
-        {/* Repeat Buyer Rate */}
         {repeatBuyerRate > 0 && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#FEFCE8' }]}>
@@ -962,8 +792,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
             </View>
           </View>
         )}
-
-        {/* Handling Time */}
         {handlingTime && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#FDF2F8' }]}>
@@ -975,8 +803,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
             </View>
           </View>
         )}
-
-        {/* Total Orders */}
         {totalOrders > 0 && (
           <View style={sellerStyles.infoItem}>
             <View style={[sellerStyles.infoIcon, { backgroundColor: '#F0FDF4' }]}>
@@ -990,7 +816,6 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         )}
       </View>
 
-      {/* ── Description ── */}
       {description ? (
         <View style={sellerStyles.descSection}>
           <Icon name="information-outline" size={12} color={D.textTertiary} />
@@ -998,18 +823,15 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       ) : null}
 
-      {/* ── Export Markets ── */}
       {exportMarkets.length > 0 && (
         <View style={sellerStyles.marketsRow}>
           <Icon name="flag-outline" size={11} color={theme.primary} />
           <Text style={sellerStyles.marketsText} numberOfLines={1}>
-            Exports to: {exportMarkets.slice(0, 5).join(', ')}
-            {exportMarkets.length > 5 ? ` +${exportMarkets.length - 5}` : ''}
+            Exports to: {exportMarkets.slice(0, 5).join(', ')}{exportMarkets.length > 5 ? ` +${exportMarkets.length - 5}` : ''}
           </Text>
         </View>
       )}
 
-      {/* ── Product Categories ── */}
       {productCategories.length > 0 && (
         <View style={sellerStyles.chipsRow}>
           {productCategories.slice(0, 4).map((cat: string, i: number) => (
@@ -1023,26 +845,20 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       )}
 
-      {/* ── Certifications ── */}
       {certifications.length > 0 && (
         <View style={sellerStyles.certRow}>
           <Icon name="certificate" size={12} color="#F59E0B" />
           <View style={sellerStyles.certList}>
             {certifications.slice(0, 3).map((cert: any, i: number) => (
               <View key={i} style={sellerStyles.certBadge}>
-                <Text style={sellerStyles.certBadgeText}>
-                  {cert.name || cert}
-                </Text>
+                <Text style={sellerStyles.certBadgeText}>{cert.name || cert}</Text>
               </View>
             ))}
-            {certifications.length > 3 && (
-              <Text style={sellerStyles.certMoreText}>+{certifications.length - 3}</Text>
-            )}
+            {certifications.length > 3 && <Text style={sellerStyles.certMoreText}>+{certifications.length - 3}</Text>}
           </View>
         </View>
       )}
 
-      {/* ── Factory Images ── */}
       {factoryImages.length > 0 && (
         <View style={sellerStyles.factoryRow}>
           {factoryImages.map((uri: string, i: number) => (
@@ -1059,34 +875,17 @@ const SellerCard = React.memo(({ seller, navigation }: any) => {
         </View>
       )}
 
-      {/* ── Subscription Badge ── */}
       {subscriptionPlan !== 'free' && subscriptionStatus === 'active' && (
         <View style={sellerStyles.subscriptionStrip}>
           <Icon name="crown" size={12} color="#F59E0B" />
-          <Text style={sellerStyles.subscriptionText}>
-            {subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1)} Plan
-          </Text>
+          <Text style={sellerStyles.subscriptionText}>{subscriptionPlan.charAt(0).toUpperCase() + subscriptionPlan.slice(1)} Plan</Text>
         </View>
       )}
 
-      {/* ── Footer ── */}
       <View style={sellerStyles.footer}>
-        <SavedHeartButton 
-          type="supplier" 
-          itemId={sellerId} 
-          target={seller} 
-          size={18} 
-          iconColor="#94A3B8" 
-          savedColor="#EF4444" 
-        />
-        <Pressable 
-          style={({ pressed }) => [
-            sellerStyles.viewBtn, 
-            { backgroundColor: theme.primary }, 
-            pressed && { opacity: 0.9 },
-          ]}
-          onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}
-        >
+        <SavedHeartButton type="supplier" itemId={sellerId} target={seller} size={18} iconColor="#94A3B8" savedColor="#EF4444" />
+        <Pressable style={({ pressed }) => [sellerStyles.viewBtn, { backgroundColor: theme.primary }, pressed && { opacity: 0.9 }]}
+          onPress={() => navigation.navigate('SellerDetails', { sellerId, sellerName: title })}>
           <Text style={sellerStyles.viewBtnText}>View Profile</Text>
           <Icon name="arrow-right" size={13} color="#FFF" />
         </Pressable>
@@ -1113,16 +912,18 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: D.bg },
   header: { backgroundColor: D.surface, paddingTop: Platform.OS === 'ios' ? 56 : 44, paddingBottom: 8, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: D.borderLight, zIndex: 10 },
   headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  brand: { fontSize: 18, fontWeight: '800', color: D.text, letterSpacing: -0.4 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  logoImg: { width: 28, height: 28, borderRadius: 12 },
+  brand: { fontSize: 15, fontWeight: '600', color: D.text, letterSpacing: -0.4 },
   headerActions: { flexDirection: 'row', gap: 4 },
-  iconBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  iconBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  notifBadge: { position: 'absolute', top: 2, right: 2, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#FFF' },
+  notifBadgeText: { fontSize: 8, fontWeight: '800', color: '#FFF' },
   tabTrack: { flexDirection: 'row', backgroundColor: D.borderLight, borderRadius: 14, padding: 4, position: 'relative', marginBottom: 10 },
   tabIndicator: { position: 'absolute', top: 4, bottom: 4, backgroundColor: D.surface, borderRadius: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 2 },
   tabButton: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, zIndex: 1 },
   tabText: { fontSize: 13, fontWeight: '600', color: D.textTertiary },
-  tabTextActive: { color: D.primary, fontWeight: '700' },
+  tabTextActive: { color: '#2563EB', fontWeight: '700' },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: D.borderLight, borderRadius: 24, paddingHorizontal: 16, height: 44, marginBottom: 4 },
   searchPlaceholder: { flex: 1, fontSize: 13, fontWeight: '500', color: D.textTertiary },
   searchCamera: { width: 32, height: 32, borderRadius: 24, backgroundColor: D.primaryLight, alignItems: 'center', justifyContent: 'center' },
@@ -1134,711 +935,94 @@ const styles = StyleSheet.create({
 // ─── Seller Card Styles ─────────────────────────────────────────────────────
 
 const sellerStyles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: D.border,
-    shadowColor: '#1E40AF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  
-  // ── Header ───────────────────────────────────────────────────────────
-  header: {
-    padding: 14,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  logoWrap: {
-    position: 'relative',
-    flexShrink: 0,
-  },
-  logo: {
-    width: 60,
-    height: 60,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  logoFallback: {
-    width: 60,
-    height: 60,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-  },
-  logoFallbackText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFF',
-  },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: -4,
-    right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#FFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  headerInfo: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 3,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  name: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFF',
-    lineHeight: 19,
-    flex: 1,
-  },
-  openBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  openDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  openText: {
-    fontSize: 7,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  location: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '500',
-  },
-  locationDot: {
-    width: 2,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    gap: 4,
-    flexWrap: 'wrap',
-  },
-  miniBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  miniBadgeText: {
-    fontSize: 7.5,
-    fontWeight: '700',
-  },
-
-  // ── Metrics Row ──────────────────────────────────────────────────────
-  metricsRow: {
-    flexDirection: 'row',
-    backgroundColor: '#F8FAFC',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: D.borderLight,
-  },
-  metric: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-  },
-  metricValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: D.text,
-  },
-  metricLabel: {
-    fontSize: 8.5,
-    fontWeight: '600',
-    color: D.textTertiary,
-    textTransform: 'uppercase',
-  },
-  metricDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: D.borderLight,
-    alignSelf: 'center',
-  },
-
-  // ── Info Grid ────────────────────────────────────────────────────────
-  infoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 12,
-    gap: 8,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    width: '47%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 8,
-  },
-  infoIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  infoLabel: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: D.textTertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    marginBottom: 1,
-  },
-  infoValue: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: D.text,
-  },
-
-  // ── Description ──────────────────────────────────────────────────────
-  descSection: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingBottom: 8,
-    alignItems: 'flex-start',
-  },
-  descText: {
-    fontSize: 11.5,
-    color: D.textSecondary,
-    lineHeight: 16,
-    flex: 1,
-  },
-
-  // ── Export Markets ───────────────────────────────────────────────────
-  marketsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingBottom: 6,
-  },
-  marketsText: {
-    fontSize: 10,
-    color: D.textSecondary,
-    fontWeight: '500',
-    flex: 1,
-  },
-
-  // ── Categories ───────────────────────────────────────────────────────
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  chip: {
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  chipText: {
-    fontSize: 9.5,
-    fontWeight: '700',
-  },
-  chipMoreText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: D.textTertiary,
-  },
-
-  // ── Certifications ───────────────────────────────────────────────────
-  certRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-  },
-  certList: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    alignItems: 'center',
-  },
-  certBadge: {
-    backgroundColor: '#FFFBEB',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  certBadgeText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: '#D97706',
-  },
-  certMoreText: {
-    fontSize: 9,
-    color: D.textTertiary,
-    fontWeight: '600',
-  },
-
-  // ── Factory Images ───────────────────────────────────────────────────
-  factoryRow: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  factoryImg: {
-    flex: 1,
-    position: 'relative',
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#F1F5F9',
-  },
-  factoryTag: {
-    position: 'absolute',
-    top: 4,
-    left: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  factoryTagText: {
-    fontSize: 7,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-
-  // ── Subscription ─────────────────────────────────────────────────────
-  subscriptionStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    backgroundColor: '#FFFBEB',
-    paddingVertical: 5,
-    borderTopWidth: 1,
-    borderTopColor: '#FDE68A',
-  },
-  subscriptionText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#D97706',
-  },
-
-  // ── Footer ───────────────────────────────────────────────────────────
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#F8FAFC',
-    borderTopWidth: 1,
-    borderTopColor: D.borderLight,
-  },
-  viewBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  viewBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFF',
-  },
+  card: { backgroundColor: '#FFF', borderRadius: 16, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: D.border, shadowColor: '#1E40AF', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4 },
+  header: { padding: 14 },
+  headerContent: { flexDirection: 'row', gap: 12 },
+  logoWrap: { position: 'relative', flexShrink: 0 },
+  logo: { width: 60, height: 60, borderRadius: 14, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', backgroundColor: 'rgba(255,255,255,0.1)' },
+  logoFallback: { width: 60, height: 60, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)' },
+  logoFallbackText: { fontSize: 22, fontWeight: '800', color: '#FFF' },
+  verifiedBadge: { position: 'absolute', bottom: -4, right: -4, width: 24, height: 24, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4, elevation: 3 },
+  headerInfo: { flex: 1, justifyContent: 'center', gap: 3 },
+  nameRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  name: { fontSize: 15, fontWeight: '700', color: '#FFF', lineHeight: 19, flex: 1 },
+  openBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  openDot: { width: 5, height: 5, borderRadius: 3 },
+  openText: { fontSize: 7, fontWeight: '700', textTransform: 'uppercase' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  location: { fontSize: 10, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+  locationDot: { width: 2, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.3)' },
+  badgeRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
+  miniBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  miniBadgeText: { fontSize: 7.5, fontWeight: '700' },
+  metricsRow: { flexDirection: 'row', backgroundColor: '#F8FAFC', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: D.borderLight },
+  metric: { flex: 1, alignItems: 'center', gap: 2 },
+  metricValue: { fontSize: 13, fontWeight: '700', color: D.text },
+  metricLabel: { fontSize: 8.5, fontWeight: '600', color: D.textTertiary, textTransform: 'uppercase' },
+  metricDivider: { width: 1, height: 28, backgroundColor: D.borderLight, alignSelf: 'center' },
+  infoGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 12, gap: 8 },
+  infoItem: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '47%', backgroundColor: '#F8FAFC', borderRadius: 10, padding: 8 },
+  infoIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  infoLabel: { fontSize: 9, fontWeight: '600', color: D.textTertiary, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 },
+  infoValue: { fontSize: 11, fontWeight: '700', color: D.text },
+  descSection: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingBottom: 8, alignItems: 'flex-start' },
+  descText: { fontSize: 11.5, color: D.textSecondary, lineHeight: 16, flex: 1 },
+  marketsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingBottom: 6 },
+  marketsText: { fontSize: 10, color: D.textSecondary, fontWeight: '500', flex: 1 },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, paddingHorizontal: 14, paddingVertical: 6, alignItems: 'center' },
+  chip: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  chipText: { fontSize: 9.5, fontWeight: '700' },
+  chipMoreText: { fontSize: 9, fontWeight: '700', color: D.textTertiary },
+  certRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, paddingHorizontal: 14, paddingVertical: 4 },
+  certList: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center' },
+  certBadge: { backgroundColor: '#FFFBEB', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#FDE68A' },
+  certBadgeText: { fontSize: 8, fontWeight: '700', color: '#D97706' },
+  certMoreText: { fontSize: 9, color: D.textTertiary, fontWeight: '600' },
+  factoryRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 14, paddingVertical: 8 },
+  factoryImg: { flex: 1, position: 'relative', borderRadius: 8, overflow: 'hidden', backgroundColor: '#F1F5F9' },
+  factoryTag: { position: 'absolute', top: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  factoryTagText: { fontSize: 7, fontWeight: '700', color: '#FFF' },
+  subscriptionStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, backgroundColor: '#FFFBEB', paddingVertical: 5, borderTopWidth: 1, borderTopColor: '#FDE68A' },
+  subscriptionText: { fontSize: 9, fontWeight: '700', color: '#D97706' },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8FAFC', borderTopWidth: 1, borderTopColor: D.borderLight },
+  viewBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 2 },
+  viewBtnText: { fontSize: 11, fontWeight: '700', color: '#FFF' },
 });
 
 // ─── AI Chat Styles ─────────────────────────────────────────────────────────
 
 const aiStyles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  header: {
-    paddingTop: 8,
-    paddingBottom: 16,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatarGlow: {
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFF',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 2,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
-  },
-  newChatBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  wavePattern: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  wave: {
-    height: 2,
-    backgroundColor: '#FFF',
-    borderRadius: 1,
-    marginHorizontal: 20,
-  },
-  list: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexGrow: 1,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-    gap: 6,
-    maxWidth: '85%',
-  },
-  messageRowUser: {
-    alignSelf: 'flex-end',
-    flexDirection: 'row-reverse',
-  },
-  messageRowAI: {
-    alignSelf: 'flex-start',
-  },
-  messageAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  messageAvatarHidden: {
-    opacity: 0,
-  },
-  messageAvatarGradient: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messageAvatarUser: {
-    backgroundColor: D.primary,
-  },
-  bubble: {
-    padding: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  bubbleAI: {
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#E8ECF4',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleUser: {
-    backgroundColor: D.primary,
-    borderBottomRightRadius: 4,
-  },
-  bubbleText: {
-    fontSize: 13.5,
-    lineHeight: 19,
-    color: D.text,
-  },
-  bubbleTextUser: {
-    color: '#FFF',
-  },
-  bubbleFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 3,
-    marginTop: 4,
-  },
-  timeText: {
-    fontSize: 9,
-    color: D.textTertiary,
-    fontWeight: '500',
-  },
-  timeTextUser: {
-    color: 'rgba(255,255,255,0.5)',
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    gap: 4,
-    paddingVertical: 4,
-  },
-  typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#CBD5E1',
-  },
-  
-  // Thinking Card
-  thinkingCard: {
-    marginTop: 4,
-    marginHorizontal: 4,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E0E7FF',
-  },
-  thinkingGradient: {
-    padding: 16,
-  },
-  thinkingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  thinkingIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: D.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thinkingTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: D.text,
-  },
-  thinkingStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 5,
-  },
-  thinkingStepDone: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: D.successLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thinkingStepActive: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: D.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thinkingStepPending: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: D.borderLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  thinkingStepDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: D.textTertiary,
-  },
-  thinkingStepText: {
-    fontSize: 12,
-    color: D.textTertiary,
-    fontWeight: '500',
-  },
-  thinkingStepTextDone: {
-    color: D.success,
-    fontWeight: '600',
-  },
-  thinkingStepTextActive: {
-    color: D.primary,
-    fontWeight: '600',
-  },
-  
-  // Suggestions
-  suggestionsSection: {
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  suggestionsTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: D.textTertiary,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  suggestionsGrid: {
-    gap: 6,
-    paddingHorizontal: 4,
-  },
-  suggestionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E8ECF4',
-  },
-  suggestionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  suggestionText: {
-    fontSize: 12.5,
-    fontWeight: '500',
-    color: D.text,
-    flex: 1,
-  },
-  
-  // Input
-  inputBar: {
-    paddingHorizontal: 8,
-    paddingTop: 6,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    color: D.text,
-    maxHeight: 100,
-    paddingVertical: 4,
-  },
-  sendBtn: {
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  sendBtnGradient: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendBtnDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
-  },
+  screen: { flex: 1, backgroundColor: '#F8FAFC' },
+  header: { backgroundColor: '#FFF', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  avatarBox: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  headerStatus: { fontSize: 9, color: '#94A3B8', fontWeight: '500' },
+  newBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center' },
+  list: { paddingHorizontal: 10, paddingVertical: 8, flexGrow: 1 },
+  msgRow: { flexDirection: 'row', marginBottom: 8, gap: 6, maxWidth: '85%' },
+  msgRowUser: { alignSelf: 'flex-end', flexDirection: 'row-reverse' },
+  msgAvatar: { width: 24, height: 24, borderRadius: 8, backgroundColor: '#EFF6FF', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  msgAvatarHidden: { opacity: 0 },
+  bubble: { padding: 9, paddingHorizontal: 12, borderRadius: 14 },
+  bubbleAI: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E2E8F0', borderBottomLeftRadius: 4 },
+  bubbleUser: { backgroundColor: '#2563EB', borderBottomRightRadius: 4 },
+  bubbleText: { fontSize: 12.5, lineHeight: 18, color: '#0F172A' },
+  bubbleTextUser: { color: '#FFF' },
+  time: { fontSize: 8, color: '#94A3B8', marginTop: 3, textAlign: 'right' },
+  timeUser: { color: 'rgba(255,255,255,0.5)' },
+  typing: { flexDirection: 'row', gap: 3, paddingVertical: 2 },
+  typingDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#CBD5E1' },
+  suggestions: { paddingTop: 12 },
+  suggTitle: { fontSize: 9, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center', marginBottom: 8 },
+  suggChip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFF', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#E2E8F0', marginBottom: 5 },
+  suggText: { fontSize: 12, fontWeight: '500', color: '#0F172A', flex: 1 },
+  inputBar: { paddingHorizontal: 8, paddingTop: 6, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, backgroundColor: '#F1F5F9', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1, borderColor: '#E2E8F0' },
+  input: { flex: 1, fontSize: 13, color: '#0F172A', maxHeight: 80, paddingVertical: 3 },
+  sendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
+  sendDisabled: { backgroundColor: '#CBD5E1' },
 });
 
 export default React.memo(HomeScreen);

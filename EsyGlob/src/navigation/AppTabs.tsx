@@ -72,8 +72,8 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               <View style={styles.accountIconWrap}>
                 <RemoteImage
                   uri={accountImage}
-                  width={72}
-                  height={72}
+                  width={62}
+                  height={62}
                   style={[styles.accountAvatar, isFocused && styles.accountAvatarActive]}
                   fallback={
                     <View style={[styles.accountFallback, isFocused && styles.accountFallbackActive]}>
@@ -88,7 +88,7 @@ function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               <View style={styles.iconWrap}>
                 <Icon
                   name={isFocused ? meta.activeIcon : meta.icon}
-                  size={24}
+                  size={20}
                   color={isFocused ? '#EA580C' : colors.ink}
                 />
               </View>
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   
   // Account Icon

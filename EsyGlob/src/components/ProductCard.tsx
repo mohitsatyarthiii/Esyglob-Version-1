@@ -1,6 +1,8 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  Dimensions,
+  FlatList,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +16,6 @@ import { useCurrency } from '../currency/CurrencyContext';
 import RemoteImage from './RemoteImage';
 import SavedHeartButton from './SavedHeartButton';
 import {
-  formatMoq,
   getId,
   getProductImage,
   getProductLocation,
@@ -27,22 +28,27 @@ type Props = {
   variant?: 'carousel' | 'grid' | 'full';
 };
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = 172;
-const IMAGE_HEIGHT = 130;
+const GRID_WIDTH = (SCREEN_WIDTH - 40) / 2;
+const IMAGE_HEIGHT = 140;
 
 const badges = [
   { icon: 'rocket-launch-outline', text: 'Ready to dispatch', color: '#10B981' },
-  { icon: 'trending-up', text: 'Most trending product', color: '#F59E0B' },
-  { icon: 'fire', text: 'Hot selling', color: '#EF4444' },
+  { icon: 'trending-up', text: 'Most trending', color: '#F59E0B' },
+  { icon: 'fire', text: 'Hot selling now', color: '#EF4444' },
   { icon: 'star-outline', text: 'Top rated', color: '#8B5CF6' },
   { icon: 'truck-fast-outline', text: 'Fast delivery', color: '#3B82F6' },
   { icon: 'shield-check-outline', text: 'Quality assured', color: '#6366F1' },
-  { icon: 'certificate-outline', text: 'Certified product', color: '#14B8A6' },
+  { icon: 'certificate-outline', text: 'Certified', color: '#14B8A6' },
   { icon: 'flash-outline', text: 'Quick seller', color: '#F97316' },
-  { icon: 'thumb-up-outline', text: 'Customer favourite', color: '#EC4899' },
+  { icon: 'thumb-up-outline', text: 'Customer favorite', color: '#EC4899' },
   { icon: 'leaf-outline', text: 'Eco friendly', color: '#22C55E' },
   { icon: 'clock-fast', text: 'Limited stock', color: '#DC2626' },
   { icon: 'medal-outline', text: 'Premium quality', color: '#D97706' },
+  { icon: 'sale', text: 'Best price', color: '#0891B2' },
+  { icon: 'package-variant-closed', text: 'New arrival', color: '#7C3AED' },
+  { icon: 'hand-coin-outline', text: 'Wholesale deal', color: '#059669' },
 ];
 
 const PALETTE = {
@@ -69,6 +75,8 @@ function getProductBadge(product: Product) {
   return badges[hash % badges.length];
 }
 
+
+
 function ProductCard({ product, variant = 'carousel' }: Props) {
   const { formatPrice } = useCurrency();
   const navigation = useNavigation<any>();
@@ -77,23 +85,30 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
   const rating = product.averageRating ? Number(product.averageRating).toFixed(1) : null;
   const badge = useMemo(() => getProductBadge(product), [product]);
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [activeSlide, setActiveSlide] = useState(0);
 
   const primaryImage = getProductImage(product);
-  const gallery = React.useMemo(
+  const gallery = useMemo(
     () => Array.from(new Set([primaryImage, ...(product.images ?? [])].filter(Boolean))) as string[],
     [product, primaryImage],
   );
 
   const productId = getId(product);
-  
-  // Validate productId
   const isValidId = productId && /^[a-f\d]{24}$/i.test(productId);
+
+  const cardWidth = variant === 'grid' ? GRID_WIDTH : CARD_WIDTH;
 
   const openProduct = () => {
     if (productId) {
       navigation.navigate('ProductDetails', { productId });
     }
   };
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setActiveSlide(viewableItems[0].index);
+    }
+  }).current;
 
   return (
     <Animated.View
@@ -112,19 +127,45 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
         onPressOut={() => {
           Animated.spring(scaleAnim, { toValue: 1, tension: 200, friction: 10, useNativeDriver: true }).start();
         }}>
-        {/* Swipeable Image Gallery */}
-        <View style={styles.imageWrap}>
-          <RemoteImage
-            uri={primaryImage}
-            width={520}
-            height={390}
-            resizeMode="contain"
-            style={styles.image}
-            fallback={<View style={styles.imageFallback}><Icon name="package-variant-closed" size={28} color={PALETTE.muted} /></View>}
+        
+        {/* Image Gallery Slider */}
+        <View style={[styles.imageWrap, { height: IMAGE_HEIGHT }]}>
+          <FlatList
+            data={gallery}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
+            keyExtractor={(_, i) => i.toString()}
+            renderItem={({ item: uri }) => (
+              <View style={[styles.imageSlide, { width: cardWidth }]}>
+                <RemoteImage
+                  uri={uri}
+                  width={cardWidth * 2}
+                  height={IMAGE_HEIGHT * 2}
+                  resizeMode="cover"
+                  style={[styles.image, { width: cardWidth, height: IMAGE_HEIGHT }]}
+                  fallback={
+                    <View style={[styles.imageFallback, { width: cardWidth, height: IMAGE_HEIGHT }]}>
+                      <Icon name="package-variant-closed" size={28} color={PALETTE.muted} />
+                    </View>
+                  }
+                />
+              </View>
+            )}
           />
 
           {/* Dot indicators */}
-          {/* Save button - only render if valid ID */}
+          {gallery.length > 1 && (
+            <View style={styles.dotRow}>
+              {gallery.map((_, i) => (
+                <View key={i} style={[styles.dot, i === activeSlide && styles.dotActive]} />
+              ))}
+            </View>
+          )}
+
+          {/* Overlay buttons */}
           {isValidId && (
             <SavedHeartButton
               type="product"
@@ -153,12 +194,12 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
           {/* Image counter */}
           {gallery.length > 1 && (
             <Text style={styles.imageCounter}>
-              {gallery.length} images
+              {activeSlide + 1}/{gallery.length}
             </Text>
           )}
         </View>
 
-        {/* Product badge */}
+        {/* Random badge strip */}
         <View style={[styles.badgeStrip, { backgroundColor: `${badge.color}12` }]}>
           <Icon name={badge.icon} size={9} color={badge.color} />
           <Text style={[styles.badgeStripText, { color: badge.color }]} numberOfLines={1}>
@@ -172,37 +213,13 @@ function ProductCard({ product, variant = 'carousel' }: Props) {
             {product.name ?? product.title}
           </Text>
 
-          <Text style={styles.price}>{formatPrice(Number(product.price ?? product.minPrice ?? 0), product.currency ?? 'INR')}</Text>
-
-          <Text style={styles.moq} numberOfLines={1}>
-            {formatMoq(product)}
+          <Text style={styles.price}>
+            {formatPrice(Number(product.price ?? product.minPrice ?? 0), product.currency ?? 'INR')}
           </Text>
 
-          <View style={styles.sellerRow}>
-            <Icon
-              name={verified ? 'check-decagram' : 'store-outline'}
-              size={10}
-              color={verified ? PALETTE.emerald : PALETTE.muted}
-            />
-            <Text numberOfLines={1} style={styles.sellerName}>
-              {getSellerName(product)}
-            </Text>
-          </View>
-
-          <View style={styles.statsRow}>
-            {rating && (
-              <View style={styles.statPill}>
-                <Icon name="star" size={8} color={PALETTE.amber} />
-                <Text style={styles.statText}>{rating}</Text>
-              </View>
-            )}
-            {location && (
-              <View style={styles.statPill}>
-                <Icon name="map-marker-outline" size={8} color={PALETTE.rose} />
-                <Text style={styles.statText} numberOfLines={1}>{location}</Text>
-              </View>
-            )}
-          </View>
+          <Text style={styles.moq} numberOfLines={1}>
+            MOQ: 100
+          </Text>
         </View>
       </Pressable>
     </Animated.View>
@@ -242,17 +259,12 @@ const styles = StyleSheet.create({
     backgroundColor: PALETTE.cardMuted,
   },
   imageSlide: {
-    height: IMAGE_HEIGHT,
+    overflow: 'hidden',
   },
-  imageSlideCarousel: { width: CARD_WIDTH },
-  imageSlideFull: { width: '100%' },
   image: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
     backgroundColor: PALETTE.cardMuted,
   },
   imageFallback: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: PALETTE.cardMuted,
@@ -267,15 +279,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: 'rgba(255,255,255,0.5)',
   },
   dotActive: {
     backgroundColor: PALETTE.primary,
-    width: 12,
-    borderRadius: 2,
+    width: 14,
+    borderRadius: 3,
   },
 
   // Heart
@@ -289,8 +301,20 @@ const styles = StyleSheet.create({
     height: 26,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
-  imageSearchBtn: { position: 'absolute', top: 38, right: 6, backgroundColor: 'rgba(255,255,255,0.94)', borderRadius: 14, width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+  imageSearchBtn: {
+    position: 'absolute',
+    top: 38,
+    right: 6,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 14,
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
 
   // Verified
   verifiedBadge: {
@@ -304,6 +328,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
+    zIndex: 2,
   },
   verifiedBadgeText: {
     color: '#fff',
@@ -316,7 +341,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 22,
     right: 6,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 8,
     color: '#fff',
     fontSize: 8,

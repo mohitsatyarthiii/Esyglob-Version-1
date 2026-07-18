@@ -95,7 +95,7 @@ const NAV: Record<string, string> = {
   Addresses: 'Addresses',
   Orders: 'Orders',
   Services: 'Services',
-  'Find Suppliers': 'Sellers',
+  'Find Manufacturers': 'Sellers',
   Suppliers: 'Sellers',
   'AI Assistant': 'AIChat',
   'AI Sourcing': 'AIChat',
@@ -702,7 +702,9 @@ function AccountScreen() {
 
       {/* Fixed Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Account</Text>
+        <Text style={styles.headerTitle}>
+  {role === 'seller' ? 'Esyglob Seller Account' : 'Esyglob Buyer Account'}
+</Text>
         <Pressable
           onPress={() => nav.navigate('Notifications')}
           style={styles.headerBtn}

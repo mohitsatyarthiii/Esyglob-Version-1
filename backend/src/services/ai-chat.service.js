@@ -3,6 +3,9 @@ import { getAISearchResults, summarizeMarketplaceResults } from '../lib/ai-marke
 import { resolveSmartResponse } from '../lib/smart-intelligence.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIPlatformContextService from './ai-platform-context.service.js';
+import KnowledgeBaseService from './knowledge-base.service.js';
+import { analyzeRequest, languageInstruction, templateInstruction } from '../lib/ai-intelligence-pipeline.js';
+import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
@@ -60,13 +63,26 @@ class AIChatService {
    * Build platform context for AI
    */
   static async buildPlatformContext(message, role, userId) {
+    const intelligence = analyzeRequest({ message, role });
     const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
     let results = emptyResults;
-    if (this.needsMarketplaceContext(message)) {
+    const retrievalAllowed = intelligence.sources.some(source =>
+      ['products', 'suppliers', 'user_data'].includes(source),
+    );
+    if (retrievalAllowed && this.needsMarketplaceContext(message)) {
       const filters = AIService.deriveSearchFilters(message);
       results = await getAISearchResults({ query: message, filters, userId });
     }
-    const knowledge = await AIPlatformContextService.enrich({ message, role, results, userId });
+    const [knowledge, knowledgeDocuments] = await Promise.all([
+      AIPlatformContextService.enrich({ message, role, results, userId }),
+      KnowledgeBaseService.retrieve({
+        query: message,
+        role,
+        intent: intelligence.intent,
+        language: intelligence.language,
+      }),
+    ]);
+    const knowledgeText = KnowledgeBaseService.format(knowledgeDocuments);
 
     return {
       results,
@@ -107,8 +123,23 @@ class AIChatService {
         hsCodes: knowledge.hsCodes,
         account: knowledge.account,
         navigationActions: knowledge.navigationActions,
+        intelligence: {
+          intent: intelligence.intent,
+          language: intelligence.language,
+          sources: intelligence.sources,
+          knowledgeDocumentIds: knowledgeDocuments.map(document => document._id),
+        },
       },
-      text: `${role} assistant context:\n${summarizeMarketplaceResults(results).slice(0, 1900)}${knowledge.text ? `\n${knowledge.text.slice(0, 1500)}` : ''}`,
+      text: [
+        `${role} assistant context:`,
+        languageInstruction(intelligence.language),
+        `Detected intent: ${intelligence.intent}. Use only the sources required for this intent: ${intelligence.sources.join(', ')}.`,
+        templateInstruction(intelligence.intent),
+        intelligence.requiresPrivateData ? 'Private-data request: only use records already scoped to this authenticated user. Never infer or expose another user\'s data.' : '',
+        knowledgeText ? `Platform knowledge base:\n${knowledgeText}` : '',
+        summarizeMarketplaceResults(results).slice(0, 1900),
+        knowledge.text?.slice(0, 1500),
+      ].filter(Boolean).join('\n\n'),
     };
   }
 
@@ -361,10 +392,38 @@ class AIChatService {
       });
     }
 
+    const intelligence = platformContext.snapshot.intelligence || {};
+    let finalResponse = String(aiResult.message || '').trim();
+    let validation = validateAIResponse({ message, response: finalResponse, intelligence, snapshot: platformContext.snapshot });
+    let regenerated = false;
+    if (!validation.passed) {
+      try {
+        const repair = await this.callOllama(
+          buildRepairPrompt({ message, response: finalResponse, validation, intelligence }),
+          chat.messages.slice(-7),
+          systemPrompt,
+          { maxTokens: Number(process.env.AI_CHAT_MAX_TOKENS || 520), temperature: 0.2 },
+        );
+        const repairedText = String(repair.message || '').trim();
+        const repairedValidation = validateAIResponse({ message, response: repairedText, intelligence, snapshot: platformContext.snapshot });
+        regenerated = true;
+        if (repairedValidation.passed) {
+          finalResponse = repairedText;
+          validation = repairedValidation;
+          aiResult = { ...aiResult, provider: repair.provider, model: repair.model, tokensUsed: Number(aiResult.tokensUsed || 0) + Number(repair.tokensUsed || 0) };
+        } else validation = repairedValidation;
+      } catch (error) {
+        console.warn('[AI validator] Regeneration failed:', error.message);
+      }
+    }
+    if (!validation.passed && validation.issues.some(issue => issue.severity === 'critical')) {
+      finalResponse = 'I could not produce a safe, verified response. Please rephrase the request without private information.';
+    }
+
     // Build assistant message
     const assistantMessage = {
       role: 'assistant',
-      content: aiResult.message || 'I could not generate a response. Please try again.',
+      content: finalResponse || 'I could not generate a response. Please try again.',
       tokens: aiResult.tokensUsed || 0,
       timestamp: new Date(),
       metadata: {
@@ -372,6 +431,7 @@ class AIChatService {
         provider: aiResult.provider || 'ai',
         model: aiResult.model || 'default',
         card: body.responseCard || undefined,
+        validation: { passed: validation.passed, regenerated, issues: validation.issues.map(issue => issue.code) },
       },
     };
 
@@ -418,7 +478,7 @@ class AIChatService {
     return {
       chat: updatedChat,
       response: {
-        message: aiResult.message,
+        message: finalResponse,
         success: aiResult.success,
         fallback: aiResult.fallback,
         tokensUsed: aiResult.tokensUsed,

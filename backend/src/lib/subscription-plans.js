@@ -8,32 +8,27 @@ export const DEFAULT_PLANS = [
     name: 'Free Buyer',
     description: 'For new buyers & small businesses starting their sourcing journey',
     prices: { monthly: 0, quarterly: 0, yearly: 0 },
-    aiCredits: 1500, // INCREASED (Ollama friendly, was 500)
-    storageLimitMb: 200, // INCREASED (was 100)
+    aiCredits: 1500,
+    storageLimitMb: 200,
     supportLevel: 'standard',
     trustScoreBoost: 0,
     verificationLevel: 'basic',
     aiTier: 'esyai_lite',
     priorityRanking: 0,
     features: [
-      // Core Marketplace
-      '[Marketplace] Unlimited Product Browsing',
-      '[Marketplace] Unlimited Seller Browsing',
-      '[Marketplace] Save Products & Sellers',
-      '[Marketplace] Basic RFQ Creation',
-      '[Marketplace] Standard Search Filters',
-      
-      // AI Capabilities (Lite)
-      '[EsyAI Lite] Basic AI Chat & Q&A',
-      '[EsyAI Lite] Basic Product/Search Suggestions',
-      '[EsyAI Lite] Basic Trade Calculator',
-      
-      // Tools
-      '[Tools] Basic Shipment Tracking',
-      '[Tools] Standard Support',
+      'Unlimited Product Browsing',
+      'Unlimited Seller Browsing',
+      'Save Products & Sellers',
+      'Basic RFQ Creation',
+      'Standard Search Filters',
+      'Basic AI Chat & Q&A',
+      'Basic Product/Search Suggestions',
+      'Basic Trade Calculator',
+      'Basic Shipment Tracking',
+      'Standard Support',
     ],
     limits: {
-      aiRequests: 1500, // INCREASED (was 500)
+      aiRequests: 1500,
       rfqs: 30,
       quotations: 30,
       products: 0,
@@ -61,21 +56,17 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_pro',
     priorityRanking: 1,
     features: [
-      '[Marketplace] Everything in Free Buyer',
-      
-      // Advanced AI (Pro)
-      '[EsyAI Pro] Personalized AI Recommendations',
-      '[EsyAI Pro] AI Price & MOQ Comparison',
-      '[EsyAI Pro] AI RFQ Generator & Improver',
-      '[EsyAI Pro] AI Smart Replies for Messages',
-      '[EsyAI Pro] AI Market Insights (Advanced)',
-      
-      // Premium Tools
-      '[Tools] Advanced Search Filters',
-      '[Tools] Priority RFQ Placement',
-      '[Tools] AI Recommended Sellers & Products',
-      '[Tools] Trade Assurance & Escrow Access',
-      '[Tools] Priority Support',
+      'Everything in Free Buyer',
+      'Personalized AI Recommendations',
+      'AI Price & MOQ Comparison',
+      'AI RFQ Generator & Improver',
+      'AI Smart Replies for Messages',
+      'AI Market Insights (Advanced)',
+      'Advanced Search Filters',
+      'Priority RFQ Placement',
+      'AI Recommended Sellers & Products',
+      'Trade Assurance & Escrow Access',
+      'Priority Support',
     ],
     limits: {
       aiRequests: 500,
@@ -106,25 +97,19 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_advanced',
     priorityRanking: 2,
     features: [
-      '[Marketplace] Everything in Buyer Pro',
-      
-      // Business AI (Advanced)
-      '[EsyAI Advanced] AI Trade Consultant & Negotiation Assistant',
-      '[EsyAI Advanced] AI Import/Export Guide',
-      '[EsyAI Advanced] AI Customs & Compliance Checker',
-      '[EsyAI Advanced] AI Demand & Trend Forecasting',
-      
-      // Intelligence
-      '[Intelligence] Country Wise Trade Insights',
-      '[Intelligence] Import/Export Data Access',
-      '[Intelligence] Tariff & Duty Calculator',
-      '[Intelligence] HS Code Finder',
-      
-      // Collaboration
-      '[Team] Multi-Team Access (Up to 5 Members)',
-      '[Team] Shared RFQs & Wishlists',
-      '[Team] Advanced Analytics Dashboard',
-      '[Team] Dedicated Priority Support',
+      'Everything in Buyer Pro',
+      'AI Trade Consultant & Negotiation Assistant',
+      'AI Import/Export Guide',
+      'AI Customs & Compliance Checker',
+      'AI Demand & Trend Forecasting',
+      'Country Wise Trade Insights',
+      'Import/Export Data Access',
+      'Tariff & Duty Calculator',
+      'HS Code Finder',
+      'Multi-Team Access (Up to 5 Members)',
+      'Shared RFQs & Wishlists',
+      'Advanced Analytics Dashboard',
+      'Dedicated Priority Support',
     ],
     limits: {
       aiRequests: 2000,
@@ -156,20 +141,16 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_enterprise',
     priorityRanking: 3,
     features: [
-      '[Marketplace] Everything in Buyer Business',
-      
-      // Full Enterprise AI
-      '[EsyAI Enterprise] Personal AI Trade Consultant',
-      '[EsyAI Enterprise] AI Daily Briefs & Weekly Reports',
-      '[EsyAI Enterprise] AI Risk & Supply Chain Analysis',
-      '[EsyAI Enterprise] AI Procurement & Profit Optimization',
-      
-      // Enterprise Tools
-      '[Enterprise] API Access',
-      '[Enterprise] Dedicated Account Manager',
-      '[Enterprise] SLA Guaranteed Support',
-      '[Enterprise] Unlimited Team Workspace',
-      '[Enterprise] ERP Integration Ready',
+      'Everything in Buyer Business',
+      'Personal AI Trade Consultant',
+      'AI Daily Briefs & Weekly Reports',
+      'AI Risk & Supply Chain Analysis',
+      'AI Procurement & Profit Optimization',
+      'API Access',
+      'Dedicated Account Manager',
+      'SLA Guaranteed Support',
+      'Unlimited Team Workspace',
+      'ERP Integration Ready',
     ],
     limits: {
       aiRequests: 10000,
@@ -195,29 +176,24 @@ export const DEFAULT_PLANS = [
     name: 'Free Seller',
     description: 'Start selling on EsyGlob with basic store & tools',
     prices: { monthly: 0, quarterly: 0, yearly: 0 },
-    aiCredits: 1500, // INCREASED (Ollama friendly, was 50)
-    storageLimitMb: 200, // INCREASED (was 100)
+    aiCredits: 1500,
+    storageLimitMb: 200,
     supportLevel: 'standard',
     trustScoreBoost: 0,
     verificationLevel: 'basic',
     aiTier: 'esyai_lite',
     priorityRanking: 0,
     features: [
-      // Marketplace
-      '[Marketplace] Basic Store Setup',
-      '[Marketplace] List up to 15 Products',
-      '[Marketplace] Basic RFQ Access & Messaging',
-      
-      // AI Lite
-      '[EsyAI Lite] Basic Product Description Generator',
-      '[EsyAI Lite] Basic AI Chat Q&A',
-      
-      // Verification
-      '[Verification] Email & Mobile Verification',
-      '[Tools] Standard Support',
+      'Basic Store Setup',
+      'List up to 15 Products',
+      'Basic RFQ Access & Messaging',
+      'Basic Product Description Generator',
+      'Basic AI Chat Q&A',
+      'Email & Mobile Verification',
+      'Standard Support',
     ],
     limits: {
-      aiRequests: 1500, // INCREASED (was 500)
+      aiRequests: 1500,
       rfqs: 30,
       quotations: 30,
       products: 15,
@@ -242,24 +218,18 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_pro',
     priorityRanking: 1,
     features: [
-      '[Marketplace] Everything in Free Seller',
-      
-      // Verification
-      '[Verification] GST, PAN, Business & Bank Verification',
-      '[Verification] Verified Badge on Profile',
-      '[Verification] Higher Trust Score (+10)',
-      
-      // AI Pro
-      '[EsyAI Pro] Advanced AI SEO Title & Keywords Generator',
-      '[EsyAI Pro] AI Quotation Generator',
-      '[EsyAI Pro] AI Product Improvement Suggestions',
-      
-      // Growth
-      '[Growth] Unlock up to 50 Products',
-      '[Growth] Better Search Rankings',
-      '[Growth] Priority RFQ Access',
-      '[Growth] Seller Analytics Dashboard',
-      '[Growth] Priority Support',
+      'Everything in Free Seller',
+      'GST, PAN, Business & Bank Verification',
+      'Verified Badge on Profile',
+      'Higher Trust Score (+10)',
+      'Advanced AI SEO Title & Keywords Generator',
+      'AI Quotation Generator',
+      'AI Product Improvement Suggestions',
+      'Unlock up to 50 Products',
+      'Better Search Rankings',
+      'Priority RFQ Access',
+      'Seller Analytics Dashboard',
+      'Priority Support',
     ],
     limits: {
       aiRequests: 500,
@@ -287,24 +257,18 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_advanced',
     priorityRanking: 2,
     features: [
-      '[Marketplace] Everything in Verified Seller',
-      
-      // Premium Verification
-      '[Verification] Factory & Export License Verification',
-      '[Verification] Gold Badge on Profile',
-      '[Verification] Premium Trust Score (+20)',
-      
-      // AI Advanced
-      '[EsyAI Advanced] AI Catalog & Pricing Optimizer',
-      '[EsyAI Advanced] AI Competitor Analysis',
-      '[EsyAI Advanced] AI Buyer Matching & Lead Suggestions',
-      '[EsyAI Advanced] AI Product Performance Analytics',
-      
-      // Growth
-      '[Growth] Featured Listings & Homepage Placement',
-      '[Growth] Unlimited Products',
-      '[Growth] Advanced Analytics & Sales Reports',
-      '[Growth] Priority Support',
+      'Everything in Verified Seller',
+      'Factory & Export License Verification',
+      'Gold Badge on Profile',
+      'Premium Trust Score (+20)',
+      'AI Catalog & Pricing Optimizer',
+      'AI Competitor Analysis',
+      'AI Buyer Matching & Lead Suggestions',
+      'AI Product Performance Analytics',
+      'Featured Listings & Homepage Placement',
+      'Unlimited Products',
+      'Advanced Analytics & Sales Reports',
+      'Priority Support',
     ],
     limits: {
       aiRequests: 2500,
@@ -332,25 +296,19 @@ export const DEFAULT_PLANS = [
     aiTier: 'esyai_enterprise',
     priorityRanking: 3,
     features: [
-      '[Marketplace] Everything in Gold Seller',
-      
-      // Enterprise Verification
-      '[Verification] Diamond Badge (Highest Trust)',
-      '[Verification] Legal & Video Verification',
-      '[Verification] Premium Trust Score (+30)',
-      
-      // AI Enterprise
-      '[EsyAI Enterprise] AI Sales Manager & Business Consultant',
-      '[EsyAI Enterprise] AI Revenue Forecast & Global Expansion Insights',
-      '[EsyAI Enterprise] AI Lead Qualification & Follow-up Automation',
-      '[EsyAI Enterprise] AI Daily Sales Brief & Weekly Reports',
-      
-      // Enterprise Tools
-      '[Enterprise] API Access',
-      '[Enterprise] Dedicated Success Manager',
-      '[Enterprise] Premium SLA Support',
-      '[Enterprise] Multi-User Workspace',
-      '[Enterprise] Custom Feature Development',
+      'Everything in Gold Seller',
+      'Diamond Badge (Highest Trust)',
+      'Legal & Video Verification',
+      'Premium Trust Score (+30)',
+      'AI Sales Manager & Business Consultant',
+      'AI Revenue Forecast & Global Expansion Insights',
+      'AI Lead Qualification & Follow-up Automation',
+      'AI Daily Sales Brief & Weekly Reports',
+      'API Access',
+      'Dedicated Success Manager',
+      'Premium SLA Support',
+      'Multi-User Workspace',
+      'Custom Feature Development',
     ],
     limits: {
       aiRequests: 10000,
