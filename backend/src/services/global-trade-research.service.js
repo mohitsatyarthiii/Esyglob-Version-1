@@ -1,4 +1,5 @@
 import { getCountriesData } from './market-insights.service.js';
+import HSCodeService from './hs-code.service.js';
 
 const COMTRADE_REPORTERS = { IND: 699, CHN: 156, USA: 842, DEU: 276, VNM: 704, ARE: 784, TUR: 792, BGD: 50, IDN: 360, BRA: 76, JPN: 392, KOR: 410, GBR: 826, CAN: 124, AUS: 36, SAU: 682, THA: 764, MYS: 458, SGP: 702, MEX: 484, ITA: 380, FRA: 251, NLD: 528, ZAF: 710 };
 
@@ -69,7 +70,9 @@ function comtradeRows(rows, flow) {
 
 export default class GlobalTradeResearchService {
   static async collect({ query, productName, country }) {
-    const hsCode = extractHsCode(`${query} ${productName}`);
+    const explicitHsCode = extractHsCode(`${query} ${productName}`);
+    const hsResolution = await HSCodeService.resolveForResearch({ query, productName, explicitCode: explicitHsCode }).catch(() => ({ selected: null, candidates: [], suppliedCode: explicitHsCode, status: 'lookup-unavailable' }));
+    const hsCode = hsResolution.selected?.code || hsResolution.suppliedCode || '';
     const searchQueries = buildSearchQueries(productName || query, country, hsCode);
     const countries = await getCountriesData().catch(() => []);
     const target = countries.find(item => item.name?.toLowerCase() === String(country || '').toLowerCase()) || null;
@@ -89,13 +92,15 @@ export default class GlobalTradeResearchService {
       { name: 'WTO Tariff & Trade Data', type: 'official-reference', url: 'https://ttd.wto.org/', status: 'reference' },
       { name: 'WTO Trade Statistics', type: 'official-reference', url: 'https://www.wto.org/english/res_e/statis_e/statis_e.htm', status: 'reference' },
       { name: 'WCO Harmonized System', type: 'official-reference', url: 'https://www.wcoomd.org/en/topics/nomenclature/overview/what-is-the-harmonized-system.aspx', status: 'reference' },
+      { name: 'EsyGlob HS Classification Database', type: 'classification-database', url: `${String(process.env.PUBLIC_API_URL || 'https://api.esyglob.in/api').replace(/\/$/, '')}/hs-codes/search`, status: hsResolution.selected ? 'connected' : hsResolution.candidates.length ? 'candidates-found' : 'awaiting-dataset' },
       { name: 'GDELT public news index', type: 'public-market-data', url: 'https://www.gdeltproject.org/', status: publicArticles.length ? 'connected' : 'unavailable' },
     ];
     const gaps = [];
-    if (!hsCode) gaps.push('No HS code was supplied or verified, so product-level customs values and tariffs were not claimed. Add an HS code for a targeted UN Comtrade query.');
+    if (!hsCode) gaps.push('No HS code was supplied or matched in the EsyGlob classification database, so product-level customs values and tariffs were not claimed.');
+    if (hsCode && !hsResolution.selected) gaps.push(`HS ${hsCode} is user supplied but not yet verified against the EsyGlob HS dataset.`);
     if (hsCode && !officialProductRows.length) gaps.push(`No product-level UN Comtrade records were returned for HS ${hsCode}${target ? ` and ${target.name}` : ''}; verify the code, reporter and period.`);
     if (!target && country) gaps.push(`The target country “${country}” was not matched to the connected country indicator set.`);
     gaps.push('Current freight quotations, company market shares, competitor revenue and paid industry-report estimates are not available from the connected official APIs.');
-    return { hsCode, searchQueries, countries, target, macroImports, macroExports, officialProductRows, publicArticles, sources, gaps };
+    return { hsCode, hsResolution, searchQueries, countries, target, macroImports, macroExports, officialProductRows, publicArticles, sources, gaps };
   }
 }

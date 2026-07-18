@@ -104,6 +104,7 @@ class AIChatService {
         topCategories: results.categories.slice(0, 4).map(c => ({ id: c._id, name: c.name, slug: c.slug })),
         topServices: (knowledge.services.length ? knowledge.services : results.services).slice(0, 6).map(s => ({ key: s.key, title: s.title, description: s.description })),
         plans: knowledge.plans,
+        hsCodes: knowledge.hsCodes,
         account: knowledge.account,
         navigationActions: knowledge.navigationActions,
       },

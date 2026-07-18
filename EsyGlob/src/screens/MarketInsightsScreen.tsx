@@ -82,7 +82,7 @@ function MarketInsightsScreen() {
     setReport({ title: `Researching ${product}`, sections: [], charts: [], tables: [] });
     try {
       await streamMarketResearch({ reportType, product, country, category, timeframe: '12m', query: [product, category, country].filter(Boolean).join(' ') }, event => {
-        setResearchEvents(items => [...items.slice(-39), event]);
+        setResearchEvents(items => [...items.slice(-49), event]);
         if (event.type === 'section' && event.section) setReport(current => ({ ...(current || {}), sections: [...(current?.sections || []), event.section!] }));
         if (event.type === 'report' && event.report) setReport(event.report);
       });
@@ -115,13 +115,6 @@ function MarketInsightsScreen() {
             )
             .slice(0, 5),
     [country, dashboard.data?.countries],
-  );
-  const sourceNames = useMemo(
-    () =>
-      normalizeSources(
-        report?.sources ?? report?.sourceChips ?? report?.dataSources,
-      ),
-    [report],
   );
   const saveReport = () => {
     if (!report) return;
@@ -167,7 +160,7 @@ function MarketInsightsScreen() {
       >
         <View style={s.hero}>
           <View style={s.heroIcon}>
-            <Icon name="chart-areaspline" size={27} color="#FFF" />
+            <Icon name="chart-areaspline" size={27} color="#FFFFFF" />
           </View>
           <View style={s.heroBody}>
             <Text style={s.heroTitle}>
@@ -187,7 +180,7 @@ function MarketInsightsScreen() {
           {reportTypes.map(item => (
             <Pressable
               key={item.id}
-              onPress={() => setReportType(item.id)}
+              onPress={() => { setReportType(item.id); if (item.id === 'product') setCountry(''); }}
               style={[s.typeCard, reportType === item.id && s.typeActive]}
             >
               <Icon
@@ -233,7 +226,7 @@ function MarketInsightsScreen() {
             label="Product or trade keyword"
             icon="package-variant"
             value={product}
-            setValue={setProduct}
+            setValue={value => { setProduct(value); setCategory(''); }}
             placeholder="e.g. solar panels, cotton shirts"
           />
           {productMatches.length ? (
@@ -253,14 +246,7 @@ function MarketInsightsScreen() {
               }}
             />
           ) : null}
-          <LabeledInput
-            label="Category"
-            icon="shape-outline"
-            value={category}
-            setValue={setCategory}
-            placeholder="Optional category"
-          />
-          <LabeledInput
+          {reportType !== 'product' ? <LabeledInput
             label="Country / target market"
             icon="earth"
             value={country}
@@ -270,8 +256,8 @@ function MarketInsightsScreen() {
                 ? 'Required for country research'
                 : 'Optional target country'
             }
-          />
-          {countryMatches.length ? (
+          /> : null}
+          {reportType !== 'product' && countryMatches.length ? (
             <SuggestionList
               items={countryMatches.map(item => ({
                 label: item.name,
@@ -305,7 +291,6 @@ function MarketInsightsScreen() {
         {report ? (
           <ReportView
             report={report}
-            sources={sourceNames}
             onShare={shareReport}
             onSave={saveReport}
           />
@@ -349,18 +334,53 @@ function MarketInsightsScreen() {
 
 function ResearchWorkspace({ events, active, error }: { events: MarketResearchEvent[]; active: boolean; error: string }) {
   const operational = events.filter(event => event.type === 'step');
-  const latest = [...events].reverse().find(event => event.type === 'step' || event.type === 'research_started');
-  const progress = Number(latest?.progress || (active ? 2 : events.length ? 100 : 0));
+  const latest = [...events].reverse().find(event => event.progress != null);
+  
+  // 100% fix: If research is not active and no error, we assume 100% completion
+  const progress = active 
+    ? Math.min(100, Number(latest?.progress || 2)) 
+    : (error ? Number(latest?.progress || 0) : 100);
+    
   const elapsed = Number(latest?.elapsedMs || 0);
-  useEffect(() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); }, [events.length]);
+  
+  useEffect(() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); }, [events.length, active]);
+  
   return (
     <View style={s.researchWorkspace}>
       <View style={s.researchTop}>
         <View style={s.researchOrb}>{active ? <ActivityIndicator color="#FFFFFF" /> : <Icon name={error ? 'alert' : 'check-bold'} size={19} color="#FFFFFF" />}</View>
-        <View style={s.researchTopCopy}><Text style={s.researchKicker}>LIVE RESEARCH WORKSPACE</Text><Text style={s.researchTitle}>{String(latest?.operation || (active ? 'Starting research agents…' : error ? 'Research interrupted' : 'Research completed'))}</Text></View>
+        <View style={s.researchTopCopy}>
+          <Text style={s.researchKicker}>LIVE RESEARCH WORKSPACE</Text>
+          <Text style={s.researchTitle}>
+            {String(latest?.operation || (active ? 'Starting research agents…' : error ? 'Research interrupted' : 'Research completed'))}
+          </Text>
+        </View>
         <Text style={s.progressValue}>{Math.min(100, progress)}%</Text>
       </View>
       <View style={s.progressTrack}><View style={[s.progressFill, { width: `${Math.min(100, progress)}%` }]} /></View>
+      
+      {/* Claude/Codex style Live Progress Log (Line by Line) */}
+      {operational.length > 0 && (
+        <View style={s.agentTimeline}>
+          <Text style={s.logHeader}>Live Log</Text>
+          {operational.map((event, index) => {
+            const isDone = event.status === 'success';
+            const queries = Array.isArray(event.searchQueries) ? event.searchQueries.map(String).slice(0, 3) : [];
+            return (
+              <View key={`${event.agent}-${index}`} style={s.logRow}>
+                <Icon name={isDone ? "check-circle" : "circle-outline"} size={14} color={isDone ? "#059669" : "#94A3B8"} />
+                <View style={s.logCopy}>
+                  <Text style={[s.logAgent, isDone && s.logAgentDone]}>{event.agent}</Text>
+                  <Text style={s.logOperation}>{event.operation}</Text>
+                  {queries.map(query => <Text numberOfLines={1} key={query} style={s.logQuery}>↳ {query}</Text>)}
+                </View>
+                {isDone && <Text style={s.logStatus}>Done</Text>}
+              </View>
+            );
+          })}
+        </View>
+      )}
+      
       <View style={s.researchMetrics}>
         <ResearchMetric icon="timer-outline" label="Elapsed" value={`${Math.round(elapsed / 1000)}s`} />
         <ResearchMetric icon="link-variant" label="Sources" value={String(latest?.sourceCount || 0)} />
@@ -368,12 +388,6 @@ function ResearchWorkspace({ events, active, error }: { events: MarketResearchEv
         <ResearchMetric icon="account-group-outline" label="Agents" value={String(new Set(operational.map(item => item.agent)).size)} />
       </View>
       {error ? <Text style={s.researchError}>{error}</Text> : null}
-      <View style={s.agentTimeline}>
-        {operational.map((event, index) => {
-          const queries = Array.isArray(event.searchQueries) ? event.searchQueries.map(String).slice(0, 4) : [];
-          return <View key={`${event.agent}-${index}`} style={s.agentRow}><View style={[s.agentDot, event.status === 'success' && s.agentDotDone]}>{event.status === 'success' ? <Icon name="check" size={10} color="#FFFFFF" /> : null}</View><View style={s.agentCopy}><Text style={s.agentName}>{event.agent}</Text><Text style={s.agentOperation}>{event.operation}</Text>{queries.length ? <View style={s.researchQueries}>{queries.map(query => <View key={query} style={s.researchQuery}><Icon name="magnify" size={10} color="#A5B4FC" /><Text numberOfLines={2} style={s.researchQueryText}>{query}</Text></View>)}</View> : null}</View><Text style={[s.agentStatus, event.status === 'success' && s.agentStatusDone]}>{event.status === 'success' ? 'VERIFIED' : 'IN PROGRESS'}</Text></View>;
-        })}
-      </View>
     </View>
   );
 }
@@ -384,18 +398,16 @@ function ResearchMetric({ icon, label, value }: { icon: string; label: string; v
 
 const ReportView = memo(function ReportPanel({
   report,
-  sources,
   onShare,
   onSave,
 }: {
   report: MarketInsightReport;
-  sources: string[];
   onShare: () => void;
   onSave: () => void;
 }) {
   const distribution = report.demographics?.distribution ?? [];
   const regional = report.demographics?.regionalComparison ?? [];
-  const sourceRecords = normalizeSourceRecords(report.sources ?? report.sourceChips ?? report.dataSources, sources);
+  // Sources removed from view
   return (
     <View>
       <View style={s.reportHero}>
@@ -417,11 +429,11 @@ const ReportView = memo(function ReportPanel({
         </View>
         <View style={s.reportActions}>
           <Pressable onPress={onShare} style={s.reportAction}>
-            <Icon name="share-variant-outline" size={18} color="#FFF" />
+            <Icon name="share-variant-outline" size={18} color="#4F46E5" />
             <Text style={s.reportActionText}>Share</Text>
           </Pressable>
           <Pressable onPress={onSave} style={s.reportAction}>
-            <Icon name="bookmark-outline" size={18} color="#FFF" />
+            <Icon name="bookmark-outline" size={18} color="#4F46E5" />
             <Text style={s.reportActionText}>Save</Text>
           </Pressable>
         </View>
@@ -524,23 +536,6 @@ const ReportView = memo(function ReportPanel({
           {report.marketplaceSection.tables?.map((table, index) => <GenericResearchTable key={`${table.title}-${index}`} title={table.title || 'Related opportunities'} rows={table.rows || []} columns={table.columns} />)}
         </View>
       ) : null}
-      <View style={s.card}>
-        <View style={s.sectionHead}>
-          <View style={s.sectionIcon}>
-            <Icon name="database-check-outline" size={19} color="#4F46E5" />
-          </View>
-          <Text style={s.sectionTitle}>Sources</Text>
-        </View>
-        <View style={s.sources}>
-          {sourceRecords.map(source => (
-            <Pressable key={`${source.name}-${source.url}`} disabled={!source.url} onPress={() => source.url && Linking.openURL(source.url)} style={s.source}>
-              <Icon name="link-variant" size={15} color="#4F46E5" />
-              <Text style={s.sourceText}>{source.name}</Text>
-              {source.url ? <Icon name="open-in-new" size={12} color="#6366F1" /> : null}
-            </Pressable>
-          ))}
-        </View>
-      </View>
     </View>
   );
 });
@@ -552,7 +547,7 @@ function sectionIcon(type?: string) {
 
 function GenericResearchTable({ title, rows, columns }: { title: string; rows: Record<string, unknown>[]; columns?: string[] }) {
   const keys = columns?.length ? columns : [...new Set(rows.flatMap(row => Object.keys(row)))].slice(0, 6);
-  return <View style={s.card}><Text style={s.sectionTitle}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View>{<View style={[s.genericTableRow, s.tableHeader]}>{keys.map(key => <Text key={key} style={s.genericTableCellHead}>{humanize(key)}</Text>)}</View>}{rows.slice(0, 20).map((row, index) => <View key={index} style={s.genericTableRow}>{keys.map(key => {
+  return <View style={s.card}><Text style={s.sectionTitle}>{title}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}><View>{<View style={[s.genericTableRow, s.tableHeader]}>{keys.map(key => <Text key={key} style={s.genericTableCellHead}>{humanize(key)}</Text>)}</View>}{rows.slice(0, 5).map((row, index) => <View key={index} style={s.genericTableRow}>{keys.map(key => {
     const value = row[key];
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '—');
     return /^https?:\/\//i.test(text)
@@ -737,6 +732,9 @@ function TradeTable({
   rows: DataRow[];
   kind: 'trade' | 'growth' | 'opportunity' | 'product';
 }) {
+  // Limit to top 5 items
+  const limitedRows = rows.slice(0, 5);
+  
   return (
     <View style={s.card}>
       <Text style={s.sectionTitle}>{title}</Text>
@@ -752,9 +750,9 @@ function TradeTable({
                 ? 'Signal'
                 : 'Trade value'}
             </Text>
-            <Text style={[s.th, s.trendCol]}>Trend</Text>
+            <Text style={[s.th, s.trendCol]}>Trend (2026)</Text>
           </View>
-          {rows.slice(0, 10).map((row, index) => (
+          {limitedRows.map((row, index) => (
             <View
               key={`${row.country ?? row.product}-${index}`}
               style={s.tableRow}
@@ -841,22 +839,6 @@ function InlineError({
   );
 }
 
-function normalizeSources(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(item =>
-      typeof item === 'string'
-        ? item
-        : String(
-            item?.label ?? item?.name ?? item?.url ?? 'Connected data source',
-          ),
-    )
-    .filter(Boolean);
-}
-function normalizeSourceRecords(value: unknown, fallback: string[]) {
-  if (!Array.isArray(value)) return fallback.map(name => ({ name, url: '' }));
-  return value.map(item => typeof item === 'string' ? { name: item, url: '' } : { name: String(item?.label ?? item?.name ?? item?.url ?? 'Connected data source'), url: typeof item?.url === 'string' ? item.url : '' });
-}
 function friendlyError(error: unknown) {
   const text =
     error instanceof Error
@@ -904,9 +886,6 @@ function buildShareText(report: MarketInsightReport) {
     report.title,
     report.executiveSummary ?? report.summary,
     report.dataFreshness,
-    `Sources: ${normalizeSources(
-      report.sources ?? report.sourceChips ?? report.dataSources,
-    ).join(', ')}`,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -941,12 +920,16 @@ const s = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginTop: 1 },
   content: { padding: 14, paddingBottom: 80 },
+  
+  // Modern Light Hero
   hero: {
-    backgroundColor: '#111827',
+    backgroundColor: '#EFF6FF', // Light blue-tinted marketish feel
     borderRadius: 20,
     padding: 17,
     flexDirection: 'row',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
   },
   heroIcon: {
     width: 49,
@@ -958,8 +941,8 @@ const s = StyleSheet.create({
     marginRight: 12,
   },
   heroBody: { flex: 1 },
-  heroTitle: { fontSize: 16, fontWeight: '900', color: '#FFF' },
-  heroText: { fontSize: 10, lineHeight: 15, color: '#CBD5E1', marginTop: 4 },
+  heroTitle: { fontSize: 16, fontWeight: '900', color: '#1E293B' },
+  heroText: { fontSize: 10, lineHeight: 15, color: '#475569', marginTop: 4 },
   typeRow: { gap: 8, paddingVertical: 12 },
   typeCard: {
     width: 190,
@@ -1064,7 +1047,9 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
   reportHero: {
-    backgroundColor: '#111827',
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    borderWidth: 1,
     borderRadius: 20,
     padding: 18,
     marginBottom: 12,
@@ -1074,19 +1059,19 @@ const s = StyleSheet.create({
     fontSize: 8,
     fontWeight: '900',
     letterSpacing: 0.7,
-    color: '#A5B4FC',
+    color: '#4F46E5',
   },
   reportTitle: {
     fontSize: 21,
     lineHeight: 27,
     fontWeight: '900',
-    color: '#FFF',
+    color: '#0F172A',
     marginTop: 9,
   },
   reportSummary: {
     fontSize: 12,
     lineHeight: 19,
-    color: '#CBD5E1',
+    color: '#475569',
     marginTop: 9,
   },
   freshness: {
@@ -1101,12 +1086,14 @@ const s = StyleSheet.create({
     height: 35,
     paddingHorizontal: 13,
     borderRadius: 10,
-    backgroundColor: '#334155',
+    backgroundColor: '#EEF2FF',
+    borderColor: '#C7D2FE',
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  reportActionText: { fontSize: 10, fontWeight: '900', color: '#FFF' },
+  reportActionText: { fontSize: 10, fontWeight: '900', color: '#4338CA' },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metric: {
     width: '48%',
@@ -1154,7 +1141,9 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   barFill: { height: 8, borderRadius: 6, backgroundColor: '#4F46E5' },
-  table: { minWidth: 570 },
+  
+  // Table updates
+  table: { minWidth: 500 },
   tableRow: {
     height: 45,
     flexDirection: 'row',
@@ -1173,7 +1162,7 @@ const s = StyleSheet.create({
   rankCol: { width: 35, paddingLeft: 8 },
   countryCol: { width: 205 },
   valueCol: { width: 150 },
-  trendCol: { width: 160 },
+  trendCol: { width: 130 },
   trend: { fontSize: 10, fontWeight: '800', color: '#64748B' },
   trendUp: { color: '#059669' },
   insight: { flexDirection: 'row', marginBottom: 13 },
@@ -1211,17 +1200,6 @@ const s = StyleSheet.create({
   marketplaceSectionIcon: { alignItems: 'center', backgroundColor: '#059669', borderRadius: 13, height: 44, justifyContent: 'center', width: 44 },
   marketplaceSectionTitle: { color: '#065F46', fontSize: 15, fontWeight: '900' },
   marketplaceSectionText: { color: '#047857', fontSize: 10, lineHeight: 15, marginTop: 3 },
-  sources: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  source: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 10,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-  },
-  sourceText: { fontSize: 9, fontWeight: '800', color: '#4338CA' },
   loadingHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1235,32 +1213,57 @@ const s = StyleSheet.create({
     backgroundColor: '#E8EDF5',
     marginBottom: 10,
   },
-  researchWorkspace: { backgroundColor: '#111827', borderRadius: 20, marginBottom: 14, overflow: 'hidden', padding: 16 },
+
+  // Light Research Workspace
+  researchWorkspace: { 
+    backgroundColor: '#F8FAFC', // Light theme
+    borderRadius: 14, 
+    marginBottom: 14, 
+    overflow: 'hidden', 
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
   researchTop: { alignItems: 'center', flexDirection: 'row' },
-  researchOrb: { alignItems: 'center', backgroundColor: '#4F46E5', borderRadius: 15, height: 42, justifyContent: 'center', width: 42 },
+  researchOrb: { 
+    alignItems: 'center', 
+    backgroundColor: '#4F46E5', 
+    borderRadius: 10, 
+    height: 32, 
+    justifyContent: 'center', 
+    width: 32 
+  },
   researchTopCopy: { flex: 1, marginLeft: 10 },
-  researchKicker: { color: '#A5B4FC', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  researchTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', marginTop: 3 },
-  progressValue: { color: '#C7D2FE', fontSize: 16, fontWeight: '900' },
-  progressTrack: { backgroundColor: '#374151', borderRadius: 4, height: 7, marginTop: 13, overflow: 'hidden' },
-  progressFill: { backgroundColor: '#818CF8', borderRadius: 4, height: '100%' },
-  researchMetrics: { flexDirection: 'row', gap: 6, marginTop: 12 },
-  researchMetric: { alignItems: 'center', backgroundColor: '#1F2937', borderRadius: 10, flex: 1, padding: 8 },
-  researchMetricValue: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', marginTop: 3 },
-  researchMetricLabel: { color: '#9CA3AF', fontSize: 7, marginTop: 1 },
-  researchError: { color: '#FCA5A5', fontSize: 10, lineHeight: 15, marginTop: 10 },
-  agentTimeline: { borderTopColor: '#374151', borderTopWidth: 1, marginTop: 13, paddingTop: 5 },
-  agentRow: { alignItems: 'center', flexDirection: 'row', paddingVertical: 8 },
-  agentDot: { alignItems: 'center', borderColor: '#818CF8', borderRadius: 9, borderWidth: 2, height: 18, justifyContent: 'center', width: 18 },
-  agentDotDone: { backgroundColor: '#059669', borderColor: '#059669' },
-  agentCopy: { flex: 1, marginLeft: 9 },
-  agentName: { color: '#E5E7EB', fontSize: 9, fontWeight: '900' },
-  agentOperation: { color: '#9CA3AF', fontSize: 8, marginTop: 2 },
-  researchQueries: { gap: 4, marginTop: 7 },
-  researchQuery: { alignItems: 'center', backgroundColor: '#111827', borderColor: '#374151', borderRadius: 7, borderWidth: 1, flexDirection: 'row', gap: 5, paddingHorizontal: 7, paddingVertical: 5 },
-  researchQueryText: { color: '#CBD5E1', flex: 1, fontSize: 8, lineHeight: 11 },
-  agentStatus: { color: '#A5B4FC', fontSize: 7, fontWeight: '900' },
-  agentStatusDone: { color: '#6EE7B7' },
+  researchKicker: { color: '#4F46E5', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  researchTitle: { color: '#0F172A', fontSize: 12, fontWeight: '800', marginTop: 3 },
+  progressValue: { color: '#4F46E5', fontSize: 16, fontWeight: '900' },
+  progressTrack: { backgroundColor: '#E2E8F0', borderRadius: 4, height: 7, marginTop: 13, overflow: 'hidden' },
+  progressFill: { backgroundColor: '#4F46E5', borderRadius: 4, height: '100%' },
+  researchMetrics: { flexDirection: 'row', gap: 5, marginTop: 10 },
+  researchMetric: { 
+    alignItems: 'center', 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 8, 
+    flex: 1, 
+    padding: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  researchMetricValue: { color: '#0F172A', fontSize: 11, fontWeight: '900', marginTop: 3 },
+  researchMetricLabel: { color: '#64748B', fontSize: 7, marginTop: 1 },
+  researchError: { color: '#DC2626', fontSize: 10, lineHeight: 15, marginTop: 10 },
+
+  // Claude/Codex style Agent Timeline
+  agentTimeline: { borderTopColor: '#E2E8F0', borderTopWidth: 1, marginTop: 16, paddingTop: 12 },
+  logHeader: { color: '#64748B', fontSize: 9, fontWeight: '700', marginBottom: 10 },
+  logRow: { alignItems: 'center', flexDirection: 'row', marginBottom: 8 },
+  logCopy: { flex: 1, marginLeft: 8 },
+  logAgent: { color: '#1E293B', fontSize: 10, fontWeight: '700' },
+  logAgentDone: { color: '#059669' },
+  logOperation: { color: '#64748B', fontSize: 9, marginTop: 1 },
+  logQuery: { color: '#64748B', fontSize: 8, marginTop: 3 },
+  logStatus: { color: '#059669', fontSize: 9, fontWeight: '700' },
+
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
   kpiCard: { backgroundColor: '#FFFFFF', borderRadius: 15, padding: 12, width: '48%' },
   kpiValue: { color: '#0F172A', fontSize: 18, fontWeight: '900', marginTop: 5 },

@@ -176,8 +176,10 @@ async function getAISearchResultsUncached({
 
   const [rawProducts, suppliers, categories, rfqs] = await Promise.all([
     Product.find(productQuery)
-      .select('name slug category subcategory price currency minimumOrderQuantity unit images documents variants averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
+      .select('name slug category subcategory price currency minimumOrderQuantity unit images documents variants primaryHsCodeId hsCodeIds hsCodes averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
       .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
+      .populate('primaryHsCodeId', 'code officialDescription revision category')
+      .populate('hsCodeIds', 'code officialDescription revision category')
       .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
       .limit(productLimit)
       .lean()
@@ -286,7 +288,7 @@ export function summarizeMarketplaceResults(results) {
   const promptProductLimit = Number(process.env.AI_PROMPT_PRODUCT_LIMIT || 4);
   const promptSupplierLimit = Number(process.env.AI_PROMPT_SUPPLIER_LIMIT || 4);
   const topProducts = (results.products || []).slice(0, promptProductLimit).map(product =>
-    `- Product: ${product.name} | ${product.category || 'General'} | Price ${product.currency || 'INR'} ${product.price || 'request'} | MOQ ${product.minimumOrderQuantity || 1} ${product.unit || 'units'} | Supplier ${product.sellerId?.companyName || 'Supplier'}${product.sellerId?.isVerified ? ' verified' : ''} | Link ${publicProductLink(product)}${product.sellerId?._id ? ` | Supplier link ${publicSupplierLink(product.sellerId)}` : ''}`
+    `- Product: ${product.name} | ${product.category || 'General'} | Price ${product.currency || 'INR'} ${product.price || 'request'} | MOQ ${product.minimumOrderQuantity || 1} ${product.unit || 'units'} | Supplier ${product.sellerId?.companyName || 'Supplier'}${product.sellerId?.isVerified ? ' verified' : ''}${product.primaryHsCodeId?.code || product.hsCodes?.[0]?.code ? ` | HS ${product.primaryHsCodeId?.code || product.hsCodes?.[0]?.code}` : ''} | Link ${publicProductLink(product)}${product.sellerId?._id ? ` | Supplier link ${publicSupplierLink(product.sellerId)}` : ''}`
   );
 
   const topSuppliers = (results.suppliers || []).slice(0, promptSupplierLimit).map(seller =>

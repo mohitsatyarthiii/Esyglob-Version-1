@@ -46,6 +46,7 @@ import serviceRequestRoutes from './routes/service-request.routes.js';
 import warehouseRoutes from './routes/warehouse.routes.js';
 import locationRoutes from './routes/location.routes.js';
 import documentRoutes from './routes/document.routes.js';
+import hsCodeRoutes from './routes/hs-code.routes.js';
 
 const app = express();
 
@@ -100,6 +101,7 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 app.use('/api/products', productRoutes);           // Public listing + protected CRUD
 app.use('/api/categories', categoryRoutes);        // Public
+app.use('/api/hs-codes', hsCodeRoutes);            // Public classification search
 app.use('/api/suppliers', supplierRoutes);         // Public listing
 app.use('/api/search', globalSearchRoutes);        // Public search
 app.use('/api/rfqs', rfqRoutes);                   // Public listing + protected actions

@@ -30,6 +30,9 @@ const productSchema = new mongoose.Schema(
       ref: 'Subcategory',
       index: true,
     },
+    primaryHsCodeId: { type: mongoose.Schema.Types.ObjectId, ref: 'HSCode', index: true },
+    hsCodeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'HSCode' }],
+    hsCodes: [{ code: { type: String, trim: true }, description: String, revision: String, confidence: { type: Number, min: 0, max: 1 }, source: { type: String, enum: ['manual', 'ai_recommended', 'dataset_mapping', 'verified'], default: 'manual' }, isPrimary: { type: Boolean, default: false } }],
     name: {
       type: String,
       trim: true,
@@ -276,6 +279,8 @@ productSchema.index({ status: 1, averageRating: -1, totalOrders: -1 });
 productSchema.index({ status: 1, directOrderEnabled: 1, orderType: 1 });
 productSchema.index({ status: 1, 'priceTiers.minimumQuantity': 1 });
 productSchema.index({ bulkImportId: 1, importRowNumber: 1 });
+productSchema.index({ hsCodeIds: 1, status: 1 });
+productSchema.index({ 'hsCodes.code': 1, status: 1 });
 productSchema.index({ slug: 1 }, { sparse: true });
 
 function slugify(value) {

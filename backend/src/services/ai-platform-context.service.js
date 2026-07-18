@@ -4,6 +4,7 @@ import Dispute from '../models/Dispute.js';
 import ShippingOrder from '../models/ShippingOrder.js';
 import TradeAssurance from '../models/TradeAssurance.js';
 import PaymentMethod from '../models/PaymentMethod.js';
+import HSCodeService from './hs-code.service.js';
 
 const FEATURE_ACTIONS = [
   { test: /subscription|membership|premium|plan|ai credit/i, label: 'Membership plans', route: 'SubscriptionCenter', icon: 'crown-outline' },
@@ -49,13 +50,15 @@ export default class AIPlatformContextService {
     const wantsShipping = /my .*ship|track.*ship|shipment.*status|logistics.*status/i.test(message);
     const wantsAssurance = /my .*assurance|assurance.*status|protected order/i.test(message);
     const wantsPayments = /my payment method|saved payment|payment method/i.test(message);
-    const [plans, services, disputes, shipments, assurances, paymentMethods] = await Promise.all([
+    const wantsHsCodes = /product|import|export|trade|customs|hs\s*code|tariff|classification|market research|regulation/i.test(message);
+    const [plans, services, disputes, shipments, assurances, paymentMethods, hsCodes] = await Promise.all([
       needsPlans(message) ? listPlans(role === 'seller' ? 'seller' : 'buyer') : Promise.resolve([]),
       Promise.resolve(needsServices(message) ? listServices() : []),
       wantsDisputes ? Dispute.find({ $or: [{ initiatorId: userId }, { respondentId: userId }] }).select('_id disputeNumber transactionType type title status claimAmount currency createdAt updatedAt').sort({ updatedAt: -1 }).limit(8).lean() : [],
       wantsShipping ? ShippingOrder.find({ userId }).select('_id orderNumber type status pickup.country delivery.country carrier trackingNumber estimatedDelivery shippingCost currency createdAt').sort({ createdAt: -1 }).limit(8).lean() : [],
       wantsAssurance ? TradeAssurance.find({ userId }).select('_id orderId assuranceNumber status orderAmount currency expectedDeliveryDate inspectionRequired inspectionResult coverageAmount coverageType refundAmount createdAt').sort({ createdAt: -1 }).limit(8).lean() : [],
       wantsPayments ? PaymentMethod.find({ userId, role: role === 'seller' ? 'seller' : 'buyer' }).select('_id type label bankName maskedAccountNumber cardBrand cardLast4 verificationStatus isDefault').sort({ isDefault: -1, createdAt: -1 }).limit(8).lean() : [],
+      wantsHsCodes ? HSCodeService.search({ query: message, limit: 8 }).then(result => result.items).catch(() => []) : [],
     ]);
     const safePlans = plans.map(plan => ({
       key: plan.key, name: plan.name, description: plan.description, prices: plan.prices,
@@ -70,6 +73,7 @@ export default class AIPlatformContextService {
       plans: safePlans,
       services: safeServices,
       account: { disputes, shipments, assurances, paymentMethods },
+      hsCodes,
       navigationActions: navigationActions(message, results, role),
       text: [
         modelPlans.length ? `Live ${role} membership plan essentials (full records are available in response data):\n${JSON.stringify(modelPlans)}` : '',
@@ -78,6 +82,7 @@ export default class AIPlatformContextService {
         shipments.length ? `Authorized current-user shipments:\n${JSON.stringify(shipments)}` : '',
         assurances.length ? `Authorized current-user Trade Assurance records:\n${JSON.stringify(assurances)}` : '',
         paymentMethods.length ? `Authorized current-user payment methods (masked fields only):\n${JSON.stringify(paymentMethods)}` : '',
+        hsCodes.length ? `HS classification candidates from the live EsyGlob HS database:\n${JSON.stringify(hsCodes.map(item => ({ code: item.code, description: item.officialDescription, chapter: item.chapter, category: item.category, certifications: item.applicableCertifications })).slice(0, 8))}` : wantsHsCodes ? 'The HS classification database returned no matching seeded records. Do not guess a code; ask the user to verify classification.' : '',
       ].filter(Boolean).join('\n'),
     };
   }
