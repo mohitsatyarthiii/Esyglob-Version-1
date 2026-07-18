@@ -1,14 +1,17 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Linking,
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   Share,
   StyleSheet,
   Text,
   TextInput,
+  UIManager,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -24,6 +27,7 @@ import {
 import { readJson, writeJson } from '../storage/appStorage';
 
 const REPORT_KEY = 'market-insights.saved';
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) UIManager.setLayoutAnimationEnabledExperimental(true);
 const reportTypes = [
   {
     id: 'product' as const,
@@ -167,11 +171,11 @@ function MarketInsightsScreen() {
           </View>
           <View style={s.heroBody}>
             <Text style={s.heroTitle}>
-              Trade intelligence, grounded in data
+              Global trade intelligence, grounded in evidence
             </Text>
             <Text style={s.heroText}>
-              Marketplace signals combined with connected economic and trade
-              sources.
+              Official trade research first. Related EsyGlob opportunities appear
+              only after the global analysis.
             </Text>
           </View>
         </View>
@@ -221,7 +225,7 @@ function MarketInsightsScreen() {
               <Text style={s.sectionTitle}>Build your intelligence report</Text>
               <Text style={s.sectionSub}>
                 {dashboard.data?.dataFreshness ??
-                  'Connected marketplace and economic sources'}
+                  'Connected official trade and economic sources'}
               </Text>
             </View>
           </View>
@@ -348,6 +352,7 @@ function ResearchWorkspace({ events, active, error }: { events: MarketResearchEv
   const latest = [...events].reverse().find(event => event.type === 'step' || event.type === 'research_started');
   const progress = Number(latest?.progress || (active ? 2 : events.length ? 100 : 0));
   const elapsed = Number(latest?.elapsedMs || 0);
+  useEffect(() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); }, [events.length]);
   return (
     <View style={s.researchWorkspace}>
       <View style={s.researchTop}>
@@ -364,7 +369,10 @@ function ResearchWorkspace({ events, active, error }: { events: MarketResearchEv
       </View>
       {error ? <Text style={s.researchError}>{error}</Text> : null}
       <View style={s.agentTimeline}>
-        {operational.map((event, index) => <View key={`${event.agent}-${index}`} style={s.agentRow}><View style={[s.agentDot, event.status === 'success' && s.agentDotDone]}>{event.status === 'success' ? <Icon name="check" size={10} color="#FFFFFF" /> : null}</View><View style={s.agentCopy}><Text style={s.agentName}>{event.agent}</Text><Text style={s.agentOperation}>{event.operation}</Text></View><Text style={[s.agentStatus, event.status === 'success' && s.agentStatusDone]}>{event.status === 'success' ? 'DONE' : 'WORKING'}</Text></View>)}
+        {operational.map((event, index) => {
+          const queries = Array.isArray(event.searchQueries) ? event.searchQueries.map(String).slice(0, 4) : [];
+          return <View key={`${event.agent}-${index}`} style={s.agentRow}><View style={[s.agentDot, event.status === 'success' && s.agentDotDone]}>{event.status === 'success' ? <Icon name="check" size={10} color="#FFFFFF" /> : null}</View><View style={s.agentCopy}><Text style={s.agentName}>{event.agent}</Text><Text style={s.agentOperation}>{event.operation}</Text>{queries.length ? <View style={s.researchQueries}>{queries.map(query => <View key={query} style={s.researchQuery}><Icon name="magnify" size={10} color="#A5B4FC" /><Text numberOfLines={2} style={s.researchQueryText}>{query}</Text></View>)}</View> : null}</View><Text style={[s.agentStatus, event.status === 'success' && s.agentStatusDone]}>{event.status === 'success' ? 'VERIFIED' : 'IN PROGRESS'}</Text></View>;
+        })}
       </View>
     </View>
   );
@@ -501,6 +509,19 @@ const ReportView = memo(function ReportPanel({
               • {note}
             </Text>
           ))}
+        </View>
+      ) : null}
+      {report.marketplaceSection ? (
+        <View style={s.marketplaceSection}>
+          <View style={s.marketplaceSectionHead}>
+            <View style={s.marketplaceSectionIcon}><Icon name="store-search-outline" size={22} color="#FFFFFF" /></View>
+            <View style={s.generatedSectionCopy}>
+              <Text style={s.marketplaceSectionTitle}>{report.marketplaceSection.title ?? 'Related Opportunities on Esyglob'}</Text>
+              <Text style={s.marketplaceSectionText}>{report.marketplaceSection.summary}</Text>
+            </View>
+          </View>
+          {report.marketplaceSection.metrics ? <MetricGrid title="Marketplace opportunity signals" data={report.marketplaceSection.metrics} /> : null}
+          {report.marketplaceSection.tables?.map((table, index) => <GenericResearchTable key={`${table.title}-${index}`} title={table.title || 'Related opportunities'} rows={table.rows || []} columns={table.columns} />)}
         </View>
       ) : null}
       <View style={s.card}>
@@ -1185,6 +1206,11 @@ const s = StyleSheet.create({
   },
   warningTitle: { fontSize: 13, fontWeight: '900', color: '#92400E' },
   warningText: { fontSize: 10, lineHeight: 16, color: '#92400E', marginTop: 3 },
+  marketplaceSection: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0', borderRadius: 20, borderWidth: 1, marginBottom: 14, padding: 12 },
+  marketplaceSectionHead: { alignItems: 'center', flexDirection: 'row', gap: 10, padding: 5 },
+  marketplaceSectionIcon: { alignItems: 'center', backgroundColor: '#059669', borderRadius: 13, height: 44, justifyContent: 'center', width: 44 },
+  marketplaceSectionTitle: { color: '#065F46', fontSize: 15, fontWeight: '900' },
+  marketplaceSectionText: { color: '#047857', fontSize: 10, lineHeight: 15, marginTop: 3 },
   sources: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   source: {
     flexDirection: 'row',
@@ -1230,6 +1256,9 @@ const s = StyleSheet.create({
   agentCopy: { flex: 1, marginLeft: 9 },
   agentName: { color: '#E5E7EB', fontSize: 9, fontWeight: '900' },
   agentOperation: { color: '#9CA3AF', fontSize: 8, marginTop: 2 },
+  researchQueries: { gap: 4, marginTop: 7 },
+  researchQuery: { alignItems: 'center', backgroundColor: '#111827', borderColor: '#374151', borderRadius: 7, borderWidth: 1, flexDirection: 'row', gap: 5, paddingHorizontal: 7, paddingVertical: 5 },
+  researchQueryText: { color: '#CBD5E1', flex: 1, fontSize: 8, lineHeight: 11 },
   agentStatus: { color: '#A5B4FC', fontSize: 7, fontWeight: '900' },
   agentStatusDone: { color: '#6EE7B7' },
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },

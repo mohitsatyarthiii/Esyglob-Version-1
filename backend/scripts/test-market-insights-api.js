@@ -9,7 +9,7 @@ if (!email || !password) {
   process.exit(2);
 }
 
-const query = `Find the strongest EsyGlob options for TOPCon bifacial solar modules and compatible inverters for delivery to India. Compare matching products and verified sellers using available price, MOQ, seller trust, country and marketplace demand signals. Give concise procurement insights, risks and next actions, with working links to every matching product, seller, category, service and evidence source. Do not fabricate unavailable specifications, prices, companies or links.`;
+const query = `Research global trade opportunities for TOPCon bifacial solar modules under user-supplied HS code 854143, with India as the target market. Separate verified product-level customs data from macro indicators; analyze imports, exports, tariffs, regulations, pricing availability, logistics, risks and actions. Add related EsyGlob opportunities only at the end. Never fabricate unavailable figures.`;
 
 const startedAt = Date.now();
 const login = await fetch(`${baseUrl}/auth/login`, {
@@ -63,7 +63,7 @@ if (!report) {
 }
 
 const reportText = JSON.stringify(report).toLowerCase();
-const requirements = ['india', 'product', 'seller', 'price', 'moq', 'verified', 'risk'];
+const requirements = ['india', 'hs', 'import', 'export', 'tariff', 'logistics', 'risk'];
 const covered = requirements.filter(term => reportText.includes(term));
 const sources = Array.isArray(report.sources) ? report.sources : [];
 const sections = Array.isArray(report.sections) ? report.sections : [];
@@ -72,15 +72,16 @@ const tables = Array.isArray(report.tables) ? report.tables : [];
 const recommendations = Array.isArray(report.recommendations) ? report.recommendations : [];
 const risks = Array.isArray(report.risks) ? report.risks : [];
 const gaps = Array.isArray(report.dataGaps) ? report.dataGaps : [];
-const tablesWithLinks = tables.filter(table => (table.rows || []).some(row => Object.values(row).some(value => /^https?:\/\//i.test(String(value || '')))));
+const marketplaceTables = Array.isArray(report.marketplaceSection?.tables) ? report.marketplaceSection.tables : [];
+const tablesWithLinks = marketplaceTables.filter(table => (table.rows || []).some(row => Object.values(row).some(value => /^https?:\/\//i.test(String(value || '')))));
 const badLinks = sources.filter(source => source.url && !/^https:\/\//i.test(source.url));
 
 const scores = {
-  grounding: Math.min(20, (sources.length ? 8 : 0) + (report.marketplaceSnapshot ? 8 : 0) + (badLinks.length === 0 ? 4 : 0)),
+  grounding: Math.min(20, (sources.length >= 5 ? 8 : 0) + (gaps.length ? 4 : 0) + (tables.length >= 2 ? 4 : 0) + (badLinks.length === 0 ? 4 : 0)),
   requirementCoverage: Math.round((covered.length / requirements.length) * 20),
   depth: Math.min(20, sections.length * 4 + tables.length * 3 + tablesWithLinks.length * 2),
   decisionUsefulness: Math.min(20, recommendations.length * 5 + risks.length * 5),
-  sourceDiscipline: sources.length && badLinks.length === 0 && tablesWithLinks.length >= 2 ? 15 : 5,
+  sourceDiscipline: sources.length && !String(sources[0]?.name || '').includes('EsyGlob') && report.marketplaceSection && badLinks.length === 0 ? 15 : 5,
   responsiveness: firstEventMs !== null && firstEventMs < 3000 ? 5 : firstEventMs !== null && firstEventMs < 10000 ? 3 : 1,
 };
 const total = Object.values(scores).reduce((sum, value) => sum + value, 0);

@@ -103,6 +103,12 @@ export type MarketInsightReport = {
   recommendations?: string[];
   risks?: Array<{ label?: string; level?: string; reason?: string }>;
   dataGaps?: string[];
+  marketplaceSection?: {
+    title?: string;
+    summary?: string;
+    metrics?: Record<string, unknown>;
+    tables?: Array<{ title?: string; columns?: string[]; rows?: Record<string, unknown>[] }>;
+  };
   [key: string]: unknown;
 };
 
