@@ -1,4 +1,7 @@
 import KnowledgeDocument from '../models/KnowledgeDocument.js';
+import NodeCache from 'node-cache';
+
+const retrievalCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false, maxKeys: 500 });
 
 function tokens(value = '') {
   return [...new Set(String(value).toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])].slice(0, 18);
@@ -9,9 +12,12 @@ function roleFilter(role) {
 }
 
 export default class KnowledgeBaseService {
-  static async retrieve({ query, role = 'general', intent, language = 'en', limit = 4 }) {
+  static async retrieve({ query, role = 'general', intent, language = 'en', limit = 3 }) {
     const terms = tokens(query);
     if (!terms.length) return [];
+    const cacheKey = JSON.stringify([terms, role, intent, language, Math.min(3, limit)]);
+    const cached = retrievalCache.get(cacheKey);
+    if (cached) return cached;
     const match = {
       status: 'published',
       targetRoles: roleFilter(role),
@@ -23,13 +29,16 @@ export default class KnowledgeBaseService {
     const docs = await KnowledgeDocument.find(match)
       .select('-embedding -embeddingModel')
       .sort({ priority: -1, lastUpdated: -1 })
-      .limit(Math.min(8, Math.max(1, Number(limit))))
+      .limit(Math.min(3, Math.max(1, Number(limit))))
       .lean();
-    return docs.sort((a, b) => {
+    const unique = [...new Map(docs.map(doc => [`${doc.slug}:${doc.version}`, doc])).values()];
+    const ranked = unique.sort((a, b) => {
       const aLanguage = a.supportedLanguages?.includes(language) ? 1 : 0;
       const bLanguage = b.supportedLanguages?.includes(language) ? 1 : 0;
       return bLanguage - aLanguage || (b.priority || 0) - (a.priority || 0);
     });
+    retrievalCache.set(cacheKey, ranked);
+    return ranked;
   }
 
   static format(documents = []) {

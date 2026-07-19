@@ -181,7 +181,8 @@ class AIChatController {
           forceAI: Boolean(body.forceAI),
         });
 
-        const isSimpleGreeting = /^(hi|hello|hey|thanks|thank you|ok|okay|yes|no|who are you|what can you do|what is your name)[\s.!?]*$/i.test(message);
+        const fastDirectRoute = ['greeting', 'general_knowledge'].includes(platformContext.snapshot.intelligence?.route);
+        const isSimpleGreeting = platformContext.snapshot.intelligence?.route === 'greeting';
 
         let assistantText = '';
         let tokensUsed = 0;
@@ -189,10 +190,11 @@ class AIChatController {
         let activeModel = 'default';
         let aiFailed = false;
         let firstTokenAt = 0;
+        let draftWasStreamed = false;
         const providerStartedAt = Date.now();
 
         // Try AI if not simple greeting
-        if (!isSimpleGreeting && smartResponse.shouldUseAI !== false) {
+        if (fastDirectRoute || (!isSimpleGreeting && smartResponse.shouldUseAI !== false)) {
           try {
             if (OLLAMA_ENABLED) {
               const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
@@ -243,6 +245,10 @@ class AIChatController {
                       if (token) {
                         if (!firstTokenAt) firstTokenAt = Date.now();
                         assistantText += token;
+                        if (fastDirectRoute) {
+                          draftWasStreamed = true;
+                          sendSSE({ type: 'token', content: token });
+                        }
                       }
                       if (data.eval_count) tokensUsed = data.eval_count;
                     } catch (e) {
@@ -301,7 +307,7 @@ class AIChatController {
         let regenerated = false;
 
         // Never expose an unvalidated draft. One bounded repair pass prevents loops.
-        if (!validation.passed) {
+        if (!validation.passed && !draftWasStreamed) {
           try {
             const repair = await AIChatService.callOllama(
               buildRepairPrompt({ message, response: cleanText, validation, intelligence }),
@@ -343,9 +349,11 @@ class AIChatController {
         }
 
         // Only the validated/repaired final response is streamed to the client.
-        for (const word of cleanText.match(/\S+\s*|\n+/g) || []) {
-          if (!firstTokenAt) firstTokenAt = Date.now();
-          sendSSE({ type: 'token', content: word });
+        if (!draftWasStreamed) {
+          for (const word of cleanText.match(/\S+\s*|\n+/g) || []) {
+            if (!firstTokenAt) firstTokenAt = Date.now();
+            sendSSE({ type: 'token', content: word });
+          }
         }
         const providerMs = Date.now() - providerStartedAt;
         const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({

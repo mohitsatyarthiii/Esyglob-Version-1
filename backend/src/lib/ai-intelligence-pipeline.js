@@ -29,12 +29,23 @@ export function analyzeRequest({ message, role = 'general', previousLanguage = '
   const intent = INTENTS.find(([, pattern]) => pattern.test(message))?.[0] || 'general_knowledge';
   const language = detectLanguage(message, previousLanguage);
   const requiresPrivateData = PRIVATE.test(message);
+  const greeting = /^(hi|hello|hey|namaste|hola|bonjour|thanks|thank you|shukriya|धन्यवाद|नमस्ते)[\s.!?]*$/iu.test(message);
+  const liveInformation = /\b(current|today|latest|right now|live|202[5-9])\b.*\b(duty|tariff|rate|regulation|news|price|statistics)|\b(duty|tariff|regulation)\b.*\b(current|today|latest|live)\b/i.test(message);
+  const platformIntent = ['rfq', 'quotation', 'order', 'shipping', 'trade_assurance', 'payment', 'membership', 'policy', 'platform_help', 'hs_code', 'market_research'].includes(intent);
+  const route = greeting ? 'greeting'
+    : requiresPrivateData ? 'private_data'
+    : liveInformation ? 'live_information'
+    : ['product_search', 'supplier_search'].includes(intent) ? 'marketplace_data'
+    : platformIntent ? 'platform_knowledge'
+    : 'general_knowledge';
   const sources = intent === 'product_search' ? ['products', 'suppliers']
     : intent === 'supplier_search' ? ['suppliers', 'products']
     : intent === 'hs_code' ? ['hs_codes', 'knowledge_base']
     : requiresPrivateData ? ['user_data', 'knowledge_base']
+    : route === 'greeting' || route === 'general_knowledge' ? ['model_knowledge']
+    : route === 'live_information' ? ['live_search']
     : ['knowledge_base'];
-  return { intent, language, role, requiresPrivateData, sources };
+  return { intent, language, role, route, requiresPrivateData, sources, classifiedAt: Date.now() };
 }
 
 export function languageInstruction(language) {

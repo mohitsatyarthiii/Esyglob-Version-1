@@ -6,6 +6,7 @@ import AIPlatformContextService from './ai-platform-context.service.js';
 import KnowledgeBaseService from './knowledge-base.service.js';
 import { analyzeRequest, languageInstruction, templateInstruction } from '../lib/ai-intelligence-pipeline.js';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
+import LiveSearchService from './live-search.service.js';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
@@ -65,6 +66,28 @@ class AIChatService {
   static async buildPlatformContext(message, role, userId) {
     const intelligence = analyzeRequest({ message, role });
     const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
+    if (['greeting', 'general_knowledge'].includes(intelligence.route)) {
+      return {
+        results: emptyResults,
+        snapshot: { roleContext: role, intelligence, navigationActions: [] },
+        text: `${languageInstruction(intelligence.language)}\nDetected route: ${intelligence.route}. Answer directly using native model knowledge. Be natural, concise, and do not invent Esyglob platform facts. Return clean plain text without Markdown symbols or raw URLs.`,
+      };
+    }
+    if (intelligence.route === 'live_information') {
+      let live = { results: [], available: false };
+      try { live = await LiveSearchService.search(message, 3); }
+      catch (error) { console.warn('[Live search]', error.message); }
+      return {
+        results: emptyResults,
+        snapshot: { roleContext: role, intelligence, liveSources: live.results, navigationActions: [] },
+        text: [
+          languageInstruction(intelligence.language),
+          'Detected route: live_information. Use only the current sources below. Clearly say when current information could not be verified.',
+          ...live.results.map((item, index) => `Source ${index + 1}: ${item.title}\n${item.content}\n${item.url}`),
+          !live.available ? 'Live search is not configured, so do not claim current facts or rates.' : '',
+        ].filter(Boolean).join('\n\n'),
+      };
+    }
     let results = emptyResults;
     const retrievalAllowed = intelligence.sources.some(source =>
       ['products', 'suppliers', 'user_data'].includes(source),
@@ -133,6 +156,7 @@ class AIChatService {
       text: [
         `${role} assistant context:`,
         languageInstruction(intelligence.language),
+        'Write naturally in clean plain text. Do not copy retrieved documents verbatim. Do not emit Markdown control symbols or raw URLs.',
         `Detected intent: ${intelligence.intent}. Use only the sources required for this intent: ${intelligence.sources.join(', ')}.`,
         templateInstruction(intelligence.intent),
         intelligence.requiresPrivateData ? 'Private-data request: only use records already scoped to this authenticated user. Never infer or expose another user\'s data.' : '',
