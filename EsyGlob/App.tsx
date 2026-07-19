@@ -102,7 +102,7 @@ export type RootStackParamList = {
   SellerProductForm: { productId?: string } | undefined;
   ServiceDetails: { serviceKey: string };
   ServiceBooking: { serviceKey: string };
-  BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest } | undefined;
+  BookedServiceDetails: { mode?: 'list'; request?: ServiceRequest; serviceKey?: string; serviceTitle?: string } | undefined;
   Tracking: { mode?: 'list'; request?: ServiceRequest } | undefined;
   ServiceBookingSuccess: { request: ServiceRequest };
   SubscriptionCenter: { role?: 'buyer' | 'seller' } | undefined;

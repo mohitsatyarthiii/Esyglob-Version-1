@@ -18,6 +18,8 @@ function BookedServiceDetailsScreen() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [selectedService, setSelectedService] = useState(route.params?.serviceKey ?? 'all');
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'updated'>('newest');
   const activity = useQuery({
     queryKey: ['service-activity', activeRole],
     queryFn: () => fetchAggregatedServiceActivity(activeRole),
@@ -37,12 +39,23 @@ function BookedServiceDetailsScreen() {
     if (activity.isError) {
       return <ErrorState message={(activity.error as Error)?.message ?? 'Your services could not be loaded.'} onRetry={() => activity.refetch()} />;
     }
-    const bookings = (activity.data ?? []).filter(item => {
+    const allBookings = activity.data ?? [];
+    const serviceOptions = [...new Map(allBookings.map(item => {
+      const key = serviceIdentity(item);
+      return [key, { key, title: item.serviceTitle ?? item.title ?? formatStatus(key) }];
+    })).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    const statusOptions = [...new Set(allBookings.map(item => String(item.status ?? 'pending').toLowerCase()).filter(Boolean))];
+    const bookings = allBookings.filter(item => {
       const haystack = `${item.serviceTitle ?? item.title ?? item.subject ?? ''} ${item.requestNumber ?? item.orderNumber ?? ''} ${item.serviceKey ?? ''}`.toLowerCase();
       const status = String(item.status ?? '').toLowerCase();
       const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase());
-      const matchesFilter = filter === 'all' || (filter === 'payment_pending' ? item.paymentStatus !== 'paid' : filter === 'processing' ? ['processing', 'in_progress', 'under_review'].includes(status) : status === filter);
-      return matchesSearch && matchesFilter;
+      const matchesFilter = filter === 'all' || status === filter;
+      const matchesService = selectedService === 'all' || serviceIdentity(item) === selectedService;
+      return matchesSearch && matchesFilter && matchesService;
+    }).sort((a, b) => {
+      const aDate = new Date(sort === 'updated' ? a.updatedAt ?? a.createdAt ?? 0 : a.createdAt ?? 0).getTime();
+      const bDate = new Date(sort === 'updated' ? b.updatedAt ?? b.createdAt ?? 0 : b.createdAt ?? 0).getTime();
+      return sort === 'oldest' ? aDate - bDate : bDate - aDate;
     });
     return (
       <View style={styles.screen}>
@@ -52,7 +65,15 @@ function BookedServiceDetailsScreen() {
           keyExtractor={item => getRequestId(item)}
           refreshControl={<RefreshControl refreshing={activity.isRefetching} onRefresh={() => activity.refetch()} />}
           contentContainerStyle={styles.listContent}
-          ListHeaderComponent={<><View style={styles.searchBox}><Icon name="magnify" size={19} color={colors.muted} /><TextInput value={search} onChangeText={setSearch} placeholder="Search service or booking ID" placeholderTextColor={colors.muted} style={styles.searchInput} />{search ? <Pressable onPress={() => setSearch('')}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}</View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{['all', 'pending', 'processing', 'completed', 'cancelled', 'rejected', 'payment_pending'].map(value => <Pressable key={value} onPress={() => setFilter(value)} style={[styles.filterChip, filter === value && styles.filterChipActive]}><Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{formatStatus(value)}</Text></Pressable>)}</ScrollView><StatusSummary requests={activity.data ?? []} /></>}
+          ListHeaderComponent={<>
+            <View style={styles.dashboardIntro}><Text style={styles.dashboardTitle}>{route.params?.serviceTitle ?? 'Booking dashboard'}</Text><Text style={styles.dashboardSubtitle}>{bookings.length} of {allBookings.length} bookings</Text></View>
+            <Text style={styles.selectorLabel}>Service</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}><Pressable onPress={() => setSelectedService('all')} style={[styles.serviceChip, selectedService === 'all' && styles.filterChipActive]}><Icon name="view-grid-outline" size={16} color={selectedService === 'all' ? '#fff' : colors.primary} /><Text style={[styles.filterText, selectedService === 'all' && styles.filterTextActive]}>All services</Text></Pressable>{serviceOptions.map(item => <Pressable key={item.key} onPress={() => setSelectedService(item.key)} style={[styles.serviceChip, selectedService === item.key && styles.filterChipActive]}><Icon name={serviceIcon(item.key)} size={16} color={selectedService === item.key ? '#fff' : colors.primary} /><Text numberOfLines={1} style={[styles.filterText, selectedService === item.key && styles.filterTextActive]}>{item.title}</Text></Pressable>)}</ScrollView>
+            <View style={styles.searchBox}><Icon name="magnify" size={19} color={colors.muted} /><TextInput value={search} onChangeText={setSearch} placeholder="Search service or booking ID" placeholderTextColor={colors.muted} style={styles.searchInput} />{search ? <Pressable onPress={() => setSearch('')}><Icon name="close-circle" size={18} color={colors.muted} /></Pressable> : null}</View>
+            <Text style={styles.selectorLabel}>Status</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>{['all', ...statusOptions].map(value => <Pressable key={value} onPress={() => setFilter(value)} style={[styles.filterChip, filter === value && styles.filterChipActive]}><Text style={[styles.filterText, filter === value && styles.filterTextActive]}>{formatStatus(value)}</Text></Pressable>)}</ScrollView>
+            <Text style={styles.selectorLabel}>Sort by</Text><View style={styles.sortFilters}>{(['newest', 'oldest', 'updated'] as const).map(value => <Pressable key={value} onPress={() => setSort(value)} style={[styles.sortFilter, sort === value && styles.sortFilterActive]}><Text style={[styles.filterText, sort === value && styles.filterTextActive]}>{value === 'updated' ? 'Recently updated' : formatStatus(value)}</Text></Pressable>)}</View>
+            <StatusSummary requests={bookings} />
+          </>}
           ListEmptyComponent={<EmptyState title="No matching bookings" detail="Try changing your search or status filter." />}
           renderItem={({ item }) => <ServiceBookingCard request={item} onPress={() => navigation.navigate('BookedServiceDetails', { request: item })} />}
         />
@@ -243,12 +264,24 @@ function formatStatus(status?: string) {
   return String(status ?? 'pending').replace(/_/g, ' ');
 }
 
+function serviceIdentity(request: ServiceRequest) {
+  return String(request.serviceKey ?? request.originalServiceKey ?? request._serviceSource ?? 'service').toLowerCase();
+}
+
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
   header: { alignItems: 'center', backgroundColor: colors.card, borderBottomColor: colors.faint, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', paddingBottom: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.xxl },
   iconButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
   headerTitle: { color: colors.ink, flex: 1, fontSize: 17, fontWeight: '900', textAlign: 'center' },
   listContent: { padding: spacing.lg, paddingBottom: 120 },
+  dashboardIntro: { backgroundColor: '#EFF6FF', borderRadius: radii.md, marginBottom: spacing.md, padding: spacing.lg },
+  dashboardTitle: { color: colors.ink, fontSize: 19, fontWeight: '900' },
+  dashboardSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
+  selectorLabel: { color: colors.ink, fontSize: 11, fontWeight: '900', marginBottom: spacing.sm, textTransform: 'uppercase' },
+  serviceChip: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.faint, borderRadius: radii.pill, borderWidth: 1, flexDirection: 'row', gap: 6, maxWidth: 190, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  sortFilters: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  sortFilter: { backgroundColor: colors.card, borderColor: colors.faint, borderRadius: radii.pill, borderWidth: 1, flex: 1, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
+  sortFilterActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   searchBox: { alignItems: 'center', backgroundColor: colors.card, borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, paddingHorizontal: spacing.md },
   searchInput: { color: colors.ink, flex: 1, fontSize: 13, minHeight: 46 },
   filters: { gap: spacing.sm, paddingBottom: spacing.md },

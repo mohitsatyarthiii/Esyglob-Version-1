@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -46,6 +46,8 @@ function SearchScreen() {
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const debouncedMinPrice = useDebouncedValue(minPrice, 350);
   const debouncedMaxPrice = useDebouncedValue(maxPrice, 350);
 
@@ -123,6 +125,11 @@ function SearchScreen() {
     setSeller('');
     setSellerName('');
   };
+  const clearAll = () => {
+    clearCategory(); clearSeller(); setVerifiedOnly(false); setMinPrice(''); setMaxPrice(''); setSort('latest');
+  };
+  const resultCount = Number(products.data?.pages[0]?.pagination?.total ?? productRows.length);
+  const appliedCount = [category, subcategory, seller, verifiedOnly, minPrice, maxPrice].filter(Boolean).length;
 
   return (
     <View style={styles.screen}>
@@ -130,8 +137,8 @@ function SearchScreen() {
         <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.backButton}>
           <Icon name="arrow-left" size={24} color={colors.ink} />
         </Pressable>
-        <Text style={styles.headerTitle}>Products</Text>
-        <View style={styles.backButton} />
+        <View style={styles.headerCopy}><Text numberOfLines={1} style={styles.headerTitle}>{submittedQuery || categoryName || 'Products'}</Text><Text numberOfLines={1} style={styles.headerContext}>{[categoryName, subcategoryName].filter(Boolean).join(' · ') || 'EsyGlob marketplace'}</Text></View>
+        <Pressable onPress={() => setViewMode(current => current === 'grid' ? 'list' : 'grid')} style={styles.backButton}><Icon name={viewMode === 'grid' ? 'view-list-outline' : 'view-grid-outline'} size={22} color={colors.ink} /></Pressable>
       </View>
       <View style={styles.searchShell}>
         <Icon name="magnify" size={22} color={colors.muted} />
@@ -149,7 +156,8 @@ function SearchScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.filters}>
+      <View style={styles.summaryRow}><View><Text style={styles.resultCount}>Showing {resultCount} products</Text><Text style={styles.resultMeta}>{verifiedOnly ? 'Verified suppliers' : 'All suppliers'} · Updated marketplace results</Text></View><Pressable onPress={() => setFiltersOpen(true)} style={styles.filterButton}><Icon name="tune-variant" size={18} color="#fff" /><Text style={styles.filterButtonText}>Filters{appliedCount ? ` (${appliedCount})` : ''}</Text></Pressable></View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {category ? (
           <Pressable onPress={clearCategory} style={styles.activeChip}>
             <Text numberOfLines={1} style={styles.activeChipText}>{categoryName || category}</Text>
@@ -174,34 +182,8 @@ function SearchScreen() {
           <Icon name="check-decagram-outline" size={16} color={verifiedOnly ? '#fff' : colors.muted} />
           <Text style={[styles.chipText, verifiedOnly && styles.activeChipText]}>Verified</Text>
         </Pressable>
-        <TextInput
-          value={minPrice}
-          onChangeText={setMinPrice}
-          keyboardType="numeric"
-          placeholder="Min"
-          placeholderTextColor={colors.muted}
-          style={styles.priceInput}
-        />
-        <TextInput
-          value={maxPrice}
-          onChangeText={setMaxPrice}
-          keyboardType="numeric"
-          placeholder="Max"
-          placeholderTextColor={colors.muted}
-          style={styles.priceInput}
-        />
-      </View>
-
-      <View style={styles.sortRow}>
-        {sortOptions.map(option => (
-          <Pressable
-            key={option.value}
-            onPress={() => setSort(option.value)}
-            style={[styles.sortChip, sort === option.value && styles.activeFilter]}>
-            <Text style={[styles.sortText, sort === option.value && styles.activeChipText]}>{option.label}</Text>
-          </Pressable>
-        ))}
-      </View>
+        {appliedCount ? <Pressable onPress={clearAll} style={styles.clearChip}><Text style={styles.clearChipText}>Clear all</Text></Pressable> : null}
+      </ScrollView>
 
       {products.isLoading ? (
         <LoadingState label="Loading products" />
@@ -209,9 +191,10 @@ function SearchScreen() {
         <ErrorState message={(products.error as Error).message} onRetry={() => products.refetch()} />
       ) : (
         <FlashList
+          key={viewMode}
           data={productRows}
           keyExtractor={item => getId(item)}
-          numColumns={2}
+          numColumns={viewMode === 'grid' ? 2 : 1}
           contentContainerStyle={styles.results}
           refreshing={products.isRefetching && !products.isFetchingNextPage}
           onRefresh={() => products.refetch()}
@@ -231,9 +214,20 @@ function SearchScreen() {
               </View>
             ) : null
           }
-          renderItem={({ item }) => <ProductCard product={item} variant="grid" />}
+          renderItem={({ item }) => <ProductCard product={item} variant={viewMode === 'grid' ? 'grid' : 'full'} />}
         />
       )}
+      <Modal transparent visible={filtersOpen} animationType="slide" onRequestClose={() => setFiltersOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setFiltersOpen(false)} />
+        <View style={styles.filterSheet}><View style={styles.sheetHandle} /><View style={styles.sheetHeader}><View><Text style={styles.sheetTitle}>Filter products</Text><Text style={styles.sheetSubtitle}>Use available marketplace filters</Text></View><Pressable onPress={clearAll}><Text style={styles.resetText}>Reset</Text></Pressable></View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={styles.filterLabel}>Supplier verification</Text><Pressable onPress={() => setVerifiedOnly(current => !current)} style={[styles.sheetOption, verifiedOnly && styles.sheetOptionActive]}><Icon name="check-decagram" size={20} color={verifiedOnly ? colors.primary : colors.muted} /><Text style={styles.sheetOptionText}>Verified suppliers only</Text><Icon name={verifiedOnly ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'} size={20} color={verifiedOnly ? colors.primary : colors.muted} /></Pressable>
+            <Text style={styles.filterLabel}>Price range</Text><View style={styles.priceRow}><TextInput value={minPrice} onChangeText={setMinPrice} keyboardType="numeric" placeholder="Minimum price" placeholderTextColor={colors.muted} style={styles.sheetInput} /><TextInput value={maxPrice} onChangeText={setMaxPrice} keyboardType="numeric" placeholder="Maximum price" placeholderTextColor={colors.muted} style={styles.sheetInput} /></View>
+            <Text style={styles.filterLabel}>Sort by</Text><View style={styles.sheetSortGrid}>{sortOptions.map(option => <Pressable key={option.value} onPress={() => setSort(option.value)} style={[styles.sheetSort, sort === option.value && styles.sheetSortActive]}><Text style={[styles.sortText, sort === option.value && styles.activeChipText]}>{option.label}</Text></Pressable>)}</View>
+          </ScrollView>
+          <Pressable onPress={() => setFiltersOpen(false)} style={styles.applyButton}><Text style={styles.applyText}>Show {resultCount} products</Text></Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -257,11 +251,11 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: colors.ink,
-    flex: 1,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '900',
-    textAlign: 'center',
   },
+  headerCopy: { flex: 1, paddingHorizontal: spacing.sm },
+  headerContext: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 2 },
   searchShell: {
     alignItems: 'center',
     backgroundColor: colors.card,
@@ -293,10 +287,17 @@ const styles = StyleSheet.create({
   filters: {
     alignItems: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
+  summaryRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  resultCount: { color: colors.ink, fontSize: 16, fontWeight: '900' },
+  resultMeta: { color: colors.muted, fontSize: 10, fontWeight: '700', marginTop: 3 },
+  filterButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, flexDirection: 'row', gap: 6, paddingHorizontal: spacing.md, paddingVertical: 10 },
+  filterButtonText: { color: '#fff', fontSize: 11, fontWeight: '900' },
+  clearChip: { backgroundColor: '#FFF1F2', borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  clearChipText: { color: colors.rose, fontSize: 11, fontWeight: '900' },
   chip: {
     alignItems: 'center',
     backgroundColor: colors.card,
@@ -367,6 +368,24 @@ const styles = StyleSheet.create({
   footer: {
     padding: spacing.xl,
   },
+  backdrop: { backgroundColor: 'rgba(15,23,42,0.42)', flex: 1 },
+  filterSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, maxHeight: '78%', padding: spacing.lg, paddingBottom: spacing.xl },
+  sheetHandle: { alignSelf: 'center', backgroundColor: '#CBD5E1', borderRadius: 3, height: 5, marginBottom: spacing.md, width: 44 },
+  sheetHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg },
+  sheetTitle: { color: colors.ink, fontSize: 21, fontWeight: '900' },
+  sheetSubtitle: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 3 },
+  resetText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
+  filterLabel: { color: colors.ink, fontSize: 12, fontWeight: '900', marginBottom: spacing.sm, marginTop: spacing.md, textTransform: 'uppercase' },
+  sheetOption: { alignItems: 'center', backgroundColor: '#F8FAFC', borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
+  sheetOptionActive: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  sheetOptionText: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800' },
+  priceRow: { flexDirection: 'row', gap: spacing.sm },
+  sheetInput: { backgroundColor: '#F8FAFC', borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, color: colors.ink, flex: 1, minHeight: 48, paddingHorizontal: spacing.md },
+  sheetSortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  sheetSort: { backgroundColor: '#F8FAFC', borderColor: colors.faint, borderRadius: radii.pill, borderWidth: 1, flexBasis: '47%', flexGrow: 1, padding: spacing.md },
+  sheetSortActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  applyButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, marginTop: spacing.lg, padding: spacing.md },
+  applyText: { color: '#fff', fontSize: 14, fontWeight: '900' },
 });
 
 export default SearchScreen;

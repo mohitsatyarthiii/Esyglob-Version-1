@@ -169,7 +169,7 @@ function ServiceDetailsScreen() {
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>Your Orders</Text>
-                <Pressable onPress={() => navigation.navigate('BookedServiceDetails', { mode: 'list' })}>
+                <Pressable onPress={() => navigation.navigate('BookedServiceDetails', { mode: 'list', serviceKey: service.key, serviceTitle: service.title })}>
                   <Text style={styles.viewAllLink}>View all →</Text>
                 </Pressable>
               </View>

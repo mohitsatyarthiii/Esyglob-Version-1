@@ -13,8 +13,11 @@ class SubscriptionService {
     const userType = requestedRole === 'seller' ? 'seller' : requestedRole === 'buyer' ? 'buyer' : user.primaryRole || 'buyer';
 
     const {subscription,plan}=await getSubscriptionContext(user,userType);
-    const usage=subscription.usage||{}; const limits=plan.limits||{};
-    return { subscription, plan, usage: { ...usage, aiCreditsRemaining: Math.max(0,Number(subscription.aiCreditsAllocated||plan.aiCredits)-Number(subscription.aiCreditsUsed||0)), aiCreditsUsed:Number(subscription.aiCreditsUsed||0), limits } };
+    const usage=subscription.usage||{};
+    const limits=plan.restrictions||plan.limits||{};
+    const planCredits=Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0);
+    const allocated=Number(subscription.aiCreditsAllocated ?? planCredits);
+    return { subscription, plan, usage: { ...usage, aiCreditsRemaining: Math.max(0,allocated-Number(subscription.aiCreditsUsed||0)), aiCreditsUsed:Number(subscription.aiCreditsUsed||0), limits } };
   }
 
   static async getPlans(user, role) { const resolved=role==='seller'?'seller':'buyer'; return {plans:await listPlans(resolved),role:resolved}; }
@@ -34,7 +37,11 @@ class SubscriptionService {
       throw Object.assign(new Error('Payment service is not configured'), { statusCode: 503 });
     }
 
-    const amount = Number(planDetails.prices?.[duration]||0);
+    const priceEntry=planDetails.prices?.[duration];
+    const amount = Number(priceEntry?.amount ?? priceEntry ?? 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw Object.assign(new Error('Plan pricing is invalid'), { statusCode: 422 });
+    }
     const months = duration==='quarterly'?3:getMonthsIncluded(planType, duration);
     const userId = user.id || user._id;
 

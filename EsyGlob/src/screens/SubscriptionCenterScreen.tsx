@@ -33,9 +33,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // ─── Helpers ──────────────────────────────────────────────
 const AI_TIER_MAP: Record<string, { name: string; icon: string; color: string; bg: string }> = {
   esyai_lite: { name: 'EsyAI Lite', icon: 'chip', color: '#64748B', bg: '#F1F5F9' },
-  esyai_pro: { name: 'EsyAI Pro', icon: 'chip', color: '#2563EB', bg: '#EFF6FF' },
-  esyai_advanced: { name: 'EsyAI Advanced', icon: 'chip', color: '#7C3AED', bg: '#F5F3FF' },
-  esyai_enterprise: { name: 'EsyAI Enterprise', icon: 'chip', color: '#D97706', bg: '#FFFBEB' },
+  esyai_pro: { name: 'DeepSeek AI', icon: 'brain', color: '#2563EB', bg: '#EFF6FF' },
+  esyai_advanced: { name: 'ChatGPT AI', icon: 'creation', color: '#7C3AED', bg: '#F5F3FF' },
+  esyai_enterprise: { name: 'Claude AI', icon: 'auto-fix', color: '#D97706', bg: '#FFFBEB' },
 };
 
 function getAiTierFromPlanKey(key: string): string {
@@ -62,8 +62,8 @@ function getAiModelName(plan: SubscriptionPlan | null): string {
   if (plan.aiModel) return plan.aiModel;
   const aiTier = plan.aiTier || getAiTierFromPlanKey(plan.key);
   const names: Record<string, string> = {
-    esyai_lite: 'EsyAI Lite', esyai_pro: 'EsyAI Pro',
-    esyai_advanced: 'EsyAI Advanced', esyai_enterprise: 'EsyAI Enterprise',
+    esyai_lite: 'EsyAI Lite', esyai_pro: 'DeepSeek AI',
+    esyai_advanced: 'ChatGPT AI', esyai_enterprise: 'Claude AI',
   };
   return names[aiTier] || 'EsyAI Lite';
 }
@@ -163,20 +163,17 @@ export default function SubscriptionCenterScreen() {
         <View style={s.headerTitleContainer}>
           <Text style={s.headerTitle}>Pricing</Text>
         </View>
-        <Pressable onPress={() => nav.navigate('InvoiceDetails', {})} style={s.headerBtn}>
-          <Icon name="receipt-text-outline" size={24} color="#1A1A2E" />
-        </Pressable>
+        <View style={s.headerBtn}><Icon name="shield-check-outline" size={23} color="#2563EB" /></View>
       </View>
 
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
         
         {/* Hero Tagline */}
-        <View style={s.heroSection}>
-          <Text style={s.heroTitle}>Pricing on your terms</Text>
-          <Text style={s.heroSubtitle}>
-            Whichever plan you pick, it's free until you love your docs.
-          </Text>
-        </View>
+        <LinearGradient colors={['#071B3A', '#123B72', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.heroSection}>
+          <View style={s.heroEyebrow}><Icon name="earth" size={14} color="#BFDBFE" /><Text style={s.heroEyebrowText}>GLOBAL TRADE MEMBERSHIP</Text></View>
+          <Text style={s.heroTitle}>Build beyond borders</Text>
+          <Text style={s.heroSubtitle}>Flexible plans for global sourcing, verified trade and intelligent business growth.</Text>
+        </LinearGradient>
 
         {/* Billing Tabs */}
         <View style={s.tabContainer}>
@@ -217,21 +214,20 @@ export default function SubscriptionCenterScreen() {
             const isCurrent = current.key === plan.key;
             const isLoadingThis = upgradingPlanKey === plan.key && buy.isPending;
             const price = getPriceForTab(plan);
-            const isFree = plan.key.includes('free');
+            const isFree = price === 0;
             const isExpanded = expandedPlanKey === plan.key;
 
-            // PREMIUM GOLDEN/ORANGE GRADIENTS
             let tierColors = { 
-              gradient: ['#FFF7ED', '#FFFFFF'], // Light Orange/Gold Base
-              border: '#FDBA74', 
-              highlight: '#F97316',
-              text: '#9A3412',
-              glow: '#FED7AA'
+              gradient: ['#FFFFFF', '#F8FAFC'],
+              border: '#E2E8F0',
+              highlight: '#0F172A',
+              text: '#475569',
+              glow: '#E2E8F0'
             };
             
             if (plan.priorityRanking >= 3) { 
               tierColors = { 
-                gradient: ['#FFFBEB', '#FEF3C7'], // Rich Gold
+                gradient: ['#FFFBEB', '#FFFFFF'],
                 border: '#F59E0B', 
                 highlight: '#D97706',
                 text: '#92400E',
@@ -239,23 +235,22 @@ export default function SubscriptionCenterScreen() {
               };
             } else if (plan.priorityRanking >= 2) { 
               tierColors = { 
-                gradient: ['#F0FDF4', '#DCFCE7'], // Premium Green/Orange mix
-                border: '#34D399', 
-                highlight: '#10B981',
-                text: '#065F46',
-                glow: '#A7F3D0'
+                gradient: ['#EFF6FF', '#FFFFFF'],
+                border: '#93C5FD',
+                highlight: '#2563EB',
+                text: '#1D4ED8',
+                glow: '#BFDBFE'
               };
             }
 
             const aiInfo = getAiTierInfo(plan);
+            const aiModelName = getAiModelName(plan);
             const features = Array.isArray(plan.features) ? plan.features : [];
             
             // First 5 features
             const initialFeatures = features.slice(0, 5);
             // Remaining features
             const remainingFeatures = features.slice(5);
-            // Last 5-6 features (Highlighted with Golden Star)
-            const highlightedFeatures = remainingFeatures.slice(-6);
 
             return (
               <View key={plan.key} style={[s.planCard, { borderColor: tierColors.border }]}>
@@ -273,7 +268,7 @@ export default function SubscriptionCenterScreen() {
                 <View style={s.planTopRow}>
                   <View style={[s.planTierBadge, { backgroundColor: tierColors.text + '20' }]}>
                     <Icon name={aiInfo.icon} size={14} color={tierColors.text} />
-                    <Text style={[s.planTierText, { color: tierColors.text }]}>{aiInfo.name}</Text>
+                    <Text style={[s.planTierText, { color: tierColors.text }]}>{aiModelName || aiInfo.name}</Text>
                   </View>
                   <View style={[s.statusBadge, isCurrent ? s.activeBadge : s.popularBadge]}>
                     <Text style={[s.statusText, { color: isCurrent ? '#047857' : '#B45309' }]}>
@@ -285,13 +280,13 @@ export default function SubscriptionCenterScreen() {
                 <Text style={s.planName}>{plan.name}</Text>
 
                 <View style={s.priceRow}>
-                  <Text style={s.currencySymbol}>₹</Text>
+                  <Text style={s.currencySymbol}>{plan.currencySymbol || '₹'}</Text>
                   <Text style={s.priceAmount}>{isFree ? '0' : price.toLocaleString('en-IN')}</Text>
                   <Text style={s.pricePeriod}>/{activeTab === 'monthly' ? 'mo' : activeTab === 'quarterly' ? 'qtr' : 'yr'}</Text>
-                  {!isFree && activeTab === 'yearly' && <Text style={s.discountBadge}>-35%</Text>}
-                  {!isFree && activeTab === 'quarterly' && <Text style={s.discountBadge}>-15%</Text>}
+                  {!isFree && Number(plan.savings?.[activeTab]) > 0 && <Text style={s.discountBadge}>Save {plan.savings?.[activeTab]}%</Text>}
                 </View>
 
+                {plan.subtitle ? <Text style={s.planSubtitle}>{plan.subtitle}</Text> : null}
                 <Text style={s.planTagline}>{plan.description || 'Premium tier features'}</Text>
 
                 {/* Only 4 Limits: AI Credits, Storage, Support, Growth Score */}
@@ -309,7 +304,7 @@ export default function SubscriptionCenterScreen() {
                   <View style={s.statItem}>
                     <Icon name="headset" size={16} color="#2563EB" />
                     <Text style={s.statLabel}>Support</Text>
-                    <Text style={s.statValue}>{plan.supportLevel || 'Standard'}</Text>
+                    <Text style={s.statValue}>{String(plan.supportLevel || 'Standard').replace(/_/g, ' ')}</Text>
                   </View>
                   <View style={s.statItem}>
                     <Icon name="trending-up" size={16} color="#2563EB" />
@@ -332,7 +327,7 @@ export default function SubscriptionCenterScreen() {
                   {remainingFeatures.length > 0 && (
                     <Pressable onPress={() => handleExpand(plan.key)} style={s.expandToggle}>
                       <Text style={[s.expandText, { color: tierColors.highlight }]}>
-                        {isExpanded ? 'Hide details' : `View all ${remainingFeatures.length} more features`}
+                        {isExpanded ? 'Show fewer features' : `View all ${features.length} features`}
                       </Text>
                       <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={tierColors.highlight} />
                     </Pressable>
@@ -341,19 +336,12 @@ export default function SubscriptionCenterScreen() {
                   {/* Expanded Features */}
                   {isExpanded && (
                     <View style={s.expandedFeatures}>
-                      {/* Normal Remaining Features (Green Tick) */}
-                      {remainingFeatures.slice(0, remainingFeatures.length - 6).map((f, i) => (
-                        <View key={`${plan.key}-mid-${i}`} style={s.featureRow}>
-                          <Icon name="check-circle" size={16} color="#10B981" />
-                          <Text style={s.featureText}>{f}</Text>
-                        </View>
-                      ))}
                       
-                      {/* LAST 5-6 FEATURES - PREMIUM HIGHLIGHT (GOLDEN STAR) */}
-                      {highlightedFeatures.map((f, i) => (
-                        <View key={`${plan.key}-highlight-${i}`} style={[s.featureRow, s.highlightedFeatureRow]}>
-                          <Icon name="star" size={18} color="#F59E0B" />
-                          <Text style={s.highlightedFeatureText}>{f}</Text>
+                      
+                      {remainingFeatures.map((f, i) => (
+                        <View key={`${plan.key}-feature-${i}`} style={s.featureRow}>
+                          <Icon name="check-circle-outline" size={17} color={tierColors.highlight} />
+                          <Text style={s.featureText}>{f}</Text>
                         </View>
                       ))}
                     </View>
@@ -420,9 +408,11 @@ const s = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
-  heroSection: { paddingVertical: 20, alignItems: 'center' },
-  heroTitle: { fontSize: 28, fontWeight: '800', color: '#0F172A', textAlign: 'center', letterSpacing: -0.8, marginBottom: 6 },
-  heroSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', fontWeight: '400' },
+  heroSection: { alignItems: 'flex-start', borderRadius: 26, marginBottom: 18, overflow: 'hidden', paddingHorizontal: 22, paddingVertical: 28 },
+  heroEyebrow: { alignItems: 'center', flexDirection: 'row', gap: 7, marginBottom: 12 },
+  heroEyebrowText: { color: '#BFDBFE', fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
+  heroTitle: { color: '#FFFFFF', fontSize: 31, fontWeight: '900', letterSpacing: -1, marginBottom: 8 },
+  heroSubtitle: { color: '#DBEAFE', fontSize: 13, fontWeight: '500', lineHeight: 20, maxWidth: 310 },
 
   // Tabs
   tabContainer: {
@@ -477,7 +467,8 @@ const s = StyleSheet.create({
   pricePeriod: { fontSize: 14, color: '#64748B', fontWeight: '500', marginLeft: 4 },
   discountBadge: { backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, marginLeft: 12, fontSize: 12, fontWeight: '700', color: '#FFFFFF', overflow: 'hidden' },
 
-  planTagline: { fontSize: 13, color: '#64748B', marginBottom: 16, zIndex: 1 },
+  planSubtitle: { color: '#334155', fontSize: 12, fontWeight: '800', marginBottom: 5, zIndex: 1 },
+  planTagline: { fontSize: 13, color: '#64748B', lineHeight: 19, marginBottom: 16, zIndex: 1 },
 
   // Stats Grid (Only 4)
   statsGrid: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', zIndex: 1 },
