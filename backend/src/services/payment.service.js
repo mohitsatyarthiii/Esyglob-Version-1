@@ -318,7 +318,8 @@ class PaymentService {
       throw Object.assign(new Error('Invalid subscription plan'), { statusCode: 400 });
     }
 
-    const expectedAmount = Number(configuredPlan?.prices?.[duration] ?? getPlanPrice(planType, duration));
+    const configuredPrice=configuredPlan?.prices?.[duration];
+    const expectedAmount = Number(configuredPrice?.amount ?? configuredPrice ?? getPlanPrice(planType, duration));
     if (Number(subscriptionRzpPayment?.amount || 0) !== Math.round(expectedAmount * 100)) {
       throw Object.assign(new Error('Subscription amount mismatch'), { statusCode: 400 });
     }
@@ -359,7 +360,7 @@ class PaymentService {
     subscription.autoRenew = true;
     subscription.status = 'active';
     subscription.planKey = configuredPlan?.key || planType;
-    subscription.aiCreditsAllocated = Number(configuredPlan?.aiCredits || 0);
+    subscription.aiCreditsAllocated = Number(configuredPlan?.aiCredits?.monthly ?? configuredPlan?.aiCredits ?? 0);
     subscription.aiCreditsUsed = 0;
     subscription.usage = {};
     const usageResetAt = new Date(startDate); usageResetAt.setMonth(usageResetAt.getMonth()+1); subscription.usageResetAt=usageResetAt; subscription.creditsResetAt=usageResetAt;

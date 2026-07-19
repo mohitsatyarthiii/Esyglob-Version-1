@@ -245,7 +245,7 @@ export default function SubscriptionCenterScreen() {
 
             const aiInfo = getAiTierInfo(plan);
             const aiModelName = getAiModelName(plan);
-            const features = Array.isArray(plan.features) ? plan.features : [];
+            const features: string[] = Array.isArray(plan.features) ? plan.features.map(String) : [];
             
             // First 5 features
             const initialFeatures = features.slice(0, 5);
@@ -272,7 +272,7 @@ export default function SubscriptionCenterScreen() {
                   </View>
                   <View style={[s.statusBadge, isCurrent ? s.activeBadge : s.popularBadge]}>
                     <Text style={[s.statusText, { color: isCurrent ? '#047857' : '#B45309' }]}>
-                      {isCurrent ? '● ACTIVE' : '★ POPULAR'}
+                      {isCurrent ? 'ACTIVE' : plan.popular ? 'MOST POPULAR' : plan.premiumBadge || 'AVAILABLE'}
                     </Text>
                   </View>
                 </View>

@@ -62,9 +62,10 @@ export default class AIPlatformContextService {
     ]);
     const safePlans = plans.map(plan => ({
       key: plan.key, name: plan.name, description: plan.description, prices: plan.prices,
-      features: plan.features, aiCredits: plan.aiCredits, storageLimitMb: plan.storageLimitMb,
-      supportLevel: plan.supportLevel, verificationLevel: plan.verificationLevel,
-      trustScoreBoost: plan.trustScoreBoost, limits: plan.limits,
+      features: Array.isArray(plan.features) ? plan.features : [...(plan.features?.core || []), ...(plan.features?.ai || []), ...(plan.features?.highlighted || [])],
+      aiCredits: Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0), storageLimitMb: plan.storageLimitMb,
+      supportLevel: plan.support?.level ?? plan.supportLevel, verificationLevel: plan.verificationLevel,
+      trustScoreBoost: plan.trustScoreBoost, limits: plan.restrictions ?? plan.limits,
     }));
     const safeServices = services.map(service => ({ key: service.key, title: service.title, description: service.description, requirements: service.requirements, benefits: service.benefits }));
     const modelPlans = safePlans.map(plan => ({ key: plan.key, name: plan.name, prices: plan.prices, aiCredits: plan.aiCredits, supportLevel: plan.supportLevel, verificationLevel: plan.verificationLevel, limits: plan.limits, features: plan.features?.slice(0, 6), totalFeatures: plan.features?.length || 0 }));
