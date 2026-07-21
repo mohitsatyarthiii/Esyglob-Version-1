@@ -1,0 +1,19 @@
+{
+  "_id": "6a149888ebea5af6896857a4",
+  "email": "adani@gmail.com",
+  "passwordHash": "seeded-product-user",
+  "firstName": "Adani",
+  "lastName": "Supplier",
+  "fullName": "Adani traders Supplier",
+  "roles": [
+    "seller"
+  ],
+  "primaryRole": "seller",
+  "isActive": true,
+  "isBanned": false,
+  "lastLoginAt": "2026-05-31T20:05:05.362Z",
+  "hasCompletedOnboarding": true,
+  "createdAt": "2026-05-25T18:44:24.518Z",
+  "updatedAt": "2026-06-14T13:45:15.433Z",
+  "__v": 0
+}

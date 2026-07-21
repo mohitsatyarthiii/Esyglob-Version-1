@@ -33,9 +33,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // ─── Helpers ──────────────────────────────────────────────
 const AI_TIER_MAP: Record<string, { name: string; icon: string; color: string; bg: string }> = {
   esyai_lite: { name: 'EsyAI Lite', icon: 'chip', color: '#64748B', bg: '#F1F5F9' },
-  esyai_pro: { name: 'DeepSeek AI', icon: 'brain', color: '#2563EB', bg: '#EFF6FF' },
-  esyai_advanced: { name: 'ChatGPT AI', icon: 'creation', color: '#7C3AED', bg: '#F5F3FF' },
-  esyai_enterprise: { name: 'Claude AI', icon: 'auto-fix', color: '#D97706', bg: '#FFFBEB' },
+  esyai_pro: { name: 'EsyAI Pro', icon: 'brain', color: '#2563EB', bg: '#EFF6FF' },
+  esyai_advanced: { name: 'EsyAI Advanced', icon: 'creation', color: '#7C3AED', bg: '#F5F3FF' },
+  esyai_enterprise: { name: 'EsyAI Elite', icon: 'auto-fix', color: '#D97706', bg: '#FFFBEB' },
 };
 
 function getAiTierFromPlanKey(key: string): string {
@@ -474,7 +474,7 @@ const s = StyleSheet.create({
   statsGrid: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9', zIndex: 1 },
   statItem: { flex: 1, alignItems: 'center', gap: 4 },
   statLabel: { fontSize: 9, color: '#64748B', fontWeight: '700', textTransform: 'uppercase' },
-  statValue: { fontSize: 13, fontWeight: '800', color: '#0F172A' },
+  statValue: { fontSize: 6, fontWeight: '400', color: '#0F172A' },
 
   // Features Section
   featuresContainer: { marginBottom: 8, zIndex: 1 },

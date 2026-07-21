@@ -1,0 +1,845 @@
+{
+  "totalCount": 310,
+  "sample": [
+    {
+      "_id": "6a2eb079d707e876399eb901",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be3",
+      "name": "Lendor Trades LLC Premium Seeds - 1",
+      "category": "Agriculture",
+      "subcategory": "Seeds",
+      "price": 21765,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 21765,
+          "_id": "6a2eb079d707e876399eb902"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 18500,
+          "_id": "6a2eb079d707e876399eb903"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 15235,
+          "_id": "6a2eb079d707e876399eb904"
+        }
+      ],
+      "samplePrice": 6529,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality seeds from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 6,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 5,
+      "reviewCount": 220,
+      "totalOrders": 720,
+      "tags": [
+        "agriculture",
+        "seeds",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.844Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb905",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be3",
+      "name": "Lendor Trades LLC Premium Seeds - 2",
+      "category": "Agriculture",
+      "subcategory": "Seeds",
+      "price": 16001,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 200,
+          "maximumQuantity": 1000,
+          "unitPrice": 16001,
+          "_id": "6a2eb079d707e876399eb906"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 4000,
+          "unitPrice": 13600,
+          "_id": "6a2eb079d707e876399eb907"
+        },
+        {
+          "minimumQuantity": 4001,
+          "maximumQuantity": 999999,
+          "unitPrice": 11200,
+          "_id": "6a2eb079d707e876399eb908"
+        }
+      ],
+      "samplePrice": 4800,
+      "minimumOrderQuantity": 200,
+      "description": "High-quality seeds from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 17,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 9,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.2,
+      "reviewCount": 106,
+      "totalOrders": 2046,
+      "tags": [
+        "agriculture",
+        "seeds",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.846Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb911",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be4",
+      "name": "Lendor Trades LLC Premium Fertilizers - 1",
+      "category": "Agriculture",
+      "subcategory": "Fertilizers",
+      "price": 38872,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 500,
+          "maximumQuantity": 2500,
+          "unitPrice": 38872,
+          "_id": "6a2eb079d707e876399eb912"
+        },
+        {
+          "minimumQuantity": 2501,
+          "maximumQuantity": 10000,
+          "unitPrice": 33041,
+          "_id": "6a2eb079d707e876399eb913"
+        },
+        {
+          "minimumQuantity": 10001,
+          "maximumQuantity": 999999,
+          "unitPrice": 27210,
+          "_id": "6a2eb079d707e876399eb914"
+        }
+      ],
+      "samplePrice": 11661,
+      "minimumOrderQuantity": 500,
+      "description": "High-quality fertilizers from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1585515320310-259814833e62?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 13,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 10,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.3,
+      "reviewCount": 120,
+      "totalOrders": 553,
+      "tags": [
+        "agriculture",
+        "fertilizers",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.847Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb915",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be4",
+      "name": "Lendor Trades LLC Premium Fertilizers - 2",
+      "category": "Agriculture",
+      "subcategory": "Fertilizers",
+      "price": 19561,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 50,
+          "maximumQuantity": 250,
+          "unitPrice": 19561,
+          "_id": "6a2eb079d707e876399eb916"
+        },
+        {
+          "minimumQuantity": 251,
+          "maximumQuantity": 1000,
+          "unitPrice": 16626,
+          "_id": "6a2eb079d707e876399eb917"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 999999,
+          "unitPrice": 13692,
+          "_id": "6a2eb079d707e876399eb918"
+        }
+      ],
+      "samplePrice": 5868,
+      "minimumOrderQuantity": 50,
+      "description": "High-quality fertilizers from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1585515320310-259814833e62?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 18,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 4,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.3,
+      "reviewCount": 480,
+      "totalOrders": 1584,
+      "tags": [
+        "agriculture",
+        "fertilizers",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.847Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb921",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be5",
+      "name": "Lendor Trades LLC Premium Pesticides - 1",
+      "category": "Agriculture",
+      "subcategory": "Pesticides",
+      "price": 20991,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 200,
+          "maximumQuantity": 1000,
+          "unitPrice": 20991,
+          "_id": "6a2eb079d707e876399eb922"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 4000,
+          "unitPrice": 17842,
+          "_id": "6a2eb079d707e876399eb923"
+        },
+        {
+          "minimumQuantity": 4001,
+          "maximumQuantity": 999999,
+          "unitPrice": 14693,
+          "_id": "6a2eb079d707e876399eb924"
+        }
+      ],
+      "samplePrice": 6297,
+      "minimumOrderQuantity": 200,
+      "description": "High-quality pesticides from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588286840104-8957b019727f?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 6,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 10,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.2,
+      "reviewCount": 495,
+      "totalOrders": 2278,
+      "tags": [
+        "agriculture",
+        "pesticides",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb925",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be5",
+      "name": "Lendor Trades LLC Premium Pesticides - 2",
+      "category": "Agriculture",
+      "subcategory": "Pesticides",
+      "price": 32887,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 10,
+          "maximumQuantity": 50,
+          "unitPrice": 32887,
+          "_id": "6a2eb079d707e876399eb926"
+        },
+        {
+          "minimumQuantity": 51,
+          "maximumQuantity": 200,
+          "unitPrice": 27953,
+          "_id": "6a2eb079d707e876399eb927"
+        },
+        {
+          "minimumQuantity": 201,
+          "maximumQuantity": 999999,
+          "unitPrice": 23020,
+          "_id": "6a2eb079d707e876399eb928"
+        }
+      ],
+      "samplePrice": 9866,
+      "minimumOrderQuantity": 10,
+      "description": "High-quality pesticides from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588286840104-8957b019727f?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 14,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 10,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.6,
+      "reviewCount": 398,
+      "totalOrders": 2059,
+      "tags": [
+        "agriculture",
+        "pesticides",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb931",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be6",
+      "name": "Lendor Trades LLC Premium Farm Machinery - 1",
+      "category": "Agriculture",
+      "subcategory": "Farm Machinery",
+      "price": 9506,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 9506,
+          "_id": "6a2eb079d707e876399eb932"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 8080,
+          "_id": "6a2eb079d707e876399eb933"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 6654,
+          "_id": "6a2eb079d707e876399eb934"
+        }
+      ],
+      "samplePrice": 2851,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality farm machinery from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1597217631867-30ec7dd32fda?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 12,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 4,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.4,
+      "reviewCount": 53,
+      "totalOrders": 1628,
+      "tags": [
+        "agriculture",
+        "farm machinery",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb935",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be6",
+      "name": "Lendor Trades LLC Premium Farm Machinery - 2",
+      "category": "Agriculture",
+      "subcategory": "Farm Machinery",
+      "price": 20825,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 500,
+          "maximumQuantity": 2500,
+          "unitPrice": 20825,
+          "_id": "6a2eb079d707e876399eb936"
+        },
+        {
+          "minimumQuantity": 2501,
+          "maximumQuantity": 10000,
+          "unitPrice": 17701,
+          "_id": "6a2eb079d707e876399eb937"
+        },
+        {
+          "minimumQuantity": 10001,
+          "maximumQuantity": 999999,
+          "unitPrice": 14577,
+          "_id": "6a2eb079d707e876399eb938"
+        }
+      ],
+      "samplePrice": 6247,
+      "minimumOrderQuantity": 500,
+      "description": "High-quality farm machinery from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1597217631867-30ec7dd32fda?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 6,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 9,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.8,
+      "reviewCount": 396,
+      "totalOrders": 1565,
+      "tags": [
+        "agriculture",
+        "farm machinery",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb941",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be7",
+      "name": "Lendor Trades LLC Premium Irrigation - 1",
+      "category": "Agriculture",
+      "subcategory": "Irrigation",
+      "price": 17061,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 500,
+          "maximumQuantity": 2500,
+          "unitPrice": 17061,
+          "_id": "6a2eb079d707e876399eb942"
+        },
+        {
+          "minimumQuantity": 2501,
+          "maximumQuantity": 10000,
+          "unitPrice": 14501,
+          "_id": "6a2eb079d707e876399eb943"
+        },
+        {
+          "minimumQuantity": 10001,
+          "maximumQuantity": 999999,
+          "unitPrice": 11942,
+          "_id": "6a2eb079d707e876399eb944"
+        }
+      ],
+      "samplePrice": 5118,
+      "minimumOrderQuantity": 500,
+      "description": "High-quality irrigation from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1548606345-5e4db87faf26?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 3.6,
+      "reviewCount": 270,
+      "totalOrders": 892,
+      "tags": [
+        "agriculture",
+        "irrigation",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.849Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb945",
+      "sellerId": "6a12ee74153e10fcba0e649a",
+      "userId": "6a12ee731a7ca1175f9706c0",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be7",
+      "name": "Lendor Trades LLC Premium Irrigation - 2",
+      "category": "Agriculture",
+      "subcategory": "Irrigation",
+      "price": 42962,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 200,
+          "maximumQuantity": 1000,
+          "unitPrice": 42962,
+          "_id": "6a2eb079d707e876399eb946"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 4000,
+          "unitPrice": 36517,
+          "_id": "6a2eb079d707e876399eb947"
+        },
+        {
+          "minimumQuantity": 4001,
+          "maximumQuantity": 999999,
+          "unitPrice": 30073,
+          "_id": "6a2eb079d707e876399eb948"
+        }
+      ],
+      "samplePrice": 12888,
+      "minimumOrderQuantity": 200,
+      "description": "High-quality irrigation from Lendor Trades LLC. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1548606345-5e4db87faf26?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 8,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 8,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.6,
+      "reviewCount": 503,
+      "totalOrders": 2011,
+      "tags": [
+        "agriculture",
+        "irrigation",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.849Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    }
+  ]
+}

@@ -1,0 +1,845 @@
+{
+  "totalCount": 310,
+  "sample": [
+    {
+      "_id": "6a2eb079d707e876399eb909",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be3",
+      "name": "Adani traders Premium Seeds - 1",
+      "category": "Agriculture",
+      "subcategory": "Seeds",
+      "price": 42937,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 50,
+          "maximumQuantity": 250,
+          "unitPrice": 42937,
+          "_id": "6a2eb079d707e876399eb90a"
+        },
+        {
+          "minimumQuantity": 251,
+          "maximumQuantity": 1000,
+          "unitPrice": 36496,
+          "_id": "6a2eb079d707e876399eb90b"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 999999,
+          "unitPrice": 30055,
+          "_id": "6a2eb079d707e876399eb90c"
+        }
+      ],
+      "samplePrice": 12881,
+      "minimumOrderQuantity": 50,
+      "description": "High-quality seeds from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 5,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.7,
+      "reviewCount": 516,
+      "totalOrders": 1149,
+      "tags": [
+        "agriculture",
+        "seeds",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.846Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb90d",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be3",
+      "name": "Adani traders Premium Seeds - 2",
+      "category": "Agriculture",
+      "subcategory": "Seeds",
+      "price": 37263,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 200,
+          "maximumQuantity": 1000,
+          "unitPrice": 37263,
+          "_id": "6a2eb079d707e876399eb90e"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 4000,
+          "unitPrice": 31673,
+          "_id": "6a2eb079d707e876399eb90f"
+        },
+        {
+          "minimumQuantity": 4001,
+          "maximumQuantity": 999999,
+          "unitPrice": 26084,
+          "_id": "6a2eb079d707e876399eb910"
+        }
+      ],
+      "samplePrice": 11178,
+      "minimumOrderQuantity": 200,
+      "description": "High-quality seeds from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588964895597-cfccd6e2dbf9?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 13,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 3,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4,
+      "reviewCount": 146,
+      "totalOrders": 1390,
+      "tags": [
+        "agriculture",
+        "seeds",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.847Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb919",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be4",
+      "name": "Adani traders Premium Fertilizers - 1",
+      "category": "Agriculture",
+      "subcategory": "Fertilizers",
+      "price": 12800,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 12800,
+          "_id": "6a2eb079d707e876399eb91a"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 10880,
+          "_id": "6a2eb079d707e876399eb91b"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 8960,
+          "_id": "6a2eb079d707e876399eb91c"
+        }
+      ],
+      "samplePrice": 3840,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality fertilizers from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1585515320310-259814833e62?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 5,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.4,
+      "reviewCount": 421,
+      "totalOrders": 1402,
+      "tags": [
+        "agriculture",
+        "fertilizers",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.847Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb91d",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be4",
+      "name": "Adani traders Premium Fertilizers - 2",
+      "category": "Agriculture",
+      "subcategory": "Fertilizers",
+      "price": 15035,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 200,
+          "maximumQuantity": 1000,
+          "unitPrice": 15035,
+          "_id": "6a2eb079d707e876399eb91e"
+        },
+        {
+          "minimumQuantity": 1001,
+          "maximumQuantity": 4000,
+          "unitPrice": 12779,
+          "_id": "6a2eb079d707e876399eb91f"
+        },
+        {
+          "minimumQuantity": 4001,
+          "maximumQuantity": 999999,
+          "unitPrice": 10524,
+          "_id": "6a2eb079d707e876399eb920"
+        }
+      ],
+      "samplePrice": 4510,
+      "minimumOrderQuantity": 200,
+      "description": "High-quality fertilizers from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1585515320310-259814833e62?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.6,
+      "reviewCount": 100,
+      "totalOrders": 438,
+      "tags": [
+        "agriculture",
+        "fertilizers",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb929",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be5",
+      "name": "Adani traders Premium Pesticides - 1",
+      "category": "Agriculture",
+      "subcategory": "Pesticides",
+      "price": 40040,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 40040,
+          "_id": "6a2eb079d707e876399eb92a"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 34034,
+          "_id": "6a2eb079d707e876399eb92b"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 28028,
+          "_id": "6a2eb079d707e876399eb92c"
+        }
+      ],
+      "samplePrice": 12012,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality pesticides from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588286840104-8957b019727f?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 6,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 9,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 3.9,
+      "reviewCount": 441,
+      "totalOrders": 1625,
+      "tags": [
+        "agriculture",
+        "pesticides",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb92d",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be5",
+      "name": "Adani traders Premium Pesticides - 2",
+      "category": "Agriculture",
+      "subcategory": "Pesticides",
+      "price": 1387,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 1387,
+          "_id": "6a2eb079d707e876399eb92e"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 1178,
+          "_id": "6a2eb079d707e876399eb92f"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 970,
+          "_id": "6a2eb079d707e876399eb930"
+        }
+      ],
+      "samplePrice": 416,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality pesticides from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1588286840104-8957b019727f?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 16,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 12,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.5,
+      "reviewCount": 321,
+      "totalOrders": 626,
+      "tags": [
+        "agriculture",
+        "pesticides",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb939",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be6",
+      "name": "Adani traders Premium Farm Machinery - 1",
+      "category": "Agriculture",
+      "subcategory": "Farm Machinery",
+      "price": 33674,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 500,
+          "maximumQuantity": 2500,
+          "unitPrice": 33674,
+          "_id": "6a2eb079d707e876399eb93a"
+        },
+        {
+          "minimumQuantity": 2501,
+          "maximumQuantity": 10000,
+          "unitPrice": 28622,
+          "_id": "6a2eb079d707e876399eb93b"
+        },
+        {
+          "minimumQuantity": 10001,
+          "maximumQuantity": 999999,
+          "unitPrice": 23571,
+          "_id": "6a2eb079d707e876399eb93c"
+        }
+      ],
+      "samplePrice": 10102,
+      "minimumOrderQuantity": 500,
+      "description": "High-quality farm machinery from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1597217631867-30ec7dd32fda?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 12,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 6,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.8,
+      "reviewCount": 481,
+      "totalOrders": 226,
+      "tags": [
+        "agriculture",
+        "farm machinery",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.848Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb93d",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be6",
+      "name": "Adani traders Premium Farm Machinery - 2",
+      "category": "Agriculture",
+      "subcategory": "Farm Machinery",
+      "price": 25537,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 500,
+          "maximumQuantity": 2500,
+          "unitPrice": 25537,
+          "_id": "6a2eb079d707e876399eb93e"
+        },
+        {
+          "minimumQuantity": 2501,
+          "maximumQuantity": 10000,
+          "unitPrice": 21706,
+          "_id": "6a2eb079d707e876399eb93f"
+        },
+        {
+          "minimumQuantity": 10001,
+          "maximumQuantity": 999999,
+          "unitPrice": 17875,
+          "_id": "6a2eb079d707e876399eb940"
+        }
+      ],
+      "samplePrice": 7661,
+      "minimumOrderQuantity": 500,
+      "description": "High-quality farm machinery from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1597217631867-30ec7dd32fda?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 18,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 9,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.7,
+      "reviewCount": 420,
+      "totalOrders": 396,
+      "tags": [
+        "agriculture",
+        "farm machinery",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.849Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb949",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be7",
+      "name": "Adani traders Premium Irrigation - 1",
+      "category": "Agriculture",
+      "subcategory": "Irrigation",
+      "price": 45800,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 100,
+          "maximumQuantity": 500,
+          "unitPrice": 45800,
+          "_id": "6a2eb079d707e876399eb94a"
+        },
+        {
+          "minimumQuantity": 501,
+          "maximumQuantity": 2000,
+          "unitPrice": 38930,
+          "_id": "6a2eb079d707e876399eb94b"
+        },
+        {
+          "minimumQuantity": 2001,
+          "maximumQuantity": 999999,
+          "unitPrice": 32059,
+          "_id": "6a2eb079d707e876399eb94c"
+        }
+      ],
+      "samplePrice": 13740,
+      "minimumOrderQuantity": 100,
+      "description": "High-quality irrigation from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1548606345-5e4db87faf26?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 18,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 8,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 3.8,
+      "reviewCount": 508,
+      "totalOrders": 729,
+      "tags": [
+        "agriculture",
+        "irrigation",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.849Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    },
+    {
+      "_id": "6a2eb079d707e876399eb94d",
+      "sellerId": "6a149888153e10fcba0e7500",
+      "userId": "6a149888ebea5af6896857a4",
+      "categoryId": "6a2db69f4b7a334d2c182be2",
+      "subcategoryId": "6a2db69f4b7a334d2c182be7",
+      "name": "Adani traders Premium Irrigation - 2",
+      "category": "Agriculture",
+      "subcategory": "Irrigation",
+      "price": 4254,
+      "currency": "INR",
+      "priceTiers": [
+        {
+          "minimumQuantity": 10,
+          "maximumQuantity": 50,
+          "unitPrice": 4254,
+          "_id": "6a2eb079d707e876399eb94e"
+        },
+        {
+          "minimumQuantity": 51,
+          "maximumQuantity": 200,
+          "unitPrice": 3615,
+          "_id": "6a2eb079d707e876399eb94f"
+        },
+        {
+          "minimumQuantity": 201,
+          "maximumQuantity": 999999,
+          "unitPrice": 2977,
+          "_id": "6a2eb079d707e876399eb950"
+        }
+      ],
+      "samplePrice": 1276,
+      "minimumOrderQuantity": 10,
+      "description": "High-quality irrigation from Adani traders. Perfect for wholesale and bulk orders.",
+      "images": [
+        "https://images.unsplash.com/photo-1548606345-5e4db87faf26?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800&h=400&fit=crop",
+        "https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=800&h=400&fit=crop"
+      ],
+      "videos": [],
+      "variants": [],
+      "leadTime": {
+        "value": 10,
+        "unit": "days"
+      },
+      "deliveryTime": {
+        "value": 7,
+        "unit": "days"
+      },
+      "packaging": "Standard packaging",
+      "certifications": [],
+      "paymentTerms": "negotiable",
+      "tradeTerms": [
+        "FOB",
+        "CIF"
+      ],
+      "shipping": {
+        "available": true,
+        "methods": [
+          "Standard"
+        ],
+        "countries": [
+          "Worldwide"
+        ]
+      },
+      "warranty": "12 months",
+      "warrantyPeriod": "12 months",
+      "sampleAvailable": true,
+      "productType": "Finished Product",
+      "status": "active",
+      "averageRating": 4.2,
+      "reviewCount": 283,
+      "totalOrders": 311,
+      "tags": [
+        "agriculture",
+        "irrigation",
+        "wholesale",
+        "b2b"
+      ],
+      "__v": 0,
+      "createdAt": "2026-06-14T13:45:29.849Z",
+      "updatedAt": "2026-07-09T00:45:11.129Z",
+      "isVerifiedSeller": true
+    }
+  ]
+}

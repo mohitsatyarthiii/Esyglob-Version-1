@@ -1,0 +1,19 @@
+{
+  "_id": "6a12ee731a7ca1175f9706c0",
+  "email": "lendor@gmail.com",
+  "passwordHash": "seeded-product-user",
+  "firstName": "Lendor",
+  "lastName": "Supplier",
+  "fullName": "Lendor Trades LLC Supplier",
+  "roles": [
+    "seller"
+  ],
+  "primaryRole": "seller",
+  "isActive": true,
+  "isBanned": false,
+  "lastLoginAt": "2026-06-14T10:44:58.198Z",
+  "hasCompletedOnboarding": true,
+  "createdAt": "2026-05-24T12:26:27.797Z",
+  "updatedAt": "2026-06-14T13:45:15.231Z",
+  "__v": 0
+}
