@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
-import { config } from './config/env.js';
+import { config, isCorsOriginAllowed } from './config/env.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 
 // Routes
@@ -69,9 +69,7 @@ app.use((req, res, next) => {
 // CORS configuration
 app.use(cors({
   origin(origin, callback) {
-    if (config.corsOrigin === true || !origin) return callback(null, true);
-    if (Array.isArray(config.corsOrigin) && config.corsOrigin.includes(origin)) return callback(null, true);
-    return callback(null, false);
+    return callback(null, isCorsOriginAllowed(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

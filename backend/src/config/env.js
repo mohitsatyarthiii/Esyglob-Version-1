@@ -22,6 +22,16 @@ function parseCorsOrigin(value) {
   return value.split(',').map((origin) => origin.trim()).filter(Boolean);
 }
 
+function wildcardOriginPattern(value) {
+  const escaped = value.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replaceAll('*', '[^.]+');
+  return new RegExp(`^${escaped}$`, 'i');
+}
+
+export function isCorsOriginAllowed(origin) {
+  if (!origin || config.corsOrigin === true) return true;
+  return config.corsOrigin.some((allowed) => allowed === origin || (allowed.includes('*') && wildcardOriginPattern(allowed).test(origin)));
+}
+
 export const config = {
   port: parseInt(process.env.PORT, 10) || 5000,
   nodeEnv,
@@ -37,7 +47,7 @@ export const config = {
   hashIterations: parseInt(process.env.HASH_ITERATIONS, 10) || 120000,
   hashKeyLength: 64,
   hashDigest: 'sha512',
-  corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN || 'http://localhost:3000'),
+  corsOrigin: parseCorsOrigin(process.env.CORS_ORIGIN || 'http://localhost:5173'),
   jsonLimit: process.env.JSON_LIMIT || '1mb',
   formLimit: process.env.FORM_LIMIT || '1mb',
   mongoMaxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE, 10) || 50,

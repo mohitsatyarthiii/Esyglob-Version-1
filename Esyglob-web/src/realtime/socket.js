@@ -3,6 +3,8 @@ import { buildApiUrl } from '../api/client'
 let clientPromise
 
 function socketOrigin() {
+  const configured = String(import.meta.env.VITE_REALTIME_URL || '').trim()
+  if (configured) return new URL(configured, window.location.origin).origin
   const api = new URL(buildApiUrl('/'))
   return api.origin === window.location.origin ? window.location.origin : api.origin
 }

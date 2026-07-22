@@ -1,0 +1,3 @@
+/api/*        https://api.esyglob.in/api/:splat        200!
+/socket.io/*  https://api.esyglob.in/socket.io/:splat  200!
+/*            /index.html                              200

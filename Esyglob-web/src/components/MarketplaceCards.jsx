@@ -3,6 +3,7 @@ import { ArrowUpRight, BadgeCheck, Heart, MapPin, Package, ShieldCheck, Star, Tr
 import { Link } from 'react-router-dom';
 import { memo, useState } from 'react';
 import WishlistButton from './WishlistButton';
+import { resolveApiResourceUrl } from '../api/client';
 
 // ─── SafeImage ──────────────────────────────────────────────────
 export const SafeImage = memo(function SafeImage({ src, alt, className = '' }) {
@@ -16,7 +17,7 @@ export const SafeImage = memo(function SafeImage({ src, alt, className = '' }) {
   return (
     <img
       className={className}
-      src={src}
+      src={resolveApiResourceUrl(src)}
       alt={alt || ''}
       loading="lazy"
       decoding="async"

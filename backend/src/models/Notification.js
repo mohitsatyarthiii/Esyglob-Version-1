@@ -108,6 +108,7 @@ const notificationSchema = new mongoose.Schema(
       relatedId: mongoose.Schema.Types.ObjectId,
       relatedModel: String, // 'Chat', 'Order', 'Message', etc.
       actionUrl: String,
+      documentUrl: String,
     },
     isRead: {
       type: Boolean,

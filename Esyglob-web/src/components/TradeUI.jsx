@@ -1,6 +1,7 @@
 import { FileText, Paperclip, X } from 'lucide-react'
 import { useState } from 'react'
 import { uploadFiles } from '../api/trade'
+import { resolveApiResourceUrl } from '../api/client'
 import { useCurrency } from '../preferences/currency-context'
 
 export function StatusBadge({ status = 'pending' }) {
@@ -33,5 +34,5 @@ export function AttachmentUploader({ folder, value, onChange, accept }) {
     } catch (nextError) { setError(nextError.message) }
     finally { setBusy(false); event.target.value = '' }
   }
-  return <div className="attachment-uploader"><label><Paperclip /> {busy ? 'Uploading…' : 'Add images or documents'}<input type="file" multiple disabled={busy} accept={accept} onChange={select} /></label>{error && <small className="action-error">{error}</small>}{value.map((file, index) => <div className="attachment-chip" key={`${file.url}-${index}`}><FileText /><a href={file.url} target="_blank" rel="noreferrer">{file.filename || `Attachment ${index + 1}`}</a><button type="button" onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}><X /></button></div>)}</div>
+  return <div className="attachment-uploader"><label><Paperclip /> {busy ? 'Uploading…' : 'Add images or documents'}<input type="file" multiple disabled={busy} accept={accept} onChange={select} /></label>{error && <small className="action-error">{error}</small>}{value.map((file, index) => <div className="attachment-chip" key={`${file.url}-${index}`}><FileText /><a href={resolveApiResourceUrl(file.url)} target="_blank" rel="noreferrer">{file.filename || `Attachment ${index + 1}`}</a><button type="button" onClick={() => onChange(value.filter((_, itemIndex) => itemIndex !== index))}><X /></button></div>)}</div>
 }

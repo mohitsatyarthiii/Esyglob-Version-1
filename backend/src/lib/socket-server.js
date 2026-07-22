@@ -4,7 +4,7 @@ import { setIO } from './socket.js';
 import User from '../models/User.js';
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
-import { config } from '../config/env.js';
+import { config, isCorsOriginAllowed } from '../config/env.js';
 
 function id(value) {
   return String(value?._id || value?.id || value || '');
@@ -19,7 +19,10 @@ function cookieValue(header, name) {
 
 export function initializeSocket(server) {
   const io = new Server(server, {
-    cors: { origin: config.corsOrigin === true ? true : config.corsOrigin, credentials: true },
+    cors: {
+      origin(origin, callback) { callback(null, isCorsOriginAllowed(origin)); },
+      credentials: true,
+    },
     transports: ['websocket', 'polling'],
     pingInterval: 25000,
     pingTimeout: 20000,

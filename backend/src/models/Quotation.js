@@ -123,7 +123,7 @@ const quotationSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'buyer_accepted', 'agreement_pending', 'agreement_signed', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
+      enum: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'buyer_accepted', 'final_quotation_pending', 'final_quotation_signed', 'agreement_pending', 'agreement_signed', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
       default: 'pending',
       index: true,
     },
@@ -226,6 +226,15 @@ const quotationSchema = new mongoose.Schema(
       sellerSignedAt: Date,
       buyerSignedAt: Date,
       completedAt: Date,
+    },
+    finalQuotation: {
+      finalQuotationNumber: String,
+      documentId: mongoose.Schema.Types.ObjectId,
+      status: { type: String, enum: ['not_started', 'seller_preparation', 'awaiting_buyer_signature', 'changes_requested', 'signed', 'cancelled', 'expired'], default: 'not_started' },
+      version: { type: Number, min: 1, default: 1 },
+      preparedAt: Date,
+      buyerSignedAt: Date,
+      lockedAt: Date,
     },
     approvalHistory: [{ action: String, previousStatus: String, newStatus: String, actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, actorRole: String, notes: String, documents: [mongoose.Schema.Types.Mixed], createdAt: { type: Date, default: Date.now } }],
     structuredNotes: { type: [tradeNoteSchema], default: [] },

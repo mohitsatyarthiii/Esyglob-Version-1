@@ -5,13 +5,16 @@ import { AuthProvider } from './auth/AuthContext'
 import CurrencyProvider from './preferences/CurrencyProvider'
 import './index.css'
 import App from './App'
+import AppErrorBoundary from './components/AppErrorBoundary'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <CurrencyProvider><App /></CurrencyProvider>
-      </AuthProvider>
+      <AppErrorBoundary>
+        <AuthProvider>
+          <CurrencyProvider><App /></CurrencyProvider>
+        </AuthProvider>
+      </AppErrorBoundary>
     </BrowserRouter>
   </StrictMode>,
 )

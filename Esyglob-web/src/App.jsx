@@ -91,6 +91,7 @@ export default function App() {
       <Route path="/services/requests/:requestId" element={<ServiceRequestDetailsPage />} />
       <Route path="/services/:serviceKey/book" element={<ServiceBookingPage />} />
       <Route path="/messages" element={<MessagesPage />} />
+      <Route path="/chat" element={<Navigate replace to="/messages" />} />
       <Route path="/messages/:chatId" element={<ChatPage />} />
       <Route path="/rfqs" element={<RfqsPage />} />
       <Route path="/rfqs/new" element={<RfqCreatePage />} />
@@ -116,6 +117,8 @@ export default function App() {
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="/security" element={<SettingsPage />} />
       <Route path="/dashboard" element={<MarketplaceDashboardPage />} />
+      <Route path="/buyer" element={<Navigate replace to="/dashboard?role=buyer" />} />
+      <Route path="/seller" element={<Navigate replace to="/dashboard?role=seller" />} />
       <Route path="/seller/dashboard" element={<Navigate replace to="/dashboard?role=seller" />} />
       <Route path="/seller/verification" element={<SellerVerificationPage />} />
       <Route path="/seller/factory" element={<FactoryManagementPage />} />

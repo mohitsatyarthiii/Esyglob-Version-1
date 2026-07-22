@@ -10,7 +10,7 @@ import useAsyncData from '../hooks/useAsyncData'
 import { PageHead } from '../components/PageHead'
 import { TradeSkeleton } from './RfqsPage'
 
-const statuses = ['all', 'pending', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'rejected', 'converted', 'lost']
+const statuses = ['all', 'pending', 'negotiating', 'countered', 'revision_requested', 'revised', 'buyer_accepted', 'final_quotation_pending', 'final_quotation_signed', 'rejected', 'converted', 'lost']
 export default function QuotationsPage() {
   const { user } = useAuth()
   const roles = user?.roles || ['buyer']

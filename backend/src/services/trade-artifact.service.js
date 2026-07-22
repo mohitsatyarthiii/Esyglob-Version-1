@@ -52,11 +52,11 @@ function visibleNotes(notes, userId, actorRole) {
   return (notes || []).filter(note => note.visibility !== 'private' || id(note.authorId) === userId || actorRole === 'admin');
 }
 
-async function notifyParticipant(context, title, description, notificationType = 'document_shared') {
+async function notifyParticipant(context, title, description, notificationType = 'document_shared', extraData = {}) {
   const recipient = context.actorRole === 'buyer' ? context.sellerUserId : context.buyerId;
   if (!recipient) return;
   const entityType = context.entity.constructor.modelName.toLowerCase();
-  const notification = await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName, actionUrl: `/${entityType}s/${context.entity._id}${context.actorRole === 'buyer' ? '?role=seller' : ''}` } }).catch(() => null);
+  const notification = await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName, actionUrl: `/${entityType}s/${context.entity._id}${context.actorRole === 'buyer' ? '?role=seller' : ''}`, ...extraData } }).catch(() => null);
   if (notification) getIO()?.to(`user_${recipient}`).emit('new_notification', notification);
 }
 
@@ -69,7 +69,7 @@ async function publishAgreementEvent(context, document, content, { attachPdf = f
   const message = await Message.create({ chatId: chat._id, senderId: context.userId, receiverId, content, messageType: 'system', attachments: attachPdf ? [{ url: pdfUrl, name: document.filename || 'Signed Agreement.pdf', type: 'application/pdf', mimeType: 'application/pdf' }] : [], quotationDetails: { quotationId: context.entity._id, rfqId: context.entity.rfqId, status: context.entity.status, actionUrl: `/quotations/${context.entity._id}` }, isRead: false });
   await Chat.updateOne({ _id: chat._id }, { $set: { lastMessage: content, lastMessageAt: new Date() }, $inc: context.actorRole === 'buyer' ? { sellerUnreadCount: 1 } : { buyerUnreadCount: 1 } });
   const io = getIO();
-  if (io) { io.to(`chat_${chat._id}`).emit('new_message', message); io.to(`user_${receiverId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, agreementStatus: document.status }); io.to(`user_${context.userId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, agreementStatus: document.status }); }
+  if (io) { io.to(`chat_${chat._id}`).emit('new_message', message); io.to(`user_${receiverId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, documentStatus: document.status }); io.to(`user_${context.userId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, documentStatus: document.status }); }
 }
 
 export async function getWorkspace(entityType, entityId, user) {
@@ -90,7 +90,7 @@ export async function getUnifiedWorkspace(entityType, entityId, user) {
   const quotationQuery = rfq ? { rfqId: rfq._id } : activeQuotation ? { _id: activeQuotation._id } : null;
   if (quotationQuery && context.actorRole === 'seller') quotationQuery.userId = context.userId;
   const quotations = quotationQuery ? await Quotation.find(quotationQuery).sort({ revisionNumber: -1, updatedAt: -1 }).lean() : [];
-  if (!activeQuotation && quotations.length) activeQuotation = await Quotation.findById(quotations.find(item => ['buyer_accepted','agreement_pending','agreement_signed','won'].includes(item.status))?._id || quotations[0]._id);
+  if (!activeQuotation && quotations.length) activeQuotation = await Quotation.findById(quotations.find(item => ['buyer_accepted','final_quotation_pending','final_quotation_signed','agreement_pending','agreement_signed','won'].includes(item.status))?._id || quotations[0]._id);
   const productId = order?.productId || activeQuotation?.productId || rfq?.productId;
   const relatedIds = [rfq?._id, activeQuotation?._id, order?._id].filter(Boolean);
   const [product, chats, payment, shipment, invoice, reviews, notifications] = await Promise.all([
@@ -109,7 +109,7 @@ export async function getUnifiedWorkspace(entityType, entityId, user) {
   const currentEntity = order || activeQuotation || rfq;
   const lifecycleType = order ? 'order' : activeQuotation ? 'quotation' : 'rfq';
   return {
-    tradeId: order?.orderNumber || activeQuotation?.agreement?.agreementNumber || rfq?.rfqNumber || String(currentEntity?._id),
+    tradeId: order?.orderNumber || activeQuotation?.finalQuotation?.finalQuotationNumber || activeQuotation?.agreement?.agreementNumber || rfq?.rfqNumber || String(currentEntity?._id),
     actorRole: context.actorRole,
     currentEntity: { type: lifecycleType, id: currentEntity?._id },
     lifecycle: lifecycleSnapshot(lifecycleType, currentEntity, context.actorRole),
@@ -119,6 +119,7 @@ export async function getUnifiedWorkspace(entityType, entityId, user) {
     activeQuotation: activeQuotation?.toObject?.() || activeQuotation,
     order: order?.toObject?.() || order,
     agreement: activeQuotation?.agreement?.status !== 'not_required' ? activeQuotation?.agreement : order?.agreement,
+    finalQuotation: activeQuotation?.finalQuotation,
     chats,
     notes: notes.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)),
     documents: documents.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)),
@@ -149,11 +150,9 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const context = await loadContext(entityType, entityId, user);
   const documentType = allowedDocumentTypes.has(input.documentType) ? input.documentType : 'other';
   const isAgreement = ['purchase_agreement','commercial_agreement'].includes(documentType);
+  if (entityType === 'quotation' && documentType === 'quotation' && !input.metadata?.isFinalQuotation) throw Object.assign(new Error('Final Quotations are generated only from Seller preparation.'), { statusCode: 409 });
   if (entityType === 'quotation' && isAgreement) {
-    if (context.actorRole !== 'seller') throw Object.assign(new Error('Only the seller can prepare the agreement'), { statusCode: 403 });
-    if (!['buyer_accepted','agreement_pending'].includes(context.entity.status)) throw Object.assign(new Error('Agreement preparation starts only after buyer acceptance'), { statusCode: 409 });
-    const activeAgreement = (context.entity.tradeDocuments || []).find(document => ['purchase_agreement','commercial_agreement'].includes(document.documentType) && document.status !== 'void');
-    if (activeAgreement) throw Object.assign(new Error('An active agreement already exists for this quotation'), { statusCode: 409 });
+    throw Object.assign(new Error('Separate Agreement documents are retired. Use the signed Final Quotation.'), { statusCode: 409 });
   }
   const title = String(input.title || documentType.replaceAll('_', ' ')).trim();
   const requiresBuyerSignature = Boolean(input.requiresBuyerSignature);
@@ -162,11 +161,12 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const previousVersion = [...(context.entity.tradeDocuments || [])].reverse().find(document => document.documentType === documentType && document.title === title);
   const version = Number(previousVersion?.version || 0) + 1;
   const globalDocument = await Document.create({ userId: context.userId, name: title, type: documentType, category: 'other', orderId: entityType === 'order' ? context.entity._id : undefined, content: input.content || {}, fileUrl: input.url, fileType: input.fileType, status: input.url ? 'shared' : 'generated', data: { currency: input.currency, terms: input.terms, notes: input.notes } });
-  context.entity.tradeDocuments.push({ documentType, title, url: input.url, filename: input.filename || `${title}.pdf`, source: input.url ? 'uploaded' : 'generated', status: initialStatus, version, requiresBuyerSignature, requiresSellerSignature, createdBy: context.userId, metadata: { globalDocumentId: globalDocument._id, previousDocumentId: previousVersion?._id, changedFields: input.changedFields || [], notes: input.notes, content: input.content || {} }, completedAt: initialStatus === 'completed' ? new Date() : undefined });
+  context.entity.tradeDocuments.push({ documentType, title, url: input.url, filename: input.filename || `${title}.pdf`, source: input.url ? 'uploaded' : 'generated', status: initialStatus, version, requiresBuyerSignature, requiresSellerSignature, createdBy: context.userId, metadata: { ...(input.metadata || {}), globalDocumentId: globalDocument._id, previousDocumentId: previousVersion?._id, changedFields: input.changedFields || [], notes: input.notes, content: input.content || {} }, completedAt: initialStatus === 'completed' ? new Date() : undefined });
   const embedded = context.entity.tradeDocuments.at(-1);
   embedded.previewUrl = `/api/trade-workspace/${entityType}/${entityId}/documents/${embedded._id}/preview`;
   if (entityType === 'order' && ['purchase_agreement','commercial_agreement','terms_document'].includes(documentType) && (requiresBuyerSignature || requiresSellerSignature)) context.entity.agreement = { required: true, documentId: embedded._id, status: initialStatus };
   if (entityType === 'quotation' && ['purchase_agreement','commercial_agreement'].includes(documentType) && (requiresBuyerSignature || requiresSellerSignature)) context.entity.agreement = { ...(context.entity.agreement?.toObject?.() || context.entity.agreement || {}), documentId: embedded._id, status: initialStatus };
+  if (entityType === 'quotation' && input.metadata?.isFinalQuotation) context.entity.finalQuotation = { ...(context.entity.finalQuotation?.toObject?.() || context.entity.finalQuotation || {}), documentId: embedded._id, status: 'awaiting_buyer_signature', version, preparedAt: new Date() };
   if (context.entity.activityTimeline) context.entity.activityTimeline.push({ action: 'document_created', message: title, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: embedded._id } });
   if (context.entity.timeline) context.entity.timeline.push({ status: 'document_created', note: title, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
@@ -181,6 +181,9 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   if (!document || !['buyer','seller'].includes(context.actorRole)) throw Object.assign(new Error('Document not found'), { statusCode: 404 });
   const required = context.actorRole === 'buyer' ? document.requiresBuyerSignature : document.requiresSellerSignature;
   const isAgreement = ['purchase_agreement','commercial_agreement'].includes(document.documentType);
+  const isFinalQuotation = entityType === 'quotation' && document.documentType === 'quotation' && document.metadata?.isFinalQuotation;
+  if (isFinalQuotation && context.actorRole !== 'buyer') throw Object.assign(new Error('Only the Buyer can sign the Final Quotation'), { statusCode: 403 });
+  if (isFinalQuotation && (context.entity.status !== 'final_quotation_pending' || document.status !== 'awaiting_buyer_signature')) throw Object.assign(new Error('This Final Quotation is not awaiting Buyer signature'), { statusCode: 409 });
   if (entityType === 'quotation' && isAgreement && context.entity.status !== 'agreement_pending') throw Object.assign(new Error('This quotation is not awaiting agreement signatures'), { statusCode: 409 });
   if (isAgreement && context.actorRole === 'seller' && document.status !== 'awaiting_seller_signature') throw Object.assign(new Error('The agreement is not awaiting the seller signature'), { statusCode: 409 });
   if (isAgreement && context.actorRole === 'buyer' && document.status !== 'awaiting_buyer_signature') throw Object.assign(new Error('The agreement is not awaiting the buyer signature'), { statusCode: 409 });
@@ -208,15 +211,32 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
       context.entity.activityTimeline.push({ action: 'order_enabled', status: 'agreement_signed', message: 'Order configuration is now enabled', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, orderEnabled: true } });
     }
   }
+  if (isFinalQuotation && id(context.entity.finalQuotation?.documentId) === id(document._id) && document.status === 'completed') {
+    const previousStatus = context.entity.status;
+    context.entity.finalQuotation.status = 'signed';
+    context.entity.finalQuotation.buyerSignedAt = new Date();
+    context.entity.finalQuotation.lockedAt = new Date();
+    context.entity.previousStatus = previousStatus;
+    context.entity.status = 'final_quotation_signed';
+    context.entity.approvalHistory.push({ action: 'final_quotation_signed', previousStatus, newStatus: 'final_quotation_signed', actorId: context.userId, actorRole: 'buyer', notes: `Buyer signed Final Quotation version ${document.version}` });
+    context.entity.activityTimeline.push({ action: 'final_quotation_signed', status: 'final_quotation_signed', message: 'Buyer signed the Final Quotation; commercial terms are locked', actorId: context.userId, actorRole: 'buyer', metadata: { documentId: document._id, version: document.version } });
+    context.entity.activityTimeline.push({ action: 'order_enabled', status: 'final_quotation_signed', message: 'Start Order is now enabled', actorId: context.userId, actorRole: 'buyer', metadata: { documentId: document._id, orderEnabled: true } });
+  }
   if (context.entity.activityTimeline) {
-    context.entity.activityTimeline.push({ action: isAgreement ? `${context.actorRole}_signed_agreement` : 'document_signed', status: document.status, message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
+    context.entity.activityTimeline.push({ action: isFinalQuotation ? 'buyer_signed_final_quotation' : isAgreement ? `${context.actorRole}_signed_agreement` : 'document_signed', status: document.status, message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
     if (isAgreement && context.actorRole === 'seller') context.entity.activityTimeline.push({ action: 'buyer_notified', status: document.status, message: 'Buyer notified that their agreement signature is required', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
   }
-  if (context.entity.timeline) context.entity.timeline.push({ status: 'agreement_signed', note: `${context.actorRole} signed ${document.title}`, updatedBy: context.userId, timestamp: new Date() });
+  if (context.entity.timeline) context.entity.timeline.push({ status: isFinalQuotation ? 'final_quotation_signed' : 'agreement_signed', note: `${context.actorRole} signed ${document.title}`, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
-  const notificationTitle = isAgreement && context.actorRole === 'seller' ? 'Seller signed the Agreement — your signature is required' : isAgreement ? 'Agreement fully signed and active' : 'Document signed';
-  const notificationDescription = isAgreement && context.actorRole === 'seller' ? 'The Seller has signed the Agreement. Your signature is required to proceed with the order.' : isAgreement ? 'Both parties signed the Agreement. Order configuration is now enabled.' : `${context.actorRole} signed ${document.title}.`;
-  await notifyParticipant(context, notificationTitle, notificationDescription, 'document_signed');
+  const notificationTitle = isFinalQuotation ? 'Buyer signed the Final Quotation' : isAgreement && context.actorRole === 'seller' ? 'Seller signed the Agreement — your signature is required' : isAgreement ? 'Agreement fully signed and active' : 'Document signed';
+  const notificationDescription = isFinalQuotation ? 'The official commercial document is signed and Start Order is now enabled.' : isAgreement && context.actorRole === 'seller' ? 'The Seller has signed the Agreement. Your signature is required to proceed with the order.' : isAgreement ? 'Both parties signed the Agreement. Order configuration is now enabled.' : `${context.actorRole} signed ${document.title}.`;
+  const signedPdfUrl = `${document.previewUrl}?format=pdf`;
+  await notifyParticipant(context, notificationTitle, notificationDescription, 'document_signed', isFinalQuotation ? { documentUrl: signedPdfUrl } : {});
+  if (isFinalQuotation) {
+    const confirmation = await Notification.create({ userId: context.userId, notificationType: 'document_signed', title: 'Final Quotation signed successfully', description: 'Your signature was recorded. The trade is ready for Order execution.', data: { relatedId: context.entity._id, relatedModel: 'Quotation', actionUrl: `/quotations/${context.entity._id}`, documentUrl: signedPdfUrl }, priority: 'high' }).catch(() => null);
+    if (confirmation) getIO()?.to(`user_${context.userId}`).emit('new_notification', confirmation);
+    await publishAgreementEvent(context, document, 'Buyer has signed the Final Quotation. Order is now enabled for this product.', { attachPdf: true }).catch(() => {});
+  }
   if (isAgreement) await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'The Seller has completed and signed the Agreement. Please review and sign to continue.' : 'Buyer signed the Agreement. The Agreement is fully executed and the Order is now enabled.', { attachPdf: true });
   return { document, workspace: await getWorkspace(entityType, entityId, user) };
 }
