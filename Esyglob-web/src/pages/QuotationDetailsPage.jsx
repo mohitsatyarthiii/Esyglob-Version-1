@@ -46,6 +46,10 @@ export default function QuotationDetailsPage() {
     finally { setBusy(false) }
   }
   async function sellerAction(action) {
+    if (action === 'confirm') {
+      document.getElementById('agreement-workflow-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
+    }
     setBusy(true); setError('')
     try { await updateQuotation(quotationId, { action, reason: actionText || undefined }); setMessage(action === 'withdraw' ? 'Quotation withdrawn.' : action === 'confirm' ? 'Final terms confirmed. Sign the generated agreement next.' : 'Quotation sent to buyer.'); await query.reload() }
     catch (nextError) { setError(nextError.message) }

@@ -13,6 +13,7 @@ import Product from '../models/Product.js';
 import Review from '../models/Review.js';
 import Shipment from '../models/Shipment.js';
 import { lifecycleSnapshot } from './business-lifecycle.service.js';
+import { getIO } from '../lib/socket.js';
 
 const MODEL = { rfq: RFQ, quotation: Quotation, order: Order };
 const NOTE_FIELD = { rfq: 'notes', quotation: 'structuredNotes', order: 'structuredNotes' };
@@ -55,7 +56,8 @@ async function notifyParticipant(context, title, description, notificationType =
   const recipient = context.actorRole === 'buyer' ? context.sellerUserId : context.buyerId;
   if (!recipient) return;
   const entityType = context.entity.constructor.modelName.toLowerCase();
-  await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName, actionUrl: `/${entityType}s/${context.entity._id}${context.actorRole === 'buyer' ? '?role=seller' : ''}` } }).catch(() => {});
+  const notification = await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName, actionUrl: `/${entityType}s/${context.entity._id}${context.actorRole === 'buyer' ? '?role=seller' : ''}` } }).catch(() => null);
+  if (notification) getIO()?.to(`user_${recipient}`).emit('new_notification', notification);
 }
 
 async function publishAgreementEvent(context, document, content, { attachPdf = false } = {}) {
@@ -64,8 +66,10 @@ async function publishAgreementEvent(context, document, content, { attachPdf = f
   if (!chat) return;
   const receiverId = context.actorRole === 'buyer' ? context.sellerUserId : context.buyerId;
   const pdfUrl = `${document.previewUrl}?format=pdf`;
-  await Message.create({ chatId: chat._id, senderId: context.userId, receiverId, content, messageType: 'system', attachments: attachPdf ? [{ url: pdfUrl, name: document.filename || 'Signed Agreement.pdf', type: 'application/pdf', mimeType: 'application/pdf' }] : [], quotationDetails: { quotationId: context.entity._id, rfqId: context.entity.rfqId, status: context.entity.status, actionUrl: `/quotations/${context.entity._id}` }, isRead: false });
+  const message = await Message.create({ chatId: chat._id, senderId: context.userId, receiverId, content, messageType: 'system', attachments: attachPdf ? [{ url: pdfUrl, name: document.filename || 'Signed Agreement.pdf', type: 'application/pdf', mimeType: 'application/pdf' }] : [], quotationDetails: { quotationId: context.entity._id, rfqId: context.entity.rfqId, status: context.entity.status, actionUrl: `/quotations/${context.entity._id}` }, isRead: false });
   await Chat.updateOne({ _id: chat._id }, { $set: { lastMessage: content, lastMessageAt: new Date() }, $inc: context.actorRole === 'buyer' ? { sellerUnreadCount: 1 } : { buyerUnreadCount: 1 } });
+  const io = getIO();
+  if (io) { io.to(`chat_${chat._id}`).emit('new_message', message); io.to(`user_${receiverId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, agreementStatus: document.status }); io.to(`user_${context.userId}`).emit('quotation_updated', { quotationId: context.entity._id, status: context.entity.status, agreementStatus: document.status }); }
 }
 
 export async function getWorkspace(entityType, entityId, user) {
@@ -147,7 +151,7 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const isAgreement = ['purchase_agreement','commercial_agreement'].includes(documentType);
   if (entityType === 'quotation' && isAgreement) {
     if (context.actorRole !== 'seller') throw Object.assign(new Error('Only the seller can prepare the agreement'), { statusCode: 403 });
-    if (context.entity.status !== 'agreement_pending') throw Object.assign(new Error('Agreement preparation starts only after buyer acceptance and seller confirmation'), { statusCode: 409 });
+    if (!['buyer_accepted','agreement_pending'].includes(context.entity.status)) throw Object.assign(new Error('Agreement preparation starts only after buyer acceptance'), { statusCode: 409 });
     const activeAgreement = (context.entity.tradeDocuments || []).find(document => ['purchase_agreement','commercial_agreement'].includes(document.documentType) && document.status !== 'void');
     if (activeAgreement) throw Object.assign(new Error('An active agreement already exists for this quotation'), { statusCode: 409 });
   }
@@ -167,7 +171,7 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   if (context.entity.timeline) context.entity.timeline.push({ status: 'document_created', note: title, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
   await notifyParticipant(context, 'Trade document available', `${title} was added to the trade workspace.`, 'document_generated');
-  if (entityType === 'quotation' && isAgreement) await publishAgreementEvent(context, embedded, 'Seller prepared the Agreement. It is awaiting the Seller signature.');
+  if (entityType === 'quotation' && isAgreement) await publishAgreementEvent(context, embedded, context.entity.status === 'buyer_accepted' ? 'A live Agreement was generated automatically from the accepted quotation. Seller review and signature are required.' : 'Seller completed the Agreement. It is awaiting the Seller signature.');
   return { document: embedded, workspace: await getWorkspace(entityType, entityId, user) };
 }
 
@@ -213,7 +217,7 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   const notificationTitle = isAgreement && context.actorRole === 'seller' ? 'Seller signed the Agreement — your signature is required' : isAgreement ? 'Agreement fully signed and active' : 'Document signed';
   const notificationDescription = isAgreement && context.actorRole === 'seller' ? 'The Seller has signed the Agreement. Your signature is required to proceed with the order.' : isAgreement ? 'Both parties signed the Agreement. Order configuration is now enabled.' : `${context.actorRole} signed ${document.title}.`;
   await notifyParticipant(context, notificationTitle, notificationDescription, 'document_signed');
-  if (isAgreement) await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'Seller signed the Agreement. Buyer signature is required to proceed.' : 'Buyer signed the Agreement. The Agreement is active and the Order can now be started.', { attachPdf: document.status === 'completed' });
+  if (isAgreement) await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'The Seller has completed and signed the Agreement. Please review and sign to continue.' : 'Buyer signed the Agreement. The Agreement is fully executed and the Order is now enabled.', { attachPdf: true });
   return { document, workspace: await getWorkspace(entityType, entityId, user) };
 }
 

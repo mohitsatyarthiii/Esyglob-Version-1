@@ -13,9 +13,13 @@ import User from '../models/User.js';
 export async function findQuotations(query, skip, limit) {
   return Quotation.find(query)
     .select(
-      'rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationHistory sellerMessage buyerMessage createdAt updatedAt acceptedAt rejectedAt rejectionReason'
+      'rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationHistory sellerMessage buyerMessage agreement tradeDocuments createdAt updatedAt acceptedAt rejectedAt rejectionReason'
     )
-    .populate('rfqId', 'title quantity')
+    .populate({
+      path: 'rfqId',
+      select: 'title quantity rfqNumber buyerId',
+      populate: { path: 'buyerId', select: 'fullName name companyName email' },
+    })
     .populate({
       path: 'sellerId',
       select: 'companyName companyLogo logo logoUrl userId',

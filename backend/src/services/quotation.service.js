@@ -640,47 +640,25 @@ export async function updateQuotation(session, quotationId, body) {
     for (const field of agreementFields) if (body[field] !== undefined) quotation[field] = field === 'specialClauses' && !Array.isArray(body[field]) ? String(body[field]).split('\n').map(value => value.trim()).filter(Boolean) : body[field];
     quotation.totalPrice = Number(body.totalPrice || (Number(quotation.unitPrice || 0) * Number(quotation.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)));
     recordTransition(quotation, { type: 'quotation', action, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed the accepted commercial terms' });
-    quotation.agreement = { agreementNumber: `AGR-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'draft', sellerConfirmedAt: new Date() };
+    quotation.agreement = { ...(quotation.agreement?.toObject?.() || quotation.agreement || {}), sellerConfirmedAt: new Date() };
     quotation.approvalHistory.push({ action: 'seller_confirmed', previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed final terms' });
     await quotation.save();
-    const [agreementRfq, buyer, sellerUser, sellerProfile] = await Promise.all([
-      quotationRepository.findRfqById(quotation.rfqId),
-      quotationRepository.findRfqById(quotation.rfqId).then(rfq => rfq ? quotationRepository.findUserById(rfq.buyerId) : null),
-      quotationRepository.findUserById(quotation.userId),
-      quotationRepository.findSellerByUserId(quotation.userId),
-    ]);
-    await createTradeDocument('quotation', quotation._id, { _id: session.userId, roles: session.roles || ['seller'] }, {
-      documentType: 'purchase_agreement',
-      title: `Purchase Agreement ${quotation.agreement.agreementNumber}`,
-      requiresSellerSignature: true,
-      requiresBuyerSignature: true,
-      content: {
-        agreementNumber: quotation.agreement.agreementNumber,
-        revisionNumber: quotation.revisionNumber,
-        rfqId: quotation.rfqId,
-        buyer: { name: buyer?.fullName, company: buyer?.metadata?.companyName, email: buyer?.email },
-        seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, registrationNumber: sellerProfile?.businessRegistrationNumber || sellerProfile?.gstNumber },
-        products: [{ productId: quotation.productId || agreementRfq?.productId, name: agreementRfq?.title, quantity: quotation.suppliedQuantity || agreementRfq?.quantity, unit: agreementRfq?.unit, unitPrice: quotation.unitPrice }],
-        pricing: { unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice, currency: quotation.currency },
-        minimumOrderQuantity: quotation.minimumOrderQuantity,
-        shipping: { cost: quotation.shippingCost, estimate: quotation.shippingEstimate },
-        delivery: { leadTime: quotation.leadTime, leadTimeUnit: quotation.leadTimeUnit },
-        paymentTerms: quotation.paymentTerms,
-        incoterms: quotation.incoterms,
-        taxes: quotation.taxes,
-        packaging: quotation.packaging,
-        warranty: quotation.warranty,
-        samplePrice: quotation.samplePrice,
-        shippingTerms: quotation.shippingTerms,
-        specialConditions: quotation.specialClauses,
-        notes: quotation.notes || quotation.sellerMessage,
-        attachments: quotation.attachments,
-        generatedAt: new Date(),
-      },
-    });
+    const { agreementRfq, content } = await agreementSnapshot(quotation);
+    let agreementDocument = quotation.tradeDocuments.id(quotation.agreement?.documentId);
+    if (!agreementDocument) {
+      await ensureAutomaticAgreement(quotation);
+      const refreshed = await quotationRepository.findQuotationByIdLean(quotationId);
+      agreementDocument = refreshed.tradeDocuments.id(refreshed.agreement?.documentId);
+      quotation.tradeDocuments = refreshed.tradeDocuments;
+      quotation.agreement = refreshed.agreement;
+    } else {
+      agreementDocument.metadata = { ...(agreementDocument.metadata || {}), content, notes: reason || 'Seller completed the live Agreement' };
+      quotation.activityTimeline.push({ action: 'agreement_completed_by_seller', status: 'agreement_pending', message: 'Seller completed the live Agreement fields; signature is required', actorId: session.userId, actorRole: 'seller', metadata: { documentId: agreementDocument._id } });
+      await quotation.save();
+    }
     const updated = await quotationRepository.findQuotationByIdLean(quotationId);
-    await publishQuotationContext({ quotation: updated, rfq: agreementRfq, actorId: session.userId, receiverId: agreementRfq?.buyerId, content: `Seller confirmed final quotation version ${updated.revisionNumber}. The agreement is ready for seller signature.` });
-    return { quotation: updated, message: 'Final terms confirmed. Agreement is ready for seller signature.' };
+    await publishQuotationContext({ quotation: updated, rfq: agreementRfq, actorId: session.userId, receiverId: agreementRfq?.buyerId, content: `Seller completed Agreement ${updated.agreement?.agreementNumber}. Seller signature is now required.` });
+    return { quotation: updated, message: 'Agreement details saved. Seller signature is required.' };
   }
 
   if (action === 'reopen') {
@@ -952,13 +930,14 @@ export async function respondToQuotation(session, quotationId, body) {
     quotation.acceptedAt = new Date();
     quotation.rejectedAt = null;
     quotation.rejectionReason = null;
+    quotation.agreement = { agreementNumber: `AGR-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'draft' };
     quotation.negotiationHistory.push({
       action: 'accepted',
       actorId: session.userId,
-      message: 'Buyer accepted the final quotation. Seller confirmation is required before agreement generation.',
+      message: 'Buyer accepted the final quotation. A live Agreement was generated for Seller review and signature.',
     });
     quotation.approvalHistory.push({ action: 'buyer_accepted', previousStatus, newStatus: quotation.status, actorId: session.userId, actorRole: 'buyer', notes: reason || 'Buyer accepted final quotation' });
-    quotation.activityTimeline.push({ action: 'buyer_accepted', status: quotation.status, message: 'Waiting for seller confirmation', actorId: session.userId, actorRole: 'buyer' });
+    quotation.activityTimeline.push({ action: 'buyer_accepted', status: quotation.status, message: 'Live Agreement generated and waiting for Seller completion', actorId: session.userId, actorRole: 'buyer' });
   } else {
     quotation.status = 'rejected';
     quotation.rejectedAt = new Date();
@@ -973,15 +952,17 @@ export async function respondToQuotation(session, quotationId, body) {
   await quotation.save();
 
   if (action === 'accept') {
-    await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted your quotation', description: 'Confirm the final terms to generate the dual-signature agreement.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller` }, priority: 'high' });
-    await publishQuotationContext({ quotation, rfq: quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, content: 'Buyer accepted the final quotation. Seller confirmation and dual signatures are required before Start Order becomes available.' });
+    const { agreementRfq } = await ensureAutomaticAgreement(quotation);
+    const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
+    await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — Agreement ready for signature', description: 'Review the pre-filled Agreement, complete any remaining commercial terms, and sign it.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#agreement-workflow-title` }, priority: 'high' });
+    await publishQuotationContext({ quotation: updatedQuotation, rfq: agreementRfq || quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, content: 'Buyer accepted the quotation. A live Agreement has been generated for Seller review and signature.' });
     const io = getIO();
     if (io) {
       const event = { quotationId: quotation._id, rfqId: quotation.rfqId?._id || quotation.rfqId, status: quotation.status, action };
       io.to(`user_${quotation.userId?._id || quotation.userId}`).emit('quotation_updated', event);
       io.to(`user_${session.userId}`).emit('quotation_updated', event);
     }
-    return { quotation, tradeOrder: null, message: 'Quotation accepted. Waiting for seller confirmation and signatures.' };
+    return { quotation: updatedQuotation, tradeOrder: null, message: 'Quotation accepted. The live Agreement is ready for Seller review and signature.' };
   }
 
   let tradeOrder = null;
@@ -1181,6 +1162,59 @@ export async function respondToQuotation(session, quotationId, body) {
   }
 
   return { quotation, tradeOrder, message: action === 'start_order' ? 'Order started successfully' : 'Quotation rejected successfully' };
+}
+
+async function agreementSnapshot(quotation) {
+  const agreementRfq = await quotationRepository.findRfqById(quotation.rfqId);
+  const [buyer, sellerUser, sellerProfile] = await Promise.all([
+    agreementRfq ? quotationRepository.findUserById(agreementRfq.buyerId) : null,
+    quotationRepository.findUserById(quotation.userId),
+    quotationRepository.findSellerByUserId(quotation.userId),
+  ]);
+  return {
+    agreementRfq,
+    content: {
+      agreementNumber: quotation.agreement?.agreementNumber,
+      revisionNumber: quotation.revisionNumber,
+      rfqId: quotation.rfqId,
+      tradeReference: quotation.quotationNumber || agreementRfq?.rfqNumber,
+      buyer: { name: buyer?.fullName, company: buyer?.metadata?.companyName, email: buyer?.email },
+      seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, registrationNumber: sellerProfile?.businessRegistrationNumber || sellerProfile?.gstNumber },
+      products: [{ productId: quotation.productId || agreementRfq?.productId, name: quotation.productId?.name || agreementRfq?.title, quantity: quotation.suppliedQuantity || agreementRfq?.quantity, unit: agreementRfq?.unit, unitPrice: quotation.unitPrice }],
+      pricing: { unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice, currency: quotation.currency },
+      minimumOrderQuantity: quotation.minimumOrderQuantity,
+      production: { timeline: quotation.productionTime, unit: quotation.productionTimeUnit },
+      shipping: { cost: quotation.shippingCost, estimate: quotation.shippingEstimate },
+      delivery: { leadTime: quotation.leadTime, leadTimeUnit: quotation.leadTimeUnit },
+      paymentTerms: quotation.paymentTerms,
+      incoterms: quotation.incoterms,
+      taxes: quotation.taxes,
+      packaging: quotation.packaging,
+      warranty: quotation.warranty,
+      samplePrice: quotation.samplePrice,
+      shippingTerms: quotation.shippingTerms,
+      specialConditions: quotation.specialClauses,
+      notes: quotation.notes || quotation.sellerMessage,
+      attachments: quotation.attachments,
+      generatedAt: quotation.acceptedAt || new Date(),
+    },
+  };
+}
+
+async function ensureAutomaticAgreement(quotation) {
+  const existing = (quotation.tradeDocuments || []).find(document => ['purchase_agreement','commercial_agreement'].includes(document.documentType) && document.status !== 'void');
+  if (existing) return { document: existing, agreementRfq: await quotationRepository.findRfqById(quotation.rfqId) };
+  if (!quotation.agreement?.agreementNumber) quotation.agreement = { ...(quotation.agreement?.toObject?.() || quotation.agreement || {}), agreementNumber: `AGR-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'draft' };
+  await quotation.save();
+  const { agreementRfq, content } = await agreementSnapshot(quotation);
+  const created = await createTradeDocument('quotation', quotation._id, { _id: quotation.userId?._id || quotation.userId, roles: ['seller'] }, {
+    documentType: 'purchase_agreement',
+    title: `Purchase Agreement ${quotation.agreement.agreementNumber}`,
+    requiresSellerSignature: true,
+    requiresBuyerSignature: true,
+    content,
+  });
+  return { document: created.document, agreementRfq };
 }
 
 async function publishQuotationContext({ quotation, rfq, actorId, receiverId, content }) {

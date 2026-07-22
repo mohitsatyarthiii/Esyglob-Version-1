@@ -33,6 +33,7 @@ const RfqDetailsPage = lazy(() => import('./pages/RfqDetailsPage'))
 const QuotationsPage = lazy(() => import('./pages/QuotationsPage'))
 const QuotationDetailsPage = lazy(() => import('./pages/QuotationDetailsPage'))
 const QuotationComparePage = lazy(() => import('./pages/QuotationComparePage'))
+const AgreementsPage = lazy(() => import('./pages/AgreementsPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const OrdersPage = lazy(() => import('./pages/OrdersPage'))
 const OrderDetailsPage = lazy(() => import('./pages/OrderDetailsPage'))
@@ -97,6 +98,7 @@ export default function App() {
       <Route path="/quotations" element={<QuotationsPage />} />
       <Route path="/quotations/compare" element={<QuotationComparePage />} />
       <Route path="/quotations/:quotationId" element={<QuotationDetailsPage />} />
+      <Route path="/agreements" element={<AgreementsPage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/orders" element={<OrdersPage />} />
       <Route path="/orders/:orderId" element={<OrderDetailsPage />} />
