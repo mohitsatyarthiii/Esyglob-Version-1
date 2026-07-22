@@ -444,6 +444,14 @@ class AIChatService {
       finalResponse = 'I could not produce a safe, verified response. Please rephrase the request without private information.';
     }
 
+    const suggestions = this.buildSuggestedFollowUps({ message, role: roleContext, snapshot: platformContext.snapshot });
+    const marketplaceMetadata = {
+      suggestions,
+      topProducts: platformContext.snapshot.topProducts || [],
+      topSuppliers: platformContext.snapshot.topSuppliers || [],
+      navigationActions: platformContext.snapshot.navigationActions || [],
+    };
+
     // Build assistant message
     const assistantMessage = {
       role: 'assistant',
@@ -456,6 +464,7 @@ class AIChatService {
         model: aiResult.model || 'default',
         card: body.responseCard || undefined,
         validation: { passed: validation.passed, regenerated, issues: validation.issues.map(issue => issue.code) },
+        ...marketplaceMetadata,
       },
     };
 
@@ -508,6 +517,7 @@ class AIChatService {
         tokensUsed: aiResult.tokensUsed,
         provider: aiResult.provider,
         model: aiResult.model,
+        metadata: marketplaceMetadata,
       },
       supportTicket,
     };

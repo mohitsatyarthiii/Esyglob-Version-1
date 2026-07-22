@@ -220,6 +220,40 @@ class AIService {
     };
   }
 
+  static async analyzeMarketplaceImage(imageUrl, options = {}) {
+    const parsedUrl = new URL(imageUrl);
+    if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
+      throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), { statusCode: 400 });
+    }
+    const keyObj = geminiKeyManager.getAvailableKey();
+    if (!keyObj) return { success: false, content: '', provider: 'none', model: 'unavailable', tokensUsed: 0 };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeout || 12000);
+    try {
+      const imageResponse = await fetch(imageUrl, { redirect: 'error', signal: controller.signal });
+      const contentType = imageResponse.headers.get('content-type') || '';
+      const contentLength = Number(imageResponse.headers.get('content-length') || 0);
+      if (!imageResponse.ok || !contentType.startsWith('image/')) throw new Error('Uploaded image is unavailable');
+      if (contentLength > 5 * 1024 * 1024) throw new Error('Image exceeds the 5MB visual-search limit');
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      if (imageBuffer.length > 5 * 1024 * 1024) throw new Error('Image exceeds the 5MB visual-search limit');
+      const model = options.model || GEMINI_MODEL;
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(keyObj.key)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Identify the main purchasable product in this image for B2B marketplace search. Return only a concise comma-separated description containing product type, material, style, likely industry, and visible attributes. Do not invent brands.' }, { inlineData: { mimeType: contentType.split(';')[0], data: imageBuffer.toString('base64') } }] }], generationConfig: { temperature: 0.15, maxOutputTokens: 100 } }),
+      });
+      if (response.status === 429) geminiKeyManager.markRateLimited(keyObj, 60);
+      if (!response.ok) throw new Error(`Gemini vision HTTP ${response.status}`);
+      const data = await response.json();
+      const content = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+      if (!content) throw new Error('Visual analysis returned no product description');
+      geminiKeyManager.markSuccess(keyObj);
+      return { success: true, content, provider: 'gemini', model, tokensUsed: (data?.usageMetadata?.promptTokenCount || 0) + (data?.usageMetadata?.candidatesTokenCount || 0) };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   static async raceCloudProviders(prompt, options = {}) {
     const providers = [];
 

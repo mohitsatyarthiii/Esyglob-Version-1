@@ -1,0 +1,46 @@
+import { ArrowLeft, Plus, Save, Send, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { fetchCategories } from '../api/marketplace'
+import { createProductEnquiry } from '../api/marketplace'
+import { createRfq } from '../api/trade'
+import AppShell from '../components/AppShell'
+import { AttachmentUploader } from '../components/TradeUI'
+import useAsyncData from '../hooks/useAsyncData'
+
+const emptyItem = { name: '', category: '', subcategory: '', quantity: '1', unit: 'pcs', targetPrice: '', specifications: '' }
+const contactPattern = /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|(?:\+?\d[\d\s().-]{7,}\d))/i
+
+export default function RfqCreatePage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const prefill = location.state || {}
+  const product = prefill.product || {}
+  const categories = useAsyncData(fetchCategories)
+  const [attachments, setAttachments] = useState([])
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [form, setForm] = useState({ title: product.name || '', description: product.description || '', category: typeof product.category === 'object' ? product.category?.name : product.category || '', subcategory: typeof product.subcategory === 'object' ? product.subcategory?.name : product.subcategory || '', specifications: '', quantity: String(product.moq || product.minimumOrderQuantity || 100), minimumOrderQuantity: '', unit: product.unit || 'pcs', targetPrice: product.price || '', currency: product.currency || 'INR', deliveryCountry: 'India', deliveryPort: '', deliveryTimeline: 'flexible', incoterms: 'FOB', isVerifiedSuppliersOnly: false, items: [{ ...emptyItem, name: product.name || '', category: typeof product.category === 'string' ? product.category : product.category?.name || '', quantity: String(product.moq || 1), targetPrice: product.price || '' }] })
+  const subcategories = useMemo(() => categories.data?.find((item) => item.name === form.category)?.subcategories || [], [categories.data, form.category])
+  const update = useCallback((key, value) => setForm((current) => ({ ...current, [key]: value })), [])
+  function updateItem(index, key, value) { setForm((current) => ({ ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value, ...(key === 'category' ? { subcategory: '' } : {}) } : item) })) }
+  async function submit(status) {
+    setError('')
+    if (!form.title.trim() || !form.description.trim() || !form.category || !form.deliveryCountry.trim()) return setError('Title, description, category and destination country are required.')
+    if ([form.title, form.description, form.specifications, ...form.items.flatMap((item) => [item.name, item.specifications])].some((value) => contactPattern.test(value))) return setError('Phone numbers, email addresses and external links are not allowed in RFQs.')
+    setBusy(status)
+    try {
+      if (product._id && prefill.sellerUserId && status !== 'draft') {
+        const result = await createProductEnquiry({ productId: product._id || product.id, sellerUserId: prefill.sellerUserId, productName: form.title, quantity: Number(form.quantity), unit: form.unit, targetPrice: Number(form.targetPrice) || undefined, destinationCountry: form.deliveryCountry, additionalNotes: [form.description, form.specifications].filter(Boolean).join('\n\n'), attachments })
+        const rfq = result.rfq || result
+        return navigate(`/rfqs/${rfq._id || rfq.id}`)
+      }
+      const rfq = await createRfq({ ...form, quantity: Number(form.quantity), minimumOrderQuantity: Number(form.minimumOrderQuantity) || undefined, targetPrice: Number(form.targetPrice) || undefined, visibility: 'public', status, rfqType: form.items.length > 1 ? 'multi_product' : product._id ? 'product' : 'custom', productId: product._id || product.id || undefined, items: form.items.filter((item) => item.name.trim()).map((item) => ({ ...item, quantity: Number(item.quantity), targetPrice: Number(item.targetPrice) || undefined })), attachments })
+      navigate(`/rfqs/${rfq._id || rfq.id}`)
+    } catch (nextError) { setError(nextError.message); setBusy('') }
+  }
+  return <AppShell><div className="trade-form-page container"><button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Back</button><header><span className="eyebrow">Buyer sourcing request</span><h1>Create RFQ</h1><p>Describe the requirement once; EsyGlob distributes public RFQs through the backend marketplace matching flow.</p></header><div className="trade-form-layout"><div><FormSection title="Requirement"><Field label="RFQ title" required><input value={form.title} onChange={(e) => update('title', e.target.value)} /></Field><Field label="Description" required><textarea value={form.description} onChange={(e) => update('description', e.target.value)} /></Field><div className="form-grid"><Field label="Category" required><select value={form.category} onChange={(e) => { update('category', e.target.value); update('subcategory', '') }}><option value="">Select category</option>{categories.data?.map((item) => <option key={item._id || item.name}>{item.name}</option>)}</select></Field><Field label="Subcategory"><select value={form.subcategory} onChange={(e) => update('subcategory', e.target.value)}><option value="">Select subcategory</option>{subcategories.map((item) => <option key={item._id || item.name} value={item.name}>{item.name}</option>)}</select></Field></div><Field label="Specifications"><textarea value={form.specifications} onChange={(e) => update('specifications', e.target.value)} /></Field></FormSection><FormSection title="Products / line items">{form.items.map((item, index) => <div className="line-item" key={index}><div className="line-item__head"><b>Item {index + 1}</b>{form.items.length > 1 && <button type="button" onClick={() => update('items', form.items.filter((_, i) => i !== index))}><Trash2 /></button>}</div><div className="form-grid form-grid--3"><Field label="Product"><input value={item.name} onChange={(e) => updateItem(index, 'name', e.target.value)} /></Field><Field label="Quantity"><input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} /></Field><Field label="Unit"><input value={item.unit} onChange={(e) => updateItem(index, 'unit', e.target.value)} /></Field></div><Field label="Item specifications"><input value={item.specifications} onChange={(e) => updateItem(index, 'specifications', e.target.value)} /></Field></div>)}<button className="add-line" type="button" onClick={() => update('items', [...form.items, { ...emptyItem }])}><Plus /> Add another product</button></FormSection><FormSection title="Attachments"><AttachmentUploader folder="rfqs" value={attachments} onChange={setAttachments} /></FormSection></div><aside><FormSection title="Commercial terms"><Field label="Quantity" required><input type="number" min="1" value={form.quantity} onChange={(e) => update('quantity', e.target.value)} /></Field><Field label="Target price"><div className="compound-input"><select value={form.currency} onChange={(e) => update('currency', e.target.value)}><option>INR</option><option>USD</option><option>EUR</option><option>GBP</option></select><input type="number" min="0" value={form.targetPrice} onChange={(e) => update('targetPrice', e.target.value)} /></div></Field><Field label="Destination country" required><input value={form.deliveryCountry} onChange={(e) => update('deliveryCountry', e.target.value)} /></Field><Field label="Delivery port"><input value={form.deliveryPort} onChange={(e) => update('deliveryPort', e.target.value)} /></Field><Field label="Timeline"><select value={form.deliveryTimeline} onChange={(e) => update('deliveryTimeline', e.target.value)}><option value="flexible">Flexible</option><option value="urgent">Urgent</option><option value="30_days">Within 30 days</option><option value="60_days">Within 60 days</option></select></Field><Field label="Incoterms"><select value={form.incoterms} onChange={(e) => update('incoterms', e.target.value)}>{['FOB','CIF','EXW','CFR','DDP','DAP'].map((item) => <option key={item}>{item}</option>)}</select></Field><label className="checkbox trade-checkbox"><input type="checkbox" checked={form.isVerifiedSuppliersOnly} onChange={(e) => update('isVerifiedSuppliersOnly', e.target.checked)} /><span /> Verified suppliers only</label></FormSection>{error && <p className="action-error">{error}</p>}<div className="sticky-form-actions"><button className="button button--secondary" disabled={Boolean(busy)} onClick={() => submit('draft')}><Save /> {busy === 'draft' ? 'Saving…' : 'Save draft'}</button><button className="button button--primary" disabled={Boolean(busy)} onClick={() => submit('active')}><Send /> {busy === 'active' ? 'Publishing…' : 'Publish RFQ'}</button></div></aside></div></div></AppShell>
+}
+
+export function FormSection({ title, children }) { return <section className="trade-form-section"><h2>{title}</h2>{children}</section> }
+export function Field({ label, required, children }) { return <label className="trade-field"><span>{label}{required && <em>*</em>}</span>{children}</label> }

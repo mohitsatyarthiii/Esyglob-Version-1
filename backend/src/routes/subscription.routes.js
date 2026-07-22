@@ -15,6 +15,7 @@ router.get('/plans', SubscriptionController.plans);
 
 // POST - Create subscription payment order
 router.post('/create-order', SubscriptionController.createOrder);
+router.post('/change-plan', SubscriptionController.changePlan);
 
 // PATCH - Toggle auto-renew
 router.patch('/auto-renew', SubscriptionController.toggleAutoRenew);

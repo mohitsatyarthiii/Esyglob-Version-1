@@ -1,0 +1,12 @@
+import { ArrowLeft, ArrowRight, BadgeCheck, CheckCircle2, Clock3, FileText, ShieldCheck } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
+import { getService } from '../api/services'
+import { useAuth } from '../auth/auth-context'
+import AppShell from '../components/AppShell'
+
+export default function ServiceDetailsPage() {
+  const { serviceKey } = useParams(); const service = getService(serviceKey); const { status } = useAuth()
+  if (!service) return <AppShell><div className="container module-page"><div className="empty-results"><FileText /><h1>Service not found</h1><Link to="/services">Browse services</Link></div></div></AppShell>
+  const bookingPath = status === 'authenticated' ? `/services/${service.key}/book` : '/login'
+  return <AppShell><div className="container service-detail-page"><Link className="back-link" to="/services"><ArrowLeft /> All services</Link><section className="service-detail-hero"><div><span className="eyebrow">{service.category}</span><h1>{service.title}</h1><p>{service.description}</p><div className="service-trust"><span><ShieldCheck /> Secure workflow</span><span><Clock3 /> Live status tracking</span><span><BadgeCheck /> EsyGlob operations</span></div><div className="service-detail-actions"><Link className="button button--primary" to={bookingPath} state={status === 'authenticated' ? undefined : { from: `/services/${service.key}/book` }}>Book this service <ArrowRight /></Link><Link className="button button--secondary" to="/services/requests">Booking history</Link></div></div><aside><small>Starting price</small><b>{service.startingPrice}</b><p>A detailed GST-inclusive quote is calculated from your booking requirements before submission.</p></aside></section><div className="service-detail-grid"><section className="module-panel"><h2>How it works</h2>{service.steps.map((step, index) => <article className="service-step" key={step}><i>{index + 1}</i><div><b>{step}</b><p>Your information is securely attached to the service request and visible in its timeline.</p></div></article>)}</section><section className="module-panel"><h2>Information required</h2><ul className="service-checklist">{service.fields.filter((item) => item.required).map((item) => <li key={item.key}><CheckCircle2 /> {item.label}</li>)}</ul><p className="privacy-note"><ShieldCheck /> Commercial details and documents remain account-protected.</p></section></div></div></AppShell>
+}

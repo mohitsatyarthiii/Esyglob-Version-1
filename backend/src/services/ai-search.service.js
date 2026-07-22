@@ -33,12 +33,19 @@ class AISearchService {
       throw Object.assign(new Error('Query is required'), { statusCode: 400 });
     }
 
+    let visualAnalysis = null;
+    if (imageUrl) {
+      try { visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl); }
+      catch (error) { console.warn('[AI-Search] Visual analysis unavailable:', error.message); }
+    }
+    const effectiveQuery = visualAnalysis?.success ? `${visualAnalysis.content}. ${query}` : query;
+
     // Derive search filters
-    const filters = AIService.deriveSearchFilters(query);
+    const filters = AIService.deriveSearchFilters(effectiveQuery);
 
     // Get marketplace results
     const results = await AISearchRepository.searchMarketplace({
-      query,
+      query: effectiveQuery,
       filters,
       userId,
     });
@@ -81,7 +88,7 @@ class AISearchService {
         rfqs: results.rfqs,
         quotations: results.quotations,
         imageSearch: imageUrl
-          ? { imageUrl, status: 'ready_for_visual_api', message: 'Image uploaded and stored. Visual embeddings can be connected here later.' }
+          ? { imageUrl, status: visualAnalysis?.success ? 'analyzed' : 'text_fallback', analysis: visualAnalysis?.content || '' }
           : null,
         suggestions: [
           'Compare verified suppliers',
@@ -108,7 +115,7 @@ class AISearchService {
 
 Write a concise marketplace search response for this EsyGlob query.
 Query: ${query}
-Image search: ${imageUrl ? `User uploaded image ${imageUrl}. Use marketplace matches as visual-search candidates until image embeddings are connected.` : 'No uploaded image.'}
+Image search: ${imageUrl ? `The uploaded image was analyzed as: ${visualAnalysis?.content || 'visual analysis unavailable; use the user query only'}.` : 'No uploaded image.'}
 AI interpretation: ${JSON.stringify(filters)}
 Marketplace result summary:
 ${contextSummary}
@@ -147,7 +154,7 @@ Instructions:
       rfqs: results.rfqs,
       quotations: results.quotations,
       imageSearch: imageUrl
-        ? { imageUrl, status: 'ready_for_visual_api', message: 'Image uploaded and stored. Visual embeddings can be connected here later.' }
+        ? { imageUrl, status: visualAnalysis?.success ? 'analyzed' : 'text_fallback', analysis: visualAnalysis?.content || '' }
         : null,
       suggestions: [
         'Compare verified suppliers',

@@ -120,6 +120,7 @@ export async function getQuotations(session, searchParams) {
 
 // ─── Create/Revise Quotation ───────────────────────────────
 export async function createQuotation(session, body) {
+  const saveAsDraft = body.status === 'draft';
   const {
     rfqId,
     unitPrice,
@@ -163,7 +164,7 @@ export async function createQuotation(session, body) {
     throw error;
   }
 
-  if (!rfqId || !unitPrice || minimumOrderQuantity === undefined || !leadTime) {
+  if (!rfqId || (!saveAsDraft && (!unitPrice || minimumOrderQuantity === undefined || !leadTime))) {
     const error = new Error('Missing required fields');
     error.statusCode = 400;
     throw error;
@@ -217,13 +218,13 @@ export async function createQuotation(session, body) {
     productId: rfq.productId || null,
     sellerId: seller._id,
     userId: session.userId,
-    unitPrice,
+    unitPrice: Number(unitPrice || 0),
     totalPrice:
-      totalPrice || unitPrice * (suppliedQuantity || minimumOrderQuantity),
+      totalPrice || Number(unitPrice || 0) * (suppliedQuantity || minimumOrderQuantity || 1),
     currency: currency || 'INR',
-    minimumOrderQuantity,
+    minimumOrderQuantity: Number(minimumOrderQuantity || 1),
     suppliedQuantity,
-    leadTime,
+    leadTime: Number(leadTime || 1),
     leadTimeUnit: leadTimeUnit || 'days',
     paymentTerms: paymentTerms || 'negotiable',
     advanceRequired: advanceRequired || 0,
@@ -241,22 +242,25 @@ export async function createQuotation(session, body) {
       expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     attachments: attachments || [],
     sellerMessage,
-    status: 'pending',
+    status: saveAsDraft ? 'draft' : 'submitted',
+    activityTimeline: [{ action: saveAsDraft ? 'draft_saved' : 'quotation_sent', status: saveAsDraft ? 'draft' : 'submitted', message: sellerMessage || notes || 'Quotation prepared', actorId: session.userId, actorRole: 'seller' }],
     negotiationHistory: [
       {
-        action: 'submitted',
+        action: saveAsDraft ? 'message' : 'submitted',
         actorId: session.userId,
         message: sellerMessage || notes || 'Quotation submitted.',
-        unitPrice,
+        unitPrice: Number(unitPrice || 0),
         totalPrice:
-          totalPrice || unitPrice * (suppliedQuantity || minimumOrderQuantity),
-        minimumOrderQuantity,
+          totalPrice || Number(unitPrice || 0) * (suppliedQuantity || minimumOrderQuantity || 1),
+        minimumOrderQuantity: Number(minimumOrderQuantity || 1),
         suppliedQuantity,
-        leadTime,
+        leadTime: Number(leadTime || 1),
         leadTimeUnit: leadTimeUnit || 'days',
       },
     ],
   });
+
+  if (saveAsDraft) return { quotation, message: 'Quotation draft saved' };
 
   // Update RFQ
   rfq.quotationCount = (rfq.quotationCount || 0) + 1;
@@ -575,6 +579,16 @@ export async function updateQuotation(session, quotationId, body) {
     throw error;
   }
 
+  if (action === 'withdraw' || action === 'send') {
+    if (quotation.userId.toString() !== session.userId) { const error = new Error('Unauthorized'); error.statusCode = 403; throw error; }
+    if (action === 'withdraw' && !['draft','pending','submitted','negotiating','countered','revision_requested','revised'].includes(quotation.status)) { const error = new Error('Quotation can no longer be withdrawn'); error.statusCode = 409; throw error; }
+    if (action === 'send' && quotation.status !== 'draft') { const error = new Error('Only a draft quotation can be sent'); error.statusCode = 409; throw error; }
+    quotation.status = action === 'withdraw' ? 'withdrawn' : 'submitted';
+    quotation.activityTimeline.push({ action: action === 'withdraw' ? 'quotation_withdrawn' : 'quotation_sent', status: quotation.status, message: reason || body.sellerMessage || `Quotation ${action}`, actorId: session.userId, actorRole: 'seller' });
+    await quotation.save();
+    return { quotation, message: action === 'withdraw' ? 'Quotation withdrawn' : 'Quotation sent to buyer' };
+  }
+
   // Buyer actions: request_revision, counter_offer
   if (action === 'request_revision' || action === 'counter_offer') {
     const rfq = await quotationRepository.findRfqById(quotation.rfqId);
@@ -676,7 +690,7 @@ export async function updateQuotation(session, quotationId, body) {
   }
 
   if (
-    !['pending', 'negotiating', 'revision_requested', 'revised'].includes(
+    !['draft', 'pending', 'submitted', 'negotiating', 'revision_requested', 'revised'].includes(
       quotation.status
     )
   ) {

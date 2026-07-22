@@ -1,5 +1,32 @@
 import ProductRepository from '../repositories/product.repository.js';
 import mongoose from 'mongoose';
+import { productSchema, productUpdateSchema } from '../validators/product.validator.js';
+
+function normalizeProductInput(data) {
+  const normalized = { ...data };
+
+  if (data.leadTime !== undefined) {
+    normalized.leadTime = {
+      value: Number(data.leadTime) || 0,
+      unit: data.leadTimeUnit || 'days',
+    };
+  }
+  if (data.deliveryTime !== undefined) {
+    normalized.deliveryTime = {
+      value: Number(data.deliveryTime) || 0,
+      unit: data.deliveryTimeUnit || 'days',
+    };
+  }
+
+  delete normalized.leadTimeUnit;
+  delete normalized.deliveryTimeUnit;
+  if (Array.isArray(data.certifications)) {
+    normalized.certifications = data.certifications.map((certification) =>
+      typeof certification === 'string' ? { name: certification } : certification
+    );
+  }
+  return normalized;
+}
 
 class ProductService {
   /**
@@ -126,6 +153,7 @@ class ProductService {
     // Check visibility
     const isPublic =
       ['active', 'published'].includes(product.status) &&
+      product.visibility !== 'private' &&
       product.sellerId?.isVerified &&
       product.sellerId?.isActive !== false &&
       product.sellerId?.isSuspended !== true;
@@ -158,6 +186,7 @@ class ProductService {
    * Create product — ✅ sets isVerifiedSeller flag
    */
   static async createProduct(userId, data) {
+    data = productSchema.parse(data);
     const seller = await ProductRepository.findSellerByUserId(userId);
     if (!seller) {
       const error = new Error('Complete seller onboarding before adding products');
@@ -177,7 +206,7 @@ class ProductService {
     }
 
     const product = await ProductRepository.create({
-      ...data,
+      ...normalizeProductInput(data),
       name: data.name || 'Untitled product draft',
       sellerId: seller._id,
       userId,
@@ -234,7 +263,13 @@ class ProductService {
       throw error;
     }
 
-    Object.assign(product, data);
+    const parsedUpdate = productUpdateSchema.parse(data);
+    const validatedData = Object.fromEntries(
+      Object.keys(data)
+        .filter((key) => Object.hasOwn(parsedUpdate, key))
+        .map((key) => [key, parsedUpdate[key]])
+    );
+    Object.assign(product, normalizeProductInput(validatedData));
     product.updatedAt = new Date();
     await ProductRepository.save(product);
 

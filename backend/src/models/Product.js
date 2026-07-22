@@ -186,6 +186,17 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    sampleLeadTime: {
+      value: { type: Number, min: 0 },
+      unit: { type: String, enum: ['days', 'weeks'], default: 'days' },
+    },
+    productAttributes: { type: mongoose.Schema.Types.Mixed, default: {} },
+    seo: {
+      title: { type: String, trim: true, maxlength: 80 },
+      description: { type: String, trim: true, maxlength: 180 },
+      keywords: [String],
+    },
+    visibility: { type: String, enum: ['public', 'private', 'unlisted'], default: 'public', index: true },
     orderType: {
       type: String,
       enum: ['inquiry_only', 'rfq_only', 'direct_order_enabled'],
@@ -277,6 +288,7 @@ productSchema.index({ status: 1 });
 productSchema.index({ status: 1, createdAt: -1 });
 productSchema.index({ status: 1, averageRating: -1, totalOrders: -1 });
 productSchema.index({ status: 1, directOrderEnabled: 1, orderType: 1 });
+productSchema.index({ visibility: 1, status: 1, createdAt: -1 });
 productSchema.index({ status: 1, 'priceTiers.minimumQuantity': 1 });
 productSchema.index({ bulkImportId: 1, importRowNumber: 1 });
 productSchema.index({ hsCodeIds: 1, status: 1 });

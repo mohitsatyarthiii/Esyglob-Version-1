@@ -10,6 +10,13 @@ function id(value) {
   return String(value?._id || value?.id || value || '');
 }
 
+function cookieValue(header, name) {
+  const encodedName = `${encodeURIComponent(name)}=`;
+  const part = String(header || '').split(';').map(value => value.trim()).find(value => value.startsWith(encodedName));
+  if (!part) return '';
+  try { return decodeURIComponent(part.slice(encodedName.length)); } catch { return part.slice(encodedName.length); }
+}
+
 export function initializeSocket(server) {
   const io = new Server(server, {
     cors: { origin: config.corsOrigin === true ? true : config.corsOrigin, credentials: true },
@@ -20,7 +27,10 @@ export function initializeSocket(server) {
 
   io.use(async (socket, next) => {
     try {
-      const token = String(socket.handshake.auth?.token || '').trim();
+      const token = String(
+        socket.handshake.auth?.token ||
+        cookieValue(socket.handshake.headers?.cookie, config.sessionCookie)
+      ).trim();
       const payload = verifyToken(token);
       if (!payload?.sub) return next(new Error('Unauthorized'));
       const user = await User.findById(payload.sub).select('_id roles isActive isBanned').lean();
@@ -55,6 +65,11 @@ export function initializeSocket(server) {
       if (chatId && socket.rooms.has(`chat_${chatId}`)) {
         socket.to(`chat_${chatId}`).emit('typing_updated', { chatId, userId, typing: Boolean(typing) });
       }
+    });
+    socket.on('get_presence', async ({ userId: requestedUserId } = {}, acknowledge = () => {}) => {
+      if (!requestedUserId) return acknowledge({ online: false });
+      const sockets = await io.in(`user_${id(requestedUserId)}`).fetchSockets();
+      return acknowledge({ online: sockets.length > 0 });
     });
     socket.on('mark_read', async ({ chatId } = {}) => {
       if (!chatId || !socket.rooms.has(`chat_${chatId}`)) return;

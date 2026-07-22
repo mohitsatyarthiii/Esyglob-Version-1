@@ -275,6 +275,20 @@ export async function createAuditLog(auditData) {
   return VerificationAudit.create(auditData);
 }
 
+export async function listVerificationAudit(verificationId, limit = 100) {
+  if (!verificationId) return [];
+  return VerificationAudit.find({ verificationId })
+    .populate('actorId', 'fullName')
+    .sort({ createdAt: 1 })
+    .limit(Math.min(Number(limit) || 100, 200))
+    .lean()
+    .exec();
+}
+
+export async function findVerificationById(verificationId) {
+  return SellerVerification.findById(verificationId).exec();
+}
+
 export async function listVerificationRecords(query = {}, limit = 50) {
   return SellerVerification.find(query)
     .populate('sellerId', 'companyName companyType verificationLevel trustScore isVerified')

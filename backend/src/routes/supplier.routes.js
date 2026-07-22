@@ -47,6 +47,14 @@ router.patch(
 );
 
 router.patch(
+  '/verification/admin/reviews/:verificationId',
+  authenticate,
+  requireAuth,
+  requireRole('admin'),
+  supplierController.reviewVerificationApplication
+);
+
+router.patch(
   '/profile',
   authenticate,
   requireAuth,

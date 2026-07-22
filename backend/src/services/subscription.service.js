@@ -13,6 +13,7 @@ class SubscriptionService {
     const userType = requestedRole === 'seller' ? 'seller' : requestedRole === 'buyer' ? 'buyer' : user.primaryRole || 'buyer';
 
     const {subscription,plan}=await getSubscriptionContext(user,userType);
+    await subscription.populate({ path: 'paymentHistoryIds', select: 'amount currency status paymentMethod transactionId createdAt description', options: { sort: { createdAt: -1 }, limit: 50 } });
     const usage=subscription.usage||{};
     const limits=plan.restrictions||plan.limits||{};
     const planCredits=Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0);
@@ -105,6 +106,24 @@ class SubscriptionService {
       subscription,
       message: `Auto-renew ${autoRenew ? 'enabled' : 'disabled'}`,
     };
+  }
+
+  static async changePlan(user, { planType, duration = 'monthly' }) {
+    const role = String(planType || '').startsWith('seller_') ? 'seller' : 'buyer';
+    const plan = await getPlan(planType, role);
+    const priceEntry = plan?.prices?.[duration];
+    const amount = Number(priceEntry?.amount ?? priceEntry ?? NaN);
+    if (!plan || amount !== 0) throw Object.assign(new Error('Paid plan changes must use secure checkout'), { statusCode: 422 });
+    const userId = user.id || user._id;
+    await SubscriptionRepository.findOrCreate(userId, role);
+    const field = role === 'seller' ? 'sellerPlan' : 'buyerPlan';
+    const durationField = role === 'seller' ? 'sellerDuration' : 'buyerDuration';
+    await SubscriptionRepository.update(userId, { userType: role, [field]: planType, [durationField]: duration, planKey: planType, billingCycle: duration, isActive: true, status: 'active', startDate: new Date(), expiryDate: null, renewalDate: null, amountPaid: 0, autoRenew: false, aiCreditsAllocated: Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0), aiCreditsUsed: 0 });
+    if (role === 'seller') {
+      const Seller = (await import('../models/Seller.js')).default;
+      await Seller.findOneAndUpdate({ userId }, { $set: { subscriptionPlan: planType, subscriptionStatus: 'active', subscriptionExpiryDate: null } });
+    }
+    return this.getSubscription(user, role);
   }
 }
 

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { activitySchema, tradeDocumentSchema, tradeNoteSchema } from './schemas/tradeArtifact.schema.js';
 
 const rfqSchema = new mongoose.Schema(
   {
@@ -152,7 +153,7 @@ const rfqSchema = new mongoose.Schema(
     // Status & Responses
     status: {
       type: String,
-      enum: ['active', 'draft', 'pending', 'viewed', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'rejected', 'expired'],
+      enum: ['active', 'draft', 'pending', 'viewed', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'cancelled', 'rejected', 'expired'],
       default: 'pending',
       index: true,
     },
@@ -203,6 +204,9 @@ const rfqSchema = new mongoose.Schema(
       enum: ['public', 'private'],
       default: 'public',
     },
+    notes: { type: [tradeNoteSchema], default: [] },
+    tradeDocuments: { type: [tradeDocumentSchema], default: [] },
+    activityTimeline: { type: [activitySchema], default: [] },
   },
   {
     timestamps: true,

@@ -390,3 +390,13 @@ export async function reviewVerificationDocument(req, res) {
     return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to review document' });
   }
 }
+
+export async function reviewVerificationApplication(req, res) {
+  try {
+    const result = await supplierService.reviewVerificationApplication(req.user, req.params.verificationId, req.body || {});
+    invalidateSupplierCaches(result.verification.sellerId);
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to update verification' });
+  }
+}

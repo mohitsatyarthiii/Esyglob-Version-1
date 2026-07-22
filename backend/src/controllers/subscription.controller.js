@@ -41,6 +41,11 @@ class SubscriptionController {
     }
   }
 
+  static async changePlan(req, res) {
+    try { return res.json(await SubscriptionService.changePlan(req.user, req.body)); }
+    catch (error) { return res.status(error.statusCode || 500).json({ error: error.message }); }
+  }
+
   /**
    * PATCH - Toggle auto-renew
    */

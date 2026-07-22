@@ -376,8 +376,79 @@ class OrderService {
     return { order: payload };
   }
 
+  static async sellerQueue(userId, query = {}) {
+    const seller = await OrderRepository.findSellerByUserId(userId);
+    if (!seller) return { items: [] };
+    const [{ default: RFQ }, { default: Quotation }, { default: Order }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Order.js')]);
+    const limit = Math.min(Math.max(Number(query.limit) || 80, 1), 150);
+    const [rfqs, quotations, orders] = await Promise.all([
+      RFQ.find({ status: { $in: ['active','pending','viewed','replied','quoted','negotiating'] }, $or: [{ sellerUserId: userId }, { specificSupplierIds: seller._id }, ...(seller.productCategories?.length ? [{ visibility:'public', category:{ $in:seller.productCategories } }] : [])] }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt: -1 }).limit(limit).lean(),
+      Quotation.find({ sellerId: seller._id, status: { $in: ['pending','submitted','negotiating','countered','revision_requested','revised','accepted'] } }).populate({ path:'rfqId', populate:{ path:'buyerId', select:'fullName email companyName' } }).populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt:-1 }).limit(limit).lean(),
+      Order.find({ sellerId: seller._id, status: { $in: ['draft','pending','pending_approval','awaiting_payment','pending_payment'] } }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').populate('rfqId','title quantity unit').populate('quotationId','unitPrice totalPrice status').sort({ updatedAt:-1 }).limit(limit).lean(),
+    ]);
+    const orderRfqIds = new Set(orders.map(item => idString(item.rfqId)));
+    const items = [
+      ...orders.map(order => ({ queueType:'order', queueId:order._id, orderId:order._id, buyer:order.buyerId, product:order.productId, rfq:order.rfqId, quotation:order.quotationId, quantity:order.quantity, unit:order.unit, unitPrice:order.pricePerUnit, totalAmount:order.totalAmount, status:order.status, negotiationStatus:order.quotationId?.status, documents:order.tradeDocuments?.length || order.documents?.length || 0, updatedAt:order.updatedAt })),
+      ...quotations.filter(item => !item.tradeOrderId && !orderRfqIds.has(idString(item.rfqId))).map(item => ({ queueType:'quotation', queueId:item._id, quotationId:item._id, rfqId:item.rfqId?._id, buyer:item.rfqId?.buyerId, product:item.productId, rfq:item.rfqId, quantity:item.suppliedQuantity, unitPrice:item.unitPrice, totalAmount:item.totalPrice, status:item.status, negotiationStatus:item.status, documents:item.tradeDocuments?.length || item.attachments?.length || 0, updatedAt:item.updatedAt })),
+      ...rfqs.filter(item => !item.tradeOrderId && !orderRfqIds.has(idString(item._id))).map(item => ({ queueType:'rfq', queueId:item._id, rfqId:item._id, buyer:item.buyerId, product:item.productId, rfq:item, quantity:item.quantity, unit:item.unit, unitPrice:item.targetPrice, status:item.status, negotiationStatus:item.status, documents:item.tradeDocuments?.length || item.attachments?.length || item.documents?.length || 0, updatedAt:item.updatedAt })),
+    ].sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
+    return { items };
+  }
+
+  static async startOrder(userId, body) {
+    const seller = await OrderRepository.findSellerByUserId(userId);
+    if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
+    const [{ default: RFQ }, { default: Quotation }, { default: Product }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Product.js')]);
+    const rfq = body.rfqId && mongoose.Types.ObjectId.isValid(body.rfqId) ? await RFQ.findById(body.rfqId) : null;
+    const quotation = body.quotationId && mongoose.Types.ObjectId.isValid(body.quotationId) ? await Quotation.findOne({ _id: body.quotationId, sellerId: seller._id }) : null;
+    if (!rfq && !quotation) throw Object.assign(new Error('A valid RFQ or quotation is required'), { statusCode: 422 });
+    const sourceRfq = rfq || await RFQ.findById(quotation.rfqId);
+    const productId = toObjectId(body.productId || quotation?.productId || sourceRfq?.productId);
+    const product = productId ? await Product.findOne({ _id: productId, sellerId: seller._id }).lean() : null;
+    if (!product) throw Object.assign(new Error('Select one of your products before starting the order'), { statusCode: 422 });
+    if (sourceRfq.tradeOrderId || quotation?.tradeOrderId) throw Object.assign(new Error('An order already exists for this trade'), { statusCode: 409 });
+    const quantity = Math.max(Number(body.quantity || quotation?.suppliedQuantity || sourceRfq.quantity || 1), 1);
+    const minimumOrderQuantity = Math.max(Number(body.minimumOrderQuantity || quotation?.minimumOrderQuantity || product.minimumOrderQuantity || 1), 1);
+    if (quantity < minimumOrderQuantity) throw Object.assign(new Error(`Final quantity must meet MOQ ${minimumOrderQuantity}`), { statusCode: 422 });
+    const unitPrice = Math.max(Number(body.unitPrice ?? quotation?.unitPrice ?? product.price ?? 0), 0);
+    const shippingCost = Math.max(Number(body.shippingCost ?? quotation?.shippingCost ?? 0), 0);
+    const taxAmount = Math.max(Number(body.taxAmount || 0), 0);
+    const discount = Math.max(Number(body.discount || 0), 0);
+    const subtotal = unitPrice * quantity;
+    const totalAmount = Math.max(0, subtotal + shippingCost + taxAmount - discount);
+    const requiresAgreement = body.requiresAgreement !== false;
+    const orderNumber = await OrderRepository.generateOrderNumber('ORD');
+    const order = await OrderRepository.create({ orderNumber, userId:sourceRfq.buyerId, buyerId:sourceRfq.buyerId, sellerId:seller._id, productId:product._id, rfqId:sourceRfq._id, quotationId:quotation?._id, orderType:'bulk', orderSubType:'trade_order', quantity, unit:body.unit || product.unit || sourceRfq.unit, pricePerUnit:unitPrice, subtotal, shippingCost, taxAmount, discount, totalPrice:totalAmount, totalAmount, netAmount:totalAmount, currency:body.currency || quotation?.currency || product.currency || 'INR', paymentStatus:'pending', status:'pending_approval', products:[{ productId:product._id, name:product.name, sku:body.sku, quantity, unit:body.unit || product.unit, unitPrice, totalPrice:subtotal, specifications:body.specifications || sourceRfq.specifications, image:product.images?.[0] }], sellerNotes:body.notes || '', tradeInformation:{ paymentTerms:body.paymentTerms || quotation?.paymentTerms, deliveryTerms:body.deliveryTerms || quotation?.incoterms, leadTime:body.leadTime || quotation?.leadTime, minimumOrderQuantity, configuredBySeller:true }, documents:Array.isArray(body.documents)?body.documents:[], timeline:[{ status:'rfq_created', note:`RFQ ${sourceRfq.title} linked`, updatedBy:sourceRfq.buyerId },...(quotation?[{ status:'quotation_sent', note:'Seller quotation linked', updatedBy:userId }]:[]),{ status:'order_started', note:'Seller configured final commercial terms', updatedBy:userId },{ status:'pending_approval', note:'Waiting for buyer approval', updatedBy:userId }], agreement:{ required:requiresAgreement, status:requiresAgreement?'awaiting_seller_signature':'not_required' } });
+    if (requiresAgreement) { order.tradeDocuments.push({ documentType:'purchase_agreement', title:`Purchase Agreement ${orderNumber}`, source:'generated', status:'awaiting_seller_signature', requiresSellerSignature:true, requiresBuyerSignature:true, createdBy:userId, metadata:{ terms:body.paymentTerms, deliveryTerms:body.deliveryTerms, quantity, unitPrice, shippingCost, taxAmount, discount, totalAmount } }); const agreementDocument=order.tradeDocuments.at(-1); agreementDocument.previewUrl=`/api/trade-workspace/order/${order._id}/documents/${agreementDocument._id}/preview`; order.agreement.documentId=agreementDocument._id; }
+    await order.save();
+    sourceRfq.tradeOrderId=order._id; sourceRfq.status='order_initiated'; sourceRfq.activityTimeline.push({ action:'order_started', status:'order_initiated', message:`Order ${orderNumber} started`, actorId:userId, actorRole:'seller' }); await sourceRfq.save();
+    if (quotation) { quotation.tradeOrderId=order._id; await quotation.save(); }
+    await NotificationService.createNotification({ userId:sourceRfq.buyerId, notificationType:'trade_order_created', title:'Seller prepared your order', description:`Review final terms for order ${orderNumber}.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}` }, priority:'high' }).catch(()=>{});
+    return { order };
+  }
+
+  static async buyerAction(userId, orderId, data) {
+    const order = await OrderRepository.findByIdFull(orderId);
+    if (!order) throw Object.assign(new Error('Order not found'), { statusCode:404 });
+    if (idString(order.buyerId || order.userId) !== String(userId)) throw Object.assign(new Error('Only the buyer can perform this action'), { statusCode:403 });
+    if (data.action === 'approve') {
+      if (order.status !== 'pending_approval') throw Object.assign(new Error('Order is not awaiting buyer approval'), { statusCode:409 });
+      if (order.agreement?.required && order.agreement.status !== 'completed') throw Object.assign(new Error('Both signatures are required before approval'), { statusCode:409 });
+      await TradeWorkflowService.transition({ order, toStatus:'pending_payment', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer approved final terms' });
+      const { ensurePendingOrderPayment } = await import('../lib/order-payments.js');
+      const payment = await ensurePendingOrderPayment(order,{ userId, amount:order.totalAmount, currency:order.currency, unit:order.unit }); order.paymentId=payment?._id;
+    } else if (data.action === 'reject_changes') { order.status='rejected'; order.timeline.push({ status:'changes_rejected', note:data.notes || 'Buyer rejected final terms', updatedBy:userId }); }
+    else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment','confirmed'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); order.status='cancelled'; order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); order.timeline.push({ status:'cancelled', note:order.cancelReason, updatedBy:userId }); }
+    else if (data.action === 'confirm_delivery') { if (order.status !== 'delivered') throw Object.assign(new Error('Delivery is not ready for confirmation'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'completed', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer confirmed delivery' }); order.completedAt=new Date(); }
+    else throw Object.assign(new Error('Invalid buyer action'), { statusCode:422 });
+    await OrderRepository.save(order);
+    const sellerUserId = order.sellerId?.userId?._id || order.sellerId?.userId;
+    if (sellerUserId) await NotificationService.createNotification({ userId:sellerUserId, notificationType:order.status==='cancelled'?'order_cancelled':order.status==='completed'?'order_completed':'order_pending_payment', title:`Buyer ${String(data.action).replaceAll('_',' ')}`, description:`Order ${order.orderNumber} was updated by the buyer.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}?role=seller` } }).catch(()=>{});
+    return { order };
+  }
+
   static async addProductionUpdate(userId, roles, orderId, data) {
-    const stages = ['raw_material_purchased', 'manufacturing_started', 'assembly_running', 'quality_control', 'packaging', 'production_completed'];
+    const stages = ['raw_material_purchased', 'raw_material_procured', 'manufacturing_started', 'manufacturing', 'assembly_running', 'quality_control', 'quality_inspection', 'packaging', 'production_completed'];
     if (!stages.includes(data.stage)) throw Object.assign(new Error('Invalid production stage'), { statusCode: 400 });
     const order = await OrderRepository.findByIdFull(orderId);
     if (!order) throw Object.assign(new Error('Order not found'), { statusCode: 404 });

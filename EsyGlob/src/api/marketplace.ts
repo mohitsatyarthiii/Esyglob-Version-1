@@ -306,7 +306,7 @@ export async function fetchSellerOnboarding(): Promise<{
   verificationCenter?: Record<string, unknown>;
   draftAvailable?: boolean;
 }> {
-  const payload = await apiRequest('/suppliers/me');
+  const payload = await apiRequest('/suppliers/onboarding', { cacheTtlMs: 0 });
   return unwrapData(payload);
 }
 
@@ -316,7 +316,7 @@ export async function archiveSellerDocument(documentId: string) {
 }
 
 export async function saveSellerOnboarding(input: Record<string, unknown>, submitForVerification = false) {
-  const payload = await apiRequest('/suppliers/profile', {
+  const payload = await apiRequest('/suppliers/onboarding', {
     method: 'PATCH',
     body: { ...input, submitForVerification },
   });
@@ -329,12 +329,12 @@ export async function fetchFactoryProfile(): Promise<{
   factory?: Record<string, unknown> | null;
   seller?: SellerSummary;
 }> {
-  const payload = await apiRequest('/suppliers/me');
+  const payload = await apiRequest('/suppliers/factory-profile', { cacheTtlMs: 0 });
   return unwrapData(payload);
 }
 
 export async function saveFactoryProfile(input: Record<string, unknown>) {
-  const payload = await apiRequest('/suppliers/profile', {
+  const payload = await apiRequest('/suppliers/factory-profile', {
     method: 'PATCH',
     body: input,
   });
@@ -350,7 +350,7 @@ export async function uploadSellerDocument(
   const form = new FormData();
   form.append('documentType', documentType);
   form.append('file', file as unknown as Blob);
-  const payload = await apiRequest('/upload', { method: 'POST', body: form });
+  const payload = await apiRequest('/suppliers/verification/documents', { method: 'POST', body: form });
   return unwrapData(payload);
 }
 
@@ -720,6 +720,12 @@ export async function updateOrderStatus(
 
 export async function addOrderProductionUpdate(orderId: string, input: { stage: string; note?: string; attachments?: string[] }): Promise<Order> {
   const payload = await apiRequest(`/orders/${orderId}/production-updates`, { method: 'POST', body: input });
+  const data = unwrapData<{ order?: Order } | Order>(payload);
+  return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;
+}
+
+export async function buyerOrderAction(orderId: string, input: { action: 'approve' | 'reject_changes' | 'cancel' | 'confirm_delivery'; notes?: string }): Promise<Order> {
+  const payload = await apiRequest(`/orders/${orderId}/buyer-action`, { method: 'POST', body: input });
   const data = unwrapData<{ order?: Order } | Order>(payload);
   return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;
 }

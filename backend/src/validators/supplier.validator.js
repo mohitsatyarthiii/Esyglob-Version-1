@@ -16,7 +16,9 @@ export const factorySchema = z.object({
   description: z.string().trim().optional(),
   employeeCount: z.coerce.number().min(0).optional(),
   productionLines: z.coerce.number().min(0).optional(),
-  machinery: z
+  machinery: z.union([
+    z.string().trim().transform(value => value ? [{ name: value, quantity: 1 }] : []),
+    z
     .array(
       z.object({
         name: z.string().trim().min(1),
@@ -24,13 +26,14 @@ export const factorySchema = z.object({
         model: z.string().trim().optional(),
         year: z.coerce.number().optional(),
       })
-    )
-    .optional()
-    .default([]),
+    )]).optional().default([]),
   monthlyCapacity: z.string().trim().optional(),
   annualCapacity: z.string().trim().optional(),
   capabilities: z.array(z.string().trim()).optional().default([]),
   qualityControl: z.string().trim().optional(),
+  qualityProcesses: z.array(z.string().trim()).optional().default([]),
+  exportMarkets: z.array(z.string().trim()).optional().default([]),
+  certifications: z.array(z.unknown()).optional().default([]),
   images: z.array(z.string().trim()).optional().default([]),
   videos: z.array(z.string().trim()).optional().default([]),
 });

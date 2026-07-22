@@ -58,6 +58,7 @@ class TradeWorkflowService {
 
   static blockers(order, nextStatus, context) {
     const blocked = [];
+    if (order.agreement?.required && order.agreement.status !== 'completed' && !['cancelled', 'rejected'].includes(nextStatus)) blocked.push('Required agreement signatures must be completed');
     if (['payment_confirmed', 'confirmed', 'processing', 'production'].includes(nextStatus) && order.paymentStatus !== 'paid') blocked.push('Verified payment is required');
     if (nextStatus === 'ready_to_ship' && order.tradeInformation?.inspectionRequired && context.inspection?.result !== 'pass') blocked.push('Inspection must pass before shipment');
     if (['pickup_scheduled', 'picked_up', 'in_transit'].includes(nextStatus) && !context.shipment) blocked.push('Shipment booking is required');

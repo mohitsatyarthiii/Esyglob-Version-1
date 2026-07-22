@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { addOrderProductionUpdate, fetchOrderDetails, updateOrderStatus } from '../api/marketplace';
+import { addOrderProductionUpdate, buyerOrderAction, fetchOrderDetails, updateOrderStatus } from '../api/marketplace';
 import { Order } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
@@ -14,7 +14,7 @@ import { firstImage } from '../utils/images';
 import { useCurrency } from '../currency/CurrencyContext';
 
 const sellerNextStatuses = ['confirmed', 'processing', 'production', 'ready_to_ship', 'shipped', 'delivered', 'completed'];
-const productionStages = ['raw_material_purchased', 'manufacturing_started', 'assembly_running', 'quality_control', 'packaging', 'production_completed'];
+const productionStages = ['raw_material_procured', 'manufacturing_started', 'manufacturing', 'quality_inspection', 'packaging', 'production_completed'];
 
 function OrderDetailsScreen() {
   const { formatPrice } = useCurrency();
@@ -47,6 +47,15 @@ function OrderDetailsScreen() {
       Alert.alert('Production updated', 'The buyer timeline and workflow were updated.');
     },
     onError: error => Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to update production.'),
+  });
+  const buyerAction = useMutation({
+    mutationFn: (action: 'approve' | 'reject_changes' | 'cancel' | 'confirm_delivery') => buyerOrderAction(orderId, { action, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order-details', orderId] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      Alert.alert('Order updated', 'Your response was added to the order timeline.');
+    },
+    onError: error => Alert.alert('Action failed', error instanceof Error ? error.message : 'Unable to update order.'),
   });
 
   const item = order.data;
@@ -199,6 +208,17 @@ function OrderDetailsScreen() {
               ))}
             </View>
             {['confirmed', 'processing', 'production'].includes(String(item.status)) ? <><Text style={styles.actionSubheading}>Structured production update</Text><View style={styles.statusGrid}>{productionStages.map(stage => <Pressable key={stage} disabled={productionUpdate.isPending} onPress={() => productionUpdate.mutate(stage)} style={[styles.productionButton, productionUpdate.isPending && styles.disabled]}><Icon name="factory" size={14} color="#1D4ED8" /><Text style={styles.productionButtonText}>{stage.replace(/_/g, ' ')}</Text></Pressable>)}</View></> : null}
+          </View>
+        ) : null}
+        {!canManage ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Buyer actions</Text>
+            <TextInput value={notes} onChangeText={setNotes} placeholder="Add a note for the seller" placeholderTextColor={colors.muted} style={styles.input} />
+            <View style={styles.statusGrid}>
+              {String(item.status) === 'pending_approval' ? <><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('approve')} style={styles.statusButton}><Text style={styles.statusButtonText}>Approve terms</Text></Pressable><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('reject_changes')} style={styles.productionButton}><Text style={styles.productionButtonText}>Reject changes</Text></Pressable></> : null}
+              {String(item.status) === 'delivered' ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('confirm_delivery')} style={styles.statusButton}><Text style={styles.statusButtonText}>Confirm delivery</Text></Pressable> : null}
+              {['pending', 'pending_approval', 'awaiting_payment', 'pending_payment', 'confirmed'].includes(String(item.status)) ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('cancel')} style={styles.productionButton}><Text style={styles.productionButtonText}>Cancel order</Text></Pressable> : null}
+            </View>
           </View>
         ) : null}
       </ScrollView>

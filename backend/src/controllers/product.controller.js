@@ -74,6 +74,7 @@ class ProductController {
       return res.json(result);
     } catch (error) {
       console.error('[Product-Update] Error:', error.message);
+      if (error.name === 'ZodError') return res.status(422).json({ error: 'Please check the product details and try again' });
       if (error.statusCode === 400) return res.status(400).json({ error: error.message });
       if (error.statusCode === 403) return res.status(403).json({ error: error.message });
       if (error.statusCode === 404) return res.status(404).json({ error: error.message });

@@ -17,10 +17,27 @@ export const productSchema = z.object({
   minimumOrderQuantity: z.coerce.number().min(1).default(1),
   samplePrice: z.coerce.number().min(0).nullable().optional(),
   sampleAvailable: z.boolean().optional().default(false),
+  sampleLeadTime: z.object({ value: z.coerce.number().min(0).optional().default(0), unit: z.enum(['days','weeks']).optional().default('days') }).optional().default({}),
+  productAttributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().default({}),
+  seo: z.object({ title: z.string().trim().max(80).optional().default(''), description: z.string().trim().max(180).optional().default(''), keywords: z.array(z.string().trim()).optional().default([]) }).optional().default({}),
+  visibility: z.enum(['public','private','unlisted']).optional().default('public'),
   orderType: z.enum(['inquiry_only', 'rfq_only', 'direct_order_enabled']).optional().default('inquiry_only'),
   directOrderEnabled: z.boolean().optional(),
   description: z.string().trim().max(2000).optional().default(''),
   productType: z.string().trim().optional().default(''),
+  brand: z.string().trim().optional().default(''),
+  countryOfOrigin: z.string().trim().optional().default(''),
+  stockQuantity: z.coerce.number().min(0).optional().default(0),
+  variants: z.array(z.object({
+    sku: z.string().trim().optional().default(''),
+    name: z.string().trim().optional().default(''),
+    attributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().default({}),
+    price: z.coerce.number().min(0).optional().default(0),
+    minimumOrderQuantity: z.coerce.number().min(1).optional().default(1),
+    stockQuantity: z.coerce.number().min(0).optional().default(0),
+    images: z.array(z.string().trim().min(1)).optional().default([]),
+    isActive: z.boolean().optional().default(true),
+  })).optional().default([]),
   images: z.array(z.string().trim().min(1)).optional().default([]),
   videos: z.array(z.object({
     url: z.string().trim().min(1),
@@ -68,7 +85,7 @@ export const productSchema = z.object({
   status: z.enum(['draft', 'published', 'pending_review', 'rejected', 'active', 'paused']).default('draft'),
 });
 
-export const productUpdateSchema = productSchema;
+export const productUpdateSchema = productSchema.partial();
 
 export function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

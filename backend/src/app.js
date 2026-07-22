@@ -48,6 +48,7 @@ import locationRoutes from './routes/location.routes.js';
 import documentRoutes from './routes/document.routes.js';
 import hsCodeRoutes from './routes/hs-code.routes.js';
 import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
+import tradeArtifactRoutes from './routes/trade-artifact.routes.js';
 
 const app = express();
 
@@ -145,6 +146,7 @@ app.use('/api/service-requests', serviceRequestRoutes);
 app.use('/api/warehousing', warehouseRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/trade-workspace', tradeArtifactRoutes);
 app.use('/api/admin/knowledge-base', knowledgeBaseRoutes);
 
 // 404 handler

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'crypto';
+import { tradeDocumentSchema, tradeNoteSchema } from './schemas/tradeArtifact.schema.js';
 
 function generateOrderNumber(prefix) {
   return `${prefix}${Date.now().toString(36).toUpperCase()}${crypto.randomInt(1000, 10000)}`;
@@ -166,6 +167,14 @@ const orderSchema = new mongoose.Schema({
   sourceSnapshot: mongoose.Schema.Types.Mixed,
   platformServices: mongoose.Schema.Types.Mixed,
   documents: [mongoose.Schema.Types.Mixed],
+  structuredNotes: { type: [tradeNoteSchema], default: [] },
+  tradeDocuments: { type: [tradeDocumentSchema], default: [] },
+  agreement: {
+    required: { type: Boolean, default: false },
+    documentId: mongoose.Schema.Types.ObjectId,
+    status: { type: String, enum: ['not_required', 'draft', 'awaiting_seller_signature', 'awaiting_buyer_signature', 'completed', 'void'], default: 'not_required' },
+    completedAt: Date,
+  },
   production: {
     status: { type: String, default: 'not_started' },
     updates: [{ stage: String, note: String, attachments: [String], updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, timestamp: { type: Date, default: Date.now } }],

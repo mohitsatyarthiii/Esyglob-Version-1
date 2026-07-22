@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { activitySchema, tradeDocumentSchema, tradeNoteSchema } from './schemas/tradeArtifact.schema.js';
 
 const quotationSchema = new mongoose.Schema(
   {
@@ -122,7 +123,7 @@ const quotationSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ['pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
+      enum: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
       default: 'pending',
       index: true,
     },
@@ -205,6 +206,9 @@ const quotationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
     },
+    structuredNotes: { type: [tradeNoteSchema], default: [] },
+    tradeDocuments: { type: [tradeDocumentSchema], default: [] },
+    activityTimeline: { type: [activitySchema], default: [] },
   },
   {
     timestamps: true,

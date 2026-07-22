@@ -251,7 +251,7 @@ class WalletService {
     if (type === 'bank_account') {
       const accountNumber = String(body.accountNumber || '').replace(/\D/g, '');
       const ifsc = String(body.ifsc || '').trim().toUpperCase();
-      const holderName = String(body.holderName || '').trim();
+      const holderName = String(body.holderName || body.accountHolder || '').trim();
 
       if (!holderName || accountNumber.length < 9 || accountNumber.length > 18 || !validateIfsc(ifsc)) {
         throw Object.assign(new Error('Enter a valid bank holder name, account number and IFSC'), { statusCode: 400 });

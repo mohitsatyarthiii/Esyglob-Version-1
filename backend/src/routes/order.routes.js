@@ -9,6 +9,8 @@ router.use(requireAuth);
 
 // GET - List orders
 router.get('/', OrderController.list);
+router.get('/seller-queue', OrderController.sellerQueue);
+router.post('/start', OrderController.startOrder);
 
 // POST - Create order
 router.post('/', OrderController.create);
@@ -17,6 +19,7 @@ router.post('/', OrderController.create);
 router.get('/:orderId', OrderController.getById);
 
 router.post('/:orderId/production-updates', OrderController.addProductionUpdate);
+router.post('/:orderId/buyer-action', OrderController.buyerAction);
 
 // PATCH - Update order status
 router.patch('/:orderId', OrderController.updateStatus);

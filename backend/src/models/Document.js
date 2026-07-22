@@ -17,7 +17,7 @@ const documentSchema = new mongoose.Schema({
   name: String,
   type: {
     type: String,
-    enum: ['commercial_invoice', 'packing_list', 'bill_of_lading', 'air_waybill', 'certificate_of_origin', 'insurance_certificate', 'export_declaration', 'import_declaration', 'bill_of_entry', 'letter_of_credit', 'bank_guarantee', 'proforma_invoice', 'purchase_order', 'inspection_certificate', 'gst_invoice', 'customs_declaration', 'trust_receipt', 'bill_of_exchange', 'other'],
+    enum: ['commercial_invoice', 'commercial_proposal', 'quotation', 'packing_list', 'bill_of_lading', 'air_waybill', 'certificate_of_origin', 'insurance_certificate', 'export_declaration', 'import_declaration', 'bill_of_entry', 'letter_of_credit', 'bank_guarantee', 'proforma_invoice', 'purchase_order', 'purchase_agreement', 'commercial_agreement', 'technical_specification', 'terms_document', 'inspection_certificate', 'gst_invoice', 'customs_declaration', 'trust_receipt', 'bill_of_exchange', 'other'],
     required: true
   },
   category: {

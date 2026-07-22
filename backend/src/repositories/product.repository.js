@@ -63,6 +63,7 @@ class ProductRepository {
     const count = await Product.countDocuments({
       status: { $in: ['active', 'published'] },
       isVerifiedSeller: true,
+      visibility: { $ne: 'private' },
       ...filter,
     }).exec();
 
@@ -88,6 +89,7 @@ class ProductRepository {
     const query = {
       status: { $in: ['active', 'published'] },
       isVerifiedSeller: true,
+      visibility: { $ne: 'private' },
       ...filter,
     };
 
@@ -195,7 +197,7 @@ class ProductRepository {
       : { slug: String(productId).toLowerCase() };
 
     return Product.findOne(query)
-      .populate('sellerId', 'name isVerified isActive isSuspended logo companyName city state userId')
+      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge logo companyName city state userId')
       .lean()
       .exec();
   }

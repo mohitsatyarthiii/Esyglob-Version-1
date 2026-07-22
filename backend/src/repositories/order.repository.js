@@ -101,7 +101,7 @@ class OrderRepository {
    * Find seller by userId
    */
   static async findSellerByUserId(userId) {
-    return Seller.findOne({ userId }).select('_id').lean().exec();
+    return Seller.findOne({ userId }).select('_id userId productCategories').lean().exec();
   }
 
   /**

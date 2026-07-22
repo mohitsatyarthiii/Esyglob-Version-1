@@ -30,15 +30,21 @@ export function hasRole(userOrRoles, role) {
 
 // Seller Verification Status
 export const SELLER_STATUS = {
+  DRAFT: 'draft',
   PENDING: 'pending',
+  SUBMITTED: 'submitted',
   DOCUMENT_SUBMITTED: 'document_submitted',
   DOCUMENT_REVIEW: 'document_review',
   INFO_REQUESTED: 'info_requested',
+  ADDITIONAL_INFORMATION_REQUIRED: 'additional_information_required',
+  FACTORY_INSPECTION_SCHEDULED: 'factory_inspection_scheduled',
   MANUAL_VERIFICATION: 'manual_verification',
   UNDER_REVIEW: 'under_review',
   APPROVED: 'approved',
   REJECTED: 'rejected',
   SUSPENDED: 'suspended',
+  EXPIRED: 'expired',
+  REVERIFICATION_REQUIRED: 'reverification_required',
 };
 
 export const VERIFICATION_LEVELS = {
@@ -116,8 +122,17 @@ export const ALLOWED_DOCUMENT_TYPES_SET = new Set([
   'import_export_code',
   'msme_certificate',
   'government_id',
+  'government_id_front',
+  'government_id_back',
+  'passport',
+  'driving_license',
+  'national_identity_card',
+  'director_id',
   'bank_statement',
   'factory_address_proof',
+  'office_address_proof',
+  'warehouse_address_proof',
+  'lease_agreement',
   'factory_image',
   'factory_video',
   'production_line_image',
@@ -142,6 +157,7 @@ export const ALLOWED_DOCUMENT_TYPES_SET = new Set([
   'fire_safety_certificate',
   'pollution_certificate',
   'cancelled_cheque',
+  'bank_certificate',
   'quality_certificate',
   'service_license',
   'service_document',

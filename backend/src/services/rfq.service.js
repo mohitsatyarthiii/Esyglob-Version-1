@@ -279,6 +279,7 @@ export async function createRfq(session, body) {
     visibility: visibility || 'public',
     status: requestStatus === 'draft' ? 'draft' : 'active',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
+    activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_created', status: requestStatus === 'draft' ? 'draft' : 'active', message: title, actorId: session.userId, actorRole: 'buyer' }],
   });
 
   // Notify matching sellers if public
@@ -424,6 +425,14 @@ export async function updateRfq(session, rfqId, body) {
     return { rfq, message: 'RFQ marked as replied' };
   }
 
+  if (action === 'decline') {
+    const seller = session.roles?.includes(USER_ROLES.SELLER) ? await rfqRepository.findSellerByUserId(session.userId) : null;
+    if (!(await canSellerAccessRfq(rfq, session.userId, seller))) { const error = new Error('Seller is not eligible for this RFQ'); error.statusCode = 403; throw error; }
+    rfq.activityTimeline.push({ action: 'seller_declined', status: rfq.status, message: body.reason || 'Seller declined this opportunity', actorId: session.userId, actorRole: 'seller' });
+    await rfq.save();
+    return { rfq, message: 'RFQ declined' };
+  }
+
   // Buyer-only actions
   if (rfq.buyerId.toString() !== session.userId) {
     const error = new Error('Unauthorized');
@@ -431,15 +440,17 @@ export async function updateRfq(session, rfqId, body) {
     throw error;
   }
 
-  if (['close', 'archive', 'publish', 'reopen'].includes(action)) {
+  if (['close', 'cancel', 'archive', 'publish', 'reopen'].includes(action)) {
     const statusByAction = {
       close: 'closed',
+      cancel: 'cancelled',
       archive: 'archived',
       publish: 'active',
       reopen: 'active',
     };
     rfq.status = statusByAction[action];
     if (action === 'close') rfq.closedAt = new Date();
+    rfq.activityTimeline.push({ action: `rfq_${action}`, status: rfq.status, message: body.reason || `RFQ ${action}`, actorId: session.userId, actorRole: 'buyer' });
     await rfq.save();
     return { rfq, message: 'RFQ status updated' };
   }

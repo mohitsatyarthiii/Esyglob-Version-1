@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
+import * as controller from '../controllers/trade-artifact.controller.js';
+const router = Router();
+router.use(authenticate, requireAuth);
+router.get('/:entityType/:entityId', controller.workspace);
+router.post('/:entityType/:entityId/notes', controller.addNote);
+router.post('/:entityType/:entityId/documents', controller.createDocument);
+router.get('/:entityType/:entityId/documents/:documentId/preview', controller.previewDocument);
+router.post('/:entityType/:entityId/documents/:documentId/sign', controller.signDocument);
+export default router;
