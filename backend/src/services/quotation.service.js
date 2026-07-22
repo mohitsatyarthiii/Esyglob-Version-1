@@ -909,6 +909,11 @@ export async function respondToQuotation(session, quotationId, body) {
   }
 
   const previousStatus = quotation.status;
+  if (action === 'accept' && previousStatus === 'buyer_accepted') {
+    const { agreementRfq } = await ensureAutomaticAgreement(quotation);
+    const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
+    return { quotation: updatedQuotation, tradeOrder: null, reused: true, message: `Quotation is already accepted. Agreement ${updatedQuotation.agreement?.agreementNumber || ''} is ready.`.trim(), agreementRfq };
+  }
   const reviewableStatuses = ['pending', 'submitted', 'negotiating', 'revised'];
   if ((action === 'accept' || action === 'reject') && !reviewableStatuses.includes(previousStatus)) {
     const error = new Error(
@@ -954,11 +959,12 @@ export async function respondToQuotation(session, quotationId, body) {
   if (action === 'accept') {
     const { agreementRfq } = await ensureAutomaticAgreement(quotation);
     const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
-    await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — Agreement ready for signature', description: 'Review the pre-filled Agreement, complete any remaining commercial terms, and sign it.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#agreement-workflow-title` }, priority: 'high' });
+    const sellerNotification = await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — Agreement ready for signature', description: 'Review the pre-filled Agreement, complete any remaining commercial terms, and sign it.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#agreement-workflow-title` }, priority: 'high' });
     await publishQuotationContext({ quotation: updatedQuotation, rfq: agreementRfq || quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, content: 'Buyer accepted the quotation. A live Agreement has been generated for Seller review and signature.' });
     const io = getIO();
     if (io) {
       const event = { quotationId: quotation._id, rfqId: quotation.rfqId?._id || quotation.rfqId, status: quotation.status, action };
+      io.to(`user_${quotation.userId?._id || quotation.userId}`).emit('new_notification', sellerNotification);
       io.to(`user_${quotation.userId?._id || quotation.userId}`).emit('quotation_updated', event);
       io.to(`user_${session.userId}`).emit('quotation_updated', event);
     }
