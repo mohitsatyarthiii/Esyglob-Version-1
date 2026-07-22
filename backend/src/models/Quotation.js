@@ -70,11 +70,12 @@ const quotationSchema = new mongoose.Schema(
       enum: ['days', 'weeks'],
       default: 'days',
     },
+    productionTime: { type: Number, min: 0 },
+    productionTimeUnit: { type: String, enum: ['days', 'weeks'], default: 'days' },
     
     // Payment Terms
     paymentTerms: {
       type: String,
-      enum: ['immediate', '7days', '15days', '30days', '60days', 'negotiable'],
       default: 'negotiable',
     },
     advanceRequired: {
@@ -93,14 +94,12 @@ const quotationSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-    shippingEstimate: {
-      method: String,
-      cost: { type: Number, default: 0 },
-      currency: String,
-      estimatedDays: Number,
-      destinationPort: String,
-      notes: String,
-    },
+    shippingEstimate: mongoose.Schema.Types.Mixed,
+    shippingTerms: String,
+    packaging: mongoose.Schema.Types.Mixed,
+    samplePrice: { type: Number, min: 0 },
+    taxes: { taxRate: { type: Number, min: 0 }, amount: { type: Number, min: 0 }, description: String },
+    specialClauses: [String],
     
     // Product Details
     description: {
@@ -145,6 +144,8 @@ const quotationSchema = new mongoose.Schema(
         suppliedQuantity: Number,
         leadTime: Number,
         leadTimeUnit: String,
+        productionTime: Number,
+        productionTimeUnit: String,
         paymentTerms: String,
         advanceRequired: Number,
         incoterms: String,
@@ -155,6 +156,11 @@ const quotationSchema = new mongoose.Schema(
         reason: String,
         pricingTiers: mongoose.Schema.Types.Mixed,
         shippingEstimate: mongoose.Schema.Types.Mixed,
+        shippingTerms: String,
+        packaging: mongoose.Schema.Types.Mixed,
+        samplePrice: Number,
+        taxes: mongoose.Schema.Types.Mixed,
+        specialClauses: [String],
         changedFields: [String],
         documents: [mongoose.Schema.Types.Mixed],
         snapshot: mongoose.Schema.Types.Mixed,

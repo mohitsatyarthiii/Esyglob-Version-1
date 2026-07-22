@@ -2,6 +2,7 @@ import * as service from '../services/trade-artifact.service.js';
 import { streamAgreementPdf } from '../lib/agreement-pdf.js';
 const respond = handler => async (req, res) => { try { return res.json(await handler(req)); } catch (error) { return res.status(error.statusCode || 500).json({ error: error.message }); } };
 export const workspace = respond(req => service.getWorkspace(req.params.entityType, req.params.entityId, req.user));
+export const unifiedWorkspace = respond(req => service.getUnifiedWorkspace(req.params.entityType, req.params.entityId, req.user));
 export const addNote = respond(req => service.addNote(req.params.entityType, req.params.entityId, req.user, req.body || {}));
 export const createDocument = respond(req => service.createTradeDocument(req.params.entityType, req.params.entityId, req.user, req.body || {}));
 export const signDocument = respond(req => service.signTradeDocument(req.params.entityType, req.params.entityId, req.params.documentId, req.user, req.body || {}, { ipAddress: req.ip, userAgent: req.get('user-agent') }));

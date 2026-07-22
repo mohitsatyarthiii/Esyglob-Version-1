@@ -18,6 +18,8 @@ import { createTradeDocument } from './trade-artifact.service.js';
 async function sellerCanQuote(rfq, seller, sellerUserId) {
   if (!seller?.isActive || seller.isSuspended) return false;
   if (!OPEN_RFQ_STATUSES.includes(rfq.status)) return false;
+  const sellerAccepted = rfq.status === 'seller_accepted' || rfq.repliedBySellerIds?.some(value => idMatches(value, sellerUserId)) || rfq.activityTimeline?.some(event => event.action === 'seller_accept' && idMatches(event.actorId, sellerUserId));
+  if (!sellerAccepted) return false;
 
   if (rfq.visibility === 'private') {
     if (
@@ -132,11 +134,18 @@ export async function createQuotation(session, body) {
     suppliedQuantity,
     leadTime,
     leadTimeUnit,
+    productionTime,
+    productionTimeUnit,
     paymentTerms,
     advanceRequired,
     incoterms,
     shippingCost,
     shippingEstimate,
+    shippingTerms,
+    packaging,
+    samplePrice,
+    taxes,
+    specialClauses,
     pricingTiers,
     description,
     specifications,
@@ -228,11 +237,18 @@ export async function createQuotation(session, body) {
     suppliedQuantity,
     leadTime: Number(leadTime || 1),
     leadTimeUnit: leadTimeUnit || 'days',
+    productionTime: Number(productionTime || leadTime || 0),
+    productionTimeUnit: productionTimeUnit || leadTimeUnit || 'days',
     paymentTerms: paymentTerms || 'negotiable',
     advanceRequired: advanceRequired || 0,
     incoterms,
     shippingCost: shippingCost || 0,
     shippingEstimate: shippingEstimate || null,
+    shippingTerms,
+    packaging,
+    samplePrice: Number(samplePrice || 0),
+    taxes: taxes || {},
+    specialClauses: specialClauses || [],
     pricingTiers: pricingTiers || [],
     description,
     specifications,
@@ -268,7 +284,7 @@ export async function createQuotation(session, body) {
   rfq.quotationCount = (rfq.quotationCount || 0) + 1;
   if (!rfq.repliedBySellerIds.some((id) => id.toString() === session.userId)) {
     rfq.repliedBySellerIds.push(session.userId);
-    rfq.status = ['viewed', 'pending', 'active'].includes(rfq.status)
+    rfq.status = ['viewed', 'pending', 'active', 'submitted', 'seller_accepted', 'ready_for_quotation'].includes(rfq.status)
       ? 'quoted'
       : rfq.status;
   }
@@ -363,11 +379,18 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     suppliedQuantity,
     leadTime,
     leadTimeUnit,
+    productionTime,
+    productionTimeUnit,
     paymentTerms,
     advanceRequired,
     incoterms,
     shippingCost,
     shippingEstimate,
+    shippingTerms,
+    packaging,
+    samplePrice,
+    taxes,
+    specialClauses,
     pricingTiers,
     description,
     specifications,
@@ -401,6 +424,8 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     suppliedQuantity: existingQuotation.suppliedQuantity,
     leadTime: existingQuotation.leadTime,
     leadTimeUnit: existingQuotation.leadTimeUnit,
+    productionTime: existingQuotation.productionTime,
+    productionTimeUnit: existingQuotation.productionTimeUnit,
     paymentTerms: existingQuotation.paymentTerms,
     advanceRequired: existingQuotation.advanceRequired,
     incoterms: existingQuotation.incoterms,
@@ -411,6 +436,11 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     reason: 'Seller revised quotation',
     pricingTiers: existingQuotation.pricingTiers,
     shippingEstimate: existingQuotation.shippingEstimate,
+    shippingTerms: existingQuotation.shippingTerms,
+    packaging: existingQuotation.packaging,
+    samplePrice: existingQuotation.samplePrice,
+    taxes: existingQuotation.taxes,
+    specialClauses: existingQuotation.specialClauses,
   });
 
   // Update fields
@@ -425,11 +455,18 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     suppliedQuantity,
     leadTime,
     leadTimeUnit: leadTimeUnit || 'days',
+    productionTime: productionTime ?? existingQuotation.productionTime,
+    productionTimeUnit: productionTimeUnit || existingQuotation.productionTimeUnit || 'days',
     paymentTerms: paymentTerms || 'negotiable',
     advanceRequired: advanceRequired || 0,
     incoterms,
     shippingCost: shippingCost || 0,
     shippingEstimate: shippingEstimate || existingQuotation.shippingEstimate,
+    shippingTerms: shippingTerms ?? existingQuotation.shippingTerms,
+    packaging: packaging ?? existingQuotation.packaging,
+    samplePrice: samplePrice ?? existingQuotation.samplePrice,
+    taxes: taxes ?? existingQuotation.taxes,
+    specialClauses: specialClauses ?? existingQuotation.specialClauses,
     pricingTiers: pricingTiers || existingQuotation.pricingTiers || [],
     description,
     specifications,
@@ -626,8 +663,11 @@ export async function updateQuotation(session, quotationId, body) {
         delivery: { leadTime: quotation.leadTime, leadTimeUnit: quotation.leadTimeUnit },
         paymentTerms: quotation.paymentTerms,
         incoterms: quotation.incoterms,
-        taxes: agreementRfq?.taxes,
-        tradeTerms: agreementRfq?.tradeTerms,
+        taxes: quotation.taxes,
+        packaging: quotation.packaging,
+        samplePrice: quotation.samplePrice,
+        shippingTerms: quotation.shippingTerms,
+        specialConditions: quotation.specialClauses,
         notes: quotation.notes || quotation.sellerMessage,
         attachments: quotation.attachments,
         generatedAt: new Date(),
@@ -759,12 +799,12 @@ export async function updateQuotation(session, quotationId, body) {
   }
 
   const allowedFields = [
-    'unitPrice', 'totalPrice', 'leadTime', 'leadTimeUnit',
+    'unitPrice', 'totalPrice', 'leadTime', 'leadTimeUnit', 'productionTime', 'productionTimeUnit',
     'paymentTerms', 'advanceRequired', 'minimumOrderQuantity',
-    'suppliedQuantity', 'incoterms', 'shippingCost', 'shippingEstimate',
+    'suppliedQuantity', 'incoterms', 'shippingCost', 'shippingEstimate', 'shippingTerms',
     'pricingTiers', 'description', 'specifications',
     'customizationAvailable', 'customizationDetails', 'notes',
-    'sellerMessage', 'attachments',
+    'sellerMessage', 'attachments', 'packaging', 'samplePrice', 'taxes', 'specialClauses',
   ];
 
   quotation.revisionHistory.push({
@@ -868,7 +908,7 @@ export async function respondToQuotation(session, quotationId, body) {
     throw error;
   }
 
-  if (!['accept', 'reject', 'start_order'].includes(action)) {
+  if (!['accept', 'reject'].includes(action)) {
     const error = new Error('Invalid action');
     error.statusCode = 400;
     throw error;

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 export const BUYER_STATUS_GROUPS = {
   draft: ['draft'],
-  active: ['active', 'pending', 'viewed'],
+  active: ['active', 'submitted', 'pending', 'viewed', 'information_requested', 'seller_accepted', 'ready_for_quotation'],
   quoted: ['replied', 'quoted'],
   negotiating: ['negotiating'],
   closed: ['closed', 'archived', 'expired', 'rejected'],
@@ -11,8 +11,11 @@ export const BUYER_STATUS_GROUPS = {
 
 export const OPEN_RFQ_STATUSES = [
   'active',
+  'submitted',
   'pending',
   'viewed',
+  'seller_accepted',
+  'ready_for_quotation',
   'replied',
   'quoted',
   'negotiating',

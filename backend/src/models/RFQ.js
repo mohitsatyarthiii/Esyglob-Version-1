@@ -111,9 +111,12 @@ const rfqSchema = new mongoose.Schema(
     },
     deliveryTimeline: {
       type: String,
-      enum: ['immediate', '1week', '2weeks', '1month', '2months', '3months', 'flexible'],
+      enum: ['immediate', 'urgent', '1week', '2weeks', '1month', '2months', '3months', '30_days', '60_days', 'flexible'],
       default: 'flexible',
     },
+    deliveryDate: Date,
+    shippingPreference: { type: String, trim: true },
+    drawings: [{ url: String, filename: String, uploadedAt: Date }],
     
     // Incoterms
     incoterms: {
@@ -153,7 +156,7 @@ const rfqSchema = new mongoose.Schema(
     // Status & Responses
     status: {
       type: String,
-      enum: ['active', 'draft', 'pending', 'viewed', 'information_requested', 'seller_accepted', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'cancelled', 'rejected', 'expired'],
+      enum: ['active', 'draft', 'submitted', 'pending', 'viewed', 'information_requested', 'seller_accepted', 'ready_for_quotation', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'cancelled', 'rejected', 'expired'],
       default: 'pending',
       index: true,
     },

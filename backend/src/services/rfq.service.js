@@ -194,10 +194,13 @@ export async function createRfq(session, body) {
     deliveryCountry,
     deliveryPort,
     deliveryTimeline,
+    deliveryDate,
+    shippingPreference,
     incoterms,
     attachments,
     images,
     documents,
+    drawings,
     preferredSuppliersCountries,
     isVerifiedSuppliersOnly,
     visibility,
@@ -271,20 +274,23 @@ export async function createRfq(session, body) {
     deliveryCountry,
     deliveryPort,
     deliveryTimeline,
+    deliveryDate,
+    shippingPreference,
     incoterms,
     attachments: normalizeFiles(attachments, 'other'),
     images: normalizeFiles(images, 'image'),
     documents: normalizeFiles(documents, 'document'),
+    drawings: normalizeFiles(drawings, 'document'),
     preferredSuppliersCountries: preferredSuppliersCountries || [],
     isVerifiedSuppliersOnly: isVerifiedSuppliersOnly || false,
     visibility: visibility || 'public',
-    status: requestStatus === 'draft' ? 'draft' : 'active',
+    status: requestStatus === 'draft' ? 'draft' : 'submitted',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-    activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_created', status: requestStatus === 'draft' ? 'draft' : 'active', message: title, actorId: session.userId, actorRole: 'buyer' }],
+    activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: title, actorId: session.userId, actorRole: 'buyer' }],
   });
 
   // Notify matching sellers if public
-  if (rfq.status === 'active') {
+  if (rfq.status === 'submitted') {
     const sellerQuery = { isActive: true, isSuspended: { $ne: true } };
     if (isVerifiedSuppliersOnly) sellerQuery.isVerified = true;
     if (preferredSuppliersCountries?.length) {
@@ -365,6 +371,10 @@ export async function getRfqDetail(session, rfqId) {
 
   const actorRole = isOwner ? 'buyer' : isEligibleSeller ? 'seller' : isAdmin ? 'admin' : 'viewer';
   const rfqPayload = rfq.toObject ? rfq.toObject() : rfq;
+  if (actorRole === 'seller') {
+    const sellerEvents = (rfqPayload.activityTimeline || []).filter(event => idMatches(event.actorId, session.userId));
+    rfqPayload.sellerWorkflow = { accepted: sellerEvents.some(event => event.action === 'seller_accept') || rfqPayload.status === 'seller_accepted', rejected: sellerEvents.some(event => event.action === 'seller_reject'), informationRequested: sellerEvents.some(event => event.action === 'seller_request_information') };
+  }
   rfqPayload.lifecycle = lifecycleSnapshot('rfq', rfqPayload, actorRole);
   return {
     rfq: rfqPayload,
@@ -400,7 +410,7 @@ export async function updateRfq(session, rfqId, body) {
 
     if (!rfq.viewedBySellerIds.some((id) => id.toString() === session.userId)) {
       rfq.viewedBySellerIds.push(session.userId);
-      rfq.status = rfq.status === 'pending' ? 'viewed' : rfq.status;
+      rfq.status = ['pending', 'submitted', 'active'].includes(rfq.status) ? 'viewed' : rfq.status;
       await rfq.save();
     }
 
@@ -454,9 +464,9 @@ export async function updateRfq(session, rfqId, body) {
       close: 'closed',
       cancel: 'cancelled',
       archive: 'archived',
-      publish: 'active',
-      reopen: 'active',
-      resubmit: 'active',
+      publish: 'submitted',
+      reopen: 'submitted',
+      resubmit: 'submitted',
     };
     const previousStatus = rfq.status;
     const nextStatus = statusByAction[action];
@@ -474,7 +484,8 @@ export async function updateRfq(session, rfqId, body) {
   const allowedFields = [
     'title', 'description', 'category', 'subcategory', 'specifications',
     'items', 'quantity', 'minimumOrderQuantity', 'unit', 'targetPrice',
-    'currency', 'deliveryCountry', 'deliveryPort', 'deliveryTimeline',
+    'currency', 'deliveryCountry', 'deliveryPort', 'deliveryTimeline', 'deliveryDate',
+    'shippingPreference', 'drawings',
     'incoterms', 'attachments', 'images', 'documents', 'visibility', 'status',
   ];
 

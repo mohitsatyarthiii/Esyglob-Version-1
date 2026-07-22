@@ -36,6 +36,8 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: [
       'draft',
+      'requested',
+      'approved',
       'pending',
       'pending_approval',
       'awaiting_payment',

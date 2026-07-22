@@ -133,7 +133,7 @@ class SampleOrderService {
         status: 'pending',
         source: 'system',
       })),
-      status: 'pending_payment',
+      status: 'requested',
       paymentStatus: 'pending',
       shippingAddress: {
         fullName: shippingAddress?.fullName || '',
@@ -170,9 +170,9 @@ class SampleOrderService {
           updatedBy: userId,
         },
         {
-          status: 'pending_payment',
+          status: 'requested',
           timestamp: new Date(),
-          note: 'Payment pending',
+          note: 'Waiting for seller sample approval',
           updatedBy: userId,
         },
       ],

@@ -5,6 +5,13 @@ import Order from '../models/Order.js';
 import Quotation from '../models/Quotation.js';
 import RFQ from '../models/RFQ.js';
 import Seller from '../models/Seller.js';
+import Chat from '../models/Chat.js';
+import Invoice from '../models/Invoice.js';
+import Payment from '../models/Payment.js';
+import Product from '../models/Product.js';
+import Review from '../models/Review.js';
+import Shipment from '../models/Shipment.js';
+import { lifecycleSnapshot } from './business-lifecycle.service.js';
 
 const MODEL = { rfq: RFQ, quotation: Quotation, order: Order };
 const NOTE_FIELD = { rfq: 'notes', quotation: 'structuredNotes', order: 'structuredNotes' };
@@ -54,6 +61,60 @@ export async function getWorkspace(entityType, entityId, user) {
   return { notes: visibleNotes(context.entity[NOTE_FIELD[entityType]], context.userId, context.actorRole), documents: context.entity.tradeDocuments || [], actorRole: context.actorRole };
 }
 
+export async function getUnifiedWorkspace(entityType, entityId, user) {
+  const context = await loadContext(entityType, entityId, user);
+  let rfq = null, order = null, activeQuotation = null;
+  if (entityType === 'rfq') rfq = context.entity;
+  if (entityType === 'quotation') { activeQuotation = context.entity; rfq = await RFQ.findById(activeQuotation.rfqId); }
+  if (entityType === 'order') {
+    order = context.entity;
+    [rfq, activeQuotation] = await Promise.all([order.rfqId ? RFQ.findById(order.rfqId) : null, order.quotationId ? Quotation.findById(order.quotationId) : null]);
+  }
+  if (!order) order = await Order.findOne(activeQuotation ? { quotationId: activeQuotation._id } : { rfqId: rfq?._id }).sort({ createdAt: -1 });
+  const quotationQuery = rfq ? { rfqId: rfq._id } : activeQuotation ? { _id: activeQuotation._id } : null;
+  if (quotationQuery && context.actorRole === 'seller') quotationQuery.userId = context.userId;
+  const quotations = quotationQuery ? await Quotation.find(quotationQuery).sort({ revisionNumber: -1, updatedAt: -1 }).lean() : [];
+  if (!activeQuotation && quotations.length) activeQuotation = await Quotation.findById(quotations.find(item => ['buyer_accepted','agreement_pending','agreement_signed','won'].includes(item.status))?._id || quotations[0]._id);
+  const productId = order?.productId || activeQuotation?.productId || rfq?.productId;
+  const relatedIds = [rfq?._id, activeQuotation?._id, order?._id].filter(Boolean);
+  const [product, chats, payment, shipment, invoice, reviews, notifications] = await Promise.all([
+    productId ? Product.findById(productId).populate('sellerId', 'companyName companyLogo isVerified verificationLevel userId').lean() : null,
+    Chat.find({ $and: [{ $or: [{ buyerId: context.userId }, { sellerId: context.userId }] }, { $or: [{ rfqId: rfq?._id }, { quotationId: activeQuotation?._id }] }] }).select('chatType rfqId quotationId buyerId sellerId lastMessage lastMessageAt buyerUnreadCount sellerUnreadCount').sort({ lastMessageAt: -1 }).lean(),
+    order ? Payment.findOne({ $or: [{ _id: order.paymentId }, { orderId: order._id }] }).sort({ createdAt: -1 }).lean() : null,
+    order ? Shipment.findOne({ orderId: order._id }).sort({ createdAt: -1 }).lean() : null,
+    order ? Invoice.findOne({ orderId: order._id }).sort({ createdAt: -1 }).lean() : null,
+    order ? Review.find({ orderId: order._id, status: 'published' }).sort({ createdAt: -1 }).lean() : [],
+    relatedIds.length ? Notification.find({ userId: context.userId, 'data.relatedId': { $in: relatedIds } }).sort({ createdAt: -1 }).limit(50).lean() : [],
+  ]);
+  const entities = [rfq, ...quotations, order].filter(Boolean);
+  const documents = entities.flatMap(entity => (entity.tradeDocuments || []).map(document => ({ ...(document.toObject?.() || document), entityType: entity === rfq ? 'rfq' : entity === order ? 'order' : 'quotation', entityId: entity._id })));
+  const notes = entities.flatMap(entity => visibleNotes(entity[entity === rfq ? 'notes' : 'structuredNotes'], context.userId, context.actorRole).map(note => ({ ...(note.toObject?.() || note), entityType: entity === rfq ? 'rfq' : entity === order ? 'order' : 'quotation', entityId: entity._id })));
+  const timeline = entities.flatMap(entity => (entity.activityTimeline || entity.timeline || []).map(event => ({ ...(event.toObject?.() || event), entityType: entity === rfq ? 'rfq' : entity === order ? 'order' : 'quotation', entityId: entity._id }))).sort((a,b) => new Date(b.createdAt || b.timestamp || 0) - new Date(a.createdAt || a.timestamp || 0));
+  const currentEntity = order || activeQuotation || rfq;
+  const lifecycleType = order ? 'order' : activeQuotation ? 'quotation' : 'rfq';
+  return {
+    tradeId: order?.orderNumber || activeQuotation?.agreement?.agreementNumber || rfq?.rfqNumber || String(currentEntity?._id),
+    actorRole: context.actorRole,
+    currentEntity: { type: lifecycleType, id: currentEntity?._id },
+    lifecycle: lifecycleSnapshot(lifecycleType, currentEntity, context.actorRole),
+    product,
+    rfq: rfq?.toObject?.() || rfq,
+    quotations,
+    activeQuotation: activeQuotation?.toObject?.() || activeQuotation,
+    order: order?.toObject?.() || order,
+    agreement: activeQuotation?.agreement?.status !== 'not_required' ? activeQuotation?.agreement : order?.agreement,
+    chats,
+    notes: notes.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    documents: documents.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    payment,
+    shipment,
+    invoice,
+    reviews,
+    notifications,
+    timeline,
+  };
+}
+
 export async function addNote(entityType, entityId, user, input) {
   const context = await loadContext(entityType, entityId, user);
   const text = String(input.text || '').trim();
@@ -75,8 +136,10 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const requiresBuyerSignature = Boolean(input.requiresBuyerSignature);
   const requiresSellerSignature = Boolean(input.requiresSellerSignature);
   const initialStatus = requiresSellerSignature ? 'awaiting_seller_signature' : requiresBuyerSignature ? 'awaiting_buyer_signature' : 'completed';
+  const previousVersion = [...(context.entity.tradeDocuments || [])].reverse().find(document => document.documentType === documentType && document.title === title);
+  const version = Number(previousVersion?.version || 0) + 1;
   const globalDocument = await Document.create({ userId: context.userId, name: title, type: documentType, category: 'other', orderId: entityType === 'order' ? context.entity._id : undefined, content: input.content || {}, fileUrl: input.url, fileType: input.fileType, status: input.url ? 'shared' : 'generated', data: { currency: input.currency, terms: input.terms, notes: input.notes } });
-  context.entity.tradeDocuments.push({ documentType, title, url: input.url, filename: input.filename || `${title}.pdf`, source: input.url ? 'uploaded' : 'generated', status: initialStatus, requiresBuyerSignature, requiresSellerSignature, createdBy: context.userId, metadata: { globalDocumentId: globalDocument._id, content: input.content || {} }, completedAt: initialStatus === 'completed' ? new Date() : undefined });
+  context.entity.tradeDocuments.push({ documentType, title, url: input.url, filename: input.filename || `${title}.pdf`, source: input.url ? 'uploaded' : 'generated', status: initialStatus, version, requiresBuyerSignature, requiresSellerSignature, createdBy: context.userId, metadata: { globalDocumentId: globalDocument._id, previousDocumentId: previousVersion?._id, changedFields: input.changedFields || [], notes: input.notes, content: input.content || {} }, completedAt: initialStatus === 'completed' ? new Date() : undefined });
   const embedded = context.entity.tradeDocuments.at(-1);
   embedded.previewUrl = `/api/trade-workspace/${entityType}/${entityId}/documents/${embedded._id}/preview`;
   if (entityType === 'order' && ['purchase_agreement','commercial_agreement','terms_document'].includes(documentType) && (requiresBuyerSignature || requiresSellerSignature)) context.entity.agreement = { required: true, documentId: embedded._id, status: initialStatus };

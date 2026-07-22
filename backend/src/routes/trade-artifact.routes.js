@@ -3,6 +3,7 @@ import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 import * as controller from '../controllers/trade-artifact.controller.js';
 const router = Router();
 router.use(authenticate, requireAuth);
+router.get('/trade/:entityType/:entityId', controller.unifiedWorkspace);
 router.get('/:entityType/:entityId', controller.workspace);
 router.post('/:entityType/:entityId/notes', controller.addNote);
 router.post('/:entityType/:entityId/documents', controller.createDocument);

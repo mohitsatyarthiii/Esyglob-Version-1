@@ -19,7 +19,7 @@ export function streamAgreementPdf(res, tradeDocument, entityNumber) {
   pdf.moveDown(.5).fillColor('#111827').fontSize(23).text(tradeDocument.title);
   pdf.moveDown(.25).fillColor('#64748b').font('Helvetica').fontSize(10).text(`Agreement ${content.agreementNumber || entityNumber}  |  Revision ${content.revisionNumber || tradeDocument.version || 1}`);
   pdf.moveDown().strokeColor('#dbe3ef').moveTo(52, pdf.y).lineTo(543, pdf.y).stroke();
-  for (const key of ['buyer','seller','products','pricing','minimumOrderQuantity','shipping','delivery','paymentTerms','incoterms','notes','attachments','generatedAt']) {
+  for (const key of ['buyer','seller','products','pricing','minimumOrderQuantity','taxes','shipping','shippingTerms','delivery','packaging','samplePrice','paymentTerms','incoterms','specialConditions','notes','attachments','generatedAt']) {
     if (content[key] === undefined) continue;
     if (pdf.y > 700) pdf.addPage();
     pdf.moveDown(.7).fillColor('#17345f').font('Helvetica-Bold').fontSize(11).text(heading(key));
