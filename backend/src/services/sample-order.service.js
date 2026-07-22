@@ -107,6 +107,17 @@ class SampleOrderService {
       currency: 'INR',
       unit: product.unit || 'piece',
       shippingMethod: quote.selectedLogistics.key,
+      checkout: {
+        logisticsSelected: true,
+        logisticsOption: quote.selectedLogistics.key,
+        logisticsSnapshot: quote.selectedLogistics,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        termsVersion: 'sample-trade-terms-v1',
+        termsAcknowledgement: 'Accepted during sample checkout',
+        orderValidated: true,
+        validatedAt: new Date(),
+      },
       tradeAssurance: automation.tradeAssurance,
       platformServices: automation.platformServices,
       tradeInformation: {

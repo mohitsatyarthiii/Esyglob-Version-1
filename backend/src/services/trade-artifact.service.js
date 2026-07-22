@@ -80,6 +80,7 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const embedded = context.entity.tradeDocuments.at(-1);
   embedded.previewUrl = `/api/trade-workspace/${entityType}/${entityId}/documents/${embedded._id}/preview`;
   if (entityType === 'order' && ['purchase_agreement','commercial_agreement','terms_document'].includes(documentType) && (requiresBuyerSignature || requiresSellerSignature)) context.entity.agreement = { required: true, documentId: embedded._id, status: initialStatus };
+  if (entityType === 'quotation' && ['purchase_agreement','commercial_agreement'].includes(documentType) && (requiresBuyerSignature || requiresSellerSignature)) context.entity.agreement = { ...(context.entity.agreement?.toObject?.() || context.entity.agreement || {}), documentId: embedded._id, status: initialStatus };
   if (context.entity.activityTimeline) context.entity.activityTimeline.push({ action: 'document_created', message: title, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: embedded._id } });
   if (context.entity.timeline) context.entity.timeline.push({ status: 'document_created', note: title, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
@@ -102,6 +103,17 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   document.status = sellerSigned && buyerSigned ? 'completed' : sellerSigned ? 'awaiting_buyer_signature' : 'awaiting_seller_signature';
   if (document.status === 'completed') document.completedAt = new Date();
   if (entityType === 'order' && id(context.entity.agreement?.documentId) === id(document._id)) { context.entity.agreement.status = document.status; if (document.status === 'completed') context.entity.agreement.completedAt = new Date(); }
+  if (entityType === 'quotation' && id(context.entity.agreement?.documentId) === id(document._id)) {
+    context.entity.agreement.status = document.status;
+    if (document.status === 'completed') {
+      const previousStatus = context.entity.status;
+      context.entity.agreement.completedAt = new Date();
+      context.entity.previousStatus = previousStatus;
+      context.entity.status = 'agreement_signed';
+      context.entity.approvalHistory.push({ action: 'agreement_completed', previousStatus, newStatus: 'agreement_signed', actorId: context.userId, actorRole: context.actorRole, notes: 'Both parties signed the agreement' });
+      context.entity.activityTimeline.push({ action: 'agreement_completed', status: 'agreement_signed', message: 'Agreement is active and the buyer can start the order', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
+    }
+  }
   if (context.entity.activityTimeline) context.entity.activityTimeline.push({ action: 'document_signed', message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole });
   if (context.entity.timeline) context.entity.timeline.push({ status: 'agreement_signed', note: `${context.actorRole} signed ${document.title}`, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();

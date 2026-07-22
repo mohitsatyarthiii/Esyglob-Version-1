@@ -20,6 +20,7 @@ import {
 } from '../lib/rfq-helpers.js';
 import { validateNoContactInfo } from '../lib/contact-moderation.js';
 import { USER_ROLES } from '../lib/constants.js';
+import { assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
 
 // ─── Seller Access Check ───────────────────────────────────
 async function isPrivateRfqRecipient(rfq, sessionUserId, seller) {
@@ -362,8 +363,11 @@ export async function getRfqDetail(session, rfqId) {
       : Promise.resolve([]),
   ]);
 
+  const actorRole = isOwner ? 'buyer' : isEligibleSeller ? 'seller' : isAdmin ? 'admin' : 'viewer';
+  const rfqPayload = rfq.toObject ? rfq.toObject() : rfq;
+  rfqPayload.lifecycle = lifecycleSnapshot('rfq', rfqPayload, actorRole);
   return {
-    rfq,
+    rfq: rfqPayload,
     quotations,
     quotationCount: quotations.length,
     chats,
@@ -425,12 +429,17 @@ export async function updateRfq(session, rfqId, body) {
     return { rfq, message: 'RFQ marked as replied' };
   }
 
-  if (action === 'decline') {
+  if (['decline', 'accept', 'request_information'].includes(action)) {
     const seller = session.roles?.includes(USER_ROLES.SELLER) ? await rfqRepository.findSellerByUserId(session.userId) : null;
     if (!(await canSellerAccessRfq(rfq, session.userId, seller))) { const error = new Error('Seller is not eligible for this RFQ'); error.statusCode = 403; throw error; }
-    rfq.activityTimeline.push({ action: 'seller_declined', status: rfq.status, message: body.reason || 'Seller declined this opportunity', actorId: session.userId, actorRole: 'seller' });
+    const lifecycleAction = action === 'decline' ? 'reject' : action;
+    let nextStatus = rfq.status;
+    if (rfq.visibility === 'private') nextStatus = assertTransition({ type: 'rfq', status: rfq.status, action: lifecycleAction, actorRole: 'seller' });
+    const previousStatus = rfq.status;
+    recordTransition(rfq, { type: 'rfq', action: `seller_${lifecycleAction}`, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: body.reason || body.notes || `Seller ${lifecycleAction}ed this RFQ`, documents: body.documents || [] });
     await rfq.save();
-    return { rfq, message: 'RFQ declined' };
+    await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'rfq_updated', title: action === 'request_information' ? 'Seller requested more information' : `Seller ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
+    return { rfq, message: `RFQ ${action} recorded` };
   }
 
   // Buyer-only actions
@@ -440,17 +449,23 @@ export async function updateRfq(session, rfqId, body) {
     throw error;
   }
 
-  if (['close', 'cancel', 'archive', 'publish', 'reopen'].includes(action)) {
+  if (['close', 'cancel', 'archive', 'publish', 'reopen', 'resubmit'].includes(action)) {
     const statusByAction = {
       close: 'closed',
       cancel: 'cancelled',
       archive: 'archived',
       publish: 'active',
       reopen: 'active',
+      resubmit: 'active',
     };
-    rfq.status = statusByAction[action];
+    const previousStatus = rfq.status;
+    const nextStatus = statusByAction[action];
+    if (action === 'resubmit' && !['information_requested', 'rejected', 'draft'].includes(previousStatus)) throw Object.assign(new Error('RFQ is not waiting for buyer resubmission'), { statusCode: 409 });
+    rfq.previousStatus = previousStatus;
+    rfq.status = nextStatus;
     if (action === 'close') rfq.closedAt = new Date();
     rfq.activityTimeline.push({ action: `rfq_${action}`, status: rfq.status, message: body.reason || `RFQ ${action}`, actorId: session.userId, actorRole: 'buyer' });
+    rfq.approvalHistory.push({ action: `rfq_${action}`, previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'buyer', notes: body.reason || body.notes });
     await rfq.save();
     return { rfq, message: 'RFQ status updated' };
   }
@@ -462,6 +477,9 @@ export async function updateRfq(session, rfqId, body) {
     'currency', 'deliveryCountry', 'deliveryPort', 'deliveryTimeline',
     'incoterms', 'attachments', 'images', 'documents', 'visibility', 'status',
   ];
+
+  const changedFields = allowedFields.filter(key => body[key] !== undefined && JSON.stringify(body[key]) !== JSON.stringify(rfq[key]));
+  if (changedFields.length) rfq.revisionHistory.push({ version: (rfq.revisionHistory?.length || 0) + 1, revisedAt: new Date(), revisedBy: session.userId, changedFields, notes: body.reason || body.notes || 'Buyer updated RFQ', documents: body.documents || body.attachments || [], snapshot: Object.fromEntries(allowedFields.map(key => [key, rfq[key]])) });
 
   Object.keys(body).forEach((key) => {
     if (allowedFields.includes(key)) {

@@ -123,7 +123,7 @@ const quotationSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
+      enum: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'accepted', 'buyer_accepted', 'agreement_pending', 'agreement_signed', 'rejected', 'expired', 'withdrawn', 'won', 'lost'],
       default: 'pending',
       index: true,
     },
@@ -133,6 +133,7 @@ const quotationSchema = new mongoose.Schema(
     },
     revisionHistory: [
       {
+        version: Number,
         revisedAt: Date,
         revisedBy: {
           type: mongoose.Schema.Types.ObjectId,
@@ -154,6 +155,9 @@ const quotationSchema = new mongoose.Schema(
         reason: String,
         pricingTiers: mongoose.Schema.Types.Mixed,
         shippingEstimate: mongoose.Schema.Types.Mixed,
+        changedFields: [String],
+        documents: [mongoose.Schema.Types.Mixed],
+        snapshot: mongoose.Schema.Types.Mixed,
       },
     ],
     negotiationHistory: [
@@ -206,6 +210,15 @@ const quotationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
     },
+    previousStatus: String,
+    agreement: {
+      agreementNumber: String,
+      documentId: mongoose.Schema.Types.ObjectId,
+      status: { type: String, enum: ['not_required', 'draft', 'awaiting_seller_signature', 'awaiting_buyer_signature', 'completed', 'void'], default: 'not_required' },
+      sellerConfirmedAt: Date,
+      completedAt: Date,
+    },
+    approvalHistory: [{ action: String, previousStatus: String, newStatus: String, actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, actorRole: String, notes: String, documents: [mongoose.Schema.Types.Mixed], createdAt: { type: Date, default: Date.now } }],
     structuredNotes: { type: [tradeNoteSchema], default: [] },
     tradeDocuments: { type: [tradeDocumentSchema], default: [] },
     activityTimeline: { type: [activitySchema], default: [] },

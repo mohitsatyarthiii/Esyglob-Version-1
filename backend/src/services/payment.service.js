@@ -204,6 +204,11 @@ class PaymentService {
     if (paymentRecord.userId.toString() !== userId) {
       throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
     }
+    if (order.agreement?.required && order.agreement.status !== 'completed') throw Object.assign(new Error('Agreement signatures are incomplete'), { statusCode: 409 });
+    const legacyCheckout = ['direct_order', 'sample_order'].includes(order.orderSubType) && Boolean(order.shippingMethod) && order.tradeInformation?.termsAccepted === true;
+    if (!order.checkout?.logisticsSelected && !legacyCheckout) throw Object.assign(new Error('Select a logistics plan before payment'), { statusCode: 409 });
+    if ((!order.checkout?.termsAccepted || !order.checkout?.termsAcknowledgement) && !legacyCheckout) throw Object.assign(new Error('Digitally acknowledge the trade terms before payment'), { statusCode: 409 });
+    if (!order.checkout?.orderValidated && !legacyCheckout) throw Object.assign(new Error('Order validation is incomplete'), { statusCode: 409 });
     if (paymentRecord.razorpayOrderId !== razorpayOrderId) {
       throw Object.assign(new Error('Payment order mismatch'), { statusCode: 400 });
     }

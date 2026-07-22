@@ -1,6 +1,6 @@
 import OrderRepository from '../repositories/order.repository.js';
 import NotificationService from './notification.service.js';
-import { buildCheckoutQuote } from '../lib/checkout-quote.js';
+import { buildCheckoutQuote, DEFAULT_LOGISTICS_RULES } from '../lib/checkout-quote.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
 import mongoose from 'mongoose';
@@ -81,7 +81,17 @@ class OrderService {
     const payload = order.toObject();
     payload.shipment = fulfillment.shipment;
     payload.invoice = fulfillment.invoice;
-    payload.workflowSnapshot = await TradeWorkflowService.snapshot(order);
+    payload.workflowSnapshot = await TradeWorkflowService.snapshot(order, isAdmin ? 'admin' : idString(order.buyerId || order.userId) === String(userId) ? 'buyer' : 'seller');
+    payload.logisticsOptions = DEFAULT_LOGISTICS_RULES.map(option => ({
+      key: option.key,
+      label: option.mode === 'express' ? 'Enterprise Logistics' : option.mode === 'premium' ? 'Premium Logistics' : 'Standard Logistics',
+      mode: option.mode,
+      eta: option.eta,
+      price: Number(option.baseCharge || 0) + Number(order.subtotal || order.totalAmount || 0) * Number(option.variableRate || 0),
+      currency: order.currency || 'INR',
+      incoterm: option.incoterm,
+      features: option.mode === 'express' ? ['Priority handling', 'Full insurance', 'Live tracking', 'Dedicated support'] : option.mode === 'premium' ? ['Enhanced insurance', 'Milestone tracking', 'Priority support'] : ['Standard coverage', 'Shipment tracking', 'Marketplace support'],
+    }));
 
     return { order: payload };
   }
@@ -219,6 +229,17 @@ class OrderService {
       platformServices: automation.platformServices,
       tradeAssurance: automation.tradeAssurance,
       shippingMethod: quote.selectedLogistics.key,
+      checkout: {
+        logisticsSelected: true,
+        logisticsOption: quote.selectedLogistics.key,
+        logisticsSnapshot: quote.selectedLogistics,
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+        termsVersion: 'trade-terms-v1',
+        termsAcknowledgement: 'Accepted during secure marketplace checkout',
+        orderValidated: true,
+        validatedAt: new Date(),
+      },
       trackingNumber: '',
       sourceSnapshot: {
         product: {
@@ -382,9 +403,9 @@ class OrderService {
     const [{ default: RFQ }, { default: Quotation }, { default: Order }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Order.js')]);
     const limit = Math.min(Math.max(Number(query.limit) || 80, 1), 150);
     const [rfqs, quotations, orders] = await Promise.all([
-      RFQ.find({ status: { $in: ['active','pending','viewed','replied','quoted','negotiating'] }, $or: [{ sellerUserId: userId }, { specificSupplierIds: seller._id }, ...(seller.productCategories?.length ? [{ visibility:'public', category:{ $in:seller.productCategories } }] : [])] }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt: -1 }).limit(limit).lean(),
-      Quotation.find({ sellerId: seller._id, status: { $in: ['pending','submitted','negotiating','countered','revision_requested','revised','accepted'] } }).populate({ path:'rfqId', populate:{ path:'buyerId', select:'fullName email companyName' } }).populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt:-1 }).limit(limit).lean(),
-      Order.find({ sellerId: seller._id, status: { $in: ['draft','pending','pending_approval','awaiting_payment','pending_payment'] } }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').populate('rfqId','title quantity unit').populate('quotationId','unitPrice totalPrice status').sort({ updatedAt:-1 }).limit(limit).lean(),
+      RFQ.find({ status: { $in: ['active','pending','viewed','information_requested','seller_accepted','replied','quoted','negotiating'] }, $or: [{ sellerUserId: userId }, { specificSupplierIds: seller._id }, ...(seller.productCategories?.length ? [{ visibility:'public', category:{ $in:seller.productCategories } }] : [])] }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt: -1 }).limit(limit).lean(),
+      Quotation.find({ sellerId: seller._id, status: { $in: ['pending','submitted','negotiating','countered','revision_requested','revised','buyer_accepted','agreement_pending','agreement_signed'] } }).populate({ path:'rfqId', populate:{ path:'buyerId', select:'fullName email companyName' } }).populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt:-1 }).limit(limit).lean(),
+      Order.find({ sellerId: seller._id, status: { $in: ['draft','pending','pending_approval','awaiting_payment','pending_payment','payment_confirmed','confirmed','processing','production','delayed','waiting_buyer_response','ready_to_ship','preparing_shipment','pickup_scheduled','picked_up','warehouse_processing','custom_clearance','in_transit','out_for_delivery','shipped','delivered','disputed'] } }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').populate('rfqId','title quantity unit').populate('quotationId','unitPrice totalPrice status').sort({ updatedAt:-1 }).limit(limit).lean(),
     ]);
     const orderRfqIds = new Set(orders.map(item => idString(item.rfqId)));
     const items = [
@@ -401,8 +422,9 @@ class OrderService {
     const [{ default: RFQ }, { default: Quotation }, { default: Product }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Product.js')]);
     const rfq = body.rfqId && mongoose.Types.ObjectId.isValid(body.rfqId) ? await RFQ.findById(body.rfqId) : null;
     const quotation = body.quotationId && mongoose.Types.ObjectId.isValid(body.quotationId) ? await Quotation.findOne({ _id: body.quotationId, sellerId: seller._id }) : null;
-    if (!rfq && !quotation) throw Object.assign(new Error('A valid RFQ or quotation is required'), { statusCode: 422 });
+    if (!quotation) throw Object.assign(new Error('A final quotation is required. RFQs cannot skip quotation, agreement, and buyer Start Order stages.'), { statusCode: 422 });
     const sourceRfq = rfq || await RFQ.findById(quotation.rfqId);
+    if (quotation) throw Object.assign(new Error(quotation.status === 'agreement_signed' && quotation.agreement?.status === 'completed' ? 'Agreement is complete. The buyer must use Start Order.' : 'Order creation is locked until buyer acceptance, seller confirmation, and both agreement signatures'), { statusCode:409 });
     const productId = toObjectId(body.productId || quotation?.productId || sourceRfq?.productId);
     const product = productId ? await Product.findOne({ _id: productId, sellerId: seller._id }).lean() : null;
     if (!product) throw Object.assign(new Error('Select one of your products before starting the order'), { statusCode: 422 });
@@ -431,14 +453,46 @@ class OrderService {
     const order = await OrderRepository.findByIdFull(orderId);
     if (!order) throw Object.assign(new Error('Order not found'), { statusCode:404 });
     if (idString(order.buyerId || order.userId) !== String(userId)) throw Object.assign(new Error('Only the buyer can perform this action'), { statusCode:403 });
-    if (data.action === 'approve') {
+    if (data.action === 'select_logistics') {
+      if (!['pending_approval','pending_payment','awaiting_payment'].includes(order.status)) throw Object.assign(new Error('Logistics can only be selected before payment'), { statusCode:409 });
+      const option = DEFAULT_LOGISTICS_RULES.find(item => item.key === data.logisticsOption);
+      if (!option) throw Object.assign(new Error('Select a valid logistics plan'), { statusCode:422 });
+      order.checkout ||= {};
+      order.checkout.logisticsSelected = true;
+      order.checkout.logisticsOption = option.key;
+      order.checkout.logisticsSnapshot = { key: option.key, label: option.label, mode: option.mode, eta: option.eta, incoterm: option.incoterm, price: Number(option.baseCharge || 0) + Number(order.subtotal || order.totalAmount || 0) * Number(option.variableRate || 0) };
+      order.shippingMethod = option.key;
+      if (order.checkout.termsAccepted) { order.checkout.orderValidated = true; order.checkout.validatedAt = new Date(); }
+      order.timeline.push({ status: order.status, previousStatus: order.status, newStatus: order.status, action: 'select_logistics', actorRole: 'buyer', note: `${option.label} selected`, updatedBy:userId, metadata: order.checkout.logisticsSnapshot });
+    } else if (data.action === 'accept_terms') {
+      if (!['pending_approval','pending_payment','awaiting_payment'].includes(order.status)) throw Object.assign(new Error('Terms can only be accepted before payment'), { statusCode:409 });
+      if (data.accepted !== true || !String(data.acknowledgement || '').trim()) throw Object.assign(new Error('Digital terms acknowledgement is required'), { statusCode:422 });
+      order.checkout ||= {};
+      order.checkout.termsAccepted = true;
+      order.checkout.termsAcceptedAt = new Date();
+      order.checkout.termsVersion = String(data.termsVersion || 'trade-terms-v1');
+      order.checkout.termsAcknowledgement = String(data.acknowledgement).trim();
+      if (order.checkout.logisticsSelected) { order.checkout.orderValidated = true; order.checkout.validatedAt = new Date(); }
+      order.timeline.push({ status: order.status, previousStatus: order.status, newStatus: order.status, action: 'accept_terms', actorRole: 'buyer', note: 'Buyer digitally acknowledged trade terms', updatedBy:userId });
+    } else if (data.action === 'approve') {
       if (order.status !== 'pending_approval') throw Object.assign(new Error('Order is not awaiting buyer approval'), { statusCode:409 });
       if (order.agreement?.required && order.agreement.status !== 'completed') throw Object.assign(new Error('Both signatures are required before approval'), { statusCode:409 });
+      if (!order.checkout?.logisticsSelected) throw Object.assign(new Error('Select a logistics plan before approval'), { statusCode:409 });
+      if (!order.checkout?.termsAccepted) throw Object.assign(new Error('Review and digitally acknowledge the terms before approval'), { statusCode:409 });
+      order.checkout.orderValidated = true; order.checkout.validatedAt = new Date();
+      order.approvalHistory.push({ action:'buyer_approved_checkout', previousStatus:order.status, newStatus:'pending_payment', actorId:userId, actorRole:'buyer', notes:data.notes || 'Agreement, logistics and terms validated' });
       await TradeWorkflowService.transition({ order, toStatus:'pending_payment', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer approved final terms' });
       const { ensurePendingOrderPayment } = await import('../lib/order-payments.js');
       const payment = await ensurePendingOrderPayment(order,{ userId, amount:order.totalAmount, currency:order.currency, unit:order.unit }); order.paymentId=payment?._id;
-    } else if (data.action === 'reject_changes') { order.status='rejected'; order.timeline.push({ status:'changes_rejected', note:data.notes || 'Buyer rejected final terms', updatedBy:userId }); }
-    else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment','confirmed'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); order.status='cancelled'; order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); order.timeline.push({ status:'cancelled', note:order.cancelReason, updatedBy:userId }); }
+    } else if (data.action === 'request_revision') {
+      if (order.status !== 'pending_approval') throw Object.assign(new Error('Order is not awaiting buyer review'), { statusCode:409 });
+      await TradeWorkflowService.transition({ order, toStatus:'pending_approval', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer requested order changes' });
+      order.approvalHistory.push({ action:'request_revision', previousStatus:'pending_approval', newStatus:'pending_approval', actorId:userId, actorRole:'buyer', notes:data.notes || 'Buyer requested order changes', documents:data.documents || [] });
+    } else if (data.action === 'reject_changes') {
+      await TradeWorkflowService.transition({ order, toStatus:'rejected', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer rejected final terms' });
+      order.approvalHistory.push({ action:'reject_changes', previousStatus:'pending_approval', newStatus:'rejected', actorId:userId, actorRole:'buyer', notes:data.notes || 'Buyer rejected final terms', documents:data.documents || [] });
+    }
+    else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'cancelled', actorId:userId, actorRole:'buyer', note:data.notes || 'Cancelled by buyer' }); order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); }
     else if (data.action === 'confirm_delivery') { if (order.status !== 'delivered') throw Object.assign(new Error('Delivery is not ready for confirmation'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'completed', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer confirmed delivery' }); order.completedAt=new Date(); }
     else throw Object.assign(new Error('Invalid buyer action'), { statusCode:422 });
     await OrderRepository.save(order);

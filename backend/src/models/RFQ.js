@@ -153,7 +153,7 @@ const rfqSchema = new mongoose.Schema(
     // Status & Responses
     status: {
       type: String,
-      enum: ['active', 'draft', 'pending', 'viewed', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'cancelled', 'rejected', 'expired'],
+      enum: ['active', 'draft', 'pending', 'viewed', 'information_requested', 'seller_accepted', 'replied', 'quoted', 'negotiating', 'archived', 'order_initiated', 'converted', 'closed', 'cancelled', 'rejected', 'expired'],
       default: 'pending',
       index: true,
     },
@@ -207,6 +207,9 @@ const rfqSchema = new mongoose.Schema(
     notes: { type: [tradeNoteSchema], default: [] },
     tradeDocuments: { type: [tradeDocumentSchema], default: [] },
     activityTimeline: { type: [activitySchema], default: [] },
+    previousStatus: String,
+    revisionHistory: [{ version: Number, revisedAt: { type: Date, default: Date.now }, revisedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, changedFields: [String], notes: String, documents: [mongoose.Schema.Types.Mixed], snapshot: mongoose.Schema.Types.Mixed }],
+    approvalHistory: [{ action: String, previousStatus: String, newStatus: String, actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, actorRole: String, notes: String, createdAt: { type: Date, default: Date.now } }],
   },
   {
     timestamps: true,
