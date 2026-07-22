@@ -604,6 +604,7 @@ export async function updateQuotation(session, quotationId, body) {
     paymentTerms: body.paymentTerms,
     incoterms: body.incoterms,
     shippingEstimate: body.shippingEstimate,
+    warranty: body.warranty,
   });
 
   if (!moderation.ok) {
@@ -635,6 +636,9 @@ export async function updateQuotation(session, quotationId, body) {
     if (quotation.userId.toString() !== session.userId) { const error = new Error('Only the seller can confirm the final quotation'); error.statusCode = 403; throw error; }
     const nextStatus = assertTransition({ type: 'quotation', status: quotation.status, action, actorRole: 'seller' });
     const previousStatus = quotation.status;
+    const agreementFields = ['productId','suppliedQuantity','minimumOrderQuantity','unitPrice','totalPrice','taxes','shippingCost','packaging','shippingEstimate','leadTime','leadTimeUnit','productionTime','productionTimeUnit','incoterms','paymentTerms','warranty','notes','specialClauses','attachments','shippingTerms'];
+    for (const field of agreementFields) if (body[field] !== undefined) quotation[field] = field === 'specialClauses' && !Array.isArray(body[field]) ? String(body[field]).split('\n').map(value => value.trim()).filter(Boolean) : body[field];
+    quotation.totalPrice = Number(body.totalPrice || (Number(quotation.unitPrice || 0) * Number(quotation.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)));
     recordTransition(quotation, { type: 'quotation', action, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed the accepted commercial terms' });
     quotation.agreement = { agreementNumber: `AGR-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'draft', sellerConfirmedAt: new Date() };
     quotation.approvalHistory.push({ action: 'seller_confirmed', previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed final terms' });
@@ -665,6 +669,7 @@ export async function updateQuotation(session, quotationId, body) {
         incoterms: quotation.incoterms,
         taxes: quotation.taxes,
         packaging: quotation.packaging,
+        warranty: quotation.warranty,
         samplePrice: quotation.samplePrice,
         shippingTerms: quotation.shippingTerms,
         specialConditions: quotation.specialClauses,

@@ -6,6 +6,7 @@ import Quotation from '../models/Quotation.js';
 import RFQ from '../models/RFQ.js';
 import Seller from '../models/Seller.js';
 import Chat from '../models/Chat.js';
+import Message from '../models/Message.js';
 import Invoice from '../models/Invoice.js';
 import Payment from '../models/Payment.js';
 import Product from '../models/Product.js';
@@ -53,7 +54,18 @@ function visibleNotes(notes, userId, actorRole) {
 async function notifyParticipant(context, title, description, notificationType = 'document_shared') {
   const recipient = context.actorRole === 'buyer' ? context.sellerUserId : context.buyerId;
   if (!recipient) return;
-  await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName } }).catch(() => {});
+  const entityType = context.entity.constructor.modelName.toLowerCase();
+  await Notification.create({ userId: recipient, notificationType, title, description, data: { relatedId: context.entity._id, relatedModel: context.entity.constructor.modelName, actionUrl: `/${entityType}s/${context.entity._id}${context.actorRole === 'buyer' ? '?role=seller' : ''}` } }).catch(() => {});
+}
+
+async function publishAgreementEvent(context, document, content, { attachPdf = false } = {}) {
+  if (context.entity.constructor.modelName !== 'Quotation') return;
+  const chat = await Chat.findOne({ buyerId: context.buyerId, sellerId: context.sellerUserId, $or: [{ quotationId: context.entity._id }, { rfqId: context.entity.rfqId }] }).sort({ updatedAt: -1 });
+  if (!chat) return;
+  const receiverId = context.actorRole === 'buyer' ? context.sellerUserId : context.buyerId;
+  const pdfUrl = `${document.previewUrl}?format=pdf`;
+  await Message.create({ chatId: chat._id, senderId: context.userId, receiverId, content, messageType: 'system', attachments: attachPdf ? [{ url: pdfUrl, name: document.filename || 'Signed Agreement.pdf', type: 'application/pdf', mimeType: 'application/pdf' }] : [], quotationDetails: { quotationId: context.entity._id, rfqId: context.entity.rfqId, status: context.entity.status, actionUrl: `/quotations/${context.entity._id}` }, isRead: false });
+  await Chat.updateOne({ _id: chat._id }, { $set: { lastMessage: content, lastMessageAt: new Date() }, $inc: context.actorRole === 'buyer' ? { sellerUnreadCount: 1 } : { buyerUnreadCount: 1 } });
 }
 
 export async function getWorkspace(entityType, entityId, user) {
@@ -132,6 +144,13 @@ export async function addNote(entityType, entityId, user, input) {
 export async function createTradeDocument(entityType, entityId, user, input) {
   const context = await loadContext(entityType, entityId, user);
   const documentType = allowedDocumentTypes.has(input.documentType) ? input.documentType : 'other';
+  const isAgreement = ['purchase_agreement','commercial_agreement'].includes(documentType);
+  if (entityType === 'quotation' && isAgreement) {
+    if (context.actorRole !== 'seller') throw Object.assign(new Error('Only the seller can prepare the agreement'), { statusCode: 403 });
+    if (context.entity.status !== 'agreement_pending') throw Object.assign(new Error('Agreement preparation starts only after buyer acceptance and seller confirmation'), { statusCode: 409 });
+    const activeAgreement = (context.entity.tradeDocuments || []).find(document => ['purchase_agreement','commercial_agreement'].includes(document.documentType) && document.status !== 'void');
+    if (activeAgreement) throw Object.assign(new Error('An active agreement already exists for this quotation'), { statusCode: 409 });
+  }
   const title = String(input.title || documentType.replaceAll('_', ' ')).trim();
   const requiresBuyerSignature = Boolean(input.requiresBuyerSignature);
   const requiresSellerSignature = Boolean(input.requiresSellerSignature);
@@ -148,6 +167,7 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   if (context.entity.timeline) context.entity.timeline.push({ status: 'document_created', note: title, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
   await notifyParticipant(context, 'Trade document available', `${title} was added to the trade workspace.`, 'document_generated');
+  if (entityType === 'quotation' && isAgreement) await publishAgreementEvent(context, embedded, 'Seller prepared the Agreement. It is awaiting the Seller signature.');
   return { document: embedded, workspace: await getWorkspace(entityType, entityId, user) };
 }
 
@@ -156,6 +176,10 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   const document = context.entity.tradeDocuments.id(documentId);
   if (!document || !['buyer','seller'].includes(context.actorRole)) throw Object.assign(new Error('Document not found'), { statusCode: 404 });
   const required = context.actorRole === 'buyer' ? document.requiresBuyerSignature : document.requiresSellerSignature;
+  const isAgreement = ['purchase_agreement','commercial_agreement'].includes(document.documentType);
+  if (entityType === 'quotation' && isAgreement && context.entity.status !== 'agreement_pending') throw Object.assign(new Error('This quotation is not awaiting agreement signatures'), { statusCode: 409 });
+  if (isAgreement && context.actorRole === 'seller' && document.status !== 'awaiting_seller_signature') throw Object.assign(new Error('The agreement is not awaiting the seller signature'), { statusCode: 409 });
+  if (isAgreement && context.actorRole === 'buyer' && document.status !== 'awaiting_buyer_signature') throw Object.assign(new Error('The agreement is not awaiting the buyer signature'), { statusCode: 409 });
   if (!required) throw Object.assign(new Error(`${context.actorRole} signature is not required`), { statusCode: 409 });
   if (context.actorRole === 'buyer' && document.requiresSellerSignature && !document.signatures.some(signature => signature.signerRole === 'seller')) throw Object.assign(new Error('The seller must sign before the buyer'), { statusCode: 409 });
   if (document.signatures.some(signature => signature.signerRole === context.actorRole)) throw Object.assign(new Error('Document is already signed by this party'), { statusCode: 409 });
@@ -168,6 +192,8 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   if (entityType === 'order' && id(context.entity.agreement?.documentId) === id(document._id)) { context.entity.agreement.status = document.status; if (document.status === 'completed') context.entity.agreement.completedAt = new Date(); }
   if (entityType === 'quotation' && id(context.entity.agreement?.documentId) === id(document._id)) {
     context.entity.agreement.status = document.status;
+    if (context.actorRole === 'seller') context.entity.agreement.sellerSignedAt = new Date();
+    if (context.actorRole === 'buyer') context.entity.agreement.buyerSignedAt = new Date();
     if (document.status === 'completed') {
       const previousStatus = context.entity.status;
       context.entity.agreement.completedAt = new Date();
@@ -175,12 +201,19 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
       context.entity.status = 'agreement_signed';
       context.entity.approvalHistory.push({ action: 'agreement_completed', previousStatus, newStatus: 'agreement_signed', actorId: context.userId, actorRole: context.actorRole, notes: 'Both parties signed the agreement' });
       context.entity.activityTimeline.push({ action: 'agreement_completed', status: 'agreement_signed', message: 'Agreement is active and the buyer can start the order', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
+      context.entity.activityTimeline.push({ action: 'order_enabled', status: 'agreement_signed', message: 'Order configuration is now enabled', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, orderEnabled: true } });
     }
   }
-  if (context.entity.activityTimeline) context.entity.activityTimeline.push({ action: 'document_signed', message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole });
+  if (context.entity.activityTimeline) {
+    context.entity.activityTimeline.push({ action: isAgreement ? `${context.actorRole}_signed_agreement` : 'document_signed', status: document.status, message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
+    if (isAgreement && context.actorRole === 'seller') context.entity.activityTimeline.push({ action: 'buyer_notified', status: document.status, message: 'Buyer notified that their agreement signature is required', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });
+  }
   if (context.entity.timeline) context.entity.timeline.push({ status: 'agreement_signed', note: `${context.actorRole} signed ${document.title}`, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
-  await notifyParticipant(context, 'Document signed', `${context.actorRole} signed ${document.title}.`, 'document_signed');
+  const notificationTitle = isAgreement && context.actorRole === 'seller' ? 'Seller signed the Agreement — your signature is required' : isAgreement ? 'Agreement fully signed and active' : 'Document signed';
+  const notificationDescription = isAgreement && context.actorRole === 'seller' ? 'The Seller has signed the Agreement. Your signature is required to proceed with the order.' : isAgreement ? 'Both parties signed the Agreement. Order configuration is now enabled.' : `${context.actorRole} signed ${document.title}.`;
+  await notifyParticipant(context, notificationTitle, notificationDescription, 'document_signed');
+  if (isAgreement) await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'Seller signed the Agreement. Buyer signature is required to proceed.' : 'Buyer signed the Agreement. The Agreement is active and the Order can now be started.', { attachPdf: document.status === 'completed' });
   return { document, workspace: await getWorkspace(entityType, entityId, user) };
 }
 

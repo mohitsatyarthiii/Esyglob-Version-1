@@ -10,14 +10,17 @@ import useAsyncData from '../hooks/useAsyncData'
 import { Field } from './RfqCreatePage'
 import { TradeSkeleton } from './RfqsPage'
 
-const openStatuses = ['pending', 'submitted', 'negotiating', 'revised']
 export default function QuotationDetailsPage() {
   const { quotationId } = useParams()
   const { user } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const roles = user?.roles || ['buyer']
-  const sellerView = roles.includes('seller') && (params.get('role') === 'seller' || (!roles.includes('buyer') && roles.includes('seller')))
+  const requestedRole = params.get('role')
+  const sellerView = roles.includes('seller') && (requestedRole === 'seller' || (requestedRole !== 'buyer' && (user?.primaryRole === 'seller' || !roles.includes('buyer'))))
+  const openStatuses = sellerView
+    ? ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised']
+    : ['pending', 'submitted', 'negotiating', 'revised']
   const query = useAsyncData(useCallback(() => fetchQuotation(quotationId), [quotationId]))
   const [dialog, setDialog] = useState('')
   const [actionText, setActionText] = useState('')

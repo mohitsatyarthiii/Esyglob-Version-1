@@ -156,7 +156,10 @@ class AIChatController {
       res.flushHeaders?.();
 
       const sendSSE = (event) => {
+        if (res.writableEnded || res.destroyed) return false;
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+        res.flush?.();
+        return true;
       };
 
       sendSSE({ type: 'start', chatId: String(chat._id) });
@@ -245,10 +248,8 @@ class AIChatController {
                       if (token) {
                         if (!firstTokenAt) firstTokenAt = Date.now();
                         assistantText += token;
-                        if (fastDirectRoute) {
-                          draftWasStreamed = true;
-                          sendSSE({ type: 'token', content: token });
-                        }
+                        draftWasStreamed = true;
+                        sendSSE({ type: 'token', content: token });
                       }
                       if (data.eval_count) tokensUsed = data.eval_count;
                     } catch (e) {
@@ -337,7 +338,7 @@ class AIChatController {
           }
         }
 
-        if (!validation.passed) {
+        if (!validation.passed && !draftWasStreamed) {
           const critical = validation.issues.some(issue => issue.severity === 'critical');
           if (critical) {
             cleanText = intelligence.language === 'hi'

@@ -16,7 +16,8 @@ export default function RfqDetailsPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const roles = user?.roles || ['buyer']
-  const sellerView = roles.includes('seller') && (params.get('role') === 'seller' || (!roles.includes('buyer') && roles.includes('seller')))
+  const requestedRole = params.get('role')
+  const sellerView = roles.includes('seller') && (requestedRole === 'seller' || (requestedRole !== 'buyer' && (user?.primaryRole === 'seller' || !roles.includes('buyer'))))
   const query = useAsyncData(useCallback(() => fetchRfq(rfqId), [rfqId]))
   const [quoteOpen, setQuoteOpen] = useState(() => sellerView && params.get('action') === 'quote')
   const [message, setMessage] = useState('')

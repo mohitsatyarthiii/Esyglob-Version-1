@@ -283,11 +283,12 @@ class AIChatService {
    * Does NOT validate message or generate AI response.
    */
   static async createChat(userId, { title, roleContext, conversationType = 'assistant' } = {}) {
+    const supportedConversationTypes = new Set(['assistant', 'search', 'product', 'rfq', 'quotation', 'support']);
     const chat = await AIChatRepository.createChat({
       userId,
       title: title || 'New Conversation',
       roleContext: roleContext || 'general',
-      conversationType,
+      conversationType: supportedConversationTypes.has(conversationType) ? conversationType : 'assistant',
       messages: [],
       context: {},
     });

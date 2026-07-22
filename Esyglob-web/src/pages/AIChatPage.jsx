@@ -39,6 +39,7 @@ export default function AIChatPage() {
   const streamRef = useRef(null)
   const recognitionRef = useRef(null)
   const streamSequence = useRef(0)
+  const sendingRef = useRef(false)
 
   const loadChats = useCallback(async () => {
     try { setChats(await fetchAIChats(role)) }
@@ -87,7 +88,8 @@ export default function AIChatPage() {
 
   async function send(text = draft) {
     const content = text.trim() || (attachments.length ? 'Please analyze the attached files for my marketplace request.' : '')
-    if (!content || busy) return
+    if (!content || busy || conversationLoading || sendingRef.current) return
+    sendingRef.current = true
     const sentAttachments = attachments
     const streamMessageId = `stream-${++streamSequence.current}`
     setDraft(''); setAttachments([]); setError(''); setFailed(''); setBusy(true)
@@ -98,10 +100,12 @@ export default function AIChatPage() {
     let nextChatId = chatId
     try {
       const attachmentUrls = sentAttachments.map((item) => item.url)
-      await streamAIMessage({ message: content, displayMessage: content, chatId: chatId || undefined, role, conversationType: 'marketplace_assistant', forceAI: true, context: { feature: 'AI Chatbot', sourcePath: '/ai-chat', attachments: attachmentUrls }, pluginPayload: attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null }, (event) => {
+      let streamCompleted = false
+      await streamAIMessage({ message: content, displayMessage: content, chatId: chatId || undefined, role, conversationType: 'assistant', forceAI: true, context: { feature: 'AI Chatbot', sourcePath: '/ai-chat', attachments: attachmentUrls }, pluginPayload: attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null }, (event) => {
         if (event.type === 'start') { nextChatId = event.chatId || nextChatId; return }
         if (event.type === 'token') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${event.content || ''}` } : item)); return }
         if (event.type === 'done') {
+          streamCompleted = true
           const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
           setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, streaming: false, metadata } : item))
           nextChatId = event.chatId || nextChatId
@@ -109,6 +113,7 @@ export default function AIChatPage() {
         if (event.type === 'error') streamError = event.message || 'The AI response could not be completed.'
       }, controller.signal)
       if (streamError) throw new Error(streamError)
+      if (!streamCompleted) throw new Error('The response connection closed before completion. Please retry.')
       if (nextChatId && nextChatId !== chatId) setChatId(nextChatId)
       await loadChats()
     } catch (next) {
@@ -118,12 +123,13 @@ export default function AIChatPage() {
       }
     } finally {
       if (streamRef.current === controller) streamRef.current = null
+      sendingRef.current = false
       setBusy(false)
     }
   }
 
   function newConversation() {
-    streamRef.current?.abort(); setBusy(false); setChatId(''); setMessages([]); setError(''); setFailed(''); setSidebarOpen(false)
+    streamRef.current?.abort(); sendingRef.current = false; setBusy(false); setChatId(''); setMessages([]); setError(''); setFailed(''); setSidebarOpen(false)
   }
 
   async function renameConversation(id) {

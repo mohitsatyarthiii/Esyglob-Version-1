@@ -658,12 +658,6 @@ export async function createChat(session, chatData) {
   const rfqId = normalizeObjectId(rawRfqId);
   const quotationId = normalizeObjectId(rawQuotationId);
 
-  if (enquiry && !rfqId) {
-    const error = new Error('Product enquiries must be submitted as RFQs');
-    error.statusCode = 400;
-    throw error;
-  }
-
   if (!otherUserId) {
     const error = new Error('Valid seller user ID is required');
     error.statusCode = 400;
