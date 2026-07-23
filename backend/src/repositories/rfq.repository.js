@@ -120,3 +120,7 @@ export async function chatExistsForRfq(rfqId, buyerId, sellerUserId) {
 export async function createNotifications(notifications) {
   return Notification.insertMany(notifications);
 }
+
+export async function createNotification(notification) {
+  return Notification.create(notification);
+}

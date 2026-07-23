@@ -640,12 +640,12 @@ export async function updateQuotation(session, quotationId, body) {
     for (const field of finalFields) if (body[field] !== undefined) quotation[field] = field === 'specialClauses' && !Array.isArray(body[field]) ? String(body[field]).split('\n').map(value => value.trim()).filter(Boolean) : body[field];
     quotation.totalPrice = Number(body.totalPrice || (Number(quotation.unitPrice || 0) * Number(quotation.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)));
     recordTransition(quotation, { type: 'quotation', action, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed the accepted commercial terms' });
-    quotation.finalQuotation = { ...(quotation.finalQuotation?.toObject?.() || quotation.finalQuotation || {}), finalQuotationNumber: quotation.finalQuotation?.finalQuotationNumber || `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'awaiting_buyer_signature', preparedAt: new Date() };
+    quotation.finalQuotation = { ...(quotation.finalQuotation?.toObject?.() || quotation.finalQuotation || {}), finalQuotationNumber: quotation.finalQuotation?.finalQuotationNumber || `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'awaiting_seller_signature', preparedAt: new Date(), sellerSignedAt: null, buyerSignedAt: null, lockedAt: null };
     quotation.approvalHistory.push({ action: 'final_quotation_prepared', previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller prepared the Final Quotation' });
     const { finalRfq, document } = await createFinalQuotationDocument(quotation, session.userId, reason);
     const updated = await quotationRepository.findQuotationByIdLean(quotationId);
-    await publishQuotationContext({ quotation: updated, rfq: finalRfq, actorId: session.userId, receiverId: finalRfq?.buyerId, content: `Seller prepared Final Quotation ${updated.finalQuotation?.finalQuotationNumber}. Please review and sign it to enable the Order.` });
-    return { quotation: updated, document, message: 'Final Quotation sent to the Buyer for review and signature.' };
+    await publishQuotationContext({ quotation: updated, rfq: finalRfq, actorId: session.userId, receiverId: finalRfq?.buyerId, content: `Final Quotation ${updated.finalQuotation?.finalQuotationNumber} was generated. The Seller signature is required before Buyer review.` });
+    return { quotation: updated, document, message: 'Final Quotation generated. Add the Seller signature to send it to the Buyer.' };
   }
 
   if (action === 'reopen') {
@@ -967,11 +967,16 @@ export async function respondToQuotation(session, quotationId, body) {
 
 async function finalQuotationSnapshot(quotation) {
   const finalRfq = await quotationRepository.findRfqById(quotation.rfqId);
-  const [buyer, sellerUser, sellerProfile] = await Promise.all([
+  const [buyer, sellerUser, sellerProfile, product] = await Promise.all([
     finalRfq ? quotationRepository.findUserById(finalRfq.buyerId) : null,
     quotationRepository.findUserById(quotation.userId),
     quotationRepository.findSellerByUserId(quotation.userId),
+    quotation.productId || finalRfq?.productId ? quotationRepository.findProductById(quotation.productId?._id || quotation.productId || finalRfq?.productId) : null,
   ]);
+  const buyerCompany = buyer?.metadata?.companyName || buyer?.companyName;
+  const buyerAddress = buyer?.metadata?.address || buyer?.address;
+  const sellerAddress = sellerProfile?.address;
+  const productImage = product?.images?.[0]?.url || product?.images?.[0] || finalRfq?.images?.[0]?.url || finalRfq?.images?.[0];
   return {
     finalRfq,
     content: {
@@ -982,9 +987,9 @@ async function finalQuotationSnapshot(quotation) {
       revisionNumber: quotation.revisionNumber,
       rfqId: quotation.rfqId,
       tradeReference: quotation.quotationNumber || finalRfq?.rfqNumber,
-      buyer: { name: buyer?.fullName, company: buyer?.metadata?.companyName, email: buyer?.email },
-      seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, registrationNumber: sellerProfile?.businessRegistrationNumber || sellerProfile?.gstNumber },
-      products: [{ productId: quotation.productId || finalRfq?.productId, name: quotation.productId?.name || finalRfq?.title, quantity: quotation.suppliedQuantity || finalRfq?.quantity, unit: finalRfq?.unit, unitPrice: quotation.unitPrice }],
+      buyer: { name: buyer?.fullName, company: buyerCompany, email: buyer?.email, phone: buyer?.phone, address: buyerAddress, country: buyer?.metadata?.country || buyerAddress?.country },
+      seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, email: sellerUser?.email, phone: sellerProfile?.businessPhone || sellerUser?.phone, address: sellerAddress, country: sellerAddress?.country, registrationNumber: sellerProfile?.businessRegistrationNumber, taxNumber: sellerProfile?.gstNumber },
+      products: [{ productId: quotation.productId?._id || quotation.productId || finalRfq?.productId, name: product?.name || quotation.productId?.name || finalRfq?.title, image: productImage, brand: product?.brand, sku: product?.sku, countryOfOrigin: product?.countryOfOrigin, specifications: quotation.specifications || finalRfq?.specifications, quantity: quotation.suppliedQuantity || finalRfq?.quantity, unit: finalRfq?.unit, minimumOrderQuantity: quotation.minimumOrderQuantity, unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice }],
       pricing: { unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice, currency: quotation.currency },
       minimumOrderQuantity: quotation.minimumOrderQuantity,
       production: { timeline: quotation.productionTime, unit: quotation.productionTimeUnit },
@@ -1000,6 +1005,7 @@ async function finalQuotationSnapshot(quotation) {
       specialConditions: quotation.specialClauses,
       notes: quotation.notes || quotation.sellerMessage,
       attachments: quotation.attachments,
+      rfqAttachments: [...(finalRfq?.attachments || []), ...(finalRfq?.documents || []), ...(finalRfq?.drawings || [])],
       generatedAt: quotation.finalQuotation?.preparedAt || new Date(),
     },
   };
@@ -1014,15 +1020,15 @@ async function createFinalQuotationDocument(quotation, sellerUserId, reason) {
   const created = await createTradeDocument('quotation', quotation._id, { _id: quotation.userId?._id || quotation.userId, roles: ['seller'] }, {
     documentType: 'quotation',
     title: `Final Quotation ${quotation.finalQuotation.finalQuotationNumber}`,
-    requiresSellerSignature: false,
+    requiresSellerSignature: true,
     requiresBuyerSignature: true,
     metadata: { isFinalQuotation: true, finalQuotationNumber: quotation.finalQuotation.finalQuotationNumber },
     notes: reason || 'Seller prepared the Final Quotation',
     content,
   });
   const refreshed = await quotationRepository.findQuotationByIdLean(quotation._id);
-  refreshed.finalQuotation = { ...(refreshed.finalQuotation?.toObject?.() || refreshed.finalQuotation || {}), documentId: created.document._id, status: 'awaiting_buyer_signature', version: created.document.version, preparedAt: new Date() };
-  refreshed.activityTimeline.push({ action: 'final_quotation_prepared', status: 'final_quotation_pending', message: `Final Quotation version ${created.document.version} sent for Buyer signature`, actorId: sellerUserId, actorRole: 'seller', metadata: { documentId: created.document._id, version: created.document.version } });
+  refreshed.finalQuotation = { ...(refreshed.finalQuotation?.toObject?.() || refreshed.finalQuotation || {}), documentId: created.document._id, status: 'awaiting_seller_signature', version: created.document.version, preparedAt: new Date(), sellerSignedAt: null, buyerSignedAt: null, lockedAt: null };
+  refreshed.activityTimeline.push({ action: 'final_quotation_generated', status: 'final_quotation_pending', message: `Final Quotation version ${created.document.version} generated for Seller signature`, actorId: sellerUserId, actorRole: 'seller', metadata: { documentId: created.document._id, version: created.document.version } });
   await refreshed.save();
   return { document: created.document, finalRfq };
 }

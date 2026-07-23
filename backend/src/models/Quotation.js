@@ -230,9 +230,10 @@ const quotationSchema = new mongoose.Schema(
     finalQuotation: {
       finalQuotationNumber: String,
       documentId: mongoose.Schema.Types.ObjectId,
-      status: { type: String, enum: ['not_started', 'seller_preparation', 'awaiting_buyer_signature', 'changes_requested', 'signed', 'cancelled', 'expired'], default: 'not_started' },
+      status: { type: String, enum: ['not_started', 'seller_preparation', 'awaiting_seller_signature', 'awaiting_buyer_signature', 'changes_requested', 'signed', 'cancelled', 'expired'], default: 'not_started' },
       version: { type: Number, min: 1, default: 1 },
       preparedAt: Date,
+      sellerSignedAt: Date,
       buyerSignedAt: Date,
       lockedAt: Date,
     },

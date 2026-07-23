@@ -449,6 +449,22 @@ export async function updateRfq(session, rfqId, body) {
     recordTransition(rfq, { type: 'rfq', action: `seller_${lifecycleAction}`, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: body.reason || body.notes || `Seller ${lifecycleAction}ed this RFQ`, documents: body.documents || [] });
     await rfq.save();
     await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'rfq_updated', title: action === 'request_information' ? 'Seller requested more information' : `Seller ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
+    if (action === 'accept') {
+      const { chat } = await findOrCreateConversation({ buyerId: rfq.buyerId, sellerId: session.userId, productId: rfq.productId, rfqId: rfq._id, chatType: 'rfq_negotiation' });
+      const Message = (await import('../models/Message.js')).default;
+      const content = `RFQ ${rfq.rfqNumber || rfq.title} accepted by the Seller. Quotation preparation is now enabled.`;
+      const message = await Message.create({ chatId: chat._id, senderId: session.userId, receiverId: rfq.buyerId, content, messageType: 'system', rfqDetails: { rfqId: rfq._id, title: rfq.title, quantity: rfq.quantity, unit: rfq.unit, status: 'accepted', actionUrl: `/rfqs/${rfq._id}` }, isRead: false });
+      chat.lastMessage = content;
+      chat.lastMessageAt = new Date();
+      chat.buyerUnreadCount = Number(chat.buyerUnreadCount || 0) + 1;
+      await chat.save();
+      const io = getIO();
+      if (io) {
+        io.to(`chat_${chat._id}`).emit('new_message', message);
+        io.to(`user_${rfq.buyerId}`).emit('rfq_updated', { rfqId: rfq._id, action: 'accept' });
+        io.to(`user_${session.userId}`).emit('rfq_updated', { rfqId: rfq._id, action: 'accept' });
+      }
+    }
     return { rfq, message: `RFQ ${action} recorded` };
   }
 

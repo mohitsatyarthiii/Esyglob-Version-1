@@ -22,6 +22,7 @@ export default function RfqDetailsPage() {
   const [quoteOpen, setQuoteOpen] = useState(() => sellerView && params.get('action') === 'quote')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [busyAction, setBusyAction] = useState('')
   const data = query.data || {}
   const rfq = data.rfq || {}
 
@@ -52,9 +53,13 @@ export default function RfqDetailsPage() {
     }
   }, [openChat, params, query.data?.rfq, sellerView])
   async function action(type) {
+    if (busyAction) return
+    setBusyAction(type)
     setError('')
-    try { if (type === 'archive') await archiveRfq(rfqId); else await updateRfq(rfqId, { action: type }); setMessage(`RFQ ${type === 'archive' ? 'archived' : `${type}d`}.`); query.reload() }
+    setMessage('')
+    try { if (type === 'archive') await archiveRfq(rfqId); else await updateRfq(rfqId, { action: type }); setMessage(type === 'accept' ? 'RFQ accepted. Quotation preparation is now enabled.' : `RFQ ${type === 'archive' ? 'archived' : `${type}d`}.`); await query.reload() }
     catch (nextError) { setError(nextError.message) }
+    finally { setBusyAction('') }
   }
 
   if (query.loading) return <AppShell><div className="listing-page container"><TradeSkeleton /></div></AppShell>
