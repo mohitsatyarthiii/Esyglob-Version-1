@@ -6,6 +6,7 @@ import { fetchCategories, fetchProducts } from '../api/marketplace';
 import { useAuth } from '../auth/auth-context';
 import AppShell from '../components/AppShell';
 import { CategoryBubble, ProductCard, SkeletonCards } from '../components/MarketplaceCards';
+import MarketplaceSearch from '../components/MarketplaceSearch';
 import useAsyncData from '../hooks/useAsyncData';
 
 const featuredLoader = () => fetchProducts({ limit: 10, sort: 'latest', verifiedOnly: true });
@@ -34,6 +35,10 @@ export default function HomePage() {
     <AppShell>
       <div className="bg-white">
 
+        <div className="mobile-home-search">
+          <MarketplaceSearch />
+        </div>
+
         {/* ─── Quick Actions ─────────────────────────────────────── */}
         <div className="border-b border-gray-100">
           <div className="mx-auto max-w-7xl px-4 py-2.5 sm:px-6 sm:py-3">
@@ -44,10 +49,10 @@ export default function HomePage() {
               <QuickAction icon={<Grid2X2 size={18} />} label="Categories" color="bg-emerald-50 text-emerald-600" to="/categories" />
             </div>
             <div ref={quickScrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide sm:hidden -mx-4 px-4 snap-x">
+              <QuickAction icon={<Calculator size={16} />} label="Trade Calculator" color="bg-violet-50 text-violet-600" to="/services/calculator" mobile />
               <QuickAction icon={<Target size={16} />} label="RFQ" color="bg-amber-50 text-amber-600" onClick={() => authRoute('/rfqs/new')} mobile />
               <QuickAction icon={<Grid2X2 size={16} />} label="Categories" color="bg-emerald-50 text-emerald-600" to="/categories" mobile />
               <QuickAction icon={<Camera size={16} />} label="Image Search" color="bg-orange-50 text-orange-600" to={status === 'authenticated' ? '/explore/image-search' : '/login'} state={{ from: '/explore/image-search' }} mobile />
-              <QuickAction icon={<Calculator size={16} />} label="Calculator" color="bg-violet-50 text-violet-600" to="/services/calculator" mobile />
             </div>
           </div>
         </div>

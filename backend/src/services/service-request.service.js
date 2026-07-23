@@ -5,10 +5,9 @@ import Payment from '../models/Payment.js';
 import Invoice from '../models/Invoice.js';
 
 const BASE_PRICES = {
-  shipping: 1499, 'customs-brokerage': 2499, warehousing: 999,
-  'documentation-support': 799, insurance: 1199, consulting: 1999,
+  shipping: 1499, 'customs-brokerage': 2499, warehousing: 999, insurance: 1199, consulting: 1999,
   'quality-inspection': 3499, escrow: 999, 'trade-financing': 2499,
-  'trade-assurance': 1299, 'dispute-resolution': 1999, 'seller-verification': 999,
+  'trade-assurance': 1299, 'dispute-resolution': 1999, 
 };
 
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim() || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim();

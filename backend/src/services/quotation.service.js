@@ -106,10 +106,15 @@ export async function getQuotations(session, searchParams) {
     query.rfqId = { $in: buyerRfqIds };
   }
 
-  const [quotations, total] = await Promise.all([
+  let [quotations, total] = await Promise.all([
     quotationRepository.findQuotations(query, (pageNum - 1) * limitNum, limitNum),
     quotationRepository.countQuotations(query),
   ]);
+  const missingDocuments = quotations.filter(needsFinalQuotationDocument);
+  if (missingDocuments.length) {
+    for (const item of missingDocuments) await ensureFinalQuotationDocument(item._id).catch(error => console.error('[FinalQuotation-Backfill]', item._id, error.message));
+    quotations = await quotationRepository.findQuotations(query, (pageNum - 1) * limitNum, limitNum);
+  }
 
   return {
     quotations,
@@ -566,7 +571,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
 
 // ─── Get Quotation Detail ──────────────────────────────────
 export async function getQuotationDetail(session, quotationId) {
-  const quotation = await quotationRepository.findQuotationById(quotationId);
+  let quotation = await quotationRepository.findQuotationById(quotationId);
 
   if (!quotation) {
     const error = new Error('Quotation not found');
@@ -630,6 +635,10 @@ export async function updateQuotation(session, quotationId, body) {
     quotation.activityTimeline.push({ action: action === 'withdraw' ? 'quotation_withdrawn' : 'quotation_sent', status: quotation.status, message: reason || body.sellerMessage || `Quotation ${action}`, actorId: session.userId, actorRole: 'seller' });
     await quotation.save();
     return { quotation, message: action === 'withdraw' ? 'Quotation withdrawn' : 'Quotation sent to buyer' };
+  }
+  if (needsFinalQuotationDocument(quotation)) {
+    await ensureFinalQuotationDocument(quotation._id);
+    quotation = await quotationRepository.findQuotationById(quotationId);
   }
 
   if (action === 'confirm') {
@@ -1031,6 +1040,28 @@ async function createFinalQuotationDocument(quotation, sellerUserId, reason) {
   refreshed.activityTimeline.push({ action: 'final_quotation_generated', status: 'final_quotation_pending', message: `Final Quotation version ${created.document.version} generated for Seller signature`, actorId: sellerUserId, actorRole: 'seller', metadata: { documentId: created.document._id, version: created.document.version } });
   await refreshed.save();
   return { document: created.document, finalRfq };
+}
+
+function needsFinalQuotationDocument(quotation) {
+  if (!quotation?.finalQuotation?.finalQuotationNumber) return false;
+  if (!['final_quotation_pending'].includes(String(quotation.status))) return false;
+  return !(quotation.tradeDocuments || []).some(document => document.documentType === 'quotation' && document.metadata?.isFinalQuotation && document.status !== 'void');
+}
+
+export async function ensureFinalQuotationDocument(quotationId) {
+  const quotation = await quotationRepository.findQuotationByIdLean(quotationId);
+  if (!quotation || !needsFinalQuotationDocument(quotation)) return null;
+  quotation.finalQuotation.status = 'awaiting_seller_signature';
+  quotation.finalQuotation.documentId = undefined;
+  quotation.finalQuotation.sellerSignedAt = null;
+  quotation.finalQuotation.buyerSignedAt = null;
+  quotation.finalQuotation.lockedAt = null;
+  quotation.activityTimeline.push({ action: 'final_quotation_document_restored', status: 'final_quotation_pending', message: 'Missing Final Quotation document regenerated from stored commercial terms', actorId: quotation.userId, actorRole: 'seller' });
+  await quotation.save();
+  const result = await createFinalQuotationDocument(quotation, quotation.userId, 'Automatically restored missing Final Quotation document');
+  const rfq = result.finalRfq;
+  await publishQuotationContext({ quotation, rfq, actorId: quotation.userId, receiverId: rfq?.buyerId, content: `Final Quotation ${quotation.finalQuotation.finalQuotationNumber} was restored from the accepted terms. Seller signature is required before Buyer review.` }).catch(() => {});
+  return result.document;
 }
 
 async function publishQuotationContext({ quotation, rfq, actorId, receiverId, content }) {

@@ -1,7 +1,7 @@
 import { Check, CheckCircle2, Download, FileSignature, FileText, History, PackageCheck, PenLine, Printer, RefreshCw, Share2, ShieldCheck, Signature, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { fetchUnifiedTradeWorkspace, signTradeDocument, updateQuotation } from '../api/trade'
+import { Link, useNavigate } from 'react-router-dom'
+import { fetchUnifiedTradeWorkspace, signTradeDocument, startSellerOrder, updateQuotation } from '../api/trade'
 import { resolveApiResourceUrl } from '../api/client'
 import { useAuth } from '../auth/auth-context'
 import { getRealtimeClient } from '../realtime/socket'
@@ -80,7 +80,7 @@ function FinalPreparation({ quotation, onComplete, setError }) {
     <label>Special conditions <small>One condition per line</small><textarea rows="4" value={form.specialClauses} onChange={event => update('specialClauses', event.target.value)} /></label>
     <AttachmentUploader folder="final-quotations" value={attachments} onChange={setAttachments} />
     <div className="agreement-total"><span>Final Quotation value</span><b><Money value={total} currency={quotation.currency} /></b></div>
-    <button className="button button--primary" disabled={busy}><FileSignature /> {busy ? 'Generating Final Quotation…' : 'Generate & Sign Final Quotation'}</button>
+    <button className="button button--primary" disabled={busy}><FileSignature /> {busy ? 'Generating Final Quotation…' : 'Generate Final Quotation'}</button>
   </form>
 }
 
@@ -89,11 +89,13 @@ function FinalPreview({ quotation, form, total }) {
 }
 
 function FinalDocument({ data, quotation, document, versions, user, onComplete, setError }) {
+  const navigate = useNavigate()
   const actorRole = data.actorRole
   const signed = document.status === 'completed'
   const canSign = !signed && ((actorRole === 'seller' && document.status === 'awaiting_seller_signature') || (actorRole === 'buyer' && document.status === 'awaiting_buyer_signature'))
   const [busy, setBusy] = useState(false)
-  const [signOpen, setSignOpen] = useState(() => actorRole === 'seller' && document.status === 'awaiting_seller_signature')
+  const [signOpen, setSignOpen] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [changesOpen, setChangesOpen] = useState(false)
   const [changeReason, setChangeReason] = useState('')
   const [changeFiles, setChangeFiles] = useState([])
@@ -102,10 +104,10 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
   const [signatureValue, setSignatureValue] = useState('')
   const previewUrl = resolveApiResourceUrl(document.previewUrl)
   async function sign() {
-    if (!canSign || busy || !signerName.trim() || !signatureValue) return
+    if (!canSign || !termsAccepted || busy || !signerName.trim() || !signatureValue) return
     setBusy(true); setError('')
     try {
-      await signTradeDocument('quotation', id(quotation), document._id, { signerName: signerName.trim(), signatureValue, signatureType })
+      await signTradeDocument('quotation', id(quotation), document._id, { signerName: signerName.trim(), signatureValue, signatureType, termsAccepted: true, termsVersion: 'final-quotation-terms-v1' })
       setSignOpen(false)
       await onComplete(actorRole === 'seller' ? 'Seller signature recorded. The Buyer can now review and sign.' : 'Final Quotation fully signed. Start Order is now enabled.')
     } catch (next) { setError(next.message) } finally { setBusy(false) }
@@ -128,14 +130,26 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
     const printWindow = window.open(previewUrl, '_blank')
     printWindow?.addEventListener('load', () => printWindow.print(), { once: true })
   }
+  async function startCheckout() {
+    if (busy) return
+    if (data.order?._id) {
+      navigate(`/orders/${id(data.order)}`)
+      return
+    }
+    setBusy(true); setError('')
+    try {
+      const order = await startSellerOrder({ quotationId: id(quotation) })
+      navigate(`/orders/${id(order)}`)
+    } catch (next) { setError(next.message) } finally { setBusy(false) }
+  }
   return <div className="agreement-document">
-    <div className="agreement-document-toolbar"><div><FileSignature /><span><small>{quotation.finalQuotation?.finalQuotationNumber}</small><b>{document.title}</b><em>Version {document.version || 1} · {label(document.status)}</em></span></div><div><a className="button button--secondary" href={previewUrl} target="_blank" rel="noreferrer"><FileText /> Preview</a><a className="button button--secondary" href={`${previewUrl}?format=pdf`} target="_blank" rel="noreferrer"><Download /> Download</a><button type="button" className="button button--secondary" onClick={shareDocument}><Share2 /> Share</button><button type="button" className="button button--secondary" onClick={printDocument}><Printer /> Print</button></div></div>
+    <div className="agreement-document-toolbar"><div><FileSignature /><span><small>{quotation.finalQuotation?.finalQuotationNumber}</small><b>{document.title}</b><em>Version {document.version || 1} · {label(document.status)}</em></span></div><div><Link className="button button--secondary" to={`/agreements?quotation=${id(quotation)}&role=${actorRole}`}>Agreements</Link><a className="button button--secondary" href={previewUrl} target="_blank" rel="noreferrer"><FileText /> Preview</a><a className="button button--secondary" href={`${previewUrl}?format=pdf`} target="_blank" rel="noreferrer"><Download /> Download</a><button type="button" className="button button--secondary" onClick={shareDocument}><Share2 /> Share</button><button type="button" className="button button--secondary" onClick={printDocument}><Printer /> Print</button></div></div>
     <div className="agreement-preview"><iframe title="Final Quotation preview" src={previewUrl} /></div>
     <div className="final-quotation-version"><History /><span><b>Version history</b><small>{versions.map(item => `v${item.version} ${label(item.status)}`).join(' · ')}</small></span></div>
-    {canSign && <div className="final-quotation-actions">{actorRole === 'buyer' && <button type="button" className="button button--secondary" onClick={() => setChangesOpen(true)}><RefreshCw /> Request Changes</button>}<button type="button" className="button button--primary" onClick={() => setSignOpen(true)}><Signature /> Add {label(actorRole)} Signature</button></div>}
+    {canSign && <div className="final-quotation-signing"><label className="final-quotation-consent"><input type="checkbox" checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} /><span><b>I have reviewed and accept this Final Quotation and its terms and conditions.</b><small>This acknowledgement is required and will be recorded with your electronic signature.</small></span></label><div className="final-quotation-actions">{actorRole === 'buyer' && <button type="button" className="button button--secondary" onClick={() => setChangesOpen(true)}><RefreshCw /> Request Changes</button>}<button type="button" className="button button--primary" disabled={!termsAccepted || busy} onClick={() => setSignOpen(true)}><Signature /> Add {label(actorRole)} Signature</button></div></div>}
     {actorRole === 'buyer' && document.status === 'awaiting_seller_signature' && <Waiting title="Seller signature pending" copy="Buyer review and signing opens automatically after the Seller signs this version." />}
     {actorRole === 'seller' && document.status === 'awaiting_buyer_signature' && <Waiting title="Buyer review in progress" copy="The Seller-signed document is locked. The Buyer can request changes or add the final signature." />}
-    {signed && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Final Quotation fully signed and locked</b><p>Both signatures are embedded in the official PDF. Start Order is enabled.</p></div><Link className="button button--primary" to={`/trade-workspace/quotation/${id(quotation)}?section=execution`}><PackageCheck /> Start Order</Link></div>}
+    {signed && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Final Quotation fully signed and permanently locked</b><p>Both signatures are embedded in the official PDF. {actorRole === 'buyer' ? 'Checkout is available now.' : 'The Buyer can now start checkout.'}</p></div>{actorRole === 'buyer' ? <button className="button button--primary" disabled={busy} onClick={startCheckout}><PackageCheck /> {busy ? 'Opening checkout…' : 'Checkout / Start Order'}</button> : data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">Waiting for Buyer checkout</span>}</div>}
     {changesOpen && <ChangesModal busy={busy} reason={changeReason} setReason={setChangeReason} files={changeFiles} setFiles={setChangeFiles} close={() => setChangesOpen(false)} submit={requestChanges} />}
     {signOpen && <SignatureModal role={actorRole} busy={busy} signerName={signerName} setSignerName={setSignerName} signatureType={signatureType} setSignatureType={setSignatureType} signatureValue={signatureValue} setSignatureValue={setSignatureValue} close={() => setSignOpen(false)} submit={sign} />}
   </div>

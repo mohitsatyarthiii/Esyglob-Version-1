@@ -1,4 +1,4 @@
-import { Bell, BriefcaseBusiness, ChevronDown, Globe2, Grid2X2, Heart, Home, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Search, Settings, UserRound, X } from 'lucide-react'
+import { Bell, BriefcaseBusiness, ChevronDown, Globe2, Grid2X2, Heart, Home, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Settings, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/auth-context'
@@ -9,6 +9,7 @@ import { fetchUnreadNotificationCount } from '../api/trade'
 import BackButton from './BackButton'
 import { getRealtimeClient } from '../realtime/socket'
 import TradeWorkspaceDock from './TradeWorkspaceDock'
+import MarketplaceSearch from './MarketplaceSearch'
 
 export default function AppShell({ children }) {
   const { user, status, signOut } = useAuth()
@@ -19,7 +20,6 @@ export default function AppShell({ children }) {
   const [profile, setProfile] = useState(null)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const accountRef = useRef(null)
-  const [query, setQuery] = useState('')
   const { selectedCurrency, setCurrency } = useCurrency()
   const [region, setRegion] = useState(() => { try { return JSON.parse(localStorage.getItem('esyglob.region'))?.country || 'Global' } catch { return 'Global' } })
   const authenticated = status === 'authenticated'
@@ -51,11 +51,6 @@ export default function AppShell({ children }) {
     return () => { document.removeEventListener('pointerdown', closeAccount) }
   }, [])
 
-  function submitSearch(event) {
-    event.preventDefault()
-    navigate(`/search?q=${encodeURIComponent(query.trim())}`)
-  }
-
   async function handleSignOut() {
     await signOut()
     navigate('/home', { replace: true })
@@ -75,7 +70,7 @@ export default function AppShell({ children }) {
       <div className="container site-header__main">
         <button className="icon-button mobile-only" onClick={() => setMenuOpen(true)} aria-label="Open navigation"><Menu /></button>
         <Link to="/home" className="brand-link"><Brand compact /></Link>
-        <form className="header-search" onSubmit={submitSearch} role="search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, suppliers and categories" aria-label="Search marketplace" /><button>Search</button></form>
+        <MarketplaceSearch />
         <div className="header-actions">
           {authenticated ? <>
             <Link className="header-region" to="/location"><MapPin /><span>{region}</span></Link>

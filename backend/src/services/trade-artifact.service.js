@@ -192,7 +192,8 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   if (context.actorRole === 'buyer' && document.requiresSellerSignature && !document.signatures.some(signature => signature.signerRole === 'seller')) throw Object.assign(new Error('The seller must sign before the buyer'), { statusCode: 409 });
   if (document.signatures.some(signature => signature.signerRole === context.actorRole)) throw Object.assign(new Error('Document is already signed by this party'), { statusCode: 409 });
   if (!String(input.signatureValue || '').trim() || !String(input.signerName || '').trim()) throw Object.assign(new Error('Signer name and signature are required'), { statusCode: 422 });
-  document.signatures.push({ signerId: context.userId, signerRole: context.actorRole, signerName: String(input.signerName).trim(), signatureType: input.signatureType || 'typed', signatureValue: String(input.signatureValue), ipAddress: requestMeta.ipAddress, userAgent: requestMeta.userAgent });
+  if (isFinalQuotation && input.termsAccepted !== true) throw Object.assign(new Error('Accept the Final Quotation terms and conditions before signing'), { statusCode: 422 });
+  document.signatures.push({ signerId: context.userId, signerRole: context.actorRole, signerName: String(input.signerName).trim(), signatureType: input.signatureType || 'typed', signatureValue: String(input.signatureValue), termsAccepted: input.termsAccepted === true, termsVersion: String(input.termsVersion || 'final-quotation-terms-v1'), termsAcceptedAt: input.termsAccepted === true ? new Date() : undefined, ipAddress: requestMeta.ipAddress, userAgent: requestMeta.userAgent });
   const sellerSigned = !document.requiresSellerSignature || document.signatures.some(signature => signature.signerRole === 'seller');
   const buyerSigned = !document.requiresBuyerSignature || document.signatures.some(signature => signature.signerRole === 'buyer');
   document.status = sellerSigned && buyerSigned ? 'completed' : sellerSigned ? 'awaiting_buyer_signature' : 'awaiting_seller_signature';
@@ -244,7 +245,13 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
     const fullySigned = document.status === 'completed';
     const confirmation = await Notification.create({ userId: context.userId, notificationType: 'document_signed', title: 'Final Quotation signed successfully', description: fullySigned ? 'Both signatures are recorded. The trade is ready for Order execution.' : 'Your Seller signature was recorded and the Buyer was notified.', data: { relatedId: context.entity._id, relatedModel: 'Quotation', actionUrl: `/quotations/${context.entity._id}`, documentUrl: signedPdfUrl }, priority: 'high' }).catch(() => null);
     if (confirmation) getIO()?.to(`user_${context.userId}`).emit('new_notification', confirmation);
-    await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'Seller signed the Final Quotation. Buyer signature is now required.' : 'Buyer signed the Final Quotation. Order is now enabled for this product.', { attachPdf: fullySigned }).catch(() => {});
+    if (context.actorRole === 'seller') {
+      await publishAgreementEvent(context, document, 'Seller signed the Final Quotation. Buyer signature is now required. Open Final Quotation to review and sign.').catch(() => {});
+    } else {
+      await publishAgreementEvent(context, document, 'Buyer signed the Final Quotation. Both parties have completed signing.', { attachPdf: true }).catch(() => {});
+      await publishAgreementEvent(context, document, 'Final Quotation fully executed. The signed PDF is now the permanent commercial record.', { attachPdf: true }).catch(() => {});
+      await publishAgreementEvent(context, document, 'Checkout is available. Open Final Quotation to start the order with the locked commercial terms.').catch(() => {});
+    }
   }
   if (isAgreement) await publishAgreementEvent(context, document, context.actorRole === 'seller' ? 'The Seller has completed and signed the Agreement. Please review and sign to continue.' : 'Buyer signed the Agreement. The Agreement is fully executed and the Order is now enabled.', { attachPdf: true });
   return { document, workspace: await getWorkspace(entityType, entityId, user) };

@@ -19,6 +19,9 @@ export const signatureSchema = new mongoose.Schema({
   signatureType: { type: String, enum: ['typed', 'drawn', 'uploaded'], default: 'typed' },
   signatureValue: { type: String, required: true },
   signedAt: { type: Date, default: Date.now },
+  termsAccepted: { type: Boolean, required: true, default: false },
+  termsVersion: { type: String, trim: true },
+  termsAcceptedAt: Date,
   ipAddress: String,
   userAgent: String,
 }, { _id: true });

@@ -205,23 +205,229 @@ export default function ProductDetailsPage() {
   )
 }
 
-// Mobile Sticky Bottom Bar
 function ProductTradeActions({ disabled, onContact, onRfq, sellerId }) {
   return (
-    <div className="product-trade-actions" aria-label="Supplier actions">
-      {sellerId && (
-        <Link to={`/sellers/${sellerId}`} className="product-trade-store-btn" title="View Store">
-          <Store size={18} />
-        </Link>
-      )}
-      <button className="button button--secondary" disabled={disabled} onClick={onContact}>
-        <MessageSquare size={15} /> Chat Now
-      </button>
-      <button className="button button--primary" disabled={disabled} onClick={onRfq}>
-        <FileText size={15} /> Send RFQ
-      </button>
-    </div>
-  )
+    <>
+      <div className="product-trade-actions" aria-label="Supplier actions">
+        {sellerId && (
+          <Link to={`/sellers/${sellerId}`} className="trade-store-btn" title="View Store">
+            <Store size={18} />
+          </Link>
+        )}
+        <button className="trade-chat-btn" disabled={disabled} onClick={onContact}>
+          <MessageSquare size={15} /> <span>Chat Now</span>
+        </button>
+        <button className="trade-rfq-btn" disabled={disabled} onClick={onRfq}>
+          <FileText size={15} /> <span>Send RFQ</span>
+        </button>
+      </div>
+
+      <style>{`
+        /* ============================================ */
+        /* PRODUCT TRADE ACTIONS - MOBILE ONLY STICKY */
+        /* ============================================ */
+
+        .product-trade-actions {
+          display: none;  /* Desktop me hide */
+          align-items: center;
+          gap: 8px;
+          z-index: 100;
+        }
+
+        /* ─── Desktop: Hidden ─── */
+        @media(min-width: 769px) {
+          .product-trade-actions {
+            display: none !important;
+          }
+        }
+
+        /* ─── Mobile: Fixed Bottom Bar ─── */
+        @media(max-width: 768px) {
+          .product-trade-actions {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 8px 12px;
+            padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
+            gap: 6px;
+            animation: slideUpBar 0.3s ease;
+          }
+        }
+
+        @keyframes slideUpBar {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+
+        /* ─── Store Button ─── */
+        .trade-store-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          min-width: 40px;
+          border-radius: 10px;
+          background: #f3f4f6;
+          border: 1px solid #e5e7eb;
+          color: #4b5563;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+          text-decoration: none;
+          cursor: pointer;
+        }
+
+        .trade-store-btn:active {
+          transform: scale(0.95);
+          background: #e5e7eb;
+        }
+
+        /* ─── Chat Now Button (Orange) ─── */
+        .trade-chat-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          flex: 1;
+          min-width: 0;
+          padding: 0 14px;
+          height: 40px;
+          border-radius: 10px;
+          background: #f97316;
+          border: 1px solid #f97316;
+          color: #ffffff;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          box-shadow: 0 2px 8px rgba(249, 115, 22, 0.2);
+          font-family: inherit;
+          white-space: nowrap;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .trade-chat-btn:active:not(:disabled) {
+          transform: scale(0.97);
+          background: #ea580c;
+        }
+
+        .trade-chat-btn:disabled {
+          background: #f3f4f6;
+          border-color: #e5e7eb;
+          color: #9ca3af;
+          cursor: not-allowed;
+          box-shadow: none;
+          opacity: 0.6;
+        }
+
+        /* ─── Send RFQ Button (Blue) ─── */
+        .trade-rfq-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          flex: 1;
+          min-width: 0;
+          padding: 0 14px;
+          height: 40px;
+          border-radius: 10px;
+          background: #2563eb;
+          border: 1px solid #2563eb;
+          color: #ffffff;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
+          font-family: inherit;
+          white-space: nowrap;
+          user-select: none;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .trade-rfq-btn:active:not(:disabled) {
+          transform: scale(0.97);
+          background: #1d4ed8;
+        }
+
+        .trade-rfq-btn:disabled {
+          background: #f3f4f6;
+          border-color: #e5e7eb;
+          color: #9ca3af;
+          cursor: not-allowed;
+          box-shadow: none;
+          opacity: 0.6;
+        }
+
+        /* ─── Mobile Sizes ─── */
+        @media(max-width: 768px) {
+          .trade-store-btn {
+            width: 38px;
+            height: 38px;
+            min-width: 38px;
+            border-radius: 8px;
+          }
+
+          .trade-chat-btn,
+          .trade-rfq-btn {
+            height: 38px;
+            padding: 0 12px;
+            font-size: 12px;
+            border-radius: 8px;
+            gap: 5px;
+          }
+        }
+
+        /* ─── Small Mobile ─── */
+        @media(max-width: 380px) {
+          .product-trade-actions {
+            gap: 5px;
+            padding: 6px 8px;
+            padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+          }
+
+          .trade-store-btn {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+          }
+
+          .trade-chat-btn,
+          .trade-rfq-btn {
+            height: 34px;
+            padding: 0 10px;
+            font-size: 11px;
+            gap: 4px;
+          }
+        }
+
+        /* ─── Only Icons on Very Small ─── */
+        @media(max-width: 340px) {
+          .trade-chat-btn span,
+          .trade-rfq-btn span {
+            display: none;
+          }
+
+          .trade-chat-btn,
+          .trade-rfq-btn {
+            flex: 0 1 auto;
+            padding: 0;
+            width: 38px;
+            min-width: 38px;
+            border-radius: 50%;
+          }
+        }
+      `}</style>
+    </>
+  );
 }
 
 function ProductEnquiryModal({ product, productId, sellerUserId, initialQuantity, unit, onClose, onStartRfq, onSubmitted }) {

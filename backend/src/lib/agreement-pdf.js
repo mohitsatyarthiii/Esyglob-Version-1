@@ -45,7 +45,7 @@ export function streamAgreementPdf(res, tradeDocument, entityNumber) {
     } else {
       pdf.fillColor('#17345f').font('Helvetica-Oblique').fontSize(15).text(String(signature.signatureValue || signature.signerName).slice(0, 120));
     }
-    pdf.fillColor('#64748b').font('Helvetica').fontSize(8).text(`Signed ${new Date(signature.signedAt).toLocaleString()}  |  Method: ${heading(signature.signatureType)}  |  ${isFinalQuotation ? 'Final Quotation' : 'Agreement'} v${tradeDocument.version || 1}`);
+    pdf.fillColor('#64748b').font('Helvetica').fontSize(8).text(`Signed ${new Date(signature.signedAt).toLocaleString()}  |  Method: ${heading(signature.signatureType)}  |  ${isFinalQuotation ? 'Final Quotation' : 'Agreement'} v${tradeDocument.version || 1}${signature.termsAccepted ? '  |  Terms accepted' : ''}`);
   }
   if (!(tradeDocument.signatures || []).length) pdf.moveDown(.4).font('Helvetica').fillColor('#64748b').fontSize(9.5).text('Awaiting required signatures.');
   pdf.moveDown(1.5).fillColor('#64748b').fontSize(8).text('Generated and retained by EsyGlob with a complete signature audit trail.');

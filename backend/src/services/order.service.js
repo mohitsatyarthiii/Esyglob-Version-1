@@ -410,40 +410,47 @@ class OrderService {
     const orderRfqIds = new Set(orders.map(item => idString(item.rfqId)));
     const items = [
       ...orders.map(order => ({ queueType:'order', queueId:order._id, orderId:order._id, buyer:order.buyerId, product:order.productId, rfq:order.rfqId, quotation:order.quotationId, quantity:order.quantity, unit:order.unit, unitPrice:order.pricePerUnit, totalAmount:order.totalAmount, status:order.status, negotiationStatus:order.quotationId?.status, documents:order.tradeDocuments?.length || order.documents?.length || 0, updatedAt:order.updatedAt })),
-      ...quotations.filter(item => !item.tradeOrderId && !orderRfqIds.has(idString(item.rfqId))).map(item => ({ queueType:'quotation', queueId:item._id, quotationId:item._id, rfqId:item.rfqId?._id, buyer:item.rfqId?.buyerId, product:item.productId, rfq:item.rfqId, quantity:item.suppliedQuantity, unitPrice:item.unitPrice, totalAmount:item.totalPrice, status:item.status, negotiationStatus:item.status, documents:item.tradeDocuments?.length || item.attachments?.length || 0, updatedAt:item.updatedAt })),
+      ...quotations.filter(item => !item.tradeOrderId && !orderRfqIds.has(idString(item.rfqId)) && !(item.status === 'final_quotation_pending' && item.finalQuotation?.sellerSignedAt)).map(item => ({ queueType:'quotation', queueId:item._id, quotationId:item._id, rfqId:item.rfqId?._id, buyer:item.rfqId?.buyerId, product:item.productId, rfq:item.rfqId, quantity:item.suppliedQuantity, unitPrice:item.unitPrice, totalAmount:item.totalPrice, status:item.status, negotiationStatus:item.status, documents:item.tradeDocuments?.length || item.attachments?.length || 0, updatedAt:item.updatedAt })),
       ...rfqs.filter(item => !item.tradeOrderId && !orderRfqIds.has(idString(item._id))).map(item => ({ queueType:'rfq', queueId:item._id, rfqId:item._id, buyer:item.buyerId, product:item.productId, rfq:item, quantity:item.quantity, unit:item.unit, unitPrice:item.targetPrice, status:item.status, negotiationStatus:item.status, documents:item.tradeDocuments?.length || item.attachments?.length || item.documents?.length || 0, updatedAt:item.updatedAt })),
     ].sort((a,b)=>new Date(b.updatedAt)-new Date(a.updatedAt));
     return { items };
   }
 
   static async startOrder(userId, body) {
-    const seller = await OrderRepository.findSellerByUserId(userId);
-    if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
-    const [{ default: RFQ }, { default: Quotation }, { default: Product }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Product.js')]);
+    const [{ default: RFQ }, { default: Quotation }, { default: Product }, { default: Seller }, { default: Order }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Product.js'), import('../models/Seller.js'), import('../models/Order.js')]);
     const rfq = body.rfqId && mongoose.Types.ObjectId.isValid(body.rfqId) ? await RFQ.findById(body.rfqId) : null;
-    const quotation = body.quotationId && mongoose.Types.ObjectId.isValid(body.quotationId) ? await Quotation.findOne({ _id: body.quotationId, sellerId: seller._id }) : null;
+    const quotation = body.quotationId && mongoose.Types.ObjectId.isValid(body.quotationId) ? await Quotation.findById(body.quotationId) : null;
     if (!quotation) throw Object.assign(new Error('A Final Quotation is required before Start Order.'), { statusCode: 422 });
     const sourceRfq = rfq || await RFQ.findById(quotation.rfqId);
+    if (!sourceRfq) throw Object.assign(new Error('The linked RFQ could not be found'), { statusCode: 404 });
+    const seller = await Seller.findById(quotation.sellerId).select('_id userId companyName').lean();
+    if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
+    const actorRole = idString(sourceRfq.buyerId) === String(userId) ? 'buyer' : idString(seller.userId) === String(userId) ? 'seller' : '';
+    if (!actorRole) throw Object.assign(new Error('Only the Buyer or Seller for this Final Quotation can start the order'), { statusCode: 403 });
     if (quotation.status !== 'final_quotation_signed' || quotation.finalQuotation?.status !== 'signed') throw Object.assign(new Error('Order creation is locked until the Buyer signs the Final Quotation'), { statusCode:409 });
     const productId = toObjectId(body.productId || quotation?.productId || sourceRfq?.productId);
     const product = productId ? await Product.findOne({ _id: productId, sellerId: seller._id }).lean() : null;
-    if (!product) throw Object.assign(new Error('Select one of your products before starting the order'), { statusCode: 422 });
+    if (!product) throw Object.assign(new Error('A linked Seller product is required before starting the order'), { statusCode: 422 });
+    const existingOrder = await Order.findOne({ quotationId: quotation._id });
+    if (existingOrder) return { order: existingOrder };
     if (sourceRfq.tradeOrderId || quotation?.tradeOrderId) throw Object.assign(new Error('An order already exists for this trade'), { statusCode: 409 });
-    const quantity = Math.max(Number(body.quantity || quotation?.suppliedQuantity || sourceRfq.quantity || 1), 1);
-    const minimumOrderQuantity = Math.max(Number(body.minimumOrderQuantity || quotation?.minimumOrderQuantity || product.minimumOrderQuantity || 1), 1);
+    const sellerInput = actorRole === 'seller' ? body : {};
+    const quantity = Math.max(Number(sellerInput.quantity || quotation?.suppliedQuantity || sourceRfq.quantity || 1), 1);
+    const minimumOrderQuantity = Math.max(Number(sellerInput.minimumOrderQuantity || quotation?.minimumOrderQuantity || product.minimumOrderQuantity || 1), 1);
     if (quantity < minimumOrderQuantity) throw Object.assign(new Error(`Final quantity must meet MOQ ${minimumOrderQuantity}`), { statusCode: 422 });
-    const unitPrice = Math.max(Number(body.unitPrice ?? quotation?.unitPrice ?? product.price ?? 0), 0);
-    const shippingCost = Math.max(Number(body.shippingCost ?? quotation?.shippingCost ?? 0), 0);
-    const taxAmount = Math.max(Number(body.taxAmount || 0), 0);
-    const discount = Math.max(Number(body.discount || 0), 0);
+    const unitPrice = Math.max(Number(sellerInput.unitPrice ?? quotation?.unitPrice ?? product.price ?? 0), 0);
+    const shippingCost = Math.max(Number(sellerInput.shippingCost ?? quotation?.shippingCost ?? 0), 0);
+    const taxAmount = Math.max(Number(sellerInput.taxAmount ?? quotation?.taxes?.amount ?? 0), 0);
+    const discount = Math.max(Number(sellerInput.discount || 0), 0);
     const subtotal = unitPrice * quantity;
     const totalAmount = Math.max(0, subtotal + shippingCost + taxAmount - discount);
     const orderNumber = await OrderRepository.generateOrderNumber('ORD');
-    const order = await OrderRepository.create({ orderNumber, userId:sourceRfq.buyerId, buyerId:sourceRfq.buyerId, sellerId:seller._id, productId:product._id, rfqId:sourceRfq._id, quotationId:quotation._id, orderType:'bulk', orderSubType:'trade_order', quantity, unit:body.unit || product.unit || sourceRfq.unit, pricePerUnit:unitPrice, subtotal, shippingCost, taxAmount, discount, totalPrice:totalAmount, totalAmount, netAmount:totalAmount, currency:body.currency || quotation.currency || product.currency || 'INR', paymentStatus:'pending', status:'pending_approval', products:[{ productId:product._id, name:product.name, sku:body.sku, quantity, unit:body.unit || product.unit, unitPrice, totalPrice:subtotal, specifications:body.specifications || sourceRfq.specifications, image:product.images?.[0] }], sellerNotes:body.notes || '', tradeInformation:{ paymentTerms:body.paymentTerms || quotation.paymentTerms, deliveryTerms:body.deliveryTerms || quotation.incoterms, leadTime:body.leadTime || quotation.leadTime, productionTime:body.productionTime, minimumOrderQuantity, logisticsConfiguredBySeller:body.logistics || null, configuredBySeller:true, commercialTermsLockedAt:new Date() }, documents:Array.isArray(body.documents)?body.documents:[], tradeDocuments:quotation.tradeDocuments || [], timeline:[{ status:'rfq_created', note:`RFQ ${sourceRfq.title} linked`, updatedBy:sourceRfq.buyerId },{ status:'quotation_accepted', note:`Quotation version ${quotation.revisionNumber} accepted`, updatedBy:sourceRfq.buyerId },{ status:'final_quotation_signed', note:'Buyer signed the Final Quotation', updatedBy:sourceRfq.buyerId },{ status:'order_started', note:'Seller started the order from locked Final Quotation terms', updatedBy:userId },{ status:'pending_approval', note:'Waiting for buyer checkout validation', updatedBy:userId }], checkout:{ logisticsSelected:false, termsAccepted:false, orderValidated:false } });
+    const order = await OrderRepository.create({ orderNumber, userId:sourceRfq.buyerId, buyerId:sourceRfq.buyerId, sellerId:seller._id, productId:product._id, rfqId:sourceRfq._id, quotationId:quotation._id, orderType:'bulk', orderSubType:'trade_order', quantity, unit:sellerInput.unit || product.unit || sourceRfq.unit, pricePerUnit:unitPrice, subtotal, shippingCost, taxAmount, discount, totalPrice:totalAmount, totalAmount, netAmount:totalAmount, currency:sellerInput.currency || quotation.currency || product.currency || 'INR', paymentStatus:'pending', status:'pending_approval', products:[{ productId:product._id, name:product.name, sku:sellerInput.sku, quantity, unit:sellerInput.unit || product.unit, unitPrice, totalPrice:subtotal, specifications:sellerInput.specifications || sourceRfq.specifications, image:product.images?.[0] }], sellerNotes:sellerInput.notes || '', tradeInformation:{ paymentTerms:quotation.paymentTerms, deliveryTerms:quotation.incoterms, leadTime:quotation.leadTime, productionTime:quotation.productionTime, minimumOrderQuantity, logisticsConfiguredBySeller:sellerInput.logistics || null, configuredBySeller:actorRole === 'seller', initiatedBy:actorRole, commercialTermsLockedAt:quotation.finalQuotation?.lockedAt || new Date() }, documents:Array.isArray(sellerInput.documents)?sellerInput.documents:[], tradeDocuments:quotation.tradeDocuments || [], timeline:[{ status:'rfq_created', note:`RFQ ${sourceRfq.title} linked`, updatedBy:sourceRfq.buyerId },{ status:'quotation_accepted', note:`Quotation version ${quotation.revisionNumber} accepted`, updatedBy:sourceRfq.buyerId },{ status:'final_quotation_signed', note:'Buyer signed the Final Quotation', updatedBy:sourceRfq.buyerId },{ status:'order_started', note:`${actorRole === 'buyer' ? 'Buyer' : 'Seller'} started checkout from locked Final Quotation terms`, updatedBy:userId },{ status:'pending_approval', note:'Waiting for buyer checkout validation', updatedBy:userId }], checkout:{ logisticsSelected:false, termsAccepted:false, orderValidated:false } });
     await order.save();
-    sourceRfq.tradeOrderId=order._id; sourceRfq.status='order_initiated'; sourceRfq.activityTimeline.push({ action:'order_started', status:'order_initiated', message:`Order ${orderNumber} started`, actorId:userId, actorRole:'seller' }); await sourceRfq.save();
-    quotation.tradeOrderId=order._id; quotation.previousStatus=quotation.status; quotation.status='won'; quotation.activityTimeline.push({ action:'order_started', status:'won', message:`Seller started order ${orderNumber}`, actorId:userId, actorRole:'seller', metadata:{ orderId:order._id } }); await quotation.save();
-    await NotificationService.createNotification({ userId:sourceRfq.buyerId, notificationType:'trade_order_created', title:'Seller prepared your order', description:`Review final terms for order ${orderNumber}.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}` }, priority:'high' }).catch(()=>{});
+    sourceRfq.tradeOrderId=order._id; sourceRfq.status='order_initiated'; sourceRfq.activityTimeline.push({ action:'order_started', status:'order_initiated', message:`Order ${orderNumber} started`, actorId:userId, actorRole }); await sourceRfq.save();
+    quotation.tradeOrderId=order._id; quotation.previousStatus=quotation.status; quotation.status='won'; quotation.activityTimeline.push({ action:'order_started', status:'won', message:`${actorRole === 'buyer' ? 'Buyer' : 'Seller'} started order ${orderNumber}`, actorId:userId, actorRole, metadata:{ orderId:order._id } }); await quotation.save();
+    const recipientId = actorRole === 'buyer' ? seller.userId : sourceRfq.buyerId;
+    await NotificationService.createNotification({ userId:recipientId, notificationType:'trade_order_created', title:'Checkout started from signed Final Quotation', description:`Order ${orderNumber} now uses the locked Final Quotation terms.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}${actorRole === 'buyer' ? '?role=seller' : ''}` }, priority:'high' }).catch(()=>{});
     return { order };
   }
 
@@ -493,6 +500,15 @@ class OrderService {
     else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'cancelled', actorId:userId, actorRole:'buyer', note:data.notes || 'Cancelled by buyer' }); order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); }
     else if (data.action === 'confirm_delivery') { if (order.status !== 'delivered') throw Object.assign(new Error('Delivery is not ready for confirmation'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'completed', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer confirmed delivery' }); order.completedAt=new Date(); }
     else throw Object.assign(new Error('Invalid buyer action'), { statusCode:422 });
+    if (['select_logistics', 'accept_terms'].includes(data.action) && order.status === 'pending_approval' && order.tradeInformation?.initiatedBy === 'buyer' && order.checkout?.logisticsSelected && order.checkout?.termsAccepted) {
+      order.checkout.orderValidated = true;
+      order.checkout.validatedAt = new Date();
+      order.approvalHistory.push({ action:'buyer_completed_checkout', previousStatus:'pending_approval', newStatus:'pending_payment', actorId:userId, actorRole:'buyer', notes:'Buyer completed checkout for the signed Final Quotation' });
+      await TradeWorkflowService.transition({ order, toStatus:'pending_payment', actorId:userId, actorRole:'buyer', note:'Checkout requirements completed; payment is ready' });
+      const { ensurePendingOrderPayment } = await import('../lib/order-payments.js');
+      const payment = await ensurePendingOrderPayment(order,{ userId, amount:order.totalAmount, currency:order.currency, unit:order.unit });
+      order.paymentId = payment?._id;
+    }
     await OrderRepository.save(order);
     const sellerUserId = order.sellerId?.userId?._id || order.sellerId?.userId;
     if (sellerUserId) await NotificationService.createNotification({ userId:sellerUserId, notificationType:order.status==='cancelled'?'order_cancelled':order.status==='completed'?'order_completed':'order_pending_payment', title:`Buyer ${String(data.action).replaceAll('_',' ')}`, description:`Order ${order.orderNumber} was updated by the buyer.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}?role=seller` } }).catch(()=>{});

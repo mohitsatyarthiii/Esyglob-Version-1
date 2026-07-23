@@ -1,5 +1,5 @@
 // components/ProductCards.jsx
-import { ArrowUpRight, BadgeCheck, Heart, MapPin, Package, ShieldCheck, Star, Truck } from 'lucide-react';
+import { ArrowUpRight, BadgeCheck, Box, Heart, MapPin, Package, Send, ShieldCheck, Star, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { memo, useState } from 'react';
 import WishlistButton from './WishlistButton';
@@ -81,95 +81,149 @@ export const ProductCard = memo(function ProductCard({ product }) {
   const rating = Number(product.rating || product.averageRating || 0);
   const moq = product.moq || product.minimumOrderQuantity || 1;
   const [saved, setSaved] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  
+  const isVerified = product.verified || product.isVerifiedSeller || product.sellerId?.isVerified || ['verified','approved'].includes(product.sellerId?.verificationStatus);
+  const supplierName = product.sellerId?.companyName || product.supplierName || product.brand;
+  const supplierLocation = product.sellerId?.address?.country || product.sellerId?.country || product.country;
+  const isBestSeller = product.isBestSeller || product.badge === 'bestseller';
+  const isNew = product.isNew || product.badge === 'new';
+  const discount = product.discount || product.discountPercentage;
+  const originalPrice = product.originalPrice || product.mrp;
+  const reviewCount = product.reviewCount || product.totalReviews || 0;
+  const orderCount = product.orderCount || product.totalOrders || 0;
 
   return (
-    <article className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:shadow-xl hover:shadow-gray-200/50 hover:-translate-y-1 hover:border-gray-200">
-      {/* Image Section */}
-      <div className="relative aspect-square overflow-hidden bg-gray-100">
-        <Link to={`/products/${id}`} aria-label={`View ${product.name}`}>
-          <SafeImage
-            src={image}
-            alt={product.name || 'Product'}
-            className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-          />
+    <article className="product-card">
+      {/* Image Container */}
+      <div className="product-card-image">
+        <Link to={`/products/${id}`} className="product-card-image-link">
+          {!imgError && image ? (
+            <img
+              src={image}
+              alt={product.name || 'Product'}
+              onError={() => setImgError(true)}
+              loading="lazy"
+            />
+          ) : (
+            <div className="product-card-image-fallback">
+              <Package size={40} />
+              <span>No Image</span>
+            </div>
+          )}
         </Link>
 
-        {/* Wishlist Button */}
+        {/* Top Badges */}
+        <div className="product-card-badges">
+          {isBestSeller && (
+            <span className="badge badge-bestseller">
+              <Award size={10} /> Best Seller
+            </span>
+          )}
+          {isNew && (
+            <span className="badge badge-new">New</span>
+          )}
+          {discount > 0 && (
+            <span className="badge badge-discount">-{discount}%</span>
+          )}
+        </div>
+
+        {/* Wishlist */}
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSaved(!saved); }}
-          className={`absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full backdrop-blur-md transition-all duration-200 hover:scale-110 ${
-            saved
-              ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25'
-              : 'bg-white/90 text-gray-500 shadow-lg shadow-black/5 hover:bg-white hover:text-rose-500'
-          }`}
+          className={`product-card-wishlist ${saved ? 'active' : ''}`}
           aria-label={saved ? 'Remove from wishlist' : 'Add to wishlist'}
         >
-          <Heart size={15} fill={saved ? 'currentColor' : 'none'} />
+          <Heart size={16} fill={saved ? 'currentColor' : 'none'} />
         </button>
 
-        {/* Verified Badge */}
-        {(product.verified || product.isVerifiedSeller || product.sellerId?.isVerified || ['verified','approved'].includes(product.sellerId?.verificationStatus)) && (
-          <span className="absolute left-2.5 bottom-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-1 text-[10px] font-bold text-emerald-600 shadow-md backdrop-blur-md">
-            <ShieldCheck size={11} />
-            Verified
-          </span>
-        )}
-
-        {/* MOQ Badge */}
-        {moq > 1 && (
-          <span className="absolute right-2.5 bottom-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white backdrop-blur-md">
-            <Truck size={10} />
-            MOQ {moq}
-          </span>
+        {/* Verified Supplier Badge */}
+        {isVerified && (
+          <div className="product-card-verified">
+            <ShieldCheck size={12} />
+            <span>Verified</span>
+          </div>
         )}
       </div>
 
-      {/* Content Section */}
-      <div className="flex flex-1 flex-col p-3">
-        {/* Category */}
-        <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-blue-600">
-          {typeof product.category === 'object' ? product.category?.name : product.category || 'Marketplace'}
-        </span>
-
-        {/* Product Name */}
-        <h3 className="mb-1.5 line-clamp-2 text-[12px] font-semibold leading-snug text-gray-900">
-          <Link to={`/products/${id}`} className="hover:text-blue-600 transition-colors">
-            {product.name || 'Unnamed product'}
-          </Link>
-        </h3>
-
-        {/* Rating */}
-        {rating > 0 && (
-          <div className="mb-2 flex items-center gap-1">
-            <Star size={11} fill="#f59e0b" color="#f59e0b" />
-            <span className="text-[11px] font-bold text-gray-700">{rating.toFixed(1)}</span>
-            {product.reviewCount > 0 && (
-              <span className="text-[10px] text-gray-400">({product.reviewCount})</span>
+      {/* Content */}
+      <div className="product-card-content">
+        {/* Supplier Info */}
+        {supplierName && (
+          <div className="product-card-supplier">
+            <span className="supplier-name">
+              {supplierName}
+              {isVerified && <ShieldCheck size={11} className="verified-icon-small" />}
+            </span>
+            {supplierLocation && (
+              <span className="supplier-location">
+                <MapPin size={10} />
+                {supplierLocation}
+              </span>
             )}
           </div>
         )}
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        {/* Category */}
+        <span className="product-card-category">
+          {typeof product.category === 'object' ? product.category?.name : product.category || 'General'}
+        </span>
 
-        {/* Price & CTA */}
-        <div className="flex items-end justify-between border-t border-gray-50 pt-2.5">
-          <div>
-            <span className="text-[9px] font-medium text-gray-400">Starting from</span>
-            <div className="flex items-baseline gap-0.5">
-              <strong className="text-base font-extrabold text-gray-900">
-                {price ? `₹${price.toLocaleString('en-IN')}` : 'Request'}
-              </strong>
-              <span className="text-[9px] text-gray-400">/ {product.unit || 'unit'}</span>
-            </div>
+        {/* Product Name */}
+        <Link to={`/products/${id}`} className="product-card-name">
+          {product.name || product.title || 'Unnamed Product'}
+        </Link>
+
+        {/* Key Specs */}
+        {product.keySpecs && product.keySpecs.length > 0 && (
+          <div className="product-card-specs">
+            {product.keySpecs.slice(0, 3).map((spec, idx) => (
+              <span key={idx} className="spec-tag">
+                <CheckCircle2 size={10} />
+                {spec}
+              </span>
+            ))}
           </div>
-          <Link
-            to={`/products/${id}`}
-            className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-50 text-orange-500 transition-all duration-200 hover:bg-orange-500 hover:text-white hover:scale-105"
-            aria-label="View product"
-          >
-            <ArrowUpRight size={15} />
-          </Link>
+        )}
+
+        {/* Rating & Orders */}
+        <div className="product-card-metrics">
+          {rating > 0 && (
+            <div className="metric rating-metric">
+              <Star size={12} fill="#f59e0b" color="#f59e0b" />
+              <span className="metric-value">{rating.toFixed(1)}</span>
+              {reviewCount > 0 && (
+                <span className="metric-count">({reviewCount})</span>
+              )}
+            </div>
+          )}
+          {orderCount > 0 && (
+            <div className="metric order-metric">
+              <ShoppingBag size={12} />
+              <span className="metric-value">{orderCount >= 1000 ? `${(orderCount/1000).toFixed(1)}k` : orderCount}</span>
+              <span className="metric-label">orders</span>
+            </div>
+          )}
+        </div>
+
+        {/* Price Section */}
+        <div className="product-card-price-section">
+          <div className="price-main">
+            <div className="price-value">
+              <span className="price-currency">₹</span>
+              <span className="price-amount">
+                {price ? price.toLocaleString('en-IN') : '—'}
+              </span>
+            </div>
+            {originalPrice && originalPrice > price && (
+              <span className="price-original">₹{originalPrice.toLocaleString('en-IN')}</span>
+            )}
+            <span className="price-unit">/ {product.unit || 'piece'}</span>
+          </div>
+          
+          {moq > 1 && (
+            <span className="price-moq">{moq} {product.unit || 'pcs'} (Min. Order)</span>
+          )}
         </div>
       </div>
     </article>

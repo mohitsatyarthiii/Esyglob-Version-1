@@ -29,13 +29,6 @@ export function listServices() {
       benefits: ['Quality assurance', 'Compliance verification', 'Defect reduction'],
     },
     {
-      key: 'supplier-verification',
-      title: 'Supplier Verification',
-      description: 'Comprehensive supplier background checks and business verification',
-      requirements: ['Business registration documents', 'Tax identification', 'Address proof'],
-      benefits: ['Trusted suppliers', 'Reduced risk', 'Verified credentials'],
-    },
-    {
       key: 'warehousing',
       title: 'Warehousing',
       description: 'Secure storage and inventory management solutions',
@@ -70,13 +63,7 @@ export function listServices() {
       requirements: ['Product category interest'],
       benefits: ['Informed decisions', 'Market intelligence', 'Trend analysis'],
     },
-    {
-      key: 'documentation-support',
-      title: 'Documentation Support',
-      description: 'Assistance with export/import documentation and compliance',
-      requirements: ['Transaction details'],
-      benefits: ['Complete documentation', 'Regulatory compliance', 'Error reduction'],
-    },
+
     {
       key: 'consulting',
       title: 'Trade Consulting',
