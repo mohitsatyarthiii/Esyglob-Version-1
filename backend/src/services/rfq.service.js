@@ -49,7 +49,51 @@ async function canSellerAccessRfq(rfq, sessionUserId, seller) {
     return false;
   }
 
-  return OPEN_RFQ_STATUSES.includes(rfq.status);
+  return OPEN_RFQ_STATUSES.includes(rfq.status) && sellerMatchesPublicRfq(seller, rfq);
+}
+
+function normalized(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function sellerMatchesPublicRfq(seller, rfq) {
+  const category = normalized(rfq.category);
+  const subcategory = normalized(rfq.subcategory);
+  const categories = (seller.productCategories || []).map(normalized).filter(Boolean);
+  const subcategories = (seller.productSubcategories || []).map(normalized).filter(Boolean);
+  const industries = (seller.industries || []).map(normalized).filter(Boolean);
+  const rfqText = normalized([rfq.title, rfq.description, rfq.category, rfq.subcategory].filter(Boolean).join(' '));
+
+  return (
+    categories.includes(category) ||
+    categories.includes(subcategory) ||
+    subcategories.includes(subcategory) ||
+    industries.some((industry) => industry.length > 2 && rfqText.includes(industry))
+  );
+}
+
+function publicRfqMatchQuery(seller) {
+  const exactTerms = [...new Set([
+    ...(seller?.productCategories || []),
+    ...(seller?.productSubcategories || []),
+  ].map((value) => String(value).trim()).filter(Boolean))];
+  const industryTerms = [...new Set(
+    (seller?.industries || []).map((value) => String(value).trim()).filter((value) => value.length > 2)
+  )];
+  const matchers = [];
+
+  exactTerms.forEach((term) => {
+    const exact = new RegExp(`^${escapeRegex(term)}$`, 'i');
+    matchers.push({ category: exact }, { subcategory: exact });
+  });
+  industryTerms.forEach((term) => {
+    const contains = new RegExp(escapeRegex(term), 'i');
+    matchers.push({ title: contains }, { description: contains }, { category: contains }, { subcategory: contains });
+  });
+
+  return matchers.length
+    ? { $and: [{ visibility: 'public' }, { $or: matchers }] }
+    : null;
 }
 
 // ─── Get RFQ List ──────────────────────────────────────────
@@ -115,17 +159,14 @@ export async function getRfqs(session, searchParams) {
       status && status !== 'all'
         ? status
         : { $in: ['active', 'pending', 'viewed', 'replied', 'quoted', 'negotiating'] };
-    query.$and = [
-      {
-        $or: [
-          { visibility: 'public' },
-          { sellerUserId: session.userId },
-          ...(seller?._id
-            ? [{ specificSupplierIds: seller._id }, { sellerId: seller._id }]
-            : []),
-        ],
-      },
-    ];
+    const eligiblePublic = publicRfqMatchQuery(seller);
+    query.$and = [{
+      $or: [
+        { sellerUserId: session.userId },
+        ...(seller?._id ? [{ specificSupplierIds: seller._id }, { sellerId: seller._id }] : []),
+        ...(eligiblePublic ? [eligiblePublic] : []),
+      ],
+    }];
     if (seller && !seller.isVerified) {
       query.isVerifiedSuppliersOnly = { $ne: true };
     }
@@ -204,8 +245,27 @@ export async function createRfq(session, body) {
     preferredSuppliersCountries,
     isVerifiedSuppliersOnly,
     visibility,
+    sellerId: requestedSellerId,
+    sellerUserId: requestedSellerUserId,
     status: requestStatus,
   } = body;
+
+  let targetSeller = null;
+  if (requestedSellerId) {
+    targetSeller = await rfqRepository.findSellerById(requestedSellerId);
+  } else if (requestedSellerUserId) {
+    targetSeller = await rfqRepository.findSellerByUserId(requestedSellerUserId);
+  }
+  if ((requestedSellerId || requestedSellerUserId) && !targetSeller) {
+    const error = new Error('Selected supplier is not available');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (targetSeller && idMatches(targetSeller.userId, session.userId)) {
+    const error = new Error('You cannot send an RFQ to yourself');
+    error.statusCode = 400;
+    throw error;
+  }
 
   const moderation = validateNoContactInfo({
     title,
@@ -242,6 +302,8 @@ export async function createRfq(session, body) {
 
   const rfq = await rfqRepository.createRfq({
     buyerId: session.userId,
+    sellerId: targetSeller?._id,
+    sellerUserId: targetSeller?.userId,
     productId: productId || null,
     rfqType:
       rfqType ||
@@ -282,19 +344,99 @@ export async function createRfq(session, body) {
     documents: normalizeFiles(documents, 'document'),
     drawings: normalizeFiles(drawings, 'document'),
     preferredSuppliersCountries: preferredSuppliersCountries || [],
+    specificSupplierIds: targetSeller ? [targetSeller._id] : [],
     isVerifiedSuppliersOnly: isVerifiedSuppliersOnly || false,
-    visibility: visibility || 'public',
+    visibility: targetSeller ? 'private' : (visibility || 'public'),
     status: requestStatus === 'draft' ? 'draft' : 'submitted',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
     activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: title, actorId: session.userId, actorRole: 'buyer' }],
   });
 
-  // Notify matching sellers if public
-  if (rfq.status === 'submitted') {
+  if (targetSeller && rfq.status === 'submitted') {
+    const { chat } = await findOrCreateConversation({
+      buyerId: session.userId,
+      sellerId: targetSeller.userId,
+      productId: productId || undefined,
+      rfqId: rfq._id,
+      chatType: 'rfq_negotiation',
+    });
+    rfq.conversationId = chat._id;
+    await rfq.save();
+
+    const Message = (await import('../models/Message.js')).default;
+    const Notification = (await import('../models/Notification.js')).default;
+    const message = await Message.create({
+      chatId: chat._id,
+      senderId: session.userId,
+      receiverId: targetSeller.userId,
+      content: `Private RFQ: ${title}\nQuantity: ${quantity} ${unit || 'pcs'}\nDestination: ${deliveryCountry}\n\n${description}`,
+      messageType: 'rfq',
+      rfqDetails: {
+        rfqId: rfq._id,
+        title: rfq.title,
+        product: rfq.title,
+        quantity: rfq.quantity,
+        unit: rfq.unit,
+        targetPrice: rfq.targetPrice,
+        status: rfq.status,
+        date: rfq.createdAt,
+        actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+      },
+    });
+    await Promise.all([
+      Chat.updateOne({ _id: chat._id }, {
+        $set: {
+          rfqId: rfq._id,
+          chatType: 'rfq_negotiation',
+          lastMessage: `Private RFQ: ${title}`,
+          lastMessageAt: new Date(),
+        },
+        $inc: { sellerUnreadCount: 1 },
+      }),
+      Notification.create({
+        userId: targetSeller.userId,
+        notificationType: 'rfq_created',
+        title: 'New private RFQ received',
+        description: title,
+        data: {
+          relatedId: rfq._id,
+          relatedModel: 'RFQ',
+          actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+        },
+        priority: 'high',
+      }),
+    ]);
+    const io = getIO();
+    if (io) {
+      io.to(`chat_${chat._id}`).emit('new_message', message);
+      io.to(`user_${targetSeller.userId}`).emit('new_notification', {
+        type: 'rfq_created',
+        rfqId: String(rfq._id),
+        chatId: String(chat._id),
+      });
+    }
+    return { rfq, chat, message: 'Private RFQ sent successfully' };
+  }
+
+  // Notify matching sellers only for public marketplace RFQs.
+  if (rfq.status === 'submitted' && rfq.visibility === 'public') {
     const sellerQuery = { isActive: true, isSuspended: { $ne: true } };
     if (isVerifiedSuppliersOnly) sellerQuery.isVerified = true;
     if (preferredSuppliersCountries?.length) {
       sellerQuery['address.country'] = { $in: preferredSuppliersCountries };
+    }
+    const matchTerms = [category, subcategory]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    if (matchTerms.length) {
+      const exact = matchTerms.map((term) => new RegExp(`^${escapeRegex(term)}$`, 'i'));
+      sellerQuery.$or = [
+        { productCategories: { $in: exact } },
+        { productSubcategories: { $in: exact } },
+        { industries: { $in: exact } },
+      ];
+    } else {
+      sellerQuery._id = null;
     }
 
     const sellers = await rfqRepository.findSellersForNotification(sellerQuery);
@@ -448,7 +590,7 @@ export async function updateRfq(session, rfqId, body) {
     const previousStatus = rfq.status;
     recordTransition(rfq, { type: 'rfq', action: `seller_${lifecycleAction}`, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: body.reason || body.notes || `Seller ${lifecycleAction}ed this RFQ`, documents: body.documents || [] });
     await rfq.save();
-    await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'rfq_updated', title: action === 'request_information' ? 'Seller requested more information' : `Seller ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
+    await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'supplier_response', title: action === 'request_information' ? 'Seller requested more information' : `Seller ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
     if (action === 'accept') {
       const { chat } = await findOrCreateConversation({ buyerId: rfq.buyerId, sellerId: session.userId, productId: rfq.productId, rfqId: rfq._id, chatType: 'rfq_negotiation' });
       const Message = (await import('../models/Message.js')).default;

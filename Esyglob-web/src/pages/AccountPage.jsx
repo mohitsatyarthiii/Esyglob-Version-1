@@ -14,7 +14,7 @@ const buyerSections = [
     ['All Orders', '/orders', PackageCheck, 'violet'], ['Pending', '/orders?status=pending', Bell, 'amber'], ['Shipped', '/orders?status=shipped', Truck, 'sky'], ['Completed', '/orders?status=completed', CheckCircle2, 'green'],
   ] },
   { title: 'Buying Services', items: [
-    ['My RFQs', '/rfqs', Target, 'amber', 'rfqs'], ['Quotations', '/quotations', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=buyer', FileSignature, 'violet'], ['Wallet', '/wallet', WalletCards, 'green'], ['Saved Items', '/saved', Heart, 'rose'], ['Addresses', '/addresses', MapPin, 'sky'],
+    ['My RFQs', '/rfqs', Target, 'amber', 'rfqs'], ['Quotations', '/quotations', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=buyer', FileSignature, 'violet'], ['Invoices', '/invoices', CreditCard, 'amber'], ['Documents', '/documents', FileText, 'sky'], ['Wallet', '/wallet', WalletCards, 'green'], ['Saved Items', '/saved', Heart, 'rose'], ['Addresses', '/addresses', MapPin, 'sky'],
   ] },
   { title: 'Tools & Insights', items: [
     ['AI Sourcing', '/ai-chat', Bot, 'violet'], ['Market Insights', '/market-insights', BarChart3, 'violet'], ['Find Manufacturers', '/sellers', Store, 'green'], ['Messages', '/messages', MessageSquare, 'sky', 'messages'],
@@ -26,7 +26,7 @@ const sellerSections = [
     ['Profile', '/profile', CircleUserRound, 'sky'], ['Products', '/seller/products', Boxes, 'violet'], ['Order Queue', '/seller/order-queue', Target, 'amber'], ['Orders', '/orders?role=seller', PackageCheck, 'green'], ['Store Settings', '/settings', Settings, 'rose'],
   ] },
   { title: 'Sales Services', items: [
-    ['RFQs', '/rfqs?role=seller', Target, 'amber', 'rfqs'], ['Quotations', '/quotations?role=seller', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=seller', FileSignature, 'violet'], ['Wallet', '/wallet?role=seller', WalletCards, 'green'], ['Verification', '/seller/verification', ShieldCheck, 'sky'], ['Factory', '/seller/factory', Store, 'green'], ['Membership', '/subscriptions', CreditCard, 'violet'],
+    ['RFQs', '/rfqs?role=seller', Target, 'amber', 'rfqs'], ['Quotations', '/quotations?role=seller', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=seller', FileSignature, 'violet'], ['Invoices', '/invoices', CreditCard, 'amber'], ['Documents', '/documents', FileText, 'sky'], ['Wallet', '/wallet?role=seller', WalletCards, 'green'], ['Verification', '/seller/verification', ShieldCheck, 'sky'], ['Factory', '/seller/factory', Store, 'green'], ['Membership', '/subscriptions', CreditCard, 'violet'],
   ] },
   { title: 'Analytics & Tools', items: [
     ['Analytics', '/market-insights', BarChart3, 'violet'], ['AI Assistant', '/ai-chat', Bot, 'violet'], ['Messages', '/messages?role=seller', MessageSquare, 'sky', 'messages'], ['Support', '/services', HelpCircle, 'rose'],

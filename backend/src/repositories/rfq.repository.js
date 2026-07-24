@@ -70,6 +70,15 @@ export async function findSellerByUserId(userId) {
   return Seller.findOne({ userId }).lean().exec();
 }
 
+export async function findSellerById(sellerId) {
+  if (!mongoose.Types.ObjectId.isValid(sellerId)) return null;
+  return Seller.findOne({
+    _id: sellerId,
+    isActive: true,
+    isSuspended: { $ne: true },
+  }).lean().exec();
+}
+
 export async function findSellersForNotification(query, limit = 50) {
   return Seller.find(query).select('userId').limit(limit).lean().exec();
 }

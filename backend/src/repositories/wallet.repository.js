@@ -43,8 +43,8 @@ class WalletRepository {
    * Get payment methods
    */
   static async getPaymentMethods(userId, role) {
-    return PaymentMethod.find({ userId, role })
-      .select('userId role type label isDefault holderName bankName ifsc maskedAccountNumber upiId cardBrand cardLast4 cardExpiryMonth cardExpiryYear verificationStatus verificationMessage createdAt updatedAt')
+    return PaymentMethod.find({ userId, role, isActive: { $ne: false } })
+      .select('userId role type label isDefault holderName bankName ifsc maskedAccountNumber upiId cardBrand cardLast4 cardExpiryMonth cardExpiryYear verificationStatus verificationMessage verifiedAt lastVerificationAt createdAt updatedAt')
       .sort({ isDefault: -1, createdAt: -1 })
       .lean()
       .exec();
@@ -125,6 +125,7 @@ class WalletRepository {
       role,
       type: { $in: ['bank_account', 'upi'] },
       verificationStatus: 'verified',
+      isActive: { $ne: false },
     }).exec();
   }
 
@@ -133,6 +134,11 @@ class WalletRepository {
    */
   static async createPaymentMethod(data) {
     return PaymentMethod.create(data);
+  }
+
+  static async findOwnedPaymentMethod(methodId, userId, role) {
+    if (!mongoose.Types.ObjectId.isValid(methodId)) return null;
+    return PaymentMethod.findOne({ _id: methodId, userId, role, isActive: { $ne: false } }).exec();
   }
 
   /**

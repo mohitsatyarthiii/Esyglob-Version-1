@@ -109,6 +109,13 @@ export async function createRFQ(input: Record<string, unknown>): Promise<RFQ> {
   return rfq as RFQ;
 }
 
+export async function createSellerRFQ(input: Record<string, unknown>) {
+  const payload = await apiRequest('/rfqs', { method: 'POST', body: input });
+  const data = unwrapData<{ rfq?: RFQ; chat?: Chat; message?: string }>(payload);
+  if (!data?.rfq) throw new Error('Private RFQ was not returned by the backend.');
+  return data;
+}
+
 export async function updateRFQ(rfqId: string, input: Record<string, unknown>): Promise<RFQ> {
   const payload = await apiRequest(`/rfqs/${rfqId}`, { method: 'PATCH', body: input });
   const data = unwrapData<{ rfq?: RFQ } | RFQ>(payload);

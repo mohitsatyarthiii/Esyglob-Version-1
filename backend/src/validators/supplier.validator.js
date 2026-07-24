@@ -75,6 +75,10 @@ export const onboardingDraftSchema = z.object({
     .optional(),
   businessEmail: z.string().trim().max(320).optional(),
   businessPhone: z.string().trim().max(40).optional(),
+  companyDescription: z.string().trim().max(4000).optional(),
+  companyWebsite: z.string().trim().max(400).optional(),
+  yearEstablished: z.coerce.number().int().min(1800).max(new Date().getFullYear()).optional(),
+  employeeCount: z.enum(['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+']).optional(),
   gstNumber: z.string().trim().max(32).optional(),
   panNumber: z.string().trim().max(32).optional(),
   address: z

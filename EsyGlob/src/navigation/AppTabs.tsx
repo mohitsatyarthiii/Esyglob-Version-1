@@ -10,7 +10,7 @@ import MessagesScreen from '../screens/MessagesScreen';
 import ServicesScreen from '../screens/ServicesScreen';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
-import { colors, radii, shadow, spacing } from '../theme';
+import { colors, shadow, spacing } from '../theme';
 import { firstImage } from '../utils/images';
 
 export type RootTabParamList = {
@@ -31,14 +31,17 @@ const tabMeta: Record<keyof RootTabParamList, { icon: string; activeIcon: string
   Account: { icon: 'account-outline', activeIcon: 'account', label: 'My EsyGlob' },
 };
 
-function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { status, user } = useAuth();
   const accountImage = status === 'authenticated' ? firstImage(user?.profileImage, user?.avatar, user?.image) : null;
   const accountInitial = (user?.name ?? user?.fullName ?? user?.email ?? 'E').slice(0, 1).toUpperCase();
 
   return (
-    <View style={[styles.tabShell, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+    <View style={[styles.tabShell, {
+      height: 58 + Math.max(insets.bottom, spacing.xs),
+      paddingBottom: Math.max(insets.bottom, spacing.xs),
+    }]}>
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
         const meta = tabMeta[route.name as keyof RootTabParamList];
@@ -126,18 +129,14 @@ function AppTabs() {
 
 const styles = StyleSheet.create({
   tabShell: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     backgroundColor: colors.card,
     borderTopColor: colors.faint,
     borderTopWidth: StyleSheet.hairlineWidth,
-    bottom: 0,
     flexDirection: 'row',
     justifyContent: 'space-around',
-    left: 0,
     paddingHorizontal: spacing.xs,
     paddingTop: 0,
-    position: 'absolute',
-    right: 0,
     ...shadow,
   },
   tabItem: {

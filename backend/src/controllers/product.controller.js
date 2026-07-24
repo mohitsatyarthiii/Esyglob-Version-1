@@ -47,6 +47,18 @@ class ProductController {
     }
   }
 
+  static async getRelatedProducts(req, res) {
+    try {
+      const result = await ProductService.getRelatedProducts(req.params.productId, req.query.limit);
+      res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=120, stale-while-revalidate=300');
+      return res.json(result);
+    } catch (error) {
+      if (error.statusCode === 404) return res.status(404).json({ error: error.message });
+      console.error('[Product-Related] Error:', error.message);
+      return res.status(500).json({ error: 'Failed to find related products' });
+    }
+  }
+
   /**
    * POST /api/products - Create product
    */

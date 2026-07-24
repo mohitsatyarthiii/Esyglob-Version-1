@@ -13,6 +13,7 @@ export async function fetchRfqs(params = {}) {
 
 export async function fetchRfq(id) { return unwrapData(await apiRequest(`/rfqs/${id}`, { cache: false })) }
 export async function createRfq(input) { return entity(await apiRequest('/rfqs', { method: 'POST', body: input }), 'rfq') }
+export async function createSellerRfq(input) { return unwrapData(await apiRequest('/rfqs', { method: 'POST', body: input })) }
 export async function updateRfq(id, input) { return entity(await apiRequest(`/rfqs/${id}`, { method: 'PATCH', body: input }), 'rfq') }
 export async function archiveRfq(id) { return unwrapData(await apiRequest(`/rfqs/${id}`, { method: 'DELETE' })) }
 

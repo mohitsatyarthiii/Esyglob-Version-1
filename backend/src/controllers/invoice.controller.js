@@ -27,6 +27,15 @@ class InvoiceController {
       return res.status(500).json({ error: 'Invoice PDF could not be generated' });
     }
   }
+
+  static async pdf(req, res) {
+    try {
+      const invoice = await InvoiceService.getInvoice(req.user, req.params.id);
+      return streamServiceInvoicePdf(invoice, res);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Invoice PDF could not be generated' });
+    }
+  }
 }
 
 export default InvoiceController;

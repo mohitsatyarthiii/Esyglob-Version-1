@@ -215,6 +215,29 @@ class ProductRepository {
       .exec();
   }
 
+  static async getRelatedProductCandidates(product, limit = 80) {
+    const taxonomy = [];
+    if (product.subcategoryId) taxonomy.push({ subcategoryId: product.subcategoryId });
+    if (product.subcategory) taxonomy.push({ subcategory: product.subcategory });
+    if (product.categoryId) taxonomy.push({ categoryId: product.categoryId });
+    if (product.category) taxonomy.push({ category: product.category });
+
+    if (!taxonomy.length) return [];
+
+    return Product.find({
+      _id: { $ne: product._id },
+      status: { $in: ['active', 'published'] },
+      isVerifiedSeller: true,
+      visibility: { $ne: 'private' },
+      $or: taxonomy,
+    })
+      .select('name slug images price currency unit minimumOrderQuantity category categoryId subcategory subcategoryId brand description specifications productAttributes manufacturingDetails productType tags seo averageRating reviewCount totalOrders sellerId')
+      .populate('sellerId', 'companyName companyType isVerified isActive isSuspended')
+      .limit(limit)
+      .lean()
+      .exec();
+  }
+
   static async findById(productId) {
     if (!this.isValidId(productId)) return null;
     return Product.findById(productId);

@@ -71,6 +71,26 @@ class WalletController {
       return res.status(500).json({ error: error.message || 'Failed to save payment method' });
     }
   }
+
+  static async managePaymentMethod(req, res) {
+    try {
+      const result = await WalletService.managePaymentMethod(req.user, req.params.id, req.body);
+      return res.json(result);
+    } catch (error) {
+      console.error('[Wallet-ManageMethod] Error:', error.message);
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to update payment method' });
+    }
+  }
+
+  static async removePaymentMethod(req, res) {
+    try {
+      const result = await WalletService.removePaymentMethod(req.user, req.params.id, req.query.role);
+      return res.json(result);
+    } catch (error) {
+      console.error('[Wallet-RemoveMethod] Error:', error.message);
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to remove payment method' });
+    }
+  }
 }
 
 export default WalletController;

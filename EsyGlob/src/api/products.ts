@@ -97,3 +97,12 @@ export async function fetchProductDetails(productId: string): Promise<Product> {
 
   return product as Product;
 }
+
+export async function fetchRelatedProducts(productId: string, limit = 20): Promise<Product[]> {
+  const payload = await apiRequest(`/products/${productId}/related`, {
+    query: { limit },
+    cacheTtlMs: 90_000,
+  });
+  const data = unwrapData<{ products?: Product[] } | Product[]>(payload);
+  return Array.isArray(data) ? data : data?.products ?? normalizeList<Product>(payload, ['products']);
+}

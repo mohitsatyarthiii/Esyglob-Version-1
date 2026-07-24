@@ -49,6 +49,7 @@ import documentRoutes from './routes/document.routes.js';
 import hsCodeRoutes from './routes/hs-code.routes.js';
 import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
 import tradeArtifactRoutes from './routes/trade-artifact.routes.js';
+import marketplaceHomeRoutes from './routes/marketplace-home.routes.js';
 
 const app = express();
 
@@ -106,6 +107,7 @@ app.use('/api/suppliers', supplierRoutes);         // Public listing
 app.use('/api/search', globalSearchRoutes);        // Public search
 app.use('/api/rfqs', rfqRoutes);                   // Public listing + protected actions
 app.use('/api/contact', contactLeadRoutes);        // Public contact form
+app.use('/api/marketplace', marketplaceHomeRoutes); // Public homepage proof
 
 // ============================================================
 // PROTECTED ROUTES — Add auth middleware here if not in route files

@@ -216,6 +216,8 @@ const sellerSchema = new mongoose.Schema(
     monthlyCapacity: String,
     exportMarkets: [String],
     productCategories: [String],
+    productSubcategories: [String],
+    industries: [String],
     tradeHistorySummary: {
       completedOrders: { type: Number, default: 0 },
       repeatBuyerRate: { type: Number, default: 0 },

@@ -16,7 +16,7 @@ import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
-import { createProductEnquiry, createRFQ, uploadFiles, type UploadAttachment } from '../api/marketplace';
+import { createProductEnquiry, createRFQ, createSellerRFQ, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { fetchCategories } from '../api/categories';
 import { getId } from '../utils/format';
 
@@ -312,14 +312,21 @@ function RFQCreateScreen() {
     mutationFn: async () => {
       const productId = String(prefill.productId ?? '');
       const sellerUserId = String(prefill.sellerUserId ?? '');
+      const sellerId = String(prefill.sellerId ?? '');
+      const validItems = form.items.filter(item => item.name.trim());
+      const primaryItem = validItems[0] ?? form.items[0];
+      const totalQuantity = validItems.reduce(
+        (sum, item) => sum + Math.max(Number(item.quantity) || 0, 0),
+        0,
+      ) || Math.max(Number(form.quantity) || 1, 1);
 
       if (productId && sellerUserId) {
         return createProductEnquiry({
           productId,
           sellerUserId,
           productName: form.title.trim(),
-          quantity: Number(form.quantity) || 1,
-          unit: form.unit || 'pcs',
+          quantity: Math.max(Number(primaryItem?.quantity) || 1, 1),
+          unit: primaryItem?.unit || form.unit || 'pcs',
           targetPrice: form.targetPrice ? Number(form.targetPrice) : undefined,
           destinationCountry: form.deliveryCountry.trim(),
           additionalNotes: [
@@ -331,27 +338,35 @@ function RFQCreateScreen() {
         });
       }
 
-      return createRFQ({
+      const payload = {
         title: form.title.trim(),
         description: form.description.trim(),
         category: form.category.trim(),
         subcategory: form.subcategory.trim() || undefined,
         specifications: form.specifications.trim() || undefined,
-        quantity: Number(form.quantity) || 1,
-        minimumOrderQuantity: Number(form.minimumOrderQuantity) || undefined,
-        unit: form.unit || 'pcs',
+        quantity: totalQuantity,
+        unit: primaryItem?.unit || form.unit || 'pcs',
         targetPrice: form.targetPrice ? Number(form.targetPrice) : undefined,
         currency: form.currency || 'INR',
         deliveryCountry: form.deliveryCountry.trim(),
         deliveryPort: form.deliveryPort.trim() || undefined,
         deliveryTimeline: form.deliveryTimeline || 'flexible',
         incoterms: form.incoterms || 'FOB',
-        visibility: 'public',
+        visibility: sellerId ? 'private' : 'public',
+        sellerId: sellerId || undefined,
+        sellerUserId: sellerUserId || undefined,
         isVerifiedSuppliersOnly: form.isVerifiedSuppliersOnly,
-        items: form.items.filter(i => i.name.trim()),
+        items: validItems.map(item => ({
+          ...item,
+          category: item.category || form.category,
+          subcategory: item.subcategory || form.subcategory,
+          quantity: Math.max(Number(item.quantity) || 1, 1),
+          targetPrice: item.targetPrice ? Number(item.targetPrice) : undefined,
+        })),
         rfqType: form.items.length > 1 ? 'multi_product' : 'custom',
         attachments: uploadedFiles.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
-      });
+      };
+      return sellerId ? createSellerRFQ(payload) : createRFQ(payload);
     },
     onSuccess: async (result: any) => {
       await queryClient.invalidateQueries({ queryKey: ['rfqs'] });
@@ -394,11 +409,13 @@ function RFQCreateScreen() {
           <Icon name="arrow-left" size={22} color={P.text} />
         </Pressable>
         <View>
-          <Text style={styles.headerKicker}>Procurement Request</Text>
-          <Text style={styles.headerTitle}>RFQ Details</Text>
+          <Text style={styles.headerKicker}>{prefill.sellerId ? 'Private supplier request' : 'Procurement Request'}</Text>
+          <Text numberOfLines={1} style={styles.headerTitle}>
+            {prefill.sellerId ? `Send to ${prefill.supplierName || 'supplier'}` : 'RFQ Details'}
+          </Text>
         </View>
         <Pressable onPress={validateAndSubmit} disabled={submit.isPending} style={styles.headerPublish}>
-          {submit.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.headerPublishText}>Publish</Text>}
+          {submit.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.headerPublishText}>{prefill.sellerId ? 'Send' : 'Publish'}</Text>}
         </Pressable>
       </View>
 
@@ -497,9 +514,14 @@ function RFQCreateScreen() {
           ))}
 
           <View style={styles.card}>
-            <View style={styles.row}>
-              <View style={styles.half}><InputField label="Total Quantity" value={form.quantity} onChangeText={v => updateField('quantity', v)} keyboardType="numeric" required /></View>
-              <View style={styles.half}><InputField label="Buyer MOQ" value={form.minimumOrderQuantity} onChangeText={v => updateField('minimumOrderQuantity', v)} keyboardType="numeric" /></View>
+            <View style={styles.quantitySummary}>
+              <Icon name="calculator-variant-outline" size={18} color={P.accent} />
+              <View style={styles.quantitySummaryBody}>
+                <Text style={styles.quantitySummaryLabel}>Total requested quantity</Text>
+                <Text style={styles.quantitySummaryValue}>
+                  {form.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)} across {form.items.length} {form.items.length === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
             </View>
             <View style={styles.row}>
               <View style={styles.half}>
@@ -570,7 +592,7 @@ function RFQCreateScreen() {
         {/* Submit */}
         <Pressable onPress={validateAndSubmit} disabled={submit.isPending} style={[styles.submitBtn, submit.isPending && styles.submitBtnDisabled]}>
           {submit.isPending ? <ActivityIndicator size="small" color="#FFF" /> : (
-            <><Icon name="send" size={18} color="#FFF" /><Text style={styles.submitBtnText}>Publish RFQ</Text></>
+            <><Icon name="send" size={18} color="#FFF" /><Text style={styles.submitBtnText}>{prefill.sellerId ? 'Send Private RFQ' : 'Publish RFQ'}</Text></>
           )}
         </Pressable>
         <View style={styles.bottomSpacer} />
@@ -698,6 +720,10 @@ const styles = StyleSheet.create({
 
   row: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },
+  quantitySummary: { alignItems: 'center', backgroundColor: P.accentLight, borderRadius: 10, flexDirection: 'row', gap: 10, marginBottom: 12, padding: 12 },
+  quantitySummaryBody: { flex: 1 },
+  quantitySummaryLabel: { color: P.textSecondary, fontSize: 10, fontWeight: '600' },
+  quantitySummaryValue: { color: P.text, fontSize: 13, fontWeight: '700', marginTop: 2 },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, backgroundColor: P.inputBg, borderWidth: 1, borderColor: P.border },

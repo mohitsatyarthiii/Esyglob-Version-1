@@ -2,10 +2,17 @@ import WalletRepository from '../repositories/wallet.repository.js';
 import { recalculateWallet } from '../lib/wallet-ledger.js';
 import {
   encryptPaymentValue,
+  decryptPaymentValue,
   maskAccountNumber,
   validateIfsc,
   validateUpi,
 } from '../lib/secure-payment-data.js';
+import {
+  fetchValidation,
+  isConfigured as isRazorpayXConfigured,
+  normalizeValidation,
+  startValidation,
+} from './razorpay-payout.service.js';
 import mongoose from 'mongoose';
 
 function chooseRole(user, requestedRole) {
@@ -244,7 +251,12 @@ class WalletService {
       role,
       type,
       label: body.label || '',
-      isDefault: Boolean(body.isDefault),
+      isDefault: false,
+      verificationStatus: 'pending',
+      verificationMessage: isRazorpayXConfigured()
+        ? 'Ready for RazorpayX verification'
+        : 'Saved securely; RazorpayX verification is not configured',
+      lastVerificationAt: new Date(),
     };
 
     // Bank account
@@ -263,8 +275,6 @@ class WalletService {
         ifsc,
         maskedAccountNumber: maskAccountNumber(accountNumber),
         encryptedAccountNumber: encryptPaymentValue(accountNumber),
-        verificationStatus: 'verified',
-        verificationMessage: 'Format verified',
       });
     }
 
@@ -276,9 +286,8 @@ class WalletService {
       }
 
       Object.assign(payload, {
-        upiId,
-        verificationStatus: 'verified',
-        verificationMessage: 'Format verified',
+        upiId: `${upiId.slice(0, Math.min(2, upiId.indexOf('@')))}***@${upiId.split('@')[1]}`,
+        encryptedUpiId: encryptPaymentValue(upiId),
       });
     }
 
@@ -301,13 +310,102 @@ class WalletService {
       });
     }
 
-    // Handle default
-    if (payload.isDefault) {
-      await WalletRepository.unsetDefaultPaymentMethods(userId, role);
+    if (['bank_account', 'upi'].includes(type) && isRazorpayXConfigured()) {
+      const rawValue = type === 'bank_account'
+        ? String(body.accountNumber || '').replace(/\D/g, '')
+        : String(body.upiId || '').trim();
+      try {
+        const validation = await startValidation({ ...payload, rawValue });
+        const normalized = normalizeValidation(validation);
+        Object.assign(payload, {
+          providerValidationId: validation.id,
+          providerValidationStatus: validation.status,
+          verificationStatus: normalized.status,
+          verificationMessage: normalized.message,
+          verifiedAt: normalized.status === 'verified' ? new Date() : undefined,
+        });
+      } catch (error) {
+        Object.assign(payload, {
+          verificationStatus: 'failed',
+          verificationMessage: error.message,
+        });
+      }
     }
 
     const method = await WalletRepository.createPaymentMethod(payload);
+    if (Boolean(body.isDefault) && method.verificationStatus === 'verified') {
+      await WalletRepository.unsetDefaultPaymentMethods(userId, role);
+      method.isDefault = true;
+      await method.save();
+    }
     return { success: true, method };
+  }
+
+  static async managePaymentMethod(user, methodId, body = {}) {
+    const userId = user.id || user._id;
+    const role = chooseRole(user, body.role);
+    const method = await WalletRepository.findOwnedPaymentMethod(methodId, userId, role);
+    if (!method) throw Object.assign(new Error('Payment method not found'), { statusCode: 404 });
+
+    if (body.action === 'set_default') {
+      if (method.verificationStatus !== 'verified') {
+        throw Object.assign(new Error('Only a verified payment account can be the default'), { statusCode: 409 });
+      }
+      await WalletRepository.unsetDefaultPaymentMethods(userId, role);
+      method.isDefault = true;
+      await method.save();
+      return { success: true, method };
+    }
+
+    if (body.action !== 'verify') {
+      throw Object.assign(new Error('Unsupported payment method action'), { statusCode: 400 });
+    }
+    if (!isRazorpayXConfigured()) {
+      throw Object.assign(new Error('RazorpayX account validation is not configured'), { statusCode: 503 });
+    }
+
+    let validation;
+    if (method.providerValidationId && method.verificationStatus === 'pending') {
+      validation = await fetchValidation(method.providerValidationId);
+    } else {
+      const rawValue = method.type === 'bank_account'
+        ? decryptPaymentValue(method.encryptedAccountNumber)
+        : decryptPaymentValue(method.encryptedUpiId);
+      if (!rawValue) {
+        throw Object.assign(new Error('Secure payment details could not be read; remove and add the account again'), { statusCode: 409 });
+      }
+      validation = await startValidation({ ...method.toObject(), rawValue });
+    }
+    const normalized = normalizeValidation(validation);
+    Object.assign(method, {
+      providerValidationId: validation.id,
+      providerValidationStatus: validation.status,
+      verificationStatus: normalized.status,
+      verificationMessage: normalized.message,
+      lastVerificationAt: new Date(),
+      verifiedAt: normalized.status === 'verified' ? new Date() : method.verifiedAt,
+    });
+    await method.save();
+    return { success: true, method };
+  }
+
+  static async removePaymentMethod(user, methodId, roleParam) {
+    const userId = user.id || user._id;
+    const role = chooseRole(user, roleParam);
+    const method = await WalletRepository.findOwnedPaymentMethod(methodId, userId, role);
+    if (!method) throw Object.assign(new Error('Payment method not found'), { statusCode: 404 });
+    const activeWithdrawal = await import('../models/WithdrawalRequest.js')
+      .then(({ default: WithdrawalRequest }) => WithdrawalRequest.exists({
+        paymentMethodId: method._id,
+        status: { $in: ['pending', 'approved', 'processing'] },
+      }));
+    if (activeWithdrawal) {
+      throw Object.assign(new Error('This account has an active withdrawal and cannot be removed yet'), { statusCode: 409 });
+    }
+    method.isActive = false;
+    method.isDefault = false;
+    await method.save();
+    return { success: true };
   }
 }
 

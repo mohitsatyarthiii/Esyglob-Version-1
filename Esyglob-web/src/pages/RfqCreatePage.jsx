@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { fetchCategories } from '../api/marketplace'
 import { createProductEnquiry } from '../api/marketplace'
-import { createRfq } from '../api/trade'
+import { createRfq, createSellerRfq } from '../api/trade'
 import AppShell from '../components/AppShell'
 import { AttachmentUploader } from '../components/TradeUI'
 import useAsyncData from '../hooks/useAsyncData'
@@ -30,12 +30,19 @@ export default function RfqCreatePage() {
     if ([form.title, form.description, form.specifications, ...form.items.flatMap((item) => [item.name, item.specifications])].some((value) => contactPattern.test(value))) return setError('Phone numbers, email addresses and external links are not allowed in RFQs.')
     setBusy(status)
     try {
+      const items = form.items.filter((item) => item.name.trim()).map((item) => ({ ...item, category: item.category || form.category, subcategory: item.subcategory || form.subcategory, quantity: Math.max(Number(item.quantity) || 1, 1), targetPrice: Number(item.targetPrice) || undefined }))
+      const quantity = items.reduce((sum, item) => sum + item.quantity, 0) || 1
       if (product._id && prefill.sellerUserId && status !== 'draft') {
-        const result = await createProductEnquiry({ productId: product._id || product.id, sellerUserId: prefill.sellerUserId, productName: form.title, quantity: Number(form.quantity), unit: form.unit, targetPrice: Number(form.targetPrice) || undefined, destinationCountry: form.deliveryCountry, additionalNotes: [form.description, form.specifications].filter(Boolean).join('\n\n'), attachments })
+        const result = await createProductEnquiry({ productId: product._id || product.id, sellerUserId: prefill.sellerUserId, productName: form.title, quantity: items[0]?.quantity || quantity, unit: items[0]?.unit || form.unit, targetPrice: Number(form.targetPrice) || undefined, destinationCountry: form.deliveryCountry, additionalNotes: [form.description, form.specifications].filter(Boolean).join('\n\n'), attachments })
         const rfq = result.rfq || result
-        return navigate(`/rfqs/${rfq._id || rfq.id}`)
+        return result.chat ? navigate(`/messages/${result.chat._id || result.chat.id}`) : navigate(`/rfqs/${rfq._id || rfq.id}`)
       }
-      const rfq = await createRfq({ ...form, quantity: Number(form.quantity), minimumOrderQuantity: Number(form.minimumOrderQuantity) || undefined, targetPrice: Number(form.targetPrice) || undefined, visibility: 'public', status, rfqType: form.items.length > 1 ? 'multi_product' : product._id ? 'product' : 'custom', productId: product._id || product.id || undefined, items: form.items.filter((item) => item.name.trim()).map((item) => ({ ...item, quantity: Number(item.quantity), targetPrice: Number(item.targetPrice) || undefined })), attachments })
+      const payload = { ...form, quantity, targetPrice: Number(form.targetPrice) || undefined, visibility: prefill.sellerId ? 'private' : 'public', sellerId: prefill.sellerId || undefined, sellerUserId: prefill.sellerUserId || undefined, status, rfqType: form.items.length > 1 ? 'multi_product' : product._id ? 'product' : 'custom', productId: product._id || product.id || undefined, items, attachments }
+      if (prefill.sellerId) {
+        const result = await createSellerRfq(payload)
+        return result.chat ? navigate(`/messages/${result.chat._id || result.chat.id}`) : navigate(`/rfqs/${result.rfq._id || result.rfq.id}`)
+      }
+      const rfq = await createRfq(payload)
       navigate(`/rfqs/${rfq._id || rfq.id}`)
     } catch (nextError) { setError(nextError.message); setBusy('') }
   }

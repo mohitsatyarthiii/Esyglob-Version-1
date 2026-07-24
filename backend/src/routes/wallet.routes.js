@@ -21,5 +21,7 @@ router.get('/payment-methods', WalletController.getPaymentMethods);
 
 // POST - Add payment method
 router.post('/payment-methods', WalletController.addPaymentMethod);
+router.patch('/payment-methods/:id', WalletController.managePaymentMethod);
+router.delete('/payment-methods/:id', WalletController.removePaymentMethod);
 
 export default router;

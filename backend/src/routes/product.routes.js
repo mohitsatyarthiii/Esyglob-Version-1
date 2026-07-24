@@ -18,6 +18,9 @@ const publicLimiter = rateLimit({
 // GET /api/products - Public listing
 router.get('/', publicLimiter, authenticate, ProductController.getProducts);
 
+// GET /api/products/:productId/related - Ranked related products
+router.get('/:productId/related', publicLimiter, authenticate, ProductController.getRelatedProducts);
+
 // GET /api/products/:productId - Product detail
 router.get('/:productId', publicLimiter, authenticate, ProductController.getProductDetail);
 

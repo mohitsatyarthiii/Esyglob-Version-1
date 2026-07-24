@@ -402,8 +402,24 @@ class OrderService {
     if (!seller) return { items: [] };
     const [{ default: RFQ }, { default: Quotation }, { default: Order }] = await Promise.all([import('../models/RFQ.js'), import('../models/Quotation.js'), import('../models/Order.js')]);
     const limit = Math.min(Math.max(Number(query.limit) || 80, 1), 150);
+    const marketplaceTerms = [...new Set([
+      ...(seller.productCategories || []),
+      ...(seller.productSubcategories || []),
+      ...(seller.industries || []),
+    ].map((value) => String(value).trim()).filter(Boolean))];
+    const publicMatches = marketplaceTerms.length
+      ? [{
+          $and: [
+            { visibility: 'public' },
+            { $or: [
+              { category: { $in: marketplaceTerms } },
+              { subcategory: { $in: marketplaceTerms } },
+            ] },
+          ],
+        }]
+      : [];
     const [rfqs, quotations, orders] = await Promise.all([
-      RFQ.find({ status: { $in: ['active','submitted','pending','viewed','information_requested','seller_accepted','ready_for_quotation','replied','quoted','negotiating'] }, $or: [{ sellerUserId: userId }, { specificSupplierIds: seller._id }, ...(seller.productCategories?.length ? [{ visibility:'public', category:{ $in:seller.productCategories } }] : [])] }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt: -1 }).limit(limit).lean(),
+      RFQ.find({ status: { $in: ['active','submitted','pending','viewed','information_requested','seller_accepted','ready_for_quotation','replied','quoted','negotiating'] }, $or: [{ sellerUserId: userId }, { sellerId: seller._id }, { specificSupplierIds: seller._id }, ...publicMatches] }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt: -1 }).limit(limit).lean(),
       Quotation.find({ sellerId: seller._id, status: { $in: ['pending','submitted','negotiating','countered','revision_requested','revised','buyer_accepted','final_quotation_pending','final_quotation_signed','agreement_pending','agreement_signed'] } }).populate({ path:'rfqId', populate:{ path:'buyerId', select:'fullName email companyName' } }).populate('productId','name images price minimumOrderQuantity unit').sort({ updatedAt:-1 }).limit(limit).lean(),
       Order.find({ sellerId: seller._id, status: { $in: ['draft','requested','pending','pending_approval','awaiting_payment','pending_payment','payment_confirmed','confirmed','processing','production','delayed','waiting_buyer_response','ready_to_ship','preparing_shipment','pickup_scheduled','picked_up','warehouse_processing','custom_clearance','in_transit','out_for_delivery','shipped','delivered','disputed'] } }).populate('buyerId','fullName email companyName').populate('productId','name images price minimumOrderQuantity unit').populate('rfqId','title quantity unit').populate('quotationId','unitPrice totalPrice status').sort({ updatedAt:-1 }).limit(limit).lean(),
     ]);

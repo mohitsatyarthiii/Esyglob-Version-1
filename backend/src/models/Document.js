@@ -112,13 +112,11 @@ const documentSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-documentSchema.pre('save', async function(next) {
-  if (this.isNew) {
-    const count = await mongoose.model('Document').countDocuments();
-    this.documentNumber = `DOC${String(count + 1).padStart(8, '0')}`;
+documentSchema.pre('save', async function() {
+  if (this.isNew && !this.documentNumber) {
+    this.documentNumber = `DOC-${Date.now()}-${new mongoose.Types.ObjectId().toString().slice(-8).toUpperCase()}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.Document || mongoose.model('Document', documentSchema);

@@ -12,6 +12,12 @@ export default function SearchPage() {
   const [state, setState] = useState({ loading: false, data: null, error: '' })
   const activeQuery = params.get('q') || ''
   useEffect(() => {
+    const next = query.trim()
+    if (next === activeQuery) return undefined
+    const timer = window.setTimeout(() => setParams(next ? { q: next } : {}, { replace: true }), 300)
+    return () => window.clearTimeout(timer)
+  }, [activeQuery, query, setParams])
+  useEffect(() => {
     let active = true
     if (!activeQuery) { Promise.resolve().then(() => active && setState({ loading: false, data: { products: [], sellers: [], categories: [] }, error: '' })); return () => { active = false } }
     Promise.resolve()

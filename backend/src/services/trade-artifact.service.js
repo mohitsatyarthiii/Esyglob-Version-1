@@ -19,6 +19,13 @@ const MODEL = { rfq: RFQ, quotation: Quotation, order: Order };
 const NOTE_FIELD = { rfq: 'notes', quotation: 'structuredNotes', order: 'structuredNotes' };
 const allowedDocumentTypes = new Set(['commercial_proposal','quotation','proforma_invoice','purchase_agreement','commercial_agreement','technical_specification','terms_document','drawing','certificate','invoice','packing_list','inspection_report','shipping_document','other']);
 const id = value => String(value?._id || value || '');
+const globalDocumentType = value => ({
+  drawing: 'technical_specification',
+  certificate: 'inspection_certificate',
+  invoice: 'commercial_invoice',
+  inspection_report: 'inspection_certificate',
+  shipping_document: 'bill_of_lading',
+}[value] || value);
 
 async function loadContext(entityType, entityId, user) {
   const Model = MODEL[entityType];
@@ -160,7 +167,7 @@ export async function createTradeDocument(entityType, entityId, user, input) {
   const initialStatus = requiresSellerSignature ? 'awaiting_seller_signature' : requiresBuyerSignature ? 'awaiting_buyer_signature' : 'completed';
   const previousVersion = [...(context.entity.tradeDocuments || [])].reverse().find(document => document.documentType === documentType && document.title === title);
   const version = Number(previousVersion?.version || 0) + 1;
-  const globalDocument = await Document.create({ userId: context.userId, name: title, type: documentType, category: 'other', orderId: entityType === 'order' ? context.entity._id : undefined, content: input.content || {}, fileUrl: input.url, fileType: input.fileType, status: input.url ? 'shared' : 'generated', data: { currency: input.currency, terms: input.terms, notes: input.notes } });
+  const globalDocument = await Document.create({ userId: context.userId, documentNumber: `DOC-${Date.now()}-${new mongoose.Types.ObjectId().toString().slice(-8).toUpperCase()}`, name: title, type: globalDocumentType(documentType), category: 'other', orderId: entityType === 'order' ? context.entity._id : undefined, content: input.content || {}, fileUrl: input.url, fileType: input.fileType, status: input.url ? 'shared' : 'generated', data: { currency: input.currency, terms: input.terms, notes: input.notes } });
   context.entity.tradeDocuments.push({ documentType, title, url: input.url, filename: input.filename || `${title}.pdf`, source: input.url ? 'uploaded' : 'generated', status: initialStatus, version, requiresBuyerSignature, requiresSellerSignature, createdBy: context.userId, metadata: { ...(input.metadata || {}), globalDocumentId: globalDocument._id, previousDocumentId: previousVersion?._id, changedFields: input.changedFields || [], notes: input.notes, content: input.content || {} }, completedAt: initialStatus === 'completed' ? new Date() : undefined });
   const embedded = context.entity.tradeDocuments.at(-1);
   embedded.previewUrl = `/api/trade-workspace/${entityType}/${entityId}/documents/${embedded._id}/preview`;

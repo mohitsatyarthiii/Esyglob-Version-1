@@ -11,5 +11,6 @@ router.use(requireAuth);
 
 // GET - List invoices
 router.get('/', InvoiceController.list);
+router.get('/:id.pdf', InvoiceController.pdf);
 
 export default router;

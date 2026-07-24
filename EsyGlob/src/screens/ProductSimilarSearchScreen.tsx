@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { fetchProductDetails, fetchProducts } from '../api/products';
+import { fetchProductDetails, fetchRelatedProducts } from '../api/products';
 import { searchMarketplaceByImage } from '../api/ai';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
@@ -25,17 +25,13 @@ export default function ProductSimilarSearchScreen() {
     queryFn: () => searchMarketplaceByImage(image, activeRole),
     enabled: Boolean(image),
   });
-  const category =
-    typeof product?.categoryId === 'object'
-      ? product.categoryId?._id ?? product.categoryId?.name
-      : product?.categoryId ?? product?.category;
-  const categoryQ = useQuery({
-    queryKey: ['same-category', category],
-    queryFn: () => fetchProducts({ category: String(category), limit: 12 }),
-    enabled: Boolean(category),
+  const related = useQuery({
+    queryKey: ['ranked-related-products', productId],
+    queryFn: () => fetchRelatedProducts(productId, 24),
+    enabled: Boolean(productId),
   });
-  if (productQ.isLoading || visual.isLoading)
-    return <LoadingState label="Finding similar products" />;
+  if (productQ.isLoading || related.isLoading)
+    return <LoadingState label="Ranking related products" />;
   if (productQ.isError || !product)
     return (
       <ErrorState
@@ -43,11 +39,10 @@ export default function ProductSimilarSearchScreen() {
         onRetry={() => productQ.refetch()}
       />
     );
-  const matches = (visual.data?.products ?? []).filter(
-    p => getId(p) !== productId,
-  );
-  const same = (categoryQ.data?.products ?? []).filter(
-    p => getId(p) !== productId,
+  const ranked = (related.data ?? []).filter(p => getId(p) !== productId);
+  const rankedIds = new Set(ranked.map(getId));
+  const visualMatches = (visual.data?.products ?? []).filter(
+    p => getId(p) !== productId && !rankedIds.has(getId(p)),
   );
   const sellers = visual.data?.suppliers ?? [];
   return (
@@ -82,31 +77,30 @@ export default function ProductSimilarSearchScreen() {
             </Text>
           </View>
         </View>
-        <Section title="Visually similar products" count={matches.length}>
-          {matches.length ? (
+        <Section title="Best related matches" count={ranked.length}>
+          {ranked.length ? (
             <View style={s.grid}>
-              {matches.map(p => (
+              {ranked.map((p: any) => (
                 <View key={getId(p)} style={s.gridItem}>
                   <ProductCard product={p} />
+                  {p.relevanceReasons?.length ? (
+                    <Text numberOfLines={2} style={s.matchReason}>
+                      {p.relevanceReasons.slice(0, 2).join(' · ')}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
             </View>
           ) : (
             <EmptyState
-              title="No strong visual matches"
-              detail="Category matches are shown below."
+              title="No strong related matches"
+              detail="We only show products with a meaningful category, keyword, or specification match."
             />
           )}
         </Section>
-        <Section title="Same category and sub-category" count={same.length}>
-          <View style={s.grid}>
-            {same.map(p => (
-              <View key={getId(p)} style={s.gridItem}>
-                <ProductCard product={p} />
-              </View>
-            ))}
-          </View>
-        </Section>
+        {visualMatches.length ? <Section title="Additional visual matches" count={visualMatches.length}>
+          <View style={s.grid}>{visualMatches.slice(0, 8).map(p => <View key={getId(p)} style={s.gridItem}><ProductCard product={p} /></View>)}</View>
+        </Section> : null}
         <Section
           title="Related manufacturers and sellers"
           count={sellers.length}
@@ -214,6 +208,7 @@ const s = StyleSheet.create({
   },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%' },
+  matchReason: { color: '#2563EB', fontSize: 9, fontWeight: '700', lineHeight: 13, marginTop: 5, paddingHorizontal: 4 },
   seller: {
     alignItems: 'center',
     backgroundColor: '#fff',

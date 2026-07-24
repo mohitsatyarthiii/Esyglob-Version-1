@@ -1,4 +1,4 @@
-import { Award as Certificate, BadgeCheck, Building2, CalendarDays, CheckCircle2, Clock3, CreditCard, Factory, Globe2, Images, Mail, MapPin, MessageSquare, PackageCheck, Phone, Send, ShieldCheck, ShoppingBag, Star, Store, Truck } from 'lucide-react'
+import { Award as Certificate, BadgeCheck, Building2, CalendarDays, CheckCircle2, Clock3, CreditCard, Factory, Globe2, Images, Mail, MapPin, MessageSquare, PackageCheck, Phone, Send, ShieldCheck, ShoppingBag, Star, Truck } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { fetchSellerDetails } from '../api/marketplace'

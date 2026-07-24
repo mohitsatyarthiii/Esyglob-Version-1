@@ -37,6 +37,13 @@ class InvoiceService {
     const invoices = await InvoiceRepository.findInvoices(query);
     return { invoices };
   }
+
+  static async getInvoice(user, invoiceId) {
+    const { invoices } = await this.getInvoices(user);
+    const invoice = invoices.find(item => String(item._id) === String(invoiceId));
+    if (!invoice) throw Object.assign(new Error('Invoice not found'), { statusCode: 404 });
+    return invoice;
+  }
 }
 
 export default InvoiceService;

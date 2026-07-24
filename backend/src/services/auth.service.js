@@ -70,7 +70,7 @@ export async function signupUser(userData) {
     roles: [...new Set(roles)],
     primaryRole: role,
     isActive: true,
-    hasCompletedOnboarding: role !== 'seller',
+    hasCompletedOnboarding: false,
     lastLoginAt: new Date(),
   });
 
@@ -84,6 +84,6 @@ export async function signupUser(userData) {
 
   return {
     user: serializeUser(user),
-    redirectTo: role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer',
+    redirectTo: role === 'seller' ? '/seller/verification' : '/buyer/onboarding',
   };
 }

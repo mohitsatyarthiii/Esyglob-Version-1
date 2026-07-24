@@ -6,7 +6,6 @@ import {
   Dimensions,
   FlatList,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -37,13 +36,10 @@ import {
 } from '../api/ai';
 import { getActiveAIChatId, setActiveAIChatId } from '../ai/aiSession';
 import { useAuth } from '../auth/AuthContext';
-import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
-import { colors, radii, spacing } from '../theme';
+import { ErrorState } from '../components/StateViews';
 import AuthScreen from './AuthScreen';
 import { uploadFiles, type UploadAttachment } from '../api/marketplace';
-import RemoteImage from '../components/RemoteImage';
 import CompactAIStatus from '../components/CompactAIStatus';
-import { useCurrency } from '../currency/CurrencyContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
@@ -65,8 +61,9 @@ function AIChatScreen() {
   const [attachments, setAttachments] = useState<UploadAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
-  const [failedFiles, setFailedFiles] = useState<Array<{ uri: string; name: string; type: string }>>([]);
   const [failedMessage, setFailedMessage] = useState('');
+  const [renamingChat, setRenamingChat] = useState<AIChat | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
   
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -237,14 +234,12 @@ function AIChatScreen() {
   const uploadSelected = async (files: Array<{ uri: string; name: string; type: string }>) => {
     if (!files.length) return;
     setUploading(true);
-    setFailedFiles([]);
     try {
       const result = await uploadFiles('ai-chat', files);
       const uploaded = result.uploads ?? result.files ?? [];
       if (uploaded.length !== files.length) throw new Error('Some files were not uploaded.');
       setAttachments(current => [...current, ...uploaded]);
     } catch (error) {
-      setFailedFiles(files);
       Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload files.');
     } finally {
       setUploading(false);
@@ -276,18 +271,26 @@ function AIChatScreen() {
     })));
   };
 
-  const archiveChat = async () => {
-    if (!chatId) return;
-    Alert.alert('Delete chat', 'Are you sure?', [
+  const removeChat = (chat: AIChat) => {
+    const id = chat._id ?? chat.id;
+    if (!id) return;
+    Alert.alert('Delete conversation', `Delete "${chat.title || 'this conversation'}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteAIChat(chatId); newChat(); queryClient.invalidateQueries({ queryKey: ['ai-chats', role] }); } },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        await deleteAIChat(id);
+        if (id === chatId) newChat();
+        queryClient.invalidateQueries({ queryKey: ['ai-chats', role] });
+      } },
     ]);
   };
 
-  const renameChat = async () => {
-    if (!chatId) return;
-    const title = messages.find(item => item.role === 'user')?.content?.slice(0, 42) || 'EsyGlob AI chat';
-    await patchAIChat({ chatId, title });
+  const saveRename = async () => {
+    const id = renamingChat?._id ?? renamingChat?.id;
+    const title = renameTitle.trim();
+    if (!id || !title) return;
+    await patchAIChat({ chatId: id, title });
+    setRenamingChat(null);
+    setRenameTitle('');
     queryClient.invalidateQueries({ queryKey: ['ai-chats', role] });
   };
 
@@ -453,16 +456,20 @@ function AIChatScreen() {
                 </View>
               }
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.chatItem, (item._id ?? item.id) === chatId && styles.chatItemActive]}
-                  onPress={() => openChat(item)}
-                  activeOpacity={0.7}
-                >
-                  <Text numberOfLines={1} style={[styles.chatItemTitle, (item._id ?? item.id) === chatId && styles.chatItemTitleActive]}>
-                    {item.title ?? 'New conversation'}
-                  </Text>
-                  <Text style={styles.chatItemMeta}>{item.provider ?? item.conversationType ?? 'assistant'}</Text>
-                </TouchableOpacity>
+                <View style={[styles.chatItem, (item._id ?? item.id) === chatId && styles.chatItemActive]}>
+                  <TouchableOpacity onPress={() => openChat(item)} activeOpacity={0.7} style={styles.chatItemMain}>
+                    <Text numberOfLines={1} style={[styles.chatItemTitle, (item._id ?? item.id) === chatId && styles.chatItemTitleActive]}>
+                      {item.title ?? 'New conversation'}
+                    </Text>
+                    <Text style={styles.chatItemMeta}>{item.provider ?? item.conversationType ?? 'assistant'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityLabel="Rename conversation" onPress={() => { setRenamingChat(item); setRenameTitle(item.title || 'New conversation'); }} style={styles.chatAction}>
+                    <Icon name="pencil-outline" size={14} color="#64748b" />
+                  </TouchableOpacity>
+                  <TouchableOpacity accessibilityLabel="Delete conversation" onPress={() => removeChat(item)} style={styles.chatAction}>
+                    <Icon name="trash-can-outline" size={14} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
               )}
             />
           )}
@@ -498,6 +505,29 @@ function AIChatScreen() {
       </Modal>
 
       <PluginModal visible={Boolean(plugin)} mode={plugin} onClose={() => setPlugin(null)} onSubmit={submit} />
+
+      <Modal transparent visible={Boolean(renamingChat)} animationType="fade" onRequestClose={() => setRenamingChat(null)}>
+        <Pressable style={styles.renameBackdrop} onPress={() => setRenamingChat(null)}>
+          <Pressable style={styles.renameCard}>
+            <Text style={styles.renameTitle}>Rename conversation</Text>
+            <TextInput
+              autoFocus
+              maxLength={90}
+              onChangeText={setRenameTitle}
+              onSubmitEditing={saveRename}
+              placeholder="Conversation name"
+              placeholderTextColor="#94a3b8"
+              returnKeyType="done"
+              style={styles.renameInput}
+              value={renameTitle}
+            />
+            <View style={styles.renameActions}>
+              <TouchableOpacity onPress={() => setRenamingChat(null)} style={styles.renameCancel}><Text style={styles.renameCancelText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity disabled={!renameTitle.trim()} onPress={saveRename} style={styles.renameSave}><Text style={styles.renameSaveText}>Save</Text></TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -635,7 +665,7 @@ const styles = StyleSheet.create({
   input: { flex: 1, backgroundColor: '#f8fafc', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, fontSize: 11, color: '#1e293b', maxHeight: 80 },
   sendBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' },
   sendDisabled: { backgroundColor: '#cbd5e1' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 10 },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 10 },
   overlayTouch: { flex: 1 },
   drawer: { position: 'absolute', left: 0, top: 0, bottom: 0, width: DRAWER_WIDTH, backgroundColor: '#fff', zIndex: 20, shadowColor: '#000', shadowOffset: { width: 2, height: 0 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 16 },
   drawerContent: { flex: 1, paddingTop: Platform.OS === 'ios' ? 56 : 36 },
@@ -646,7 +676,9 @@ const styles = StyleSheet.create({
   srchInput: { flex: 1, fontSize: 10, color: '#1e293b', paddingVertical: 6 },
   loadWrap: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   chatListInner: { paddingHorizontal: 12 },
-  chatItem: { paddingVertical: 8, paddingHorizontal: 8, borderRadius: 8, marginBottom: 2 },
+  chatItem: { alignItems: 'center', borderRadius: 8, flexDirection: 'row', marginBottom: 2, paddingHorizontal: 4 },
+  chatItemMain: { flex: 1, paddingHorizontal: 4, paddingVertical: 8 },
+  chatAction: { alignItems: 'center', height: 30, justifyContent: 'center', width: 28 },
   chatItemActive: { backgroundColor: '#eff6ff' },
   chatItemTitle: { fontSize: 10, fontWeight: '500', color: '#1e293b' },
   chatItemTitleActive: { color: '#3b82f6' },
@@ -665,6 +697,15 @@ const styles = StyleSheet.create({
   pluginNotes: { minHeight: 60 },
   pluginSubmit: { backgroundColor: '#3b82f6', borderRadius: 10, paddingVertical: 8, alignItems: 'center', marginTop: 4 },
   pluginSubmitText: { fontSize: 10, fontWeight: '600', color: '#fff' },
+  renameBackdrop: { alignItems: 'center', backgroundColor: 'rgba(15,23,42,0.45)', flex: 1, justifyContent: 'center', padding: 24 },
+  renameCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, width: '100%' },
+  renameTitle: { color: '#1e293b', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  renameInput: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderRadius: 10, borderWidth: 1, color: '#1e293b', fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 },
+  renameActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 14 },
+  renameCancel: { paddingHorizontal: 14, paddingVertical: 9 },
+  renameCancelText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  renameSave: { backgroundColor: '#3b82f6', borderRadius: 9, paddingHorizontal: 16, paddingVertical: 9 },
+  renameSaveText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });
 
 export default AIChatScreen;

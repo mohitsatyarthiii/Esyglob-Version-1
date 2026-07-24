@@ -12,11 +12,16 @@ const paymentMethodSchema = new mongoose.Schema(
     maskedAccountNumber: String,
     encryptedAccountNumber: String,
     upiId: String,
+    encryptedUpiId: String,
     cardBrand: String,
     cardLast4: String,
     cardExpiryMonth: String,
     cardExpiryYear: String,
     providerToken: String,
+    providerValidationId: String,
+    providerValidationStatus: String,
+    verifiedAt: Date,
+    lastVerificationAt: Date,
     verificationStatus: {
       type: String,
       enum: ['pending', 'verified', 'failed'],
@@ -25,6 +30,7 @@ const paymentMethodSchema = new mongoose.Schema(
     },
     verificationMessage: String,
     isDefault: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true, index: true },
   },
   { timestamps: true }
 );

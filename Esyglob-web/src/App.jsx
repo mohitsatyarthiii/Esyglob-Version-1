@@ -42,6 +42,9 @@ const AddressesPage = lazy(() => import('./pages/AddressesPage'))
 const LocationPage = lazy(() => import('./pages/LocationPage'))
 const SavedItemsPage = lazy(() => import('./pages/SavedItemsPage'))
 const WalletPage = lazy(() => import('./pages/WalletPage'))
+const InvoicesPage = lazy(() => import('./pages/InvoicesPage'))
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
+const BuyerOnboardingPage = lazy(() => import('./pages/BuyerOnboardingPage'))
 const SellerProductsPage = lazy(() => import('./pages/SellerProductsPage'))
 const SellerProductFormPage = lazy(() => import('./pages/SellerProductFormPage'))
 const AIChatPage = lazy(() => import('./pages/AIChatPage'))
@@ -108,6 +111,9 @@ export default function App() {
       <Route path="/location" element={<LocationPage />} />
       <Route path="/saved" element={<SavedItemsPage />} />
       <Route path="/wallet" element={<WalletPage />} />
+      <Route path="/invoices" element={<InvoicesPage />} />
+      <Route path="/documents" element={<DocumentsPage />} />
+      <Route path="/buyer/onboarding" element={<BuyerOnboardingPage />} />
       <Route path="/seller/products" element={<SellerProductsPage />} />
       <Route path="/seller/products/new" element={<SellerProductFormPage />} />
       <Route path="/seller/products/:productId/edit" element={<SellerProductFormPage />} />

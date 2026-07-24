@@ -1,196 +1,195 @@
-// pages/HomePage.jsx
-import { Calculator, Camera, Grid2X2, ShieldCheck, Sparkles, Target, Zap } from 'lucide-react';
-import { useMemo, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { fetchCategories, fetchProducts } from '../api/marketplace';
-import { useAuth } from '../auth/auth-context';
-import AppShell from '../components/AppShell';
-import { CategoryBubble, ProductCard, SkeletonCards } from '../components/MarketplaceCards';
-import MarketplaceSearch from '../components/MarketplaceSearch';
-import useAsyncData from '../hooks/useAsyncData';
+import {
+  ArrowRight, BadgeCheck, Banknote, Bot, Box, Building2, Calculator, Camera,
+  CheckCircle2, ClipboardCheck, Construction, Factory, FileCheck2, FileSignature,
+  Globe2, GraduationCap, Grid2X2, Handshake, HeartHandshake, Leaf,
+  LockKeyhole, Map, PackageCheck, PackageSearch, Quote, Search, Send, ShieldCheck,
+  Shirt, Sparkles, Star, Stethoscope, Target, TrendingUp, Truck, Users, Utensils,
+  Warehouse, Zap,
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  fetchCategories, fetchMarketplaceStatistics, fetchProducts, fetchReviews, fetchSellers,
+} from '../api/marketplace'
+import { useAuth } from '../auth/auth-context'
+import AppShell from '../components/AppShell'
+import {
+  CategoryBubble, ManufacturerCard, ProductCard, SafeImage, SkeletonCards,
+} from '../components/MarketplaceCards'
+import MarketplaceSearch from '../components/MarketplaceSearch'
+import useAsyncData from '../hooks/useAsyncData'
 
-const featuredLoader = () => fetchProducts({ limit: 10, sort: 'latest', verifiedOnly: true });
-const feedLoader = () => fetchProducts({ limit: 16, sort: 'latest' });
+const featuredLoader = () => fetchProducts({ limit: 10, sort: 'latest', verifiedOnly: true })
+const feedLoader = () => fetchProducts({ limit: 16, sort: 'latest' })
+const sellerLoader = () => fetchSellers({ limit: 8, isVerified: true, sort: 'latest' })
+const reviewLoader = () => fetchReviews({ limit: 6, sort: 'latest' })
+const statisticsLoader = () => fetchMarketplaceStatistics()
+
+const advantages = [
+  [BadgeCheck, 'Verified global suppliers', 'Business, identity and factory evidence helps buyers source with confidence.'],
+  [Bot, 'AI product discovery', 'Search, compare and understand sourcing options with marketplace-aware AI.'],
+  [ShieldCheck, 'Secure trade workflow', 'Every commercial milestone remains traceable from RFQ through delivery.'],
+  [ClipboardCheck, 'Smart RFQ & quotations', 'Structured requirements, revisions and quotation history keep negotiations clear.'],
+  [FileSignature, 'Digital agreements', 'Final commercial terms and both signatures stay together in a live record.'],
+  [Warehouse, 'Unified Trade Workspace', 'Messages, documents, payments, logistics and activity live in one place.'],
+  [Truck, 'Global logistics support', 'Plan landed costs, shipment options and fulfillment without losing trade context.'],
+  [LockKeyhole, 'Secure payments', 'Verified payment workflows connect checkout, invoices and settlement records.'],
+]
+
+const journey = [
+  [Search, 'Search'], [Building2, 'Supplier'], [Target, 'RFQ'], [Send, 'Quotation'],
+  [Handshake, 'Negotiate'], [FileCheck2, 'Final quote'], [FileSignature, 'Sign'],
+  [Banknote, 'Checkout'], [Factory, 'Production'], [Truck, 'Shipping'], [PackageCheck, 'Delivery'],
+]
+
+const industries = [
+  [Leaf, 'Agriculture', 'agriculture'], [Factory, 'Industrial machinery', 'industrial machinery'],
+  [Zap, 'Electronics', 'electronics'], [Sparkles, 'Chemicals', 'chemicals'],
+  [Shirt, 'Textiles', 'textiles'], [Utensils, 'Food processing', 'food'],
+  [Box, 'Packaging', 'packaging'], [Construction, 'Construction', 'construction'],
+  [Stethoscope, 'Medical equipment', 'medical equipment'],
+]
+
+const services = [
+  [Bot, 'AI Assistant', 'Find products, suppliers and sourcing answers faster.', '/ai-chat'],
+  [Target, 'RFQ Management', 'Create structured requirements and collect comparable offers.', '/rfqs'],
+  [FileSignature, 'Digital Agreements', 'Review, sign and retain final commercial documents.', '/agreements'],
+  [Warehouse, 'Trade Workspace', 'Operate the complete trade lifecycle from one shared view.', '/rfqs'],
+  [Truck, 'Logistics Support', 'Plan shipping, landed cost and fulfillment milestones.', '/services/logistics'],
+  [Banknote, 'Payment Solutions', 'Secure checkout, settlement accounts and transaction history.', '/wallet'],
+  [FileCheck2, 'Documentation', 'Keep compliance and commercial records organized.', '/documents'],
+  [ClipboardCheck, 'Invoice Generation', 'Access issued invoices and downloadable PDFs.', '/invoices'],
+  [TrendingUp, 'Market Insights', 'Turn live marketplace context into clearer decisions.', '/market-insights'],
+]
+
+const knowledge = [
+  ['How international trade works', 'Understand the milestones between sourcing, contracting, payment and delivery.', '/market-insights', Globe2],
+  ['Export documentation guide', 'Learn where invoices, packing lists, origin certificates and transport records fit.', '/services/customs-brokerage', FileCheck2],
+  ['RFQ best practices', 'Create requirements suppliers can quote accurately and efficiently.', '/rfqs/new', Target],
+  ['Supplier verification process', 'See how evidence, factory information and trust levels protect buyers.', '/seller/verification', ShieldCheck],
+]
 
 export default function HomePage() {
-  const navigate = useNavigate();
-  const { status } = useAuth();
-  const categories = useAsyncData(fetchCategories);
-  const featured = useAsyncData(featuredLoader);
-  const feed = useAsyncData(feedLoader);
-  const quickScrollRef = useRef(null);
-  const catScrollRef = useRef(null);
-  const featScrollRef = useRef(null);
-
+  const navigate = useNavigate()
+  const { status } = useAuth()
+  const categories = useAsyncData(fetchCategories)
+  const featured = useAsyncData(featuredLoader)
+  const feed = useAsyncData(feedLoader)
+  const sellers = useAsyncData(sellerLoader)
+  const reviews = useAsyncData(reviewLoader)
+  const statistics = useAsyncData(statisticsLoader)
   const orderedCategories = useMemo(
     () => [...(categories.data || [])].sort((a, b) => Number(b.productCount || 0) - Number(a.productCount || 0)),
     [categories.data]
-  );
+  )
+  const regions = useMemo(() => [...new Set((sellers.data || []).map(item => item.address?.country || item.country).filter(Boolean))].slice(0, 5), [sellers.data])
+  const authRoute = path => navigate(status === 'authenticated' ? path : '/login', { state: { from: path } })
 
-  function authRoute(path) {
-    navigate(status === 'authenticated' ? path : '/login', { state: { from: path } });
-  }
+  return <AppShell><div className="home-marketplace"><div className="mobile-home-search"><MarketplaceSearch /></div>
 
-  return (
-    <AppShell>
-      <div className="bg-white">
-
-        <div className="mobile-home-search">
-          <MarketplaceSearch />
+    <section className="home-quick-strip">
+      <div className="container">
+        <div className="home-quick-grid home-quick-grid--desktop">
+          <QuickAction icon={<Calculator />} label="Trade Calculator" tone="violet" to="/services/calculator" />
+          <QuickAction icon={<Target />} label="Create RFQ" tone="amber" onClick={() => authRoute('/rfqs/new')} />
+          <QuickAction icon={<Camera />} label="Image Search" tone="orange" to={status === 'authenticated' ? '/explore/image-search' : '/login'} state={{ from: '/explore/image-search' }} />
+          <QuickAction icon={<Grid2X2 />} label="Categories" tone="emerald" to="/categories" />
         </div>
-
-        {/* ─── Quick Actions ─────────────────────────────────────── */}
-        <div className="border-b border-gray-100">
-          <div className="mx-auto max-w-7xl px-4 py-2.5 sm:px-6 sm:py-3">
-            <div className="hidden sm:grid sm:grid-cols-4 sm:gap-2">
-              <QuickAction icon={<Calculator size={18} />} label="Trade Calculator" color="bg-violet-50 text-violet-600" to="/services/calculator" />
-              <QuickAction icon={<Target size={18} />} label="Create RFQ" color="bg-amber-50 text-amber-600" onClick={() => authRoute('/rfqs/new')} />
-              <QuickAction icon={<Camera size={18} />} label="Image Search" color="bg-orange-50 text-orange-600" to={status === 'authenticated' ? '/explore/image-search' : '/login'} state={{ from: '/explore/image-search' }} />
-              <QuickAction icon={<Grid2X2 size={18} />} label="Categories" color="bg-emerald-50 text-emerald-600" to="/categories" />
-            </div>
-            <div ref={quickScrollRef} className="flex gap-2 overflow-x-auto scrollbar-hide sm:hidden -mx-4 px-4 snap-x">
-              <QuickAction icon={<Calculator size={16} />} label="Trade Calculator" color="bg-violet-50 text-violet-600" to="/services/calculator" mobile />
-              <QuickAction icon={<Target size={16} />} label="RFQ" color="bg-amber-50 text-amber-600" onClick={() => authRoute('/rfqs/new')} mobile />
-              <QuickAction icon={<Grid2X2 size={16} />} label="Categories" color="bg-emerald-50 text-emerald-600" to="/categories" mobile />
-              <QuickAction icon={<Camera size={16} />} label="Image Search" color="bg-orange-50 text-orange-600" to={status === 'authenticated' ? '/explore/image-search' : '/login'} state={{ from: '/explore/image-search' }} mobile />
-            </div>
-          </div>
-        </div>
-
-        {/* ─── AI Banner ─────────────────────────────────────────── */}
-        <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="flex items-center gap-3 py-2.5 sm:py-3">
-              <div className="relative flex-shrink-0">
-                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white/10 ring-1 ring-white/20 sm:h-9 sm:w-9">
-                  <img src="/favicon-logo.jpeg" alt="AI" className="h-full w-full object-cover" />
-                </div>
-                <div className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500">
-                  <Sparkles size={7} className="text-white" />
-                </div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold text-blue-300 sm:text-[11px]">EsyAI Sourcing</p>
-                <p className="text-[10px] text-blue-200/70 sm:text-[11px]">AI-powered product discovery</p>
-              </div>
-              <button
-                onClick={() => status === 'authenticated' ? navigate('/ai-chat') : navigate('/login', { state: { from: '/explore/image-search' } })}
-                className="flex flex-shrink-0 items-center gap-1 rounded-md bg-white/15 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-white/25 transition-colors sm:px-3 sm:text-[11px]"
-              >
-                <Zap size={11} className="text-amber-400" />
-                Try AI
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Categories ────────────────────────────────────────── */}
-        <div className="py-3 sm:py-4">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="mb-2 flex items-end justify-between sm:mb-2.5">
-              <h2 className="text-sm font-extrabold text-gray-900 sm:text-base">Categories</h2>
-              <Link to="/categories" className="text-[10px] font-bold text-blue-600 sm:text-xs">See all</Link>
-            </div>
-            <div className="hidden sm:flex sm:gap-3 sm:overflow-x-auto scrollbar-hide">
-              {categories.loading
-                ? <SkeletonCards count={8} variant="category" />
-                : orderedCategories.slice(0, 14).map((item) => (
-                    <CategoryBubble key={item._id || item.slug} category={item} />
-                  ))
-              }
-            </div>
-            <div ref={catScrollRef} className="flex gap-3 overflow-x-auto scrollbar-hide sm:hidden snap-x">
-              {categories.loading
-                ? <SkeletonCards count={8} variant="category" />
-                : orderedCategories.slice(0, 14).map((item) => (
-                    <CategoryBubble key={item._id || item.slug} category={item} />
-                  ))
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Featured Products ─────────────────────────────────── */}
-        <div className="bg-gray-50/80 py-3 sm:py-4">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="mb-2 flex items-end justify-between sm:mb-2.5">
-              <h2 className="text-sm font-extrabold text-gray-900 sm:text-base">Featured Products</h2>
-              <Link to="/products" className="text-[10px] font-bold text-blue-600 sm:text-xs">View all</Link>
-            </div>
-            <div className="hidden sm:flex sm:gap-3 sm:overflow-x-auto scrollbar-hide">
-              {featured.loading
-                ? <SkeletonCards count={5} variant="product" />
-                : featured.data?.products?.map((item) => (
-                    <div key={item._id || item.id} className="w-[190px] flex-shrink-0 sm:w-[210px]">
-                      <ProductCard product={item} />
-                    </div>
-                  ))
-              }
-            </div>
-            <div ref={featScrollRef} className="flex gap-2.5 overflow-x-auto scrollbar-hide sm:hidden snap-x">
-              {featured.loading
-                ? <SkeletonCards count={4} variant="product" />
-                : featured.data?.products?.map((item) => (
-                    <div key={item._id || item.id} className="w-[42vw] max-w-[165px] flex-shrink-0 snap-start">
-                      <ProductCard product={item} />
-                    </div>
-                  ))
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* ─── All Products ──────────────────────────────────────── */}
-        <div className="py-3 sm:py-4">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="mb-2 flex items-end justify-between sm:mb-2.5">
-              <h2 className="text-sm font-extrabold text-gray-900 sm:text-base">All Products</h2>
-              <Link to="/products" className="text-[10px] font-bold text-blue-600 sm:text-xs">Browse all</Link>
-            </div>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 sm:gap-3">
-              {feed.loading
-                ? <SkeletonCards count={8} variant="product" />
-                : feed.data?.products?.map((item) => (
-                    <ProductCard key={item._id || item.id} product={item} />
-                  ))
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* ─── Trust Strip ───────────────────────────────────────── */}
-        <div className="border-t border-gray-100 py-3 sm:py-4">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6">
-            <div className="flex items-center justify-center gap-4 sm:gap-8">
-              {['Verified suppliers', 'Buyer protection', 'Secure payments'].map((text) => (
-                <span key={text} className="flex items-center gap-1.5 text-[9px] font-semibold text-gray-400 sm:text-[10px]">
-                  <ShieldCheck size={12} className="text-emerald-500 sm:size-[14px]" />
-                  {text}
-                </span>
-              ))}
-            </div>
-          </div>
+        <div className="home-quick-grid home-quick-grid--mobile">
+          <QuickAction icon={<Calculator />} label="Trade Calculator" tone="violet" to="/services/calculator" />
+          <QuickAction icon={<Target />} label="RFQ" tone="amber" onClick={() => authRoute('/rfqs/new')} />
+          <QuickAction icon={<ShieldCheck />} label="Verified Manufacturers" tone="blue" to="/sellers" />
+          <QuickAction icon={<Grid2X2 />} label="Categories" tone="emerald" to="/categories" />
+          <QuickAction icon={<Camera />} label="Image Search" tone="orange" to={status === 'authenticated' ? '/explore/image-search' : '/login'} state={{ from: '/explore/image-search' }} />
         </div>
       </div>
-    </AppShell>
-  );
+    </section>
+
+    <section className="home-ai-strip">
+      <div className="container"><div><span className="home-ai-mark"><img src="/favicon-logo.jpeg" alt="" /><Sparkles /></span><span><b>EsyAI Sourcing</b><small>AI-powered product and supplier discovery</small></span></div><button onClick={() => authRoute('/ai-chat')}><Zap /> Try AI <ArrowRight /></button></div>
+    </section>
+
+    <MarketplaceCategories query={categories} ordered={orderedCategories} />
+    <FeaturedProducts query={featured} />
+
+    <AllProducts query={feed} />
+
+    <section className="home-audience-section home-reveal"><div className="container">
+      <article className="home-audience-card home-audience-card--buyer"><span><PackageSearch /> For buyers</span><h2>Source with clarity and control.</h2><ul>{['Search relevant products', 'Find verified suppliers', 'Create structured RFQs', 'Compare and negotiate quotations', 'Complete a traceable secure trade'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to="/products">Start sourcing <ArrowRight /></Link></article>
+      <article className="home-audience-card home-audience-card--seller"><span><Factory /> For sellers</span><h2>Take your business to global buyers.</h2><ul>{['Verify your business', 'Publish professional products', 'Receive qualified RFQs', 'Send structured quotations', 'Build a global trade history'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to={status === 'authenticated' ? '/seller/verification' : '/signup'}>Start selling <ArrowRight /></Link></article>
+    </div></section>
+  </div></AppShell>
 }
 
-// ─── Quick Action ────────────────────────────────────────────
-function QuickAction({ icon, label, color, to, onClick, state, mobile = false }) {
-  const className = mobile
-    ? "flex flex-shrink-0 items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2 snap-start w-[120px] active:scale-[0.97] transition-transform"
-    : "flex items-center gap-2 rounded-lg border border-gray-100 bg-white px-3 py-2.5 transition-all hover:shadow-sm hover:-translate-y-0.5";
+function SectionHeading({ eyebrow, title, description, action, centered = false }) {
+  return <header className={`home-section-heading ${centered ? 'centered' : ''}`}><div><span>{eyebrow}</span><h2>{title}</h2><p>{description}</p></div>{action}</header>
+}
 
-  const content = (
-    <>
-      <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${color} sm:h-9 sm:w-9`}>
-        {icon}
-      </span>
-      <span className="text-[10px] font-bold text-gray-700 leading-tight sm:text-[11px]">{label}</span>
-    </>
-  );
+function MarketplaceCategories({ query, ordered }) {
+  return <section className="home-list-section"><div className="container"><div className="home-list-heading"><h2>Categories</h2><Link to="/categories">See all</Link></div><div className="home-category-row">{query.loading ? <SkeletonCards count={8} variant="category" /> : ordered.slice(0, 14).map(item => <CategoryBubble key={item._id || item.slug} category={item} />)}</div></div></section>
+}
 
-  if (to) return <Link to={to} state={state} className={className}>{content}</Link>;
-  return <button onClick={onClick} className={className}>{content}</button>;
+function FeaturedProducts({ query }) {
+  return <section className="home-list-section home-list-section--muted"><div className="container"><div className="home-list-heading"><h2>Featured products</h2><Link to="/products">View all</Link></div><div className="home-product-row">{query.loading ? <SkeletonCards count={5} variant="product" /> : query.data?.products?.map(item => <div key={item._id || item.id}><ProductCard product={item} /></div>)}</div></div></section>
+}
+
+function AllProducts({ query }) {
+  return <section className="home-list-section home-reveal"><div className="container"><div className="home-list-heading"><h2>Trending products</h2><Link to="/products">Browse all</Link></div><div className="home-product-grid">{query.loading ? <SkeletonCards count={8} variant="product" /> : query.data?.products?.map(item => <ProductCard key={item._id || item.id} product={item} />)}</div></div></section>
+}
+
+function QuickAction({ icon, label, tone, to, onClick, state }) {
+  const content = <><span className={`tone-${tone}`}>{icon}</span><b>{label}</b></>
+  return to ? <Link to={to} state={state}>{content}</Link> : <button onClick={onClick}>{content}</button>
+}
+
+function Stat({ value, label, icon: Icon, loading }) {
+  return <article><i><Icon /></i><strong>{loading ? '—' : <AnimatedNumber value={Number(value || 0)} />}</strong><span>{label}</span></article>
+}
+
+function AnimatedNumber({ value }) {
+  const ref = useRef(null)
+  const [display, setDisplay] = useState(0)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return undefined
+    let frame = 0
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      observer.disconnect()
+      const started = performance.now()
+      const tick = now => {
+        const progress = Math.min(1, (now - started) / 1100)
+        setDisplay(Math.round(value * (1 - ((1 - progress) ** 3))))
+        if (progress < 1) frame = requestAnimationFrame(tick)
+      }
+      frame = requestAnimationFrame(tick)
+    }, { threshold: .35 })
+    observer.observe(node)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [value])
+  return <span ref={ref}>{display.toLocaleString()}</span>
+}
+
+function SuccessStories({ reviews }) {
+  const items = (reviews.data || []).filter(item => item.comment || item.review || item.content).slice(0, 3)
+  return <section className="home-testimonial-section home-reveal"><div className="container">
+    <SectionHeading eyebrow="Marketplace voices" title="Confidence built through real business experiences." description="Recent marketplace feedback from buyers and businesses using EsyGlob." centered />
+    {reviews.loading ? <div className="home-testimonial-grid"><SkeletonCards count={3} variant="category" /></div> : items.length ? <div className="home-testimonial-grid">{items.map((item, index) => {
+      const name = item.reviewerId?.fullName || item.userId?.fullName || item.user?.fullName || item.name || 'Marketplace member'
+      const company = item.companyName || item.sellerId?.companyName || item.productId?.sellerId?.companyName || 'EsyGlob business'
+      const country = item.country || item.reviewerId?.metadata?.country || 'Global marketplace'
+      return <article key={item._id || index}><Quote /><div className="home-rating">{Array.from({ length: 5 }, (_, star) => <Star key={star} className={star < Number(item.rating || 5) ? 'active' : ''} />)}</div><blockquote>{item.comment || item.review || item.content}</blockquote><footer><span>{item.avatarUrl ? <SafeImage src={item.avatarUrl} alt="" /> : name.slice(0, 1)}</span><div><b>{company}</b><small>{name} · {country}</small></div></footer></article>
+    })}</div> : <div className="home-story-empty"><GraduationCap /><h3>Success stories are built from verified marketplace reviews.</h3><p>Completed trade feedback will appear here as the public story of EsyGlob grows.</p></div>}
+  </div></section>
+}
+
+function WorldMap() {
+  return <svg className="home-world-map" viewBox="0 0 760 380" role="img" aria-label="Stylized world map">
+    <g fill="currentColor">
+      <path d="M52 118l31-39 68-20 64 18 34 39-21 35-42 6-22 25-39-4-18-29-41-8zM181 188l39 18 15 55-19 67-25-18-12-53-26-32z" />
+      <path d="M306 83l35-23 68 4 27 27 54 7 31 25-22 24-45-2-25 28-28-8-16 23-45-16-9-34-40-17zM400 189l46 10 32 34-16 78-36 40-28-56-16-48z" />
+      <path d="M514 104l46-29 86 12 61 37-20 29-62 3-24 28-52-4-34-30zM610 252l42-18 52 23-12 42-55 13-37-24z" />
+    </g>
+    <g fill="none" stroke="currentColor" strokeDasharray="5 8" strokeWidth="2" opacity=".45"><path d="M140 127Q310 15 405 127T643 139" /><path d="M216 228Q380 115 622 270" /></g>
+  </svg>
 }

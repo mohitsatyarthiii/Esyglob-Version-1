@@ -28,6 +28,33 @@ function normalizeProductInput(data) {
   return normalized;
 }
 
+function normalizedText(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return Object.values(value).map(normalizedText).join(' ');
+  return String(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function tokenSet(...values) {
+  return new Set(
+    normalizedText(values)
+      .split(/\s+/)
+      .filter((token) => token.length > 2)
+  );
+}
+
+function overlapScore(left, right) {
+  if (!left.size || !right.size) return 0;
+  let matches = 0;
+  left.forEach((token) => {
+    if (right.has(token)) matches += 1;
+  });
+  return matches / Math.max(left.size, right.size);
+}
+
+function sameValue(left, right) {
+  return Boolean(left && right && String(left).toLowerCase() === String(right).toLowerCase());
+}
+
 class ProductService {
   /**
    * Get products — SUPER FAST with denormalized flag
@@ -180,6 +207,80 @@ class ProductService {
       seller: product.sellerId,
       similarProducts
     };
+  }
+
+  static async getRelatedProducts(productId, rawLimit = 20) {
+    const product = await ProductRepository.findByIdOrSlug(productId);
+    if (!product) {
+      const error = new Error('Product not found');
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const limit = Math.min(Math.max(Number(rawLimit) || 20, 1), 40);
+    const candidates = await ProductRepository.getRelatedProductCandidates(product, 100);
+    const sourceName = tokenSet(product.name);
+    const sourceKeywords = tokenSet(product.tags, product.seo?.keywords, product.description);
+    const sourceSpecs = tokenSet(product.specifications, product.productAttributes);
+
+    const products = candidates
+      .map((candidate) => {
+        let relevanceScore = 0;
+        const relevanceReasons = [];
+        if (
+          sameValue(candidate.subcategoryId, product.subcategoryId) ||
+          sameValue(candidate.subcategory, product.subcategory)
+        ) {
+          relevanceScore += 45;
+          relevanceReasons.push('Same subcategory');
+        }
+        if (
+          sameValue(candidate.categoryId, product.categoryId) ||
+          sameValue(candidate.category, product.category)
+        ) {
+          relevanceScore += 28;
+          relevanceReasons.push('Same category');
+        }
+
+        const nameSimilarity = overlapScore(sourceName, tokenSet(candidate.name));
+        const keywordSimilarity = overlapScore(
+          sourceKeywords,
+          tokenSet(candidate.tags, candidate.seo?.keywords, candidate.description)
+        );
+        const specificationSimilarity = overlapScore(
+          sourceSpecs,
+          tokenSet(candidate.specifications, candidate.productAttributes)
+        );
+        relevanceScore += Math.round(nameSimilarity * 30);
+        relevanceScore += Math.round(keywordSimilarity * 18);
+        relevanceScore += Math.round(specificationSimilarity * 16);
+        if (nameSimilarity > 0) relevanceReasons.push('Similar name');
+        if (keywordSimilarity > 0) relevanceReasons.push('Matching keywords');
+        if (specificationSimilarity > 0) relevanceReasons.push('Similar specifications');
+
+        const manufacturerMatch =
+          sameValue(candidate.brand, product.brand) ||
+          sameValue(candidate.productType, product.productType) ||
+          sameValue(candidate.manufacturingDetails?.processType, product.manufacturingDetails?.processType) ||
+          sameValue(candidate.sellerId?.companyType, product.sellerId?.companyType);
+        if (manufacturerMatch) {
+          relevanceScore += 10;
+          relevanceReasons.push('Similar manufacturer type');
+        }
+
+        relevanceScore += Math.min(Number(candidate.averageRating || 0), 5);
+        relevanceScore += Math.min(Math.log10(Number(candidate.totalOrders || 0) + 1) * 2, 5);
+        return { ...candidate, relevanceScore, relevanceReasons: [...new Set(relevanceReasons)] };
+      })
+      .filter((candidate) => candidate.relevanceScore >= 25)
+      .sort((left, right) =>
+        right.relevanceScore - left.relevanceScore ||
+        Number(right.averageRating || 0) - Number(left.averageRating || 0) ||
+        Number(right.totalOrders || 0) - Number(left.totalOrders || 0)
+      )
+      .slice(0, limit);
+
+    return { productId: product._id, products, total: products.length };
   }
 
   /**

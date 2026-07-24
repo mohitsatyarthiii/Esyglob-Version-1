@@ -20,6 +20,29 @@ class ProfileService {
     if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
     return { success: true, preferredCurrency: normalized };
   }
+
+  static async completeBuyerOnboarding(userId, roles, data) {
+    if (!roles?.includes('buyer')) {
+      throw Object.assign(new Error('Buyer account required'), { statusCode: 403 });
+    }
+    const list = value => [...new Set((Array.isArray(value) ? value : []).map(item => String(item).trim()).filter(Boolean))].slice(0, 30);
+    const requiredLists = ['businessInterests', 'productCategories', 'sourcingCountries', 'paymentMethods', 'shippingMethods'];
+    if (requiredLists.some(key => !list(data[key]).length)) {
+      throw Object.assign(new Error('Complete every buying preference before continuing'), { statusCode: 422 });
+    }
+    const user = await ProfileRepository.updateUser(userId, {
+      hasCompletedOnboarding: true,
+      'metadata.designation': String(data.designation || '').trim(),
+      'metadata.businessInterests': list(data.businessInterests),
+      'metadata.productCategories': list(data.productCategories),
+      'metadata.expectedOrderQuantity': String(data.expectedOrderQuantity || '').trim(),
+      'metadata.sourcingCountries': list(data.sourcingCountries),
+      'metadata.paymentMethods': list(data.paymentMethods),
+      'metadata.shippingMethods': list(data.shippingMethods),
+      'metadata.onboardingCompletedAt': new Date(),
+    });
+    return { success: true, user };
+  }
   /**
    * Get user profile
    */

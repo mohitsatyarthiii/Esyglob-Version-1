@@ -1,6 +1,6 @@
 import { cached } from '../lib/cache.js';
 import { getSellerCompletionSummary } from '../lib/seller-verification.js';
-import { buildVerificationCenterSummary } from '../lib/verification-center.js';
+import { buildVerificationCenterSummary, VERIFICATION_STEPS } from '../lib/verification-center.js';
 import { buildSellerQuery, sellerSortField, stripUndefined } from '../lib/supplier-helpers.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
 
@@ -115,6 +115,17 @@ export async function saveFactoryDraft(user, data) {
 // ─── Onboarding ────────────────────────────────────────────
 export async function getOnboarding(user) {
   const { seller, verification } = await supplierRepository.findSellerWithVerification(user.id);
+  const sellerApproved = seller?.isVerified === true
+    || ['approved', 'verified'].includes(String(seller?.verificationStatus || '').toLowerCase());
+  const normalizedVerification = sellerApproved && verification
+    ? {
+        ...verification,
+        status: 'approved',
+        onboardingCompleted: true,
+        currentStep: 7,
+        completedSteps: VERIFICATION_STEPS.map((_, index) => index),
+      }
+    : verification;
 
   const draftAvailable = Boolean(
     seller?.onboardingDraftSavedAt && !user.hasCompletedOnboarding
@@ -126,8 +137,17 @@ export async function getOnboarding(user) {
     import('../models/Subscription.js').then(({ default: Subscription }) => Subscription.findOne({ userId: user.id }).lean()),
   ]);
   const completion = seller ? getSellerCompletionSummary(seller) : null;
-  const verificationCenter = buildVerificationCenterSummary(seller, verification);
-  return { seller, verification, factory, subscription, timeline, completion, verificationCenter, draftAvailable };
+  const verificationCenter = buildVerificationCenterSummary(seller, normalizedVerification);
+  return {
+    seller,
+    verification: normalizedVerification,
+    factory,
+    subscription,
+    timeline,
+    completion,
+    verificationCenter,
+    draftAvailable: sellerApproved ? false : draftAvailable,
+  };
 }
 
 export async function saveOnboardingDraft(user, data) {

@@ -40,6 +40,11 @@ export async function fetchProductDetails(id) {
   return { product: data.product || data, seller: data.seller || data.product?.sellerId, similarProducts: data.similarProducts || [] }
 }
 
+export async function fetchRelatedProducts(id, limit = 24) {
+  const payload = await apiRequest(`/products/${id}/related`, { query: { limit }, cacheTtlMs: 90_000 })
+  return normalizeList(payload, ['products', 'items', 'results'])
+}
+
 export async function fetchSellerDetails(id) {
   const payload = await apiRequest(`/suppliers/${id}`, { cacheTtlMs: 2 * 60_000 })
   return unwrapData(payload) || {}
@@ -48,6 +53,11 @@ export async function fetchSellerDetails(id) {
 export async function fetchReviews(params = {}) {
   const payload = await apiRequest('/reviews', { query: params, cacheTtlMs: 60_000 })
   return normalizeList(payload, ['reviews', 'items'])
+}
+
+export async function fetchMarketplaceStatistics() {
+  const data = unwrapData(await apiRequest('/marketplace/statistics', { cacheTtlMs: 5 * 60_000 })) || {}
+  return data.stats || data
 }
 
 export async function fetchReviewSummary(params = {}) {

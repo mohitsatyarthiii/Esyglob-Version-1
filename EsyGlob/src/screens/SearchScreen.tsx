@@ -48,6 +48,7 @@ function SearchScreen() {
   const [maxPrice, setMaxPrice] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const debouncedQuery = useDebouncedValue(query, 300);
   const debouncedMinPrice = useDebouncedValue(minPrice, 350);
   const debouncedMaxPrice = useDebouncedValue(maxPrice, 350);
 
@@ -63,6 +64,10 @@ function SearchScreen() {
       setSubmittedQuery(params.q);
     }
   }, [params.category, params.categoryName, params.q, params.seller, params.sellerName, params.subcategory, params.subcategoryName]);
+
+  useEffect(() => {
+    setSubmittedQuery(debouncedQuery.trim());
+  }, [debouncedQuery]);
 
   const products = useInfiniteQuery({
     queryKey: ['products', submittedQuery, category, subcategory, seller, sort, verifiedOnly, debouncedMinPrice, debouncedMaxPrice],
@@ -151,6 +156,18 @@ function SearchScreen() {
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
+        {query.length ? (
+          <Pressable
+            accessibilityLabel="Clear product search"
+            hitSlop={8}
+            onPress={() => {
+              setQuery('');
+              setSubmittedQuery('');
+            }}
+            style={styles.clearSearch}>
+            <Icon name="close-circle" size={20} color={colors.muted} />
+          </Pressable>
+        ) : null}
         <Pressable onPress={submitSearch} style={styles.button}>
           <Text style={styles.buttonText}>Go</Text>
         </Pressable>
@@ -280,6 +297,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
+  clearSearch: { alignItems: 'center', height: 38, justifyContent: 'center', width: 34 },
   buttonText: {
     color: '#fff',
     fontWeight: '900',

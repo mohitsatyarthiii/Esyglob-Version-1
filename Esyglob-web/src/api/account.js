@@ -21,7 +21,14 @@ export async function toggleLocationTracking(isActive) { return unwrapData(await
 
 export async function fetchWallet(role) { return unwrapData(await apiRequest('/wallet', { query: { role }, cache: false })) || {} }
 export async function addPaymentMethod(input) { return unwrapData(await apiRequest('/wallet/payment-methods', { method: 'POST', body: input })) }
+export async function managePaymentMethod(id, input) { return unwrapData(await apiRequest(`/wallet/payment-methods/${id}`, { method: 'PATCH', body: input })) }
+export async function removePaymentMethod(id, role) { return unwrapData(await apiRequest(`/wallet/payment-methods/${id}`, { method: 'DELETE', query: { role } })) }
 export async function requestWithdrawal(input) { return unwrapData(await apiRequest('/wallet/withdrawals', { method: 'POST', body: input })) }
+export async function fetchInvoices() { return normalizeList(await apiRequest('/invoices', { cache: false }), ['invoices', 'items']) }
+export async function fetchDocuments() { return normalizeList(await apiRequest('/documents', { cache: false }), ['documents', 'items']) }
+export async function createDocument(input) { return unwrapData(await apiRequest('/documents', { method: 'POST', body: input })) }
+export async function archiveDocument(id) { return unwrapData(await apiRequest(`/documents/${id}`, { method: 'DELETE' })) }
+export async function completeBuyerOnboarding(input) { return unwrapData(await apiRequest('/profile/buyer-onboarding', { method: 'POST', body: input })) }
 
 export async function fetchAIChats(role) { return normalizeList(await apiRequest('/ai-chat', { query: { role }, cache: false }), ['chats', 'items']) }
 export async function fetchAIChat(chatId) {

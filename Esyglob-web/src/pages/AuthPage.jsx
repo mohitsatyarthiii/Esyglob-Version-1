@@ -21,7 +21,7 @@ export default function AuthPage({ mode }) {
   const [loading, setLoading] = useState(false)
   const strength = useMemo(() => passwordStrength(form.password), [form.password])
 
-  if (status === 'authenticated') return <Navigate replace to="/home" />
+  if (status === 'authenticated' && mode !== 'signup' && !loading) return <Navigate replace to="/home" />
 
   const isSignup = mode === 'signup'
   const isForgot = mode === 'forgot'
@@ -61,10 +61,13 @@ export default function AuthPage({ mode }) {
         navigate('/login', { replace: true, state: { notice: 'Password reset. You can now sign in.' } })
       } else if (isSignup) {
         await signUp({ name: form.name.trim(), email: form.email.trim(), password: form.password, role })
-        navigate('/home', { replace: true })
+        navigate(role === 'seller' ? '/seller/verification' : '/buyer/onboarding', { replace: true })
       } else {
-        await signIn({ email: form.email.trim(), password: form.password })
-        navigate(location.state?.from || '/home', { replace: true })
+        const account = await signIn({ email: form.email.trim(), password: form.password })
+        const onboarding = account?.hasCompletedOnboarding === false
+          ? account.roles?.includes('seller') ? '/seller/verification' : '/buyer/onboarding'
+          : ''
+        navigate(onboarding || location.state?.from || '/home', { replace: true })
       }
     } catch (nextError) {
       if (nextError instanceof ApiError && nextError.status === 404 && (isForgot || isReset)) {
@@ -80,7 +83,7 @@ export default function AuthPage({ mode }) {
   return (
     <main className="auth-page">
       <section className="auth-aside">
-        <Link to="/welcome"><Brand inverse /></Link>
+        <Brand inverse />
         <div className="auth-aside__copy"><span className="eyebrow">One platform. Every trade.</span><h2>Build trusted business across borders.</h2><p>Source products, verify suppliers, negotiate and manage trade with confidence.</p></div>
         <div className="auth-proof"><span><ShieldCheck /><b>Secure by design</b><small>Protected sessions and verified accounts</small></span><span><Building2 /><b>Built for B2B</b><small>Purpose-built sourcing and seller workflows</small></span></div>
         <div className="auth-quote"><p>“EsyGlob gives every business a clearer, safer path to global sourcing.”</p><span>Global trade, made easier</span></div>

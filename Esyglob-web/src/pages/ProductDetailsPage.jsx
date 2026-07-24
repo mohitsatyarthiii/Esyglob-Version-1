@@ -121,9 +121,9 @@ export default function ProductDetailsPage() {
             {/* Sample Order Link */}
             {product.sampleAvailable && (
               <div className="sample-order-link">
-                <button onClick={enquiry} className="sample-order-btn">
+                <button onClick={() => authAction(() => navigate(`/checkout?mode=sample&productId=${encodeURIComponent(productId)}&quantity=1`))} className="sample-order-btn">
                   <PackageCheck size={15} className="text-blue-600 flex-shrink-0" />
-                  <span className="flex-1 text-left font-semibold text-gray-700">Request sample order</span>
+                  <span className="flex-1 text-left font-semibold text-gray-700">Order sample</span>
                   <span className="text-blue-600 font-bold text-xs">
                     {product.samplePrice ? <Money value={product.samplePrice} currency={product.currency} /> : 'Ask for price'}
                   </span>
@@ -165,7 +165,7 @@ export default function ProductDetailsPage() {
         {/* Mobile: Sticky bottom bar */}
         <ProductTradeActions 
           disabled={action.busy || !sellerUserId} 
-          onContact={() => authAction(chat)} 
+          onContact={enquiry}
           onRfq={startRfq}
           sellerId={sellerId}
         />

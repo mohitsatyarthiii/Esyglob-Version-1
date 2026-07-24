@@ -1,5 +1,5 @@
 // components/ProductCards.jsx
-import { ArrowUpRight, BadgeCheck, Box, Heart, MapPin, Package, Send, ShieldCheck, Star, Truck } from 'lucide-react';
+import { ArrowUpRight, Award, BadgeCheck, CheckCircle2, Heart, MapPin, Package, ShieldCheck, ShoppingBag, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { memo, useState } from 'react';
 import WishlistButton from './WishlistButton';
