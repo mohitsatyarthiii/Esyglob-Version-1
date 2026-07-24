@@ -87,6 +87,7 @@ export default function SubscriptionCenterScreen() {
   const [activeTab, setActiveTab] = useState<'monthly' | 'quarterly' | 'yearly'>('yearly');
   const [expandedPlanKey, setExpandedPlanKey] = useState<string | null>(null);
   const [upgradingPlanKey, setUpgradingPlanKey] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const overview = useQuery({
     queryKey: ['subscription', role],
@@ -100,6 +101,7 @@ export default function SubscriptionCenterScreen() {
 
   const buy = useMutation({
     mutationFn: async (plan: SubscriptionPlan) => {
+      if (!termsAccepted) throw new Error('Accept the subscription and recurring billing terms to continue.');
       if (!plan.prices[activeTab]) throw new Error('This billing cycle is unavailable.');
       const order = await createSubscriptionOrder(plan.key, activeTab);
       const gateway = await RazorpayCheckout.open({
@@ -147,6 +149,10 @@ export default function SubscriptionCenterScreen() {
 
   const handleUpgrade = (plan: SubscriptionPlan) => {
     if (plan.key === current.key) return;
+    if (!termsAccepted) {
+      Alert.alert('Terms Required', 'Accept the subscription and recurring billing terms to continue.');
+      return;
+    }
     setUpgradingPlanKey(plan.key);
     buy.mutate(plan);
   };
@@ -207,6 +213,11 @@ export default function SubscriptionCenterScreen() {
             </View>
           </View>
         </View>
+
+        <Pressable onPress={() => setTermsAccepted(currentValue => !currentValue)} style={s.termsCard}>
+          <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={22} color={termsAccepted ? '#2563EB' : '#64748B'} />
+          <Text style={s.termsText}>I accept the subscription, renewal and recurring billing terms.</Text>
+        </Pressable>
 
         {/* Premium Plan Cards */}
         <View style={s.cardsContainer}>
@@ -351,11 +362,11 @@ export default function SubscriptionCenterScreen() {
                 {/* CTA Button */}
                 <Pressable
                   onPress={() => handleUpgrade(plan)}
-                  disabled={isLoadingThis || isCurrent}
+                  disabled={isLoadingThis || isCurrent || !termsAccepted}
                   style={[
                     s.ctaButton, 
                     { backgroundColor: isCurrent ? '#E2E8F0' : tierColors.highlight },
-                    isCurrent && s.ctaDisabled
+                    (isCurrent || !termsAccepted) && s.ctaDisabled
                   ]}>
                   {isLoadingThis ? (
                     <ActivityIndicator color={isCurrent ? '#64748B' : '#FFFFFF'} />
@@ -432,6 +443,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'space-between',
   },
   activeBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  termsCard: { alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: 14, borderWidth: 1, flexDirection: 'row', gap: 10, marginBottom: 20, padding: 14 },
+  termsText: { color: '#334155', flex: 1, fontSize: 13, lineHeight: 19 },
   activeBannerLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '500' },
   activeBannerName: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   activeBannerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -33,8 +33,8 @@ export function servicesForRole(role) { return SERVICE_CATALOG.filter((item) => 
 export async function fetchServiceRequests(params = {}) { return normalizeList(await apiRequest('/service-requests', { query: { limit: 100, ...params }, cache: false }), ['requests', 'items']) }
 export async function fetchServiceRequest(id) { const data = unwrapData(await apiRequest(`/service-requests/${id}`, { cache: false })) || {}; return data.request || data }
 export async function fetchServiceQuote(serviceKey, requirements = {}) { return unwrapData(await apiRequest(`/service-requests/quote/${serviceKey}`, { method: 'POST', body: { requirements } })) || {} }
-export async function createServiceRequest(serviceItem, role, values, documents = []) {
-  const data = unwrapData(await apiRequest('/service-requests', { method: 'POST', body: { role, serviceKey: serviceItem.key, originalServiceKey: serviceItem.key, serviceTitle: serviceItem.title, companyName: values.companyName, contactName: values.contactName, contactEmail: values.contactEmail, contactPhone: values.contactPhone, subject: values.subject || serviceItem.title, details: values.details || values.specialRequirements || serviceItem.description, priority: values.priority || 'normal', requirements: values, documents } })) || {}
+export async function createServiceRequest(serviceItem, role, values, documents = [], termsAccepted = false) {
+  const data = unwrapData(await apiRequest('/service-requests', { method: 'POST', body: { role, serviceKey: serviceItem.key, originalServiceKey: serviceItem.key, serviceTitle: serviceItem.title, companyName: values.companyName, contactName: values.contactName, contactEmail: values.contactEmail, contactPhone: values.contactPhone, subject: values.subject || serviceItem.title, details: values.details || values.specialRequirements || serviceItem.description, priority: values.priority || 'normal', requirements: values, documents, termsAccepted } })) || {}
   return data.request || data
 }
 export async function cancelServiceRequest(id) { const data = unwrapData(await apiRequest(`/service-requests/${id}/cancel`, { method: 'PATCH' })) || {}; return data.request || data }

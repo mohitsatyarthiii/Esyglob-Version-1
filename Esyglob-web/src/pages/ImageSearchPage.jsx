@@ -14,6 +14,10 @@ export default function ImageSearchPage() {
   const [state, setState] = useState({ loading: false, error: '', data: null })
   const [dragging, setDragging] = useState(false)
   useEffect(() => { return () => { if (preview.startsWith('blob:')) URL.revokeObjectURL(preview) } }, [preview])
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => cameraRef.current?.click())
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
   function acceptFile(next) { if (!next) return; if (!next.type.startsWith('image/')) { setState({ loading: false, error: 'Choose a JPG, PNG or WebP image.', data: null }); return } if (next.size > 5 * 1024 * 1024) { setState({ loading: false, error: 'Image must be smaller than 5MB.', data: null }); return } setFile(next); setPreview(URL.createObjectURL(next)); setUrl(''); setState({ loading: false, error: '', data: null }) }
   function choose(event) { acceptFile(event.target.files?.[0]) }
   function drop(event) { event.preventDefault(); setDragging(false); acceptFile(event.dataTransfer.files?.[0]) }

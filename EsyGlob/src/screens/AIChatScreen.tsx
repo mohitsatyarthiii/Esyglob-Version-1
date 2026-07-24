@@ -58,6 +58,7 @@ function AIChatScreen() {
   const [input, setInput] = useState('');
   const [plugin, setPlugin] = useState<PluginMode>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [conversationLoading, setConversationLoading] = useState(false);
   const [attachments, setAttachments] = useState<UploadAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -85,9 +86,14 @@ function AIChatScreen() {
 
   useEffect(() => {
     if (!chatId || messages.length) return;
+    setConversationLoading(true);
     fetchAIChat(chatId)
       .then(detail => setMessages(detail.messages ?? []))
-      .catch(() => setActiveAIChatId(role));
+      .catch((error) => {
+        setActiveAIChatId(role);
+        Alert.alert('Conversation unavailable', error instanceof Error ? error.message : 'Unable to open this conversation.');
+      })
+      .finally(() => setConversationLoading(false));
   }, [chatId, messages.length, role]);
 
   const openDrawer = () => {
@@ -207,14 +213,14 @@ function AIChatScreen() {
 
   if (status !== 'authenticated') return <AuthScreen onClose={() => navigation.goBack()} />;
 
-  const openChat = async (chat: AIChat) => {
+  const openChat = (chat: AIChat) => {
     const id = chat._id ?? chat.id;
     if (!id) return;
     closeDrawer();
     setChatId(id);
     setActiveAIChatId(role, id);
-    const detail = await fetchAIChat(id);
-    setMessages(detail.messages ?? []);
+    setMessages([]);
+    setConversationLoading(true);
   };
 
   const newChat = () => {
@@ -304,7 +310,7 @@ function AIChatScreen() {
         <TouchableOpacity onPress={openDrawer} style={styles.hdrBtn}>
           <Icon name="menu" size={18} color="#1e293b" />
         </TouchableOpacity>
-        <Text style={styles.hdrTitle}>Esy AI</Text>
+        <Text style={styles.hdrTitle}>ESY AI</Text>
         <TouchableOpacity onPress={newChat} style={styles.hdrBtn}>
           <Icon name="square-edit-outline" size={18} color="#1e293b" />
         </TouchableOpacity>
@@ -319,7 +325,12 @@ function AIChatScreen() {
           onContentSizeChange={scrollToBottom}
           onLayout={scrollToBottom}
           ListEmptyComponent={
-            <View style={styles.empty}>
+            conversationLoading ? (
+              <View style={styles.conversationLoading}>
+                <ActivityIndicator color="#3b82f6" />
+                <Text style={styles.conversationLoadingText}>Opening conversation...</Text>
+              </View>
+            ) : <View style={styles.empty}>
               <Text style={styles.emptyTitle}>How can I help you today?</Text>
               <View style={styles.suggGrid}>
                 {(role === 'seller' ? [
@@ -622,6 +633,8 @@ const styles = StyleSheet.create({
   hdrTitle: { fontSize: 13, fontWeight: '600', color: '#1e293b', letterSpacing: -0.2 },
   msgList: { padding: 10, paddingBottom: 16, flexGrow: 1 },
   empty: { flex: 1, justifyContent: 'center', paddingHorizontal: 16, paddingTop: 40 },
+  conversationLoading: { alignItems: 'center', flex: 1, gap: 10, justifyContent: 'center', padding: 32 },
+  conversationLoadingText: { color: '#64748b', fontSize: 11, fontWeight: '500' },
   emptyTitle: { fontSize: 13, fontWeight: '600', color: '#1e293b', textAlign: 'center', marginBottom: 16 },
   suggGrid: { gap: 6 },
   suggCard: {

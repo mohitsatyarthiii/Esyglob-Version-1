@@ -177,7 +177,8 @@ class OrderService {
     const platformFeeRate = quote.platformFeeRate;
     const gstAmount = quote.gstAmount;
     const totalAmount = quote.grandTotal;
-    const requiresPayment = body.paymentRequired !== false;
+    // Paid marketplace orders can never be downgraded to "pay later" by a client flag.
+    const requiresPayment = Number(totalAmount) > 0;
 
     // Generate order number
     const prefix = orderType === 'sample' ? 'SAM' : 'ORD';
@@ -305,7 +306,7 @@ class OrderService {
     }
 
     // Notify seller
-    if (seller.userId) {
+    if (seller.userId && !requiresPayment) {
       await NotificationService.createNotification({
         userId: seller.userId,
         notificationType: 'order_placed',

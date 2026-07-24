@@ -45,6 +45,34 @@ class PaymentRepository {
     return Payment.findOne({ razorpayPaymentId }).exec();
   }
 
+  static async findByRazorpayOrderId(razorpayOrderId) {
+    return Payment.findOne({ razorpayOrderId }).sort({ createdAt: -1 }).exec();
+  }
+
+  static async findLatestForOrder(orderId, userId) {
+    return Payment.findOne({
+      orderId,
+      userId,
+      paymentFor: 'order',
+    }).sort({ createdAt: -1 }).exec();
+  }
+
+  static async claimForCompletion(paymentId) {
+    const staleProcessing = new Date(Date.now() - 5 * 60 * 1000);
+    return Payment.findOneAndUpdate(
+      {
+        _id: paymentId,
+        status: { $ne: 'completed' },
+        $or: [
+          { status: { $ne: 'processing' } },
+          { status: 'processing', updatedAt: { $lt: staleProcessing } },
+        ],
+      },
+      { $set: { status: 'processing', updatedAt: new Date() } },
+      { new: true }
+    ).exec();
+  }
+
   /**
    * Create payment record
    */

@@ -15,9 +15,11 @@ export async function fetchCategoryDetails(id) {
 }
 
 export async function fetchProducts(params = {}) {
+  const query = { ...params, search: params.search || params.q }
+  delete query.q
   const payload = await apiRequest('/products', {
-    query: { type: 'homepage', page: 1, limit: 12, ...params },
-    cacheTtlMs: params.search ? 45_000 : 90_000,
+    query: { type: 'homepage', page: 1, limit: 12, ...query },
+    cacheTtlMs: query.search ? 15_000 : 90_000,
   })
   const data = unwrapData(payload)
   return {

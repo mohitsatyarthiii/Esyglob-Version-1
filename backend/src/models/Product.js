@@ -282,7 +282,7 @@ productSchema.index({ sellerId: 1, status: 1, totalOrders: -1, averageRating: -1
 productSchema.index({ status: 1, category: 1, price: 1, minimumOrderQuantity: 1 });
 productSchema.index({ status: 1, categoryId: 1, price: 1, averageRating: -1 });
 productSchema.index({ status: 1, subcategoryId: 1, price: 1, averageRating: -1 });
-productSchema.index({ name: 'text', category: 'text', subcategory: 'text', description: 'text' });
+productSchema.index({ name: 'text', category: 'text', subcategory: 'text', tags: 'text', brand: 'text', description: 'text' });
 productSchema.index({ averageRating: -1 });
 productSchema.index({ status: 1 });
 productSchema.index({ status: 1, createdAt: -1 });

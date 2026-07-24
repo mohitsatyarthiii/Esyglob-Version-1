@@ -220,7 +220,7 @@ class ProductService {
     const limit = Math.min(Math.max(Number(rawLimit) || 20, 1), 40);
     const candidates = await ProductRepository.getRelatedProductCandidates(product, 100);
     const sourceName = tokenSet(product.name);
-    const sourceKeywords = tokenSet(product.tags, product.seo?.keywords, product.description);
+    const sourceKeywords = tokenSet(product.tags, product.seo?.keywords, product.description, product.category, product.subcategory);
     const sourceSpecs = tokenSet(product.specifications, product.productAttributes);
 
     const products = candidates
@@ -267,6 +267,13 @@ class ProductService {
           relevanceScore += 10;
           relevanceReasons.push('Similar manufacturer type');
         }
+
+        const industrySimilarity = overlapScore(
+          tokenSet(product.sellerId?.industries, product.sellerId?.productCategories, product.category),
+          tokenSet(candidate.sellerId?.industries, candidate.sellerId?.productCategories, candidate.category)
+        );
+        relevanceScore += Math.round(industrySimilarity * 12);
+        if (industrySimilarity > 0) relevanceReasons.push('Matching industry');
 
         relevanceScore += Math.min(Number(candidate.averageRating || 0), 5);
         relevanceScore += Math.min(Math.log10(Number(candidate.totalOrders || 0) + 1) * 2, 5);

@@ -125,7 +125,7 @@ function HomeScreen() {
     {
       id: 'welcome',
       role: 'assistant',
-      content: "Hello! I'm your EsyGlob AI trade assistant. I can help you find products, compare suppliers, calculate duties, and navigate international trade. What would you like to explore?",
+      content: "Hello! I'm your ESY AI trade assistant. I can help you find products, compare suppliers, calculate duties, and navigate international trade. What would you like to explore?",
       timestamp: Date.now(),
     },
   ]);
@@ -266,7 +266,7 @@ function HomeScreen() {
     setMessages([{
       id: 'welcome',
       role: 'assistant',
-      content: "Hello! I'm your EsyGlob AI trade assistant. How can I help you today?",
+      content: "Hello! I'm your ESY AI trade assistant. How can I help you today?",
       timestamp: Date.now(),
     }]);
     setChatId(undefined);
@@ -290,7 +290,7 @@ function HomeScreen() {
               <Icon name="robot" size={18} color="#FFF" />
             </View>
             <View>
-              <Text style={aiStyles.headerTitle}>Esy AI</Text>
+              <Text style={aiStyles.headerTitle}>ESY AI</Text>
               <Text style={aiStyles.headerStatus}>
                 {isStreaming ? 'Typing...' : 'Online'}
               </Text>

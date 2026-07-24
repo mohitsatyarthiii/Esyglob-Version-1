@@ -513,11 +513,11 @@ export async function fetchShipments(params: { status?: string; type?: string; p
   };
 }
 
-export async function createServiceBooking(service: ServiceCatalogItem, role: string, values: Record<string, string>) {
+export async function createServiceBooking(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted = false) {
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
 
   if (service.key === 'seller-verification') {
-    return apiRequest('/suppliers/profile', {
+    await apiRequest('/suppliers/profile', {
       method: 'PATCH',
       body: {
         companyName: values.companyName,
@@ -535,10 +535,10 @@ export async function createServiceBooking(service: ServiceCatalogItem, role: st
     });
   }
 
-  return createGenericServiceRequest(service, normalizedRole, values);
+  return createGenericServiceRequest(service, normalizedRole, values, termsAccepted);
 }
 
-async function createGenericServiceRequest(service: ServiceCatalogItem, role: string, values: Record<string, string>) {
+async function createGenericServiceRequest(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted: boolean) {
   const documents = values.documentUrl
     ? [{ name: values.documentName || 'Document', url: values.documentUrl }]
     : [];
@@ -560,6 +560,7 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
       priority: 'normal',
       requirements: values,
       documents,
+      termsAccepted,
     },
   });
 

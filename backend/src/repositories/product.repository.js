@@ -197,7 +197,7 @@ class ProductRepository {
       : { slug: String(productId).toLowerCase() };
 
     return Product.findOne(query)
-      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge logo companyName city state userId')
+      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge logo companyName companyType industries productCategories productSubcategories city state userId')
       .lean()
       .exec();
   }
@@ -222,17 +222,27 @@ class ProductRepository {
     if (product.categoryId) taxonomy.push({ categoryId: product.categoryId });
     if (product.category) taxonomy.push({ category: product.category });
 
-    if (!taxonomy.length) return [];
+    const terms = [product.name, ...(product.tags || [])]
+      .flatMap((value) => String(value || '').toLowerCase().split(/[^a-z0-9]+/))
+      .filter((value) => value.length > 2)
+      .slice(0, 8);
+    const escaped = [...new Set(terms)].map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const relevanceMatchers = [...taxonomy];
+    if (escaped.length) {
+      const regex = new RegExp(escaped.join('|'), 'i');
+      relevanceMatchers.push({ name: regex }, { tags: regex }, { description: regex });
+    }
+    if (!relevanceMatchers.length) return [];
 
     return Product.find({
       _id: { $ne: product._id },
       status: { $in: ['active', 'published'] },
       isVerifiedSeller: true,
       visibility: { $ne: 'private' },
-      $or: taxonomy,
+      $or: relevanceMatchers,
     })
       .select('name slug images price currency unit minimumOrderQuantity category categoryId subcategory subcategoryId brand description specifications productAttributes manufacturingDetails productType tags seo averageRating reviewCount totalOrders sellerId')
-      .populate('sellerId', 'companyName companyType isVerified isActive isSuspended')
+      .populate('sellerId', 'companyName companyType industries productCategories productSubcategories isVerified isActive isSuspended')
       .limit(limit)
       .lean()
       .exec();

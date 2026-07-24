@@ -119,6 +119,7 @@ paymentSchema.index({ paymentFor: 1, status: 1, createdAt: -1 });
 paymentSchema.index({ transactionId: 1 });
 paymentSchema.index({ razorpayOrderId: 1 });
 paymentSchema.index({ razorpayPaymentId: 1 });
+paymentSchema.index({ entityType: 1, entityId: 1, paymentFor: 1, status: 1, createdAt: -1 });
 paymentSchema.index({
   paymentNumber: 'text',
   transactionId: 'text',

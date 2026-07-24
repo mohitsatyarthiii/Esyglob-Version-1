@@ -1,5 +1,4 @@
 import SampleOrderRepository from '../repositories/sample-order.repository.js';
-import NotificationService from './notification.service.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
@@ -41,7 +40,6 @@ class SampleOrderService {
 
     // Get seller
     const sellerId = product.sellerId;
-    const sellerUserId = product.userId;
     const seller = await SampleOrderRepository.findSeller(sellerId);
 
     if (!sellerId) {
@@ -133,7 +131,7 @@ class SampleOrderService {
         status: 'pending',
         source: 'system',
       })),
-      status: 'requested',
+      status: 'pending_payment',
       paymentStatus: 'pending',
       shippingAddress: {
         fullName: shippingAddress?.fullName || '',
@@ -170,9 +168,9 @@ class SampleOrderService {
           updatedBy: userId,
         },
         {
-          status: 'requested',
+          status: 'pending_payment',
           timestamp: new Date(),
-          note: 'Waiting for seller sample approval',
+          note: 'Checkout completed; waiting for verified payment',
           updatedBy: userId,
         },
       ],
@@ -198,25 +196,6 @@ class SampleOrderService {
     } catch (error) {
       console.error('Payment creation error:', error);
       // Order is still created even if payment fails
-    }
-
-    // Notify seller
-    if (sellerUserId) {
-      try {
-        await NotificationService.createNotification({
-          userId: sellerUserId,
-          notificationType: 'order_placed',
-          title: 'New sample order received',
-          description: `${product.name} - Qty: ${orderQuantity}`,
-          data: {
-            relatedId: order._id,
-            relatedModel: 'Order',
-            actionUrl: `/dashboard/seller/orders/${order._id}`,
-          },
-        });
-      } catch (error) {
-        console.error('Notification error:', error);
-      }
     }
 
     return { success: true, order };

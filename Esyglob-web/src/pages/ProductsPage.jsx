@@ -63,23 +63,26 @@ export default function ProductsPage() {
   );
   const subcategories = useMemo(() => selectedCategory?.subcategories || [], [selectedCategory]);
   const products = useMemo(() => productsQuery.data?.products || [], [productsQuery.data]);
+  const updateParams = useCallback((updates) => {
+    const next = new URLSearchParams(params);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === '' || value === null || value === false) next.delete(key);
+      else next.set(key, value);
+    });
+    if (!updates.page) next.delete('page');
+    setParams(next);
+  }, [params, setParams]);
 
   useEffect(() => {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [params]);
 
-  function updateParams(updates) {
-    const next = new URLSearchParams(params);
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === '' || value === null || value === false) {
-        next.delete(key);
-      } else {
-        next.set(key, value);
-      }
-    });
-    if (!updates.page) next.delete('page');
-    setParams(next);
-  }
+  useEffect(() => {
+    const next = search.trim();
+    if (next === q) return undefined;
+    const timer = window.setTimeout(() => updateParams({ q: next }), 250);
+    return () => window.clearTimeout(timer);
+  }, [q, search, updateParams]);
 
   function submit(e) {
     e.preventDefault();

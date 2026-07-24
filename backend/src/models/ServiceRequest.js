@@ -43,6 +43,9 @@ const serviceRequestSchema = new mongoose.Schema(
     subject: String,
     details: String,
     requirements: mongoose.Schema.Types.Mixed,
+    termsAccepted: { type: Boolean, default: false },
+    termsAcceptedAt: Date,
+    termsVersion: String,
     documents: [
       {
         name: String,

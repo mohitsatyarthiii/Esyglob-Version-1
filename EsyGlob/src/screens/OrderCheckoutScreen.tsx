@@ -153,7 +153,6 @@ function OrderCheckoutScreen() {
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [logisticsOption, setLogisticsOption] = useState('esyglob_standard');
-  const [paymentMethod, setPaymentMethod] = useState('credit_card');
   const [incoterm, setIncoterm] = useState('DAP');
   const [addressPickerOpen, setAddressPickerOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | undefined>();
@@ -161,6 +160,7 @@ function OrderCheckoutScreen() {
   const [landmark, setLandmark] = useState('');
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
   const [detectingLocation, setDetectingLocation] = useState(false);
+  const [pendingOrderId, setPendingOrderId] = useState('');
 
   const addresses = useQuery({ queryKey: ['addresses'], queryFn: fetchAddresses });
 
@@ -268,66 +268,65 @@ function OrderCheckoutScreen() {
       if (!termsAccepted) throw new Error('Please accept the terms.');
       if (!validateAddress() || !email.trim()) throw new Error('Please correct the highlighted delivery details.');
 
-      const shippingAddress = { fullName, name: fullName, company, email, phone, address, landmark, country, city, state, postalCode, zipCode: postalCode };
-
-      const basePayload = {
-        productId: resolvedProductId,
-        quantity: Number(quantity) || 1,
-        destination: { country, city, postalCode },
-        shippingAddress,
-        logisticsOption,
-        paymentMethod,
-        buyerCompany: company ? { companyName: company } : undefined,
-        tradeInformation: { incoterms: incoterm, shippingOption: logisticsOption },
-        notes: notes || undefined,
-        termsAccepted,
-      };
-
-      if (mode === 'sample') {
-        return createSampleOrder({ ...basePayload, orderType: 'sample', orderSubType: 'sample_order' });
+      let orderId = pendingOrderId;
+      if (!orderId) {
+        const shippingAddress = { fullName, name: fullName, company, email, phone, address, landmark, country, city, state, postalCode, zipCode: postalCode };
+        const basePayload = {
+          productId: resolvedProductId,
+          quantity: Number(quantity) || 1,
+          destination: { country, city, postalCode },
+          shippingAddress,
+          logisticsOption,
+          paymentMethod: 'razorpay',
+          buyerCompany: company ? { companyName: company } : undefined,
+          tradeInformation: { incoterms: incoterm, shippingOption: logisticsOption },
+          notes: notes || undefined,
+          termsAccepted,
+        };
+        const order = mode === 'sample'
+          ? await createSampleOrder({ ...basePayload, orderType: 'sample', orderSubType: 'sample_order' })
+          : await createTradeOrder({
+            ...basePayload,
+            quotationId: quotationId || undefined,
+            chatId: chatId || undefined,
+            orderType: 'bulk',
+            orderSubType: chatId ? 'chat_order' : quotationId ? 'trade_order' : 'direct_order',
+          });
+        orderId = getId(order);
+        if (!orderId) throw new Error('Order was created without a valid reference.');
+        setPendingOrderId(orderId);
       }
 
-      return createTradeOrder({
-        ...basePayload,
-        quotationId: quotationId || undefined,
-        chatId: chatId || undefined,
-        orderType: 'bulk',
-        orderSubType: chatId ? 'chat_order' : quotationId ? 'trade_order' : 'direct_order',
+      const payment = await initiateOrderPayment(orderId);
+      if (!payment.keyId || !payment.razorpayOrderId || !payment.amount || !payment.paymentId) {
+        throw new Error('Payment gateway did not return a complete checkout session.');
+      }
+      const gateway = await RazorpayCheckout.open({
+        key: payment.keyId,
+        amount: payment.amount,
+        currency: payment.currency ?? 'INR',
+        name: 'EsyGlob',
+        description: `Payment for ${payment.orderNumber ?? 'order'}`,
+        order_id: payment.razorpayOrderId,
+        theme: { color: '#2563EB' },
       });
+      await verifyOrderPayment({
+        paymentId: payment.paymentId,
+        razorpayPaymentId: gateway.razorpay_payment_id,
+        razorpayOrderId: gateway.razorpay_order_id,
+        razorpaySignature: gateway.razorpay_signature,
+      });
+      return orderId;
     },
-    onSuccess: async (order: any) => {
-      const orderId = getId(order);
-      try {
-        const payment = await initiateOrderPayment(orderId);
-        if (!payment.keyId || !payment.razorpayOrderId || !payment.amount || !payment.paymentId) {
-          throw new Error('Payment gateway did not return a complete checkout session.');
-        }
-        const gateway = await RazorpayCheckout.open({
-          key: payment.keyId,
-          amount: payment.amount,
-          currency: payment.currency ?? 'INR',
-          name: 'EsyGlob',
-          description: `Payment for ${payment.orderNumber ?? 'order'}`,
-          order_id: payment.razorpayOrderId,
-          theme: { color: '#2563EB' },
-        });
-        await verifyOrderPayment({
-          paymentId: payment.paymentId,
-          razorpayPaymentId: gateway.razorpay_payment_id,
-          razorpayOrderId: gateway.razorpay_order_id,
-          razorpaySignature: gateway.razorpay_signature,
-        });
-        Alert.alert('Order Confirmed!', 'Payment verified.', [
-          { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
-        ]);
-      } catch {
-        Alert.alert('Order Created', 'Payment pending.', [
-          { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
-        ]);
-      }
+    onSuccess: async (orderId: string) => {
+      Alert.alert('Order Confirmed!', 'Payment verified.', [
+        { text: 'View Order', onPress: () => navigation.replace('OrderDetails', { orderId }) },
+      ]);
     },
-    onError: (error: any) =>
-      Alert.alert('Order Failed', error instanceof Error ? error.message : 'Please try again.'),
+    onError: (error: any) => Alert.alert(
+      pendingOrderId ? 'Payment Not Completed' : 'Order Failed',
+      `${error instanceof Error ? error.message : 'Please try again.'}${pendingOrderId ? '\n\nYour order is saved. Tap Retry Payment to continue.' : ''}`,
+    ),
   });
 
   // ── Loading / Error ────────────────────────────────────────────────────
@@ -447,7 +446,7 @@ function OrderCheckoutScreen() {
           
           <Text style={styles.sectionTitle}>Order Settings</Text>
           <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
-          <ChoiceField label="Payment Method" value={paymentMethod} options={['credit_card', 'bank_transfer', 'escrow', 'letter_of_credit']} onChange={setPaymentMethod} />
+          <View style={styles.checkboxRow}><Icon name="shield-lock-outline" size={18} color="#2563EB" /><Text style={styles.checkboxText}>Secure online payment by Razorpay</Text></View>
           <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'CIF', 'FOB', 'EXW']} onChange={setIncoterm} />
           <Field label="Notes (Optional)" value={notes} onChangeText={setNotes} multiline />
 
@@ -596,7 +595,7 @@ function OrderCheckoutScreen() {
           ) : (
             <>
               <Icon name="shield-check-outline" size={18} color="#fff" />
-              <Text style={styles.orderBtnText}>Confirm & Pay Securely</Text>
+              <Text style={styles.orderBtnText}>{pendingOrderId ? 'Retry Payment' : 'Confirm & Pay Securely'}</Text>
             </>
           )}
         </Pressable>

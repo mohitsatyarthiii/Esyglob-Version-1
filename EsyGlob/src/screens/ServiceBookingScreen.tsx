@@ -28,10 +28,12 @@ function ServiceBookingScreen() {
   const { activeRole } = useAuth();
   const service = getServiceByKey(route.params.serviceKey);
   const [values, setValues] = useState<Record<string, string>>(() =>
-    initialValues(service?.fields ?? [])
+    ({ ...initialValues(service?.fields ?? []), tier: 'standard' })
   );
   const [step, setStep] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [pendingRequestId, setPendingRequestId] = useState('');
   const steps = useMemo(() => groupFieldsByWorkflow(service), [service]);
   const currentFields = steps[step] ?? [];
   const totalSteps = steps.length;
@@ -45,9 +47,15 @@ function ServiceBookingScreen() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!service) throw new Error('Service was not found.');
-      const booking: any = await createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values);
-      const request = booking?.request ?? booking;
-      const requestId = request?._id ?? request?.id;
+      if (!termsAccepted) throw new Error('Please accept the service and payment terms.');
+      let requestId = pendingRequestId;
+      let request: any;
+      if (!requestId) {
+        const booking: any = await createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values, true);
+        request = booking?.request ?? booking;
+        requestId = request?._id ?? request?.id;
+        if (requestId) setPendingRequestId(requestId);
+      }
       if (!requestId) throw new Error('Booking was created without a service reference.');
       try {
         const payment = await initiateServicePayment(requestId);
@@ -234,6 +242,15 @@ function ServiceBookingScreen() {
         </View>
 
         {isLastStep && <View style={styles.priceCard}>
+          <Text style={styles.priceTitle}>Service tier</Text>
+          <View style={styles.optionsRow}>
+            {['basic', 'standard', 'premium', 'enterprise'].map(tier => {
+              const selected = values.tier === tier;
+              return <Pressable key={tier} disabled={Boolean(pendingRequestId)} onPress={() => setValues(current => ({ ...current, tier }))} style={[styles.optionChip, selected && styles.optionChipActive]}><Text style={[styles.optionText, selected && styles.optionTextActive]}>{tier}</Text></Pressable>;
+            })}
+          </View>
+          <Text style={styles.tierHint}>{values.tier === 'basic' ? 'Core delivery · 5–7 days · standard support' : values.tier === 'standard' ? 'Priority delivery · 3–5 days · enhanced reporting' : values.tier === 'premium' ? 'Expedited delivery · dedicated specialist' : 'Custom SLA · account manager · advanced compliance'}</Text>
+          <View style={styles.priceDivider} />
           <Text style={styles.priceTitle}>Pricing summary</Text>
           {quote.isLoading ? <ActivityIndicator color="#2563EB" /> : quote.data ? <>
             <PriceRow label="Base service cost" value={quote.data.baseCost} currency={quote.data.currency} />
@@ -244,6 +261,11 @@ function ServiceBookingScreen() {
             <View style={styles.priceDivider} />
             <PriceRow label="Total payable" value={quote.data.totalPayable} currency={quote.data.currency} total />
           </> : <Text style={styles.errorText}>Pricing is temporarily unavailable.</Text>}
+          <Pressable onPress={() => setTermsAccepted(current => !current)} style={styles.termsRow}>
+            <Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={21} color={termsAccepted ? '#2563EB' : '#64748b'} />
+            <Text style={styles.termsText}>I accept the service scope, cancellation and secure payment terms.</Text>
+          </Pressable>
+          {pendingRequestId ? <Text style={styles.tierHint}>Booking saved. Complete payment before service review begins.</Text> : null}
         </View>}
 
         {/* Error */}
@@ -269,7 +291,7 @@ function ServiceBookingScreen() {
           </Pressable>
         )}
         <Pressable
-          disabled={mutation.isPending || missingRequired || (isLastStep && !quote.data)}
+          disabled={mutation.isPending || missingRequired || (isLastStep && (!quote.data || !termsAccepted))}
           onPress={() => isLastStep ? submit() : setStep(current => current + 1)}
           style={[
             styles.continueBtn,
@@ -282,7 +304,7 @@ function ServiceBookingScreen() {
           ) : (
             <>
               <Text style={styles.continueBtnText}>
-                {isLastStep ? 'Pay & Book' : 'Continue'}
+                {isLastStep ? (pendingRequestId ? 'Retry Payment' : 'Pay & Book') : 'Continue'}
               </Text>
               <Icon name={isLastStep ? 'check' : 'arrow-right'} size={18} color="#fff" />
             </>
@@ -399,6 +421,9 @@ const styles = StyleSheet.create({
   priceValue: { color: '#334155', fontSize: 13, fontWeight: '700' },
   priceTotal: { color: '#0f172a', fontSize: 15, fontWeight: '900' },
   priceDivider: { backgroundColor: '#e2e8f0', height: 1, marginVertical: 8 },
+  tierHint: { color: '#64748b', fontSize: 12, lineHeight: 18, marginTop: 10 },
+  termsRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 9, marginTop: 16 },
+  termsText: { color: '#334155', flex: 1, fontSize: 12, lineHeight: 18 },
 
   // Header
   header: {

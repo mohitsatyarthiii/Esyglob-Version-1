@@ -95,7 +95,12 @@ const rfqSchema = new mongoose.Schema(
     },
     currency: {
       type: String,
-      enum: ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'CNY'],
+      enum: [
+        'INR', 'USD', 'EUR', 'GBP', 'AED', 'SGD', 'CNY', 'JPY', 'KRW', 'AUD',
+        'CAD', 'CHF', 'HKD', 'MYR', 'THB', 'VND', 'IDR', 'PHP', 'BRL', 'MXN',
+        'SAR', 'QAR', 'OMR', 'KWD', 'BHD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN',
+        'TRY', 'RUB', 'ZAR', 'NGN', 'EGP', 'PKR', 'BDT', 'LKR', 'NPR', 'MMK',
+      ],
       default: 'INR',
     },
     

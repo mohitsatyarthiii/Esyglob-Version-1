@@ -2,6 +2,7 @@ import SubscriptionRepository from '../repositories/subscription.repository.js';
 import { getMonthsIncluded } from '../lib/subscription-pricing.js';
 import { getPlan, listPlans } from '../lib/subscription-plans.js';
 import { getSubscriptionContext } from '../lib/subscription-access.js';
+import Payment from '../models/Payment.js';
 import Razorpay from 'razorpay';
 
 class SubscriptionService {
@@ -40,11 +41,36 @@ class SubscriptionService {
 
     const priceEntry=planDetails.prices?.[duration];
     const amount = Number(priceEntry?.amount ?? priceEntry ?? 0);
-    if (!Number.isFinite(amount) || amount < 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       throw Object.assign(new Error('Plan pricing is invalid'), { statusCode: 422 });
     }
     const months = duration==='quarterly'?3:getMonthsIncluded(planType, duration);
     const userId = user.id || user._id;
+
+    const amountInPaise = Math.round(amount * 100);
+    const existingPayment = await Payment.findOne({
+      userId,
+      paymentFor: 'subscription',
+      status: { $in: ['initiated', 'pending', 'processing'] },
+      'metadata.planType': planType,
+      'metadata.duration': duration,
+    }).sort({ createdAt: -1 });
+
+    if (
+      existingPayment?.razorpayOrderId &&
+      Math.round(Number(existingPayment.amount) * 100) === amountInPaise
+    ) {
+      return {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
+        orderId: existingPayment.razorpayOrderId,
+        paymentId: existingPayment._id,
+        amount: amountInPaise,
+        currency: existingPayment.currency || 'INR',
+        user: { name: user.fullName || user.firstName, email: user.email },
+        planDetails: { planType, planName: planDetails.name, duration, months, totalPrice: amount },
+        reused: true,
+      };
+    }
 
     // Initialize Razorpay
     const razorpay = new Razorpay({
@@ -54,7 +80,7 @@ class SubscriptionService {
 
     // Create Razorpay order
     const razorpayOrder = await razorpay.orders.create({
-      amount: amount * 100, // Convert to paise
+      amount: amountInPaise,
       currency: 'INR',
       receipt: `sub_${Date.now()}`,
       notes: {
@@ -67,9 +93,29 @@ class SubscriptionService {
       },
     });
 
+    const payment = existingPayment || new Payment({
+      userId,
+      paymentFor: 'subscription',
+      type: 'other',
+      method: 'razorpay',
+      paymentMethod: 'razorpay',
+      gateway: 'razorpay',
+    });
+    Object.assign(payment, {
+      amount,
+      currency: razorpayOrder.currency || 'INR',
+      razorpayOrderId: razorpayOrder.id,
+      status: 'initiated',
+      paymentDate: new Date(),
+      description: `${planDetails.name} subscription (${duration})`,
+      metadata: { planType, duration, months },
+    });
+    await payment.save();
+
     return {
       key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID,
       orderId: razorpayOrder.id,
+      paymentId: payment._id,
       amount: razorpayOrder.amount,
       currency: razorpayOrder.currency,
       user: {

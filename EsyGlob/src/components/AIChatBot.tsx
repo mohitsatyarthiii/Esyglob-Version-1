@@ -169,7 +169,7 @@ export default function AIChatBot() {
       id: 'welcome',
       role: 'assistant',
       content:
-        "👋 Hello! I'm your EsyGlob AI assistant. I can help you find products, suppliers, calculate duties, and more. What would you like to explore today?",
+        "👋 Hello! I'm your ESY AI assistant. I can help you find products, suppliers, calculate duties, and more. What would you like to explore today?",
       timestamp: Date.now(),
     },
   ]);
@@ -273,7 +273,7 @@ export default function AIChatBot() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: "👋 Hello! I'm your EsyGlob AI assistant. How can I help you today?",
+        content: "👋 Hello! I'm your ESY AI assistant. How can I help you today?",
         timestamp: Date.now(),
       },
     ]);

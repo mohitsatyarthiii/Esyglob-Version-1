@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { Bot, Camera, Check, ChevronDown, FileText, History, Image, Menu, Mic, Paperclip, Pencil, Plus, RefreshCw, Search, Send, Sparkles, Store, Trash2, X } from 'lucide-react'
+import { Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, Paperclip, Pencil, Plus, RefreshCw, Search, Send, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
@@ -32,13 +32,13 @@ export default function AIChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [editingId, setEditingId] = useState('')
   const [editingTitle, setEditingTitle] = useState('')
-  const [listening, setListening] = useState(false)
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false)
   const endRef = useRef(null)
   const imageRef = useRef(null)
   const cameraRef = useRef(null)
+  const fileRef = useRef(null)
   const documentRef = useRef(null)
   const streamRef = useRef(null)
-  const recognitionRef = useRef(null)
   const streamSequence = useRef(0)
   const sendingRef = useRef(false)
 
@@ -50,7 +50,6 @@ export default function AIChatPage() {
   useEffect(() => { loadChats().catch((next) => setError(next.message)) }, [loadChats])
   useEffect(() => () => {
     streamRef.current?.abort()
-    recognitionRef.current?.stop()
   }, [])
   useEffect(() => {
     if (!chatId) { setMessages([]); return }
@@ -153,27 +152,10 @@ export default function AIChatPage() {
     catch (next) { setChats(previous); setError(next.message) }
   }
 
-  function toggleVoice() {
-    if (listening) { recognitionRef.current?.stop(); return }
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognition) { setError('Voice input is not supported in this browser.'); return }
-    const recognition = new SpeechRecognition()
-    recognition.lang = navigator.language || 'en-IN'
-    recognition.interimResults = false
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || ''
-      setDraft((current) => `${current}${current ? ' ' : ''}${transcript}`)
-    }
-    recognition.onerror = () => setError('Voice input could not be captured. Please try again.')
-    recognition.onend = () => setListening(false)
-    recognitionRef.current = recognition
-    setListening(true); setError(''); recognition.start()
-  }
-
   return <AppShell><div className="ai-workspace">
     {sidebarOpen && <button className="ai-sidebar-backdrop" aria-label="Close conversation history" onClick={() => setSidebarOpen(false)} />}
     <aside className={sidebarOpen ? 'open' : ''}>
-      <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>EsyGlob AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
+      <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>ESY AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
       <button className="ai-new-chat" onClick={newConversation}><Plus /> New conversation</button>
       <div className="ai-history-tools"><label><Search /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Search conversations" /></label><label className="ai-history-sort"><span>Sort</span><select value={historySort} onChange={(event) => setHistorySort(event.target.value)}><option value="recent">Most recent</option><option value="oldest">Oldest first</option></select><ChevronDown /></label></div>
       <div className="ai-sidebar-head"><b><History /> Saved chats</b><small>{visibleChats.length}</small></div>
@@ -187,9 +169,30 @@ export default function AIChatPage() {
       }) : <div className="ai-history-empty"><History /><b>{historySearch ? 'No chats found' : 'No saved chats yet'}</b><p>{historySearch ? 'Try a different search.' : 'Your conversations will appear here.'}</p></div>}</div>
     </aside>
     <section className="ai-chat">
-      <header><div><button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open conversation history"><Menu /></button><i><Sparkles /></i><span><h1>{active?.title || 'EsyGlob AI'}</h1><p><em /> AI marketplace assistant <span>· {role}</span></p></span></div><button className="ai-header-new" onClick={newConversation}><Plus /> <span>New chat</span></button></header>
+      <header><div><button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open conversation history"><Menu /></button><i><Sparkles /></i><span><h1>{active?.title || 'ESY AI'}</h1><p><em /> AI marketplace assistant <span>· {role}</span></p></span></div><button className="ai-header-new" onClick={newConversation}><Plus /> <span>New chat</span></button></header>
       <div className="ai-messages">{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">Your intelligent trade partner</span><h2>What can I help you discover today?</h2><p>Find products, evaluate suppliers, prepare RFQs and explore global market opportunities with live EsyGlob context.</p><div>{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
-      <div className="ai-composer-dock">{attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}{error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}<form className="ai-composer" onSubmit={(event) => { event.preventDefault(); send() }}><textarea rows="1" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'EsyGlob AI is responding...' : 'Message EsyGlob AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} /><div className="ai-composer-actions"><div className="ai-attach-menu"><button type="button" disabled={uploading || busy} title="Attach image" onClick={() => imageRef.current?.click()}><Paperclip /></button><button type="button" disabled={uploading || busy} title="Use camera" onClick={() => cameraRef.current?.click()}><Camera /></button><input ref={imageRef} hidden type="file" accept="image/*" multiple onChange={attach} /><input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={attach} /><input ref={documentRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={attach} /><button type="button" disabled={uploading || busy} title="Attach document" onClick={() => documentRef.current?.click()}><FileText /></button><button type="button" className={listening ? 'listening' : ''} disabled={busy} title={listening ? 'Stop listening' : 'Voice input'} onClick={toggleVoice}><Mic /></button></div><button className="ai-send-button" aria-label="Send message" disabled={busy || uploading || (!draft.trim() && !attachments.length)}>{busy ? <span className="ai-send-loader" /> : <Send />}</button></div></form><small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small></div>
+      <div className="ai-composer-dock">
+        {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
+        {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
+        <form className="ai-composer" onSubmit={(event) => { event.preventDefault(); send() }}>
+          <div className="ai-plus-wrap">
+            <button type="button" className="ai-plus-button" disabled={uploading || busy} aria-label="Add attachment" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((value) => !value)}><Plus /></button>
+            {attachmentMenuOpen && <div className="ai-attachment-popover">
+              <button type="button" onClick={() => { setAttachmentMenuOpen(false); cameraRef.current?.click() }}><Camera /><span><b>Camera</b><small>Take a photo</small></span></button>
+              <button type="button" onClick={() => { setAttachmentMenuOpen(false); imageRef.current?.click() }}><Image /><span><b>Upload image</b><small>PNG, JPG or WebP</small></span></button>
+              <button type="button" onClick={() => { setAttachmentMenuOpen(false); fileRef.current?.click() }}><File /><span><b>Upload file</b><small>Choose any supported file</small></span></button>
+              <button type="button" onClick={() => { setAttachmentMenuOpen(false); documentRef.current?.click() }}><Upload /><span><b>Upload document</b><small>PDF, Word, Excel or text</small></span></button>
+            </div>}
+          </div>
+          <input ref={imageRef} hidden type="file" accept="image/*" multiple onChange={attach} />
+          <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={attach} />
+          <input ref={fileRef} hidden type="file" multiple onChange={attach} />
+          <input ref={documentRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={attach} />
+          <textarea rows="1" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'ESY AI is responding...' : 'Message ESY AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
+          <div className="ai-composer-actions"><button className="ai-send-button" aria-label="Send message" disabled={busy || uploading || (!draft.trim() && !attachments.length)}>{busy ? <span className="ai-send-loader" /> : <Send />}</button></div>
+        </form>
+        <small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small>
+      </div>
     </section>
   </div></AppShell>
 }

@@ -4,6 +4,8 @@ import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
+router.post('/webhook', PaymentController.webhook);
+
 router.use(authenticate);
 router.use(requireAuth);
 

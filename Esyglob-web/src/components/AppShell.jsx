@@ -24,6 +24,8 @@ export default function AppShell({ children }) {
   const [region, setRegion] = useState(() => { try { return JSON.parse(localStorage.getItem('esyglob.region'))?.country || 'Global' } catch { return 'Global' } })
   const authenticated = status === 'authenticated'
   const chatDetail = /^\/messages\/[^/]+\/?$/.test(location.pathname)
+  const aiChat = /^\/ai-chat\/?$/.test(location.pathname)
+  const immersive = chatDetail || aiChat
   const accountName = profile?.fullName || profile?.name || user?.fullName || user?.name || 'My EsyGlob'
   const accountImage = profile?.avatarUrl || profile?.profileImage || profile?.avatar || profile?.image || user?.avatarUrl || user?.profileImage || user?.avatar || ''
   const authPath = (path) => authenticated ? path : '/login'
@@ -64,7 +66,7 @@ export default function AppShell({ children }) {
     event.stopPropagation()
     navigate(-1)
   }
-  return <div className={`site-shell ${chatDetail ? 'site-shell--chat-detail' : ''}`}>
+  return <div className={`site-shell ${chatDetail ? 'site-shell--chat-detail' : ''} ${aiChat ? 'site-shell--ai-chat' : ''}`}>
     <div className="utility-bar"><div className="container utility-bar__inner"><span>Global B2B sourcing, simplified.</span><div><span>Buyer protection</span><span>Verified suppliers</span><span>24/7 trade support</span></div></div></div>
     <header className="site-header">
       <div className="container site-header__main">
@@ -94,11 +96,11 @@ export default function AppShell({ children }) {
     </aside></div>}
 
     <main onClickCapture={handleBackCapture}><GlobalBackNavigation pathname={location.pathname} />{children}</main>
-    {authenticated && !chatDetail && <TradeWorkspaceDock />}
-    {!chatDetail && <nav className="mobile-tabbar" aria-label="Mobile navigation">
+    {authenticated && !immersive && <TradeWorkspaceDock />}
+    {!immersive && <nav className="mobile-tabbar" aria-label="Mobile navigation">
       <NavLink to="/home"><Home /><span>Home</span></NavLink><NavLink to="/categories"><Grid2X2 /><span>Categories</span></NavLink><NavLink to="/services"><BriefcaseBusiness /><span>Services</span></NavLink><NavLink to={authPath('/messages')} state={authenticated ? undefined : { from: '/messages' }}><MessageSquare /><span>Messages</span></NavLink><NavLink to={authPath('/account')} state={authenticated ? undefined : { from: '/account' }}><UserRound /><span>Account</span></NavLink>
     </nav>}
-    {!chatDetail && <Footer authenticated={authenticated} />}
+    {!immersive && <Footer authenticated={authenticated} />}
   </div>
 }
 

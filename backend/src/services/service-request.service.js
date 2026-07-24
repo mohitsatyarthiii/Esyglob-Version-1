@@ -9,6 +9,12 @@ const BASE_PRICES = {
   'quality-inspection': 3499, escrow: 999, 'trade-financing': 2499,
   'trade-assurance': 1299, 'dispute-resolution': 1999, 
 };
+const SERVICE_TIERS = {
+  basic: { label: 'Basic', multiplier: 1, delivery: '5–7 business days', support: 'Standard support', benefits: ['Core service delivery', 'Status tracking'] },
+  standard: { label: 'Standard', multiplier: 1.5, delivery: '3–5 business days', support: 'Priority support', benefits: ['Priority processing', 'Enhanced reporting', 'Status tracking'] },
+  premium: { label: 'Premium', multiplier: 2.25, delivery: '2–3 business days', support: 'Dedicated support', benefits: ['Expedited processing', 'Detailed reporting', 'Dedicated specialist'] },
+  enterprise: { label: 'Enterprise', multiplier: 3.5, delivery: 'Custom SLA', support: 'Account manager', benefits: ['Custom scope and SLA', 'Account manager', 'Advanced compliance support'] },
+};
 
 const razorpayKeyId = process.env.RAZORPAY_KEY_ID?.trim() || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID?.trim();
 const razorpaySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
@@ -16,14 +22,16 @@ const razorpay = razorpayKeyId && razorpaySecret
   ? new Razorpay({ key_id: razorpayKeyId, key_secret: razorpaySecret }) : null;
 
 function quote(serviceKey, requirements = {}) {
-  const baseCost = BASE_PRICES[serviceKey] ?? 999;
+  const tierKey = SERVICE_TIERS[requirements.tier] ? requirements.tier : 'standard';
+  const selectedTier = SERVICE_TIERS[tierKey];
+  const baseCost = Math.round((BASE_PRICES[serviceKey] ?? 999) * selectedTier.multiplier);
   const quantity = Math.max(1, Number(requirements.quantity || 1));
   const additionalCharges = Math.min(baseCost * 2, Math.max(0, quantity - 1) * Math.round(baseCost * 0.05));
   const platformFee = Math.round((baseCost + additionalCharges) * 0.02);
   const gstRate = 18;
   const gstAmount = Math.round((baseCost + additionalCharges + platformFee) * gstRate) / 100;
   const totalPayable = Math.round((baseCost + additionalCharges + platformFee + gstAmount) * 100) / 100;
-  return { currency: 'INR', baseCost, additionalCharges, taxAmount: 0, gstRate, gstAmount, discount: 0, platformFee, totalPayable };
+  return { currency: 'INR', tier: tierKey, selectedTier, tiers: SERVICE_TIERS, baseCost, additionalCharges, taxAmount: 0, gstRate, gstAmount, discount: 0, platformFee, totalPayable };
 }
 
 function ownedQuery(userId, id) { return { _id: id, userId }; }
@@ -59,8 +67,20 @@ class ServiceRequestService {
   }
 
   static async create(userId, data) {
+    if (data.termsAccepted !== true) throw Object.assign(new Error('Service terms must be accepted before payment'), { statusCode: 400 });
     const pricing = quote(data.serviceKey, data.requirements);
-    const request = await ServiceRequest.create({ ...data, userId, pricing, paymentStatus: pricing.totalPayable ? 'pending' : 'paid', history: [{ status: 'submitted', note: 'Booking submitted' }] });
+    const requiresPayment = pricing.totalPayable > 0;
+    const request = await ServiceRequest.create({
+      ...data,
+      userId,
+      pricing,
+      status: requiresPayment ? 'draft' : 'submitted',
+      paymentStatus: requiresPayment ? 'pending' : 'paid',
+      termsAccepted: true,
+      termsAcceptedAt: new Date(),
+      termsVersion: 'service-terms-v1',
+      history: [{ status: requiresPayment ? 'payment_pending' : 'submitted', note: requiresPayment ? 'Booking details saved; secure payment required' : 'Booking submitted' }],
+    });
     return { request };
   }
 
@@ -81,6 +101,17 @@ class ServiceRequestService {
     if (!request.pricing?.totalPayable) request.pricing = quote(request.serviceKey, request.requirements);
     const amount = Math.round(Number(request.pricing.totalPayable) * 100);
     if (!Number.isSafeInteger(amount) || amount < 100) throw Object.assign(new Error('Service quote is invalid. Refresh pricing and retry.'), { statusCode: 422 });
+    let payment = request.paymentId ? await Payment.findById(request.paymentId) : null;
+    if (
+      payment?.razorpayOrderId &&
+      ['initiated', 'pending', 'processing'].includes(payment.status) &&
+      Math.round(Number(payment.amount || 0) * 100) === amount
+    ) {
+      request.paymentStatus = 'processing';
+      await request.save();
+      return { razorpayOrderId: payment.razorpayOrderId, amount, currency: payment.currency || 'INR', paymentId: payment._id, keyId: razorpayKeyId, requestNumber: request.requestNumber, reused: true };
+    }
+
     let order;
     try {
       order = await razorpay.orders.create({ amount, currency: request.pricing.currency || 'INR', receipt: `srv_${String(request._id)}`, notes: { serviceRequestId: String(request._id), requestNumber: request.requestNumber } });
@@ -88,7 +119,9 @@ class ServiceRequestService {
       console.error('[ServicePayment-RazorpayOrder]', { statusCode: error?.statusCode, description: error?.error?.description || error?.message });
       throw Object.assign(new Error(error?.error?.description || 'Razorpay could not create the checkout order'), { statusCode: error?.statusCode === 401 ? 503 : 502 });
     }
-    const payment = await Payment.create({ userId, amount: request.pricing.totalPayable, currency: request.pricing.currency, paymentFor: 'service', entityType: 'service', entityId: request._id, type: 'other', razorpayOrderId: order.id, status: 'initiated', description: request.serviceTitle });
+    payment = payment || new Payment({ userId, paymentFor: 'service', entityType: 'service', entityId: request._id, type: 'other', method: 'razorpay', paymentMethod: 'razorpay', gateway: 'razorpay' });
+    Object.assign(payment, { amount: request.pricing.totalPayable, currency: request.pricing.currency, razorpayOrderId: order.id, razorpayPaymentId: undefined, razorpaySignature: undefined, transactionId: undefined, status: 'initiated', paymentDate: new Date(), description: request.serviceTitle });
+    await payment.save();
     request.paymentId = payment._id; request.paymentStatus = 'processing'; await request.save();
     return { razorpayOrderId: order.id, amount: order.amount, currency: order.currency, paymentId: payment._id, keyId: razorpayKeyId, requestNumber: request.requestNumber };
   }
@@ -96,7 +129,7 @@ class ServiceRequestService {
   static async verifyPayment(userId, id, body) {
     if (!razorpay) throw Object.assign(new Error('Payment service not configured'), { statusCode: 503 });
     const request = await ServiceRequest.findOne(ownedQuery(userId, id));
-    const payment = request?.paymentId ? await Payment.findOne({ _id: request.paymentId, userId }) : null;
+    let payment = request?.paymentId ? await Payment.findOne({ _id: request.paymentId, userId }) : null;
     if (!request || !payment) throw Object.assign(new Error('Payment session not found'), { statusCode: 404 });
     if (payment.status === 'completed') return finalizeVerifiedServicePayment(request, payment, userId);
     if (!body?.razorpayPaymentId || !body?.razorpayOrderId || !body?.razorpaySignature || body.razorpayOrderId !== payment.razorpayOrderId) throw Object.assign(new Error('Incomplete or mismatched payment verification payload'), { statusCode: 422 });
@@ -105,7 +138,22 @@ class ServiceRequestService {
     let gatewayPayment;
     try { gatewayPayment = await razorpay.payments.fetch(body.razorpayPaymentId); } catch (error) { console.error('[ServicePayment-RazorpayVerify]', { statusCode: error?.statusCode, description: error?.error?.description || error?.message }); throw Object.assign(new Error('Razorpay payment verification is temporarily unavailable'), { statusCode: 502 }); }
     if (gatewayPayment.status !== 'captured' || gatewayPayment.order_id !== payment.razorpayOrderId || gatewayPayment.amount !== Math.round(payment.amount * 100)) throw Object.assign(new Error('Payment verification failed'), { statusCode: 400 });
-    Object.assign(payment, { status: 'completed', razorpayPaymentId: body.razorpayPaymentId, razorpaySignature: body.razorpaySignature, transactionId: body.razorpayPaymentId, paidAt: new Date() }); await payment.save();
+    const staleProcessing = new Date(Date.now() - 5 * 60 * 1000);
+    payment = await Payment.findOneAndUpdate(
+      {
+        _id: payment._id,
+        status: { $ne: 'completed' },
+        $or: [{ status: { $ne: 'processing' } }, { status: 'processing', updatedAt: { $lt: staleProcessing } }],
+      },
+      { $set: { status: 'processing', updatedAt: new Date() } },
+      { new: true }
+    );
+    if (!payment) {
+      const current = await Payment.findById(request.paymentId);
+      if (current?.status === 'completed') return finalizeVerifiedServicePayment(request, current, userId);
+      throw Object.assign(new Error('Payment confirmation is already being processed'), { statusCode: 409 });
+    }
+    Object.assign(payment, { status: 'completed', razorpayPaymentId: body.razorpayPaymentId, gatewayPaymentId: body.razorpayPaymentId, razorpaySignature: body.razorpaySignature, transactionId: body.razorpayPaymentId, gatewayResponse: gatewayPayment, paidAt: new Date(), completedAt: new Date() }); await payment.save();
     return finalizeVerifiedServicePayment(request, payment, userId);
   }
 

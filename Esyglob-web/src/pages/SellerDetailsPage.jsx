@@ -107,7 +107,7 @@ export default function SellerDetailsPage() {
         </div>
         <div className="manufacturer-actions">
           <button className="manufacturer-chat" disabled={busy || !seller.userId} onClick={contactSupplier}><MessageSquare /> {busy ? 'Opening…' : 'Chat Now'}</button>
-          <button className="manufacturer-rfq" onClick={requestQuote}><Send /> Send RFQ</button>
+          <button className="manufacturer-rfq" onClick={requestQuote}><Send /> Send Enquiry</button>
           
         </div>
       </section>

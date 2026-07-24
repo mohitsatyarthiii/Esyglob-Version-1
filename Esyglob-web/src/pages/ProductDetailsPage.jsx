@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { BadgeCheck, Camera, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, Send, Share2, ShieldCheck, Star, Store, Truck, X } from 'lucide-react'
+import { BadgeCheck, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, ScanSearch, Send, Share2, ShieldCheck, Star, Store, Truck, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { fetchProductDetails, fetchProducts, startProductChat, submitProductEnquiry, trackRecentlyViewed } from '../api/marketplace'
@@ -70,7 +70,7 @@ export default function ProductDetailsPage() {
         </nav>
         
         <section className="product-detail-top">
-          <ProductGallery product={product} images={images} selected={selectedImage} setSelected={setSelectedImage} setZoom={setZoom} share={share} authAction={authAction} navigate={navigate} productId={productId} />
+          <ProductGallery product={product} images={images} selected={selectedImage} setSelected={setSelectedImage} setZoom={setZoom} share={share} navigate={navigate} productId={productId} />
           
           <div className="product-summary">
             <span className="eyebrow">{categoryName || 'Marketplace product'}</span>
@@ -504,7 +504,7 @@ function ProductEnquiryModal({ product, productId, sellerUserId, initialQuantity
   )
 }
 
-function ProductGallery({ product, images, selected, setSelected, setZoom, share, authAction, navigate, productId }) {
+function ProductGallery({ product, images, selected, setSelected, setZoom, share, navigate, productId }) {
   return (
     <div className="product-gallery">
       <div className="product-gallery__main" onClick={() => images.length && setZoom(true)}>
@@ -513,7 +513,7 @@ function ProductGallery({ product, images, selected, setSelected, setZoom, share
         <div className="gallery-actions" onClick={(event) => event.stopPropagation()}>
           <WishlistButton itemId={productId} className="outline-icon" />
           <button className="outline-icon" onClick={share} aria-label="Share product"><Share2 /></button>
-          <button className="outline-icon" onClick={() => authAction(() => navigate('/explore/image-search'))} aria-label="Search with another image"><Camera /></button>
+          <button className="outline-icon" onClick={() => navigate(`/products/${encodeURIComponent(productId)}/similar-search`)} aria-label="Find related products"><ScanSearch /></button>
         </div>
         {images.length > 1 && (
           <>

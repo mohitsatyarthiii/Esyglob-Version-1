@@ -65,7 +65,7 @@ class PaymentService {
     }
 
     // Verify ownership
-    if (String(order.buyerId || '') !== userId && String(order.userId || '') !== userId) {
+    if (String(order.buyerId || '') !== String(userId) && String(order.userId || '') !== String(userId)) {
       throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
     }
 
@@ -96,7 +96,26 @@ class PaymentService {
       throw Object.assign(new Error('Order amount must be greater than zero'), { statusCode: 400 });
     }
 
-    // Create Razorpay order
+    let payment = order.paymentId ? await PaymentRepository.findById(order.paymentId) : null;
+    if (!payment) payment = await PaymentRepository.findLatestForOrder(order._id, userId);
+
+    if (
+      payment?.razorpayOrderId &&
+      ['initiated', 'pending', 'processing'].includes(payment.status) &&
+      Math.round(Number(payment.amount || 0) * 100) === amountInPaise &&
+      payment.currency === (order.currency || 'INR')
+    ) {
+      return {
+        razorpayOrderId: payment.razorpayOrderId,
+        amount: amountInPaise,
+        currency: payment.currency,
+        paymentId: payment._id,
+        keyId: process.env.RAZORPAY_KEY_ID,
+        orderNumber: order.orderNumber,
+        reused: true,
+      };
+    }
+
     const razorpayOrder = await razorpay.orders.create({
       amount: amountInPaise,
       currency: order.currency || 'INR',
@@ -107,13 +126,6 @@ class PaymentService {
         orderNumber: order.orderNumber || '',
       },
     });
-
-    // Create/find payment record
-    let payment = order.paymentId ? await PaymentRepository.findById(order.paymentId) : null;
-
-    if (!payment) {
-      payment = await PaymentRepository.findPendingForOrder(order._id, userId);
-    }
 
     if (!payment) {
       payment = await PaymentRepository.create({
@@ -194,15 +206,24 @@ class PaymentService {
     } catch (error) {
       if (error.statusCode) throw error;
       console.error('Razorpay verification error:', error);
+      throw Object.assign(new Error('Razorpay payment verification is temporarily unavailable'), { statusCode: 502 });
     }
 
     // Update payment record
-    const paymentRecord = await PaymentRepository.findById(paymentId);
+    let paymentRecord = await PaymentRepository.findById(paymentId);
     if (!paymentRecord) {
       throw Object.assign(new Error('Payment record not found'), { statusCode: 404 });
     }
-    if (paymentRecord.userId.toString() !== userId) {
+    if (String(paymentRecord.userId) !== String(userId)) {
       throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+    }
+    if (paymentRecord.status === 'completed') {
+      const paidOrder = await PaymentRepository.findOrderById(paymentRecord.orderId);
+      return { success: true, paymentRecord, order: paidOrder, alreadyVerified: true };
+    }
+    let order = await PaymentRepository.findOrderById(paymentRecord.orderId);
+    if (!order) {
+      throw Object.assign(new Error('Order not found'), { statusCode: 404 });
     }
     if (order.agreement?.required && order.agreement.status !== 'completed') throw Object.assign(new Error('Agreement signatures are incomplete'), { statusCode: 409 });
     const legacyCheckout = ['direct_order', 'sample_order'].includes(order.orderSubType) && Boolean(order.shippingMethod) && order.tradeInformation?.termsAccepted === true;
@@ -215,6 +236,14 @@ class PaymentService {
     if (rzpPayment?.amount && Math.round(Number(paymentRecord.amount || 0) * 100) !== Number(rzpPayment.amount)) {
       throw Object.assign(new Error('Payment amount mismatch'), { statusCode: 400 });
     }
+    paymentRecord = await PaymentRepository.claimForCompletion(paymentRecord._id);
+    if (!paymentRecord) {
+      const current = await PaymentRepository.findById(paymentId);
+      if (current?.status === 'completed') {
+        return { success: true, paymentRecord: current, order, alreadyVerified: true };
+      }
+      throw Object.assign(new Error('Payment confirmation is already being processed'), { statusCode: 409 });
+    }
 
     paymentRecord.razorpayPaymentId = razorpayPaymentId;
     paymentRecord.gatewayPaymentId = razorpayPaymentId;
@@ -225,7 +254,6 @@ class PaymentService {
     await PaymentRepository.save(paymentRecord);
 
     // Update order
-    let order = await PaymentRepository.findOrderById(paymentRecord.orderId);
     if (order) {
       const wasOrderPaid = order.paymentStatus === 'paid';
       const lifecycle = await markOrderPaymentSucceeded({
@@ -263,6 +291,79 @@ class PaymentService {
     }
 
     return { success: true, paymentRecord, order };
+  }
+
+  static async processCapturedWebhook(entity) {
+    if (!entity?.id || !entity?.order_id) return { ignored: true };
+    const payment = await PaymentRepository.findByRazorpayOrderId(entity.order_id);
+    if (!payment) return { ignored: true, reason: 'payment_session_not_found' };
+    if (payment.status === 'completed') return { success: true, alreadyProcessed: true };
+
+    const signature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${entity.order_id}|${entity.id}`)
+      .digest('hex');
+
+    if (payment.paymentFor === 'order') {
+      return this.verifyOrderPayment(String(payment.userId), {
+        paymentId: String(payment._id),
+        razorpayPaymentId: entity.id,
+        razorpayOrderId: entity.order_id,
+        razorpaySignature: signature,
+      });
+    }
+
+    if (payment.paymentFor === 'subscription') {
+      return this.verifySubscriptionPayment(String(payment.userId), {
+        razorpayPaymentId: entity.id,
+        razorpayOrderId: entity.order_id,
+        razorpaySignature: signature,
+        planType: payment.metadata?.planType || entity.notes?.planType,
+        duration: payment.metadata?.duration || entity.notes?.duration || 'monthly',
+      });
+    }
+
+    if (payment.paymentFor === 'service') {
+      const ServiceRequestService = (await import('./service-request.service.js')).default;
+      return ServiceRequestService.verifyPayment(
+        String(payment.userId),
+        String(payment.entityId),
+        {
+          razorpayPaymentId: entity.id,
+          razorpayOrderId: entity.order_id,
+          razorpaySignature: signature,
+        }
+      );
+    }
+
+    return { ignored: true, reason: 'unsupported_payment_type' };
+  }
+
+  static async processFailedWebhook(entity) {
+    const payment = entity?.order_id
+      ? await PaymentRepository.findByRazorpayOrderId(entity.order_id)
+      : null;
+    if (!payment || payment.status === 'completed') return { ignored: true };
+    payment.status = 'failed';
+    payment.gatewayPaymentId = entity?.id;
+    payment.gatewayResponse = entity;
+    await PaymentRepository.save(payment);
+
+    if (payment.orderId) {
+      const order = await PaymentRepository.findOrderById(payment.orderId);
+      if (order && order.paymentStatus !== 'paid') {
+        order.paymentStatus = 'failed';
+        await order.save();
+      }
+    }
+    if (payment.paymentFor === 'service' && payment.entityId) {
+      const ServiceRequest = (await import('../models/ServiceRequest.js')).default;
+      await ServiceRequest.updateOne(
+        { _id: payment.entityId, paymentStatus: { $ne: 'paid' } },
+        { $set: { paymentStatus: 'failed' }, $push: { history: { status: 'payment_failed', note: 'Razorpay reported a failed payment' } } }
+      );
+    }
+    return { success: true };
   }
 
   /**
@@ -312,6 +413,7 @@ class PaymentService {
     } catch (error) {
       if (error.statusCode) throw error;
       console.error('Razorpay verification error:', error);
+      throw Object.assign(new Error('Razorpay payment verification is temporarily unavailable'), { statusCode: 502 });
     }
 
     // Plan details
@@ -327,6 +429,17 @@ class PaymentService {
     const expectedAmount = Number(configuredPrice?.amount ?? configuredPrice ?? getPlanPrice(planType, duration));
     if (Number(subscriptionRzpPayment?.amount || 0) !== Math.round(expectedAmount * 100)) {
       throw Object.assign(new Error('Subscription amount mismatch'), { statusCode: 400 });
+    }
+
+    let paymentRecord = await PaymentRepository.findByRazorpayOrderId(razorpayOrderId);
+    if (!paymentRecord || String(paymentRecord.userId) !== String(userId) || paymentRecord.paymentFor !== 'subscription') {
+      throw Object.assign(new Error('Payment order mismatch'), { statusCode: 403 });
+    }
+    paymentRecord = await PaymentRepository.claimForCompletion(paymentRecord._id);
+    if (!paymentRecord) {
+      const currentPayment = await PaymentRepository.findByRazorpayOrderId(razorpayOrderId);
+      if (currentPayment?.status === 'completed') return { success: true, message: 'Payment already verified', payment: currentPayment };
+      throw Object.assign(new Error('Payment confirmation is already being processed'), { statusCode: 409 });
     }
 
     const months = duration==='quarterly'?3:getMonthsIncluded(planType, duration);
@@ -376,22 +489,25 @@ class PaymentService {
       await Seller.findOneAndUpdate({ userId }, { $set: { subscriptionPlan: configuredPlan.key, subscriptionStatus: 'active', subscriptionExpiryDate: expiryDate, verificationStatus: 'verified', verificationLevel: Math.max(1, Number(configuredPlan.priorityRanking || 0) + 1) }, $inc: { trustScore: Number(configuredPlan.trustScoreBoost || 0) } });
     }
 
-    // Create payment record
-    const paymentRecord = await PaymentRepository.create({
-      userId,
-      paymentFor: 'subscription',
+    // Complete the initiated checkout record when available.
+    Object.assign(paymentRecord, {
       subscriptionId: subscription._id,
       amount,
       currency: 'INR',
       paymentMethod: 'razorpay',
+      method: 'razorpay',
+      gateway: 'razorpay',
       razorpayPaymentId,
       razorpayOrderId,
       razorpaySignature,
       status: 'completed',
-      paidAt: new Date(),
+      paidAt: paymentRecord.paidAt || new Date(),
+      completedAt: paymentRecord.completedAt || new Date(),
+      gatewayResponse: subscriptionRzpPayment,
       transactionId: razorpayPaymentId,
-      metadata: { planType, duration, months },
+      metadata: { ...(paymentRecord.metadata || {}), planType, duration, months },
     });
+    await PaymentRepository.save(paymentRecord);
 
     const invoice = await Invoice.create({ invoiceNumber:`ESY-SUB-${Date.now()}`, buyerId:userId, currency:'INR', subtotal:amount, taxAmount:0, totalAmount:amount, status:'paid', paymentStatus:'paid', issuedAt:new Date(), transactionId:razorpayPaymentId, paymentMethod:'Razorpay', paymentDate:new Date(), lineItems:[{description:`${planDetails.name} subscription (${duration})`,quantity:1,unit:'plan',unitPrice:amount,total:amount}], serviceSnapshot:{type:'subscription',planKey:configuredPlan?.key||planType,duration}, terms:['Subscription benefits apply for the active billing period.'] });
     paymentRecord.invoiceUrl=`/api/invoices/${invoice._id}`; await paymentRecord.save();

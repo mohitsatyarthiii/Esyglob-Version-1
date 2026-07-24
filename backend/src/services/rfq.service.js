@@ -53,7 +53,10 @@ async function canSellerAccessRfq(rfq, sessionUserId, seller) {
 }
 
 function normalized(value) {
-  return String(value || '').trim().toLowerCase();
+  const resolved = typeof value === 'object' && value
+    ? value.name || value.label || value.slug || value.title || ''
+    : value;
+  return String(resolved || '').trim().toLowerCase();
 }
 
 function sellerMatchesPublicRfq(seller, rfq) {
@@ -76,9 +79,9 @@ function publicRfqMatchQuery(seller) {
   const exactTerms = [...new Set([
     ...(seller?.productCategories || []),
     ...(seller?.productSubcategories || []),
-  ].map((value) => String(value).trim()).filter(Boolean))];
+  ].map((value) => normalized(value)).filter(Boolean))];
   const industryTerms = [...new Set(
-    (seller?.industries || []).map((value) => String(value).trim()).filter((value) => value.length > 2)
+    (seller?.industries || []).map((value) => normalized(value)).filter((value) => value.length > 2)
   )];
   const matchers = [];
 
@@ -158,7 +161,7 @@ export async function getRfqs(session, searchParams) {
     query.status =
       status && status !== 'all'
         ? status
-        : { $in: ['active', 'pending', 'viewed', 'replied', 'quoted', 'negotiating'] };
+        : { $in: OPEN_RFQ_STATUSES };
     const eligiblePublic = publicRfqMatchQuery(seller);
     query.$and = [{
       $or: [
@@ -254,7 +257,9 @@ export async function createRfq(session, body) {
   if (requestedSellerId) {
     targetSeller = await rfqRepository.findSellerById(requestedSellerId);
   } else if (requestedSellerUserId) {
-    targetSeller = await rfqRepository.findSellerByUserId(requestedSellerUserId);
+    targetSeller = mongoose.Types.ObjectId.isValid(requestedSellerUserId)
+      ? await rfqRepository.findSellerByUserId(requestedSellerUserId)
+      : null;
   }
   if ((requestedSellerId || requestedSellerUserId) && !targetSeller) {
     const error = new Error('Selected supplier is not available');
