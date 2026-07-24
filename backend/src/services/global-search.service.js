@@ -10,22 +10,32 @@ class GlobalSearchService {
   /**
    * Score text relevance against query
    */
-  static scoreText(query, values = [], typeBoost = 0) {
-    const q = String(query || '').toLowerCase();
+  static scoreText(query, primaryValues = [], secondaryValues = [], typeBoost = 0) {
+    const q = String(query || '').trim().toLowerCase();
     const terms = GlobalSearchRepository.termsFromQuery(query);
-    const haystack = values.filter(Boolean).join(' ').toLowerCase();
+    const primary = primaryValues.filter(Boolean).map(value => String(value).toLowerCase());
+    const secondary = secondaryValues
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .filter(Boolean)
+      .map(value => String(value).toLowerCase());
+    const primaryText = primary.join(' ');
+    const secondaryText = secondary.join(' ');
     let score = typeBoost;
 
-    if (!q || !haystack) return score;
-    if (haystack === q) score += 100;
-    if (haystack.startsWith(q)) score += 80;
-    if (haystack.includes(q)) score += 60;
+    if (!q || (!primaryText && !secondaryText)) return score;
+    if (primary.some(value => value === q)) score += 150;
+    else if (primary.some(value => value.startsWith(q))) score += 115;
+    else if (primaryText.includes(q)) score += 90;
+    if (secondary.some(value => value === q)) score += 80;
+    else if (secondaryText.includes(q)) score += 55;
 
     for (const term of terms) {
-      if (haystack.includes(term)) score += 10;
-      if (haystack.split(/\s+/).some(word => word.startsWith(term))) score += 8;
+      if (primary.some(value => value.split(/\s+/).some(word => word === term))) score += 24;
+      else if (primaryText.includes(term)) score += 16;
+      if (secondaryText.includes(term)) score += 8;
     }
 
+    if (terms.length > 1 && terms.every(term => `${primaryText} ${secondaryText}`.includes(term))) score += 30;
     return score;
   }
 
@@ -40,10 +50,15 @@ class GlobalSearchService {
       meta: [product.category, product.sellerId?.companyName].filter(Boolean).join(' | ') || 'Product',
       href: `/products/${product._id}`,
       image: product.images?.[0] || '',
-      score: this.scoreText(query, [
-        product.name, product.category, product.subcategory,
-        product.description, ...(product.tags || []),
-      ], 70),
+      score: this.scoreText(
+        query,
+        [product.name, product.brand, product.category, product.subcategory],
+        [product.description, product.tags, product.countryOfOrigin, product.sellerId?.companyName],
+        70
+      )
+        + (product.isVerifiedSeller || product.sellerId?.isVerified ? 8 : 0)
+        + Math.min(10, Number(product.averageRating || 0))
+        + Math.min(12, Math.log10(Number(product.totalOrders || 0) + 1) * 4),
       raw: product,
     };
   }
@@ -61,13 +76,24 @@ class GlobalSearchService {
         seller.address?.country,
         seller.isVerified ? 'Verified' : '',
       ].filter(Boolean).join(' | ') || 'Supplier',
-      href: `/manufacturers/${seller._id}`,
+      href: `/sellers/${seller._id}`,
       image: seller.logoUrl || seller.companyLogo || seller.logo || '',
-      score: this.scoreText(query, [
-        seller.companyName, seller.companyDescription, seller.companyType,
-        ...(seller.productCategories || []), ...(seller.exportMarkets || []),
-        seller.address?.country,
-      ], seller.companyType === 'manufacturer' ? 65 : 60)
+      score: this.scoreText(
+        query,
+        [seller.companyName, seller.companyType],
+        [
+          seller.companyDescription,
+          seller.productCategories,
+          seller.productSubcategories,
+          seller.mainProducts,
+          seller.industries,
+          seller.exportMarkets,
+          seller.address?.city,
+          seller.address?.state,
+          seller.address?.country,
+        ],
+        seller.companyType === 'manufacturer' ? 65 : 60
+      )
         + (seller.isVerified ? 8 : 0)
         + (seller.isTrustedSeller ? 10 : 0),
       raw: seller,
@@ -91,11 +117,12 @@ class GlobalSearchService {
         : 'Category',
       href,
       image: category.image || '',
-      score: this.scoreText(query, [
-        category.name, category.slug, category.description,
-        ...(category.metadata?.keywords || []),
-        category.categoryId?.name,
-      ], type === 'category' ? 55 : 50),
+      score: this.scoreText(
+        query,
+        [category.name, category.slug],
+        [category.description, category.metadata?.keywords, category.categoryId?.name],
+        type === 'category' ? 55 : 50
+      ),
       raw: category,
     };
   }
@@ -114,10 +141,12 @@ class GlobalSearchService {
         `${rfq.quantity || ''} ${rfq.unit || ''}`.trim(),
       ].filter(Boolean).join(' | ') || 'Public RFQ',
       href: `/rfqs/${rfq._id}`,
-      score: this.scoreText(query, [
-        rfq.title, rfq.description, rfq.category,
-        rfq.subcategory, rfq.deliveryCountry, rfq.specifications,
-      ], 35),
+      score: this.scoreText(
+        query,
+        [rfq.title, rfq.category, rfq.subcategory],
+        [rfq.description, rfq.deliveryCountry, rfq.specifications],
+        35
+      ),
       raw: rfq,
     };
   }
@@ -132,10 +161,12 @@ class GlobalSearchService {
       label: service.title,
       meta: 'Marketplace service',
       href: `/services/${service.key}`,
-      score: this.scoreText(query, [
-        service.key, service.title, service.description,
-        ...(service.requirements || []), ...(service.benefits || []),
-      ], 45),
+      score: this.scoreText(
+        query,
+        [service.key, service.title],
+        [service.description, service.requirements, service.benefits],
+        45
+      ),
       raw: service,
     };
   }
@@ -157,6 +188,7 @@ class GlobalSearchService {
         products: [],
         suppliers: [],
         categories: [],
+        subcategories: [],
         services: [],
         rfqs: [],
       };
@@ -171,13 +203,11 @@ class GlobalSearchService {
 
     // Build regex
     const regex = GlobalSearchRepository.buildRegex(trimmed);
-    const textQuery = GlobalSearchRepository.textQuery(trimmed);
-
     // Execute all searches in parallel
     const [products, suppliers, categories, subcategories, rfqs] = await Promise.all([
-      GlobalSearchRepository.searchProducts(regex, limit, textQuery),
-      GlobalSearchRepository.searchSuppliers(regex, limit, textQuery),
-      GlobalSearchRepository.searchCategories(regex, limit, textQuery),
+      GlobalSearchRepository.searchProducts(regex, limit),
+      GlobalSearchRepository.searchSuppliers(regex, limit),
+      GlobalSearchRepository.searchCategories(regex, limit),
       GlobalSearchRepository.searchSubcategories(regex, limit),
       GlobalSearchRepository.searchRfqs(regex, limit),
     ]);
@@ -199,10 +229,12 @@ class GlobalSearchService {
         .map(item => this.compactSeller(item, trimmed))
         .sort((a, b) => b.score - a.score)
         .slice(0, limit),
-      categories: [
-        ...categories.map(item => this.compactCategory(item, trimmed)),
-        ...subcategories.map(item => this.compactCategory(item, trimmed, 'subcategory')),
-      ]
+      categories: categories
+        .map(item => this.compactCategory(item, trimmed))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit),
+      subcategories: subcategories
+        .map(item => this.compactCategory(item, trimmed, 'subcategory'))
         .sort((a, b) => b.score - a.score)
         .slice(0, limit),
       services,
@@ -217,6 +249,7 @@ class GlobalSearchService {
       ...grouped.products,
       ...grouped.suppliers,
       ...grouped.categories,
+      ...grouped.subcategories,
       ...grouped.services,
       ...grouped.rfqs,
     ]
@@ -231,7 +264,12 @@ class GlobalSearchService {
       results.forEach(item => delete item.raw);
     }
 
-    const data = { query: trimmed, results, ...grouped };
+    const data = {
+      query: trimmed,
+      results,
+      suggestions: results.slice(0, Math.min(limit, 8)),
+      ...grouped,
+    };
 
     // Cache result
     if (searchCache.size >= MAX_SEARCH_CACHE_ENTRIES) {

@@ -8,7 +8,6 @@ import {
   MapPin,
   MessageCircle,
   PackageCheck,
-  Search,
   Send,
   ShieldCheck,
   SlidersHorizontal,
@@ -21,14 +20,22 @@ import { Link } from 'react-router-dom'
 import { fetchSellers } from '../api/marketplace'
 import AppShell from '../components/AppShell'
 import { SafeImage, SkeletonCards } from '../components/MarketplaceCards'
+import UnifiedSearchInput from '../components/UnifiedSearchInput'
 import useAsyncData from '../hooks/useAsyncData'
 
-const COMPANY_TYPES = [
-  { value: '', label: 'All Types' },
-  { value: 'manufacturer', label: 'Manufacturer' },
-  { value: 'wholesaler', label: 'Wholesaler' },
-  { value: 'distributor', label: 'Distributor' },
-  { value: 'exporter', label: 'Exporter' },
+const SUPPLIER_FILTERS = [
+  { value: '', label: 'All suppliers' },
+  { value: 'verified', label: 'Verified supplier' },
+  { value: 'factory', label: 'Factory verified' },
+  { value: 'premium', label: 'Premium supplier' },
+  { value: 'export', label: 'Export ready' },
+]
+
+const EXPERIENCE_FILTERS = [
+  { value: '', label: 'Any experience' },
+  { value: '5', label: '5+ years' },
+  { value: '10', label: '10+ years' },
+  { value: '15', label: '15+ years' },
 ]
 
 const SORT_OPTIONS = [
@@ -51,28 +58,53 @@ const REGIONS = [
 export default function SellersPage() {
   const [input, setInput] = useState('')
   const [search, setSearch] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
+  const [supplierFilter, setSupplierFilter] = useState('')
+  const [experienceFilter, setExperienceFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
   const [sort, setSort] = useState('verified')
   const [showFilters, setShowFilters] = useState(false)
 
   const loader = useCallback(
-    () => fetchSellers({ limit: 20, search, sort, ...(typeFilter && { companyType: typeFilter }), ...(regionFilter && { region: regionFilter }) }),
-    [search, sort, typeFilter, regionFilter],
+    () => fetchSellers({ limit: 20, search, sort, ...(regionFilter && { region: regionFilter }) }),
+    [search, sort, regionFilter],
   )
   const query = useAsyncData(loader)
-  const sellers = useMemo(() => query.data || [], [query.data])
-  const hasActiveFilters = Boolean(typeFilter || regionFilter || sort !== 'verified' || search)
+  const allSellers = useMemo(() => query.data || [], [query.data])
+  const categoryOptions = useMemo(() => {
+    const counts = new Map()
+    allSellers.forEach((seller) => normalizeCategories(seller.businessCategories || seller.productCategories || seller.categories || seller.industries, seller.products)
+      .forEach((category) => counts.set(category, (counts.get(category) || 0) + 1)))
+    return [{ value: '', label: 'All categories' }, ...[...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7)
+      .map(([category]) => ({ value: category, label: category }))]
+  }, [allSellers])
+  const sellers = useMemo(() => allSellers.filter((seller) => {
+    if (supplierFilter === 'verified' && !(seller.isVerified || ['verified', 'approved'].includes(seller.verificationStatus))) return false
+    if (supplierFilter === 'factory' && !(seller.factoryVerified || seller.isFactoryVerified || seller.factoryAudit?.verified)) return false
+    if (supplierFilter === 'premium' && !(seller.isPremium || seller.premiumSeller || seller.membershipTier === 'premium' || seller.subscriptionTier === 'premium')) return false
+    if (supplierFilter === 'export' && !(seller.isExporter || seller.exportCapability || seller.exportMarkets?.length || seller.tradeInformation?.exportMarkets?.length)) return false
+    const years = Number(seller.yearsInBusiness || (seller.yearEstablished ? new Date().getFullYear() - Number(seller.yearEstablished) : 0))
+    if (experienceFilter && (!years || years < Number(experienceFilter))) return false
+    if (categoryFilter) {
+      const categories = normalizeCategories(seller.businessCategories || seller.productCategories || seller.categories || seller.industries, seller.products)
+      if (!categories.some((category) => category.toLowerCase() === categoryFilter.toLowerCase())) return false
+    }
+    return true
+  }), [allSellers, categoryFilter, experienceFilter, supplierFilter])
+  const hasActiveFilters = Boolean(supplierFilter || experienceFilter || categoryFilter || regionFilter || sort !== 'verified' || search)
 
-  function handleSubmit(event) {
-    event.preventDefault()
-    setSearch(input.trim())
+  function handleSubmit(value) {
+    setSearch(value)
   }
 
   function clearAll() {
     setInput('')
     setSearch('')
-    setTypeFilter('')
+    setSupplierFilter('')
+    setExperienceFilter('')
+    setCategoryFilter('')
     setRegionFilter('')
     setSort('verified')
   }
@@ -81,25 +113,25 @@ export default function SellersPage() {
     <div className="min-h-screen bg-[#f8f9fa]">
       <div className="sticky top-0 z-30 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-3">
-          <div className="flex items-center gap-3">
-            <form onSubmit={handleSubmit} className="flex flex-1 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 transition-all focus-within:border-blue-500">
-              <Search size={16} className="flex-shrink-0 text-gray-400" />
-              <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Search suppliers..." aria-label="Search suppliers" className="flex-1 border-none bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400" />
-              {input && <button type="button" onClick={() => setInput('')} aria-label="Clear search" className="rounded-full p-0.5 hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>}
-            </form>
-            <button onClick={() => setShowFilters(true)} className="relative flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50">
-              <SlidersHorizontal size={16} /><span className="hidden sm:inline">Filter</span>
-              {hasActiveFilters && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />}
-            </button>
-            <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort suppliers" className="hidden cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none sm:block">
-              {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
+          <div className="seller-search-toolbar">
+            <UnifiedSearchInput className="sellers-unified-search" value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Search manufacturers by product, industry or location" showSubmit />
+            <div className="seller-search-toolbar__actions">
+              <button onClick={() => setShowFilters(true)} className="seller-filter-trigger">
+                <SlidersHorizontal size={16} /><span>Filters</span>
+                {hasActiveFilters && <i />}
+              </button>
+              <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort suppliers" className="seller-sort-select">
+                {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
           </div>
-          {hasActiveFilters && <div className="mt-2 flex flex-wrap items-center gap-2">
+          {hasActiveFilters && <div className="seller-active-filter-chips">
             {search && <Chip label={`"${search}"`} onRemove={() => { setInput(''); setSearch('') }} />}
-            {typeFilter && <Chip label={COMPANY_TYPES.find((item) => item.value === typeFilter)?.label} onRemove={() => setTypeFilter('')} />}
+            {supplierFilter && <Chip label={SUPPLIER_FILTERS.find((item) => item.value === supplierFilter)?.label} onRemove={() => setSupplierFilter('')} />}
+            {experienceFilter && <Chip label={`${experienceFilter}+ years`} onRemove={() => setExperienceFilter('')} />}
+            {categoryFilter && <Chip label={categoryFilter} onRemove={() => setCategoryFilter('')} />}
             {regionFilter && <Chip label={regionFilter} onRemove={() => setRegionFilter('')} />}
-            <button onClick={clearAll} className="ml-1 text-xs font-medium text-gray-500 hover:text-red-500">Clear all</button>
+            <button onClick={clearAll} className="seller-clear-filters">Clear all</button>
           </div>}
         </div>
       </div>
@@ -108,8 +140,10 @@ export default function SellersPage() {
         <div className="flex gap-6">
           <aside className="hidden w-48 flex-shrink-0 lg:block">
             <div className="sticky top-20 space-y-4">
-              <FilterGroup title="Company Type" items={COMPANY_TYPES} selected={typeFilter} onSelect={setTypeFilter} tone="blue" />
-              <FilterGroup title="Region" items={REGIONS.filter((item) => item.value)} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
+              <FilterGroup title="Supplier credentials" items={SUPPLIER_FILTERS} selected={supplierFilter} onSelect={setSupplierFilter} tone="blue" />
+              {categoryOptions.length > 1 && <FilterGroup title="Product category" items={categoryOptions} selected={categoryFilter} onSelect={setCategoryFilter} tone="blue" />}
+              <FilterGroup title="Years in business" items={EXPERIENCE_FILTERS} selected={experienceFilter} onSelect={setExperienceFilter} tone="blue" />
+              <FilterGroup title="Country / region" items={REGIONS} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
             </div>
           </aside>
 
@@ -126,7 +160,7 @@ export default function SellersPage() {
       </div>
     </div>
 
-    {showFilters && <MobileFilters sort={sort} setSort={setSort} typeFilter={typeFilter} setTypeFilter={setTypeFilter} regionFilter={regionFilter} setRegionFilter={setRegionFilter} hasActiveFilters={hasActiveFilters} clearAll={clearAll} onClose={() => setShowFilters(false)} />}
+    {showFilters && <MobileFilters sort={sort} setSort={setSort} supplierFilter={supplierFilter} setSupplierFilter={setSupplierFilter} experienceFilter={experienceFilter} setExperienceFilter={setExperienceFilter} categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter} categoryOptions={categoryOptions} regionFilter={regionFilter} setRegionFilter={setRegionFilter} hasActiveFilters={hasActiveFilters} clearAll={clearAll} onClose={() => setShowFilters(false)} />}
   </AppShell>
 }
 
@@ -223,15 +257,17 @@ function FilterGroup({ title, items, selected, onSelect, tone }) {
   </div>
 }
 
-function MobileFilters({ sort, setSort, typeFilter, setTypeFilter, regionFilter, setRegionFilter, hasActiveFilters, clearAll, onClose }) {
+function MobileFilters({ sort, setSort, supplierFilter, setSupplierFilter, experienceFilter, setExperienceFilter, categoryFilter, setCategoryFilter, categoryOptions, regionFilter, setRegionFilter, hasActiveFilters, clearAll, onClose }) {
   return <div className="fixed inset-0 z-50 lg:hidden">
     <button className="absolute inset-0 h-full w-full bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Close filters" />
     <div className="seller-filter-sheet absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-2xl bg-white">
       <div className="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3"><h3 className="text-sm font-bold text-gray-800">Filters & Sorting</h3><button onClick={onClose} aria-label="Close filters" className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"><X size={16} /></button></div>
       <div className="space-y-5 p-4 pb-24">
         <MobileChoices title="Sort by" items={SORT_OPTIONS} selected={sort} onSelect={setSort} />
-        <MobileChoices title="Company type" items={COMPANY_TYPES} selected={typeFilter} onSelect={setTypeFilter} />
-        <MobileChoices title="Region" items={REGIONS.filter((item) => item.value)} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
+        <MobileChoices title="Supplier credentials" items={SUPPLIER_FILTERS} selected={supplierFilter} onSelect={setSupplierFilter} />
+        {categoryOptions.length > 1 && <MobileChoices title="Product category" items={categoryOptions} selected={categoryFilter} onSelect={setCategoryFilter} />}
+        <MobileChoices title="Years in business" items={EXPERIENCE_FILTERS} selected={experienceFilter} onSelect={setExperienceFilter} />
+        <MobileChoices title="Country / region" items={REGIONS} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
       </div>
       <div className="sticky bottom-0 space-y-2 border-t bg-white px-4 py-3 [padding-bottom:calc(.75rem+env(safe-area-inset-bottom,0px))]">
         <button onClick={onClose} className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition-all active:scale-[.98]">Show results</button>
@@ -242,9 +278,9 @@ function MobileFilters({ sort, setSort, typeFilter, setTypeFilter, regionFilter,
 }
 
 function MobileChoices({ title, items, selected, onSelect, tone = 'blue' }) {
-  return <div><h4 className="mb-2 text-[10px] font-bold uppercase text-gray-400">{title}</h4><div className="flex flex-wrap gap-1.5">{items.map((item) => <button key={item.value} onClick={() => onSelect(item.value)} className={`rounded-full px-3 py-2 text-xs font-semibold ${selected === item.value ? tone === 'amber' ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{item.label}</button>)}</div></div>
+  return <div><h4 className="mb-2 text-[10px] font-bold uppercase text-gray-400">{title}</h4><div className="seller-mobile-choices">{items.map((item) => <button key={item.value} onClick={() => onSelect(item.value)} className={selected === item.value ? tone === 'amber' ? 'active amber' : 'active' : ''}>{item.label}</button>)}</div></div>
 }
 
 function Chip({ label, onRemove }) {
-  return <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">{label}<button onClick={onRemove} aria-label={`Remove ${label} filter`} className="rounded-full p-0.5 hover:bg-blue-100"><X size={9} /></button></span>
+  return <span className="seller-active-chip">{label}<button onClick={onRemove} aria-label={`Remove ${label} filter`}><X /></button></span>
 }

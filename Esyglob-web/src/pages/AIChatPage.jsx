@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, MoreHorizontal, Paperclip, Pencil, Plus, RefreshCw, Search, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, Mic, MoreHorizontal, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
@@ -9,6 +9,7 @@ import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { Money } from '../components/TradeUI'
 import { resolveId } from '../utils/trade'
+import UnifiedSearchInput from '../components/UnifiedSearchInput'
 
 const buyerPrompts = ['Find verified suppliers with low MOQ', 'Draft an RFQ for 500 units', 'Compare suppliers by trust, price and lead time', 'Explain shipping documents for my order']
 const sellerPrompts = ['Find RFQ opportunities for my products', 'How can I improve my product listings?', 'Prepare a professional quotation', 'Analyze demand for my category']
@@ -35,6 +36,7 @@ export default function AIChatPage() {
   const [editingTitle, setEditingTitle] = useState('')
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false)
   const [shareStatus, setShareStatus] = useState('')
+  const [voiceListening, setVoiceListening] = useState(false)
   const endRef = useRef(null)
   const messagesRef = useRef(null)
   const textareaRef = useRef(null)
@@ -49,6 +51,7 @@ export default function AIChatPage() {
   const sendingRef = useRef(false)
   const stickToBottomRef = useRef(true)
   const shareTimerRef = useRef(null)
+  const voiceRecognitionRef = useRef(null)
 
   const loadChats = useCallback(async () => {
     try { setChats(await fetchAIChats(role)) }
@@ -58,6 +61,7 @@ export default function AIChatPage() {
   useEffect(() => { loadChats().catch((next) => setError(next.message)) }, [loadChats])
   useEffect(() => () => {
     streamRef.current?.abort()
+    voiceRecognitionRef.current?.abort?.()
     window.clearTimeout(shareTimerRef.current)
   }, [])
   useEffect(() => {
@@ -180,6 +184,40 @@ export default function AIChatPage() {
     }
   }
 
+  function startVoiceMessage() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setError('Voice input is not supported by this browser.')
+      return
+    }
+    voiceRecognitionRef.current?.abort?.()
+    const recognition = new SpeechRecognition()
+    recognition.lang = navigator.language || 'en-IN'
+    recognition.interimResults = true
+    recognition.continuous = false
+    let finalText = ''
+    recognition.onstart = () => { setVoiceListening(true); setError('') }
+    recognition.onresult = (event) => {
+      let interim = ''
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const text = event.results[index][0]?.transcript || ''
+        if (event.results[index].isFinal) finalText += text
+        else interim += text
+      }
+      setDraft(`${finalText}${interim}`.trim())
+    }
+    recognition.onerror = (event) => {
+      setVoiceListening(false)
+      setError(event.error === 'not-allowed' ? 'Allow microphone access to dictate an ESY AI message.' : 'Voice input could not hear you. Please retry.')
+    }
+    recognition.onend = () => {
+      setVoiceListening(false)
+      if (finalText.trim()) window.requestAnimationFrame(() => textareaRef.current?.focus())
+    }
+    voiceRecognitionRef.current = recognition
+    recognition.start()
+  }
+
   function newConversation() {
     streamRef.current?.abort(); sendingRef.current = false; stickToBottomRef.current = true; setBusy(false); setChatId(''); setMessages([]); setError(''); setFailed(''); setSidebarOpen(false); window.requestAnimationFrame(() => textareaRef.current?.focus())
   }
@@ -225,10 +263,10 @@ export default function AIChatPage() {
 
   return <AppShell><div className="ai-workspace">
     {sidebarOpen && <button className="ai-sidebar-backdrop" aria-label="Close conversation history" onClick={() => setSidebarOpen(false)} />}
-    <aside className={sidebarOpen ? 'open' : ''}>
+    <aside className={sidebarOpen ? 'open' : ''} aria-label="Recent AI chats" aria-modal={sidebarOpen ? 'true' : undefined}>
       <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>ESY AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
       <button className="ai-new-chat" onClick={newConversation}><Plus /> New conversation</button>
-      <div className="ai-history-tools"><label><Search /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Search conversations" /></label><label className="ai-history-sort"><span>Sort</span><select value={historySort} onChange={(event) => setHistorySort(event.target.value)}><option value="recent">Most recent</option><option value="oldest">Oldest first</option></select><ChevronDown /></label></div>
+      <div className="ai-history-tools"><UnifiedSearchInput compact suggestions={false} value={historySearch} onChange={setHistorySearch} onSubmit={setHistorySearch} placeholder="Search conversations" /><label className="ai-history-sort"><span>Sort</span><select value={historySort} onChange={(event) => setHistorySort(event.target.value)}><option value="recent">Most recent</option><option value="oldest">Oldest first</option></select><ChevronDown /></label></div>
       <div className="ai-sidebar-head"><b><History /> Recent chats</b><small>{visibleChats.length}</small></div>
       <div className="ai-history-list">{historyLoading ? <div className="ai-history-empty"><div className="typing-dots"><span /><span /><span /></div><p>Loading chats...</p></div> : visibleChats.length ? visibleChats.map((item) => {
         const id = resolveId(item)
@@ -243,7 +281,7 @@ export default function AIChatPage() {
       <header>
         <div className="ai-chat-identity">
           <button className="ai-mobile-back" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
-          <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open conversation history"><Menu /></button>
+          <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open recent chats"><Menu /><span>Chats</span></button>
           <i><Sparkles /></i>
           <span><small>ESY AI</small><h1>{active?.title || 'New conversation'}</h1><p><em /> Ready to help <span>· {role}</span></p></span>
         </div>
@@ -289,7 +327,7 @@ export default function AIChatPage() {
           <input ref={fileRef} hidden type="file" multiple onChange={attach} />
           <input ref={documentRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={attach} />
           <textarea ref={textareaRef} rows="1" value={draft} disabled={conversationLoading} maxLength={12000} aria-label="Message ESY AI" onFocus={() => { stickToBottomRef.current = true; requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' })) }} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'ESY AI is responding...' : 'Message ESY AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
-          <div className="ai-composer-actions"><button className="ai-send-button" aria-label="Send message" disabled={busy || uploading || (!draft.trim() && !attachments.length)}>{busy ? <span className="ai-send-loader" /> : <Send />}</button></div>
+          <div className="ai-composer-actions"><button type="button" className="ai-composer-tool" aria-label="Attach an image for visual search" title="Search with an image" disabled={uploading || busy} onClick={() => imageRef.current?.click()}><Image /></button><button type="button" className={`ai-composer-tool ${voiceListening ? 'is-listening' : ''}`} aria-label={voiceListening ? 'Listening' : 'Dictate message'} title="Voice input" disabled={busy} onClick={startVoiceMessage}>{voiceListening ? <span className="ai-send-loader" /> : <Mic />}</button><button className="ai-send-button" aria-label="Send message" disabled={busy || uploading || (!draft.trim() && !attachments.length)}>{busy ? <span className="ai-send-loader" /> : <Send />}</button></div>
         </form>
         <small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small>
       </div>

@@ -4,9 +4,12 @@ import GlobalTradeResearchService from './global-trade-research.service.js';
 import MarketInsightsRepository from '../repositories/market-insights.repository.js';
 import SavedResearchReport from '../models/SavedResearchReport.js';
 import { getAISearchResults, getSearchTerms } from '../lib/ai-marketplace-context.js';
+import { buildMarketInsightPdf } from '../lib/market-insight-pdf.js';
 
 const cache = new Map();
 const CACHE_TTL = Number(process.env.MARKET_RESEARCH_CACHE_TTL_MS || 15 * 60 * 1000);
+const REPORT_REUSE_TTL = Number(process.env.MARKET_RESEARCH_REUSE_TTL_MS || 24 * 60 * 60 * 1000);
+const REPORT_VERSION = '2.0';
 const WEB_URL = String(process.env.PUBLIC_WEB_URL || 'https://esyglob.in').replace(/\/$/, '');
 const absolute = path => `${WEB_URL}${path}`;
 
@@ -42,6 +45,20 @@ function fmtUsd(value) {
   return `$${Math.round(amount).toLocaleString('en-US')}`;
 }
 
+function reportLinks(report, id) {
+  const reportId = String(id);
+  return {
+    ...report,
+    savedReportId: reportId,
+    reportId: report.id || reportId,
+    reportVersion: report.reportVersion || REPORT_VERSION,
+    status: 'ready',
+    pdfStatus: 'ready',
+    pdfUrl: `/api/market-insights/reports/${reportId}/pdf`,
+    downloadUrl: `/api/market-insights/reports/${reportId}/pdf?download=1`,
+  };
+}
+
 class MarketResearchService {
   static emit(emit, startedAt, event) { emit({ elapsedMs: Date.now() - startedAt, timestamp: new Date().toISOString(), ...event }); }
   static step(emit, startedAt, agent, operation, progress, status = 'success', sourceCount = 0, datasetsCollected = 0) { this.emit(emit, startedAt, { type: 'step', agent, operation, progress, status, sourceCount, datasetsCollected }); }
@@ -50,13 +67,36 @@ class MarketResearchService {
     const startedAt = Date.now();
     const researchQuery = String(query || [productName, category, country].filter(Boolean).join(' ')).trim();
     if (researchQuery.length < 2) throw Object.assign(new Error('Research request is required'), { statusCode: 400 });
-    const cacheKey = crypto.createHash('sha256').update(JSON.stringify({ userId: String(userId), researchQuery, mode, country, category })).digest('hex');
+    const queryHash = crypto.createHash('sha256').update(JSON.stringify({
+      researchQuery: researchQuery.toLowerCase(),
+      productName: String(productName).trim().toLowerCase(),
+      mode,
+      country: String(country).trim().toLowerCase(),
+      category: String(category).trim().toLowerCase(),
+      reportVersion: REPORT_VERSION,
+    })).digest('hex');
+    const cacheKey = `${userId}:${queryHash}`;
     const cached = cache.get(cacheKey);
     if (cached && Date.now() - cached.createdAt < CACHE_TTL) {
       this.emit(emit, startedAt, { type: 'research_started', researchId: cached.report.id, cached: true, progress: 2 });
       cached.report.sections?.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', index, section, progress: 90 }));
       this.emit(emit, startedAt, { type: 'report', report: cached.report, progress: 100 });
       return cached.report;
+    }
+    const reusable = await SavedResearchReport.findOne({
+      userId,
+      queryHash,
+      status: 'active',
+      pdfStatus: 'ready',
+      createdAt: { $gte: new Date(Date.now() - REPORT_REUSE_TTL) },
+    }).select('reportData reportVersion createdAt').sort({ createdAt: -1 }).lean();
+    if (reusable?.reportData) {
+      const report = reportLinks(reusable.reportData, reusable._id);
+      this.emit(emit, startedAt, { type: 'research_started', researchId: report.id, cached: true, persisted: true, progress: 5 });
+      this.step(emit, startedAt, 'Research Library', 'A current matching report was found and reused', 92, 'success', report.sourceCount, report.datasetsCollected);
+      this.emit(emit, startedAt, { type: 'report', report, cached: true, progress: 100 });
+      cache.set(cacheKey, { createdAt: Date.now(), report });
+      return report;
     }
 
     const researchId = `research-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -87,10 +127,19 @@ class MarketResearchService {
     this.step(emit, startedAt, 'Trade Analyst', 'Synthesizing evidence and recommendations', 78, 'running', global.sources.length, 3);
     let ai = null; let generated = null;
     try {
-      ai = await AIChatService.callOllama(`Use only this evidence. Return concise JSON {"summary":"max 45 words","insights":["max 18 words"],"recommendations":["max 18 words"],"risks":["max 18 words"]}. Use 3 insights, 3 actions, 2 risks. State macro scope and missing HS evidence. ${JSON.stringify(evidence).slice(0, 2200)}`, [], 'You are an evidence-first international trade analyst. Never invent statistics, tariffs, companies or sources.', { maxTokens: 240, temperature: 0.1, timeoutMs: 55000, jsonMode: true });
+      ai = await AIChatService.callOllama(`Use only the supplied evidence. Return valid JSON with {"summary":"90-140 word executive summary","insights":["5 concise evidence-based findings"],"trends":["4 market trends"],"opportunities":["4 commercially useful opportunities"],"recommendations":["5 practical actions"],"risks":["4 material risks"],"outlook":"60-100 word future outlook","conclusion":"40-70 word conclusion"}. Clearly distinguish product-level evidence from macro context and explicitly disclose missing HS, market-size, CAGR, pricing or tariff data. Never invent figures, companies or sources. Evidence: ${JSON.stringify(evidence).slice(0, 5200)}`, [], 'You are a senior evidence-first international trade and market intelligence analyst. Be comprehensive, decision-oriented and precise. Never convert macro totals into product market size.', { maxTokens: 1100, temperature: 0.12, timeoutMs: 65000, jsonMode: true });
       generated = extractJson(ai.message);
     } catch { /* deterministic evidence report remains available */ }
-    generated ||= { summary: `This report prioritizes connected official trade indicators for ${productName || researchQuery}. Product-level customs statistics are ${global.officialProductRows.length ? 'available for the supplied HS code' : 'not verified'}, so macro indicators are clearly separated from EsyGlob marketplace opportunities.`, insights: ['Macro trade indicators describe total goods and services, not this product.', global.hsCode ? `HS ${global.hsCode} was used for the connected customs query.` : 'Provide a verified HS code for product-level customs analysis.', 'Commercial pricing and freight require current supplier or carrier quotations.'], recommendations: ['Confirm the HS classification with a licensed customs professional.', 'Validate destination tariffs and certifications before contracting.', 'Request comparable landed-cost quotations from shortlisted suppliers.'], risks: ['Using macro trade totals as product demand would be misleading.', 'Tariffs and compliance requirements can change by classification and origin.'] };
+    generated ||= {
+      summary: `This report evaluates ${productName || researchQuery} using connected official trade indicators, recent public research records and live EsyGlob marketplace signals. ${global.officialProductRows.length ? `Product-level records associated with HS ${global.hsCode} are presented separately.` : 'A verified HS classification was not available, so no product market size, CAGR or product trade total is claimed.'} The analysis focuses on evidence quality, supply and demand signals, commercial validation steps and practical market-entry decisions.`,
+      insights: ['Macro trade indicators describe total goods and services, not this product.', global.hsCode ? `HS ${global.hsCode} was used for the connected customs query.` : 'A verified HS classification is required for defensible product-level customs analysis.', `${marketplaceMetrics.productCount} matching marketplace products and ${marketplaceMetrics.supplierCount} suppliers were identified.`, 'Commercial prices, freight and duties require current quotations and destination-specific verification.', 'Marketplace activity is a platform signal and not a substitute for total market size.'],
+      trends: ['Buyers increasingly require traceable compliance and supplier-verification evidence.', 'Flexible MOQ and sampling can reduce entry risk in unfamiliar markets.', 'Landed-cost transparency is becoming central to supplier comparison.', 'Digital sourcing signals should be validated against primary customs and industry datasets.'],
+      opportunities: ['Shortlist verified suppliers that can provide comparable specifications and documentation.', 'Use active RFQ signals to validate buyer language, quantities and delivery expectations.', 'Prioritize markets where compliance requirements and logistics can be verified before contracting.', 'Differentiate offers through responsive quotations, sample readiness and clear landed-cost assumptions.'],
+      recommendations: ['Confirm the HS classification with a licensed customs professional.', 'Validate destination tariffs and certifications before contracting.', 'Request comparable landed-cost quotations from shortlisted suppliers.', 'Run supplier due diligence before samples, deposits or production commitments.', 'Refresh primary-source data immediately before a material trade decision.'],
+      risks: ['Using macro trade totals as product demand would be misleading.', 'Tariffs and compliance requirements can change by classification and origin.', 'Marketplace listing prices may exclude freight, tax, tooling and customization.', 'Unverified supplier claims can create quality, delivery and payment exposure.'],
+      outlook: 'Future opportunity depends on verified product classification, buyer-specific demand validation and supplier execution capability. Businesses that combine primary-source trade research with live RFQs, documented compliance and disciplined landed-cost comparisons will be better positioned to identify defensible opportunities.',
+      conclusion: 'Use this report as a structured research starting point. Confirm classification, regulation, pricing, logistics and counterparty evidence before committing commercial resources.',
+    };
 
     const globalTables = [
       ...(global.officialProductRows.length ? [{ title: `Verified product trade — HS ${global.hsCode}`, columns: ['rank', 'reporter', 'partner', 'hsCode', 'flow', 'reportYear', 'sourceDataYear', 'valueUsd'], rows: global.officialProductRows.slice(0, 5).map(row => ({ ...row, reportYear: 2026, sourceDataYear: row.period })) }] : []),
@@ -101,12 +150,36 @@ class MarketResearchService {
     const charts = [
       { type: 'bar', title: 'Macro import market comparison', data: global.macroImports.slice(0, 6).map(row => ({ label: row.country, value: row.valueUsd })) },
       { type: 'bar', title: 'Macro export market comparison', data: global.macroExports.slice(0, 6).map(row => ({ label: row.country, value: row.valueUsd })) },
+      { type: 'bar', title: 'EsyGlob marketplace activity signals', data: [
+        { label: 'Matching products', value: marketplaceMetrics.productCount || 0 },
+        { label: 'Suppliers', value: marketplaceMetrics.supplierCount || 0 },
+        { label: 'Verified suppliers', value: marketplaceMetrics.verifiedSupplierCount || 0 },
+        { label: 'Active RFQs', value: marketplaceMetrics.rfqCount || 0 },
+        { label: 'Quotations', value: marketplaceMetrics.quotationCount || 0 },
+        { label: 'Orders', value: marketplaceMetrics.orderCount || 0 },
+      ] },
     ];
+    const topImportMarkets = global.macroImports.slice(0, 3).map(row => row.country).filter(Boolean);
+    const topExportMarkets = global.macroExports.slice(0, 3).map(row => row.country).filter(Boolean);
+    const priceSummary = marketplaceMetrics.averagePrice
+      ? `The average listed marketplace price among matching records is approximately ${fmtUsd(marketplaceMetrics.averagePrice)}. This is a listing signal, not a transaction benchmark or landed cost.`
+      : 'No defensible average marketplace price was available. Obtain normalized quotations using identical specifications, quantities, Incoterms and delivery destinations.';
     const sections = [
-      { type: 'trade', title: 'Research scope & product classification', summary: global.hsCode ? `HS code ${global.hsCode} was used for the connected UN Comtrade query. Classification status: ${global.hsResolution?.status || 'unverified'}. Destination-customs confirmation remains necessary.` : 'No verifiable HS code was supplied or matched. The report does not guess a classification, tariff, or product-level trade value.', points: generated.insights || [], confidence: global.hsResolution?.selected ? 92 : global.hsCode ? 72 : 60, evidenceType: 'official-data-and-analysis' },
-      { type: 'trade', title: 'Global trade intelligence', summary: 'World Bank country rankings use official aggregate imports and exports of goods and services as macroeconomic context. They are not represented as product market size.', points: [`Top 5 of ${global.macroImports.length} reviewed import markets and ${global.macroExports.length} export markets are presented.`, global.target ? `Target-country indicators were matched for ${global.target.name}.` : 'No target-country record was selected.'], confidence: 92, evidenceType: 'official-data' },
+      { type: 'overview', title: 'Market Overview & Research Scope', summary: global.hsCode ? `The research covers ${productName || researchQuery} with HS ${global.hsCode} used for connected customs queries. Classification status is ${global.hsResolution?.status || 'unverified'} and must still be confirmed for the exact product specification and destination.` : `The research covers ${productName || researchQuery}, but no defensible HS classification was available. Product-level market size, CAGR, tariffs and customs totals are therefore not estimated.`, points: generated.insights || [], confidence: global.hsResolution?.selected ? 92 : global.hsCode ? 72 : 60, evidenceType: 'official-data-and-analysis' },
+      { type: 'market-size', title: 'Market Size, Growth & CAGR', summary: global.officialProductRows.length ? `Connected product-level customs rows for HS ${global.hsCode} are included in the supporting tables. The available period coverage is insufficient to present a verified global market-size forecast or CAGR without additional longitudinal industry data.` : 'A verified product market size and CAGR are not available from the connected evidence. Macro import and export indicators are presented only as country-level trade capacity context.', points: ['Do not use displayed macro totals as product revenue or demand.', 'Connect a product-specific time series before publishing market-size or CAGR claims.', `The report compares ${global.macroImports.length} macro import markets and ${global.macroExports.length} macro export markets.`], confidence: global.officialProductRows.length ? 76 : 58, evidenceType: 'scope-controlled-analysis' },
+      { type: 'demand', title: 'Demand Analysis', summary: `Demand evidence combines ${marketplaceMetrics.rfqCount || 0} active EsyGlob RFQ signals, marketplace engagement and connected country indicators. These signals indicate sourcing activity but do not represent the entire addressable market.`, points: [`Target market: ${global.target?.name || country || 'Global / not specified'}.`, topImportMarkets.length ? `Leading macro import contexts displayed: ${topImportMarkets.join(', ')}.` : 'No connected macro import ranking was available.', 'Validate buyer segments through interviews, RFQ specifications and repeat-order evidence.'], confidence: 78, evidenceType: 'marketplace-and-official-context' },
+      { type: 'supply', title: 'Supply & Production Landscape', summary: `EsyGlob returned ${marketplaceMetrics.productCount || 0} matching products from ${marketplaceMetrics.supplierCount || 0} suppliers, including ${marketplaceMetrics.verifiedSupplierCount || 0} verified suppliers.`, points: [topExportMarkets.length ? `Leading macro export contexts displayed: ${topExportMarkets.join(', ')}.` : 'No connected macro export ranking was available.', `Average MOQ signal: ${marketplaceMetrics.averageMoq ? Math.round(marketplaceMetrics.averageMoq).toLocaleString('en-US') : 'not available'}.`, 'Factory capacity, quality systems and export history require document and site-level verification.'], confidence: 80, evidenceType: 'marketplace-and-official-context' },
+      { type: 'pricing', title: 'Price & Commercial Analysis', summary: priceSummary, points: [`Average quotation signal: ${marketplaceMetrics.averageQuotationPrice ? fmtUsd(marketplaceMetrics.averageQuotationPrice) : 'not available'}.`, `Average lead-time signal: ${marketplaceMetrics.averageLeadTime ? `${Math.round(marketplaceMetrics.averageLeadTime)} days` : 'not available'}.`, 'Normalize currency, unit, material grade, quality level, packaging, tooling, tax, freight and payment terms before comparing offers.'], confidence: marketplaceMetrics.averagePrice ? 72 : 55, evidenceType: 'marketplace-analysis' },
+      { type: 'trade', title: 'Import, Export & Regional Insights', summary: 'World Bank country rankings provide official aggregate imports and exports of goods and services as macroeconomic context. Product-level customs rows are shown separately when a valid HS query returned data.', points: [`Top ${Math.min(5, global.macroImports.length)} import and ${Math.min(5, global.macroExports.length)} export contexts are included in the report tables.`, global.target ? `Target-country indicators were matched for ${global.target.name}.` : 'No target-country record was selected.', 'Review source year and scope before comparing countries.'], confidence: 92, evidenceType: 'official-data' },
+      { type: 'competition', title: 'Competitive Landscape & Major Participants', summary: 'Competitive intensity is assessed from live marketplace supply, supplier verification and public research records. The report does not label companies as market leaders without a verifiable market-share source.', points: [`${results.suppliers.length || 0} related suppliers are included as sourcing candidates, not ranked market leaders.`, `${results.products.length || 0} related product listings provide specification and pricing reference points.`, 'Compare certification scope, production capacity, lead time, MOQ, export experience and buyer reviews.'], confidence: 75, evidenceType: 'marketplace-analysis' },
       ...(global.publicArticles.length ? [{ type: 'narrative', title: 'Recent market & industry reading', summary: 'Recent public records are provided as a research reading list. Their headlines are not treated as verified statistics without primary-source confirmation.', points: [`${global.publicArticles.length} unique records were retained from targeted searches.`, 'Open the source links to evaluate methodology, publication date and primary evidence.'], confidence: 70, evidenceType: 'public-market-data' }] : []),
-      { type: 'strategy', title: 'Regulation, pricing & logistics validation', summary: 'Exact tariffs, non-tariff measures, certifications, freight and landed costs depend on HS classification, origin, destination and shipment terms.', points: ['Verify applied and preferential duties in the destination customs or WTO tariff portal.', 'Obtain current freight, insurance and customs-broker quotations.', 'Confirm product standards and documentary requirements with the competent authority.'], confidence: 88, evidenceType: 'official-reference-and-analysis' },
+      { type: 'trends', title: 'Key Trends & Emerging Opportunities', summary: 'The following themes translate the available evidence into testable commercial hypotheses rather than unsupported forecasts.', points: [...(generated.trends || []), ...(generated.opportunities || [])].slice(0, 8), confidence: 70, evidenceType: 'ai-assisted-analysis' },
+      { type: 'swot', title: 'SWOT Analysis', summary: 'A decision framework based on evidence coverage and marketplace conditions.', points: [`Strength - Access to ${marketplaceMetrics.supplierCount || 0} matching suppliers and ${marketplaceMetrics.verifiedSupplierCount || 0} verified profiles.`, `Weakness - ${global.hsCode ? 'Product classification still requires destination confirmation.' : 'No verified HS classification or product-level market-size series.'}`, `Opportunity - ${(generated.opportunities || [])[0] || 'Validate demand through targeted RFQs and comparable supplier quotations.'}`, `Threat - ${(generated.risks || [])[0] || 'Regulatory, quality, logistics and counterparty conditions can change landed economics.'}`], confidence: 72, evidenceType: 'analyst-framework' },
+      ...(mode !== 'country_rd' ? [{ type: 'forces', title: "Porter's Five Forces", summary: 'Indicative competitive-force assessment; validate with product-specific market-share, buyer concentration and capacity data.', points: ['Supplier power - rises when compliant production capacity or certified inputs are concentrated.', 'Buyer power - rises when specifications are standardized and comparable suppliers are abundant.', 'New entrants - face compliance, working-capital, tooling and trust-building barriers.', 'Substitutes - depend on performance, regulation and total-cost alternatives.', 'Rivalry - should be tested through normalized quotes, service levels and differentiation evidence.'], confidence: 62, evidenceType: 'strategic-framework' }] : []),
+      { type: 'value-chain', title: 'Value Chain, Logistics & Compliance', summary: 'The commercial value chain runs from specification and supplier qualification through production, inspection, export documentation, freight, customs, delivery and after-sales support.', points: ['Confirm specification, HS classification and applicable standards before quotation comparison.', 'Audit supplier capacity, quality controls, traceability and subcontracting exposure.', 'Obtain current freight, insurance, tax and customs-broker quotations.', 'Define inspection, payment protection, delivery acceptance and dispute milestones.'], confidence: 86, evidenceType: 'official-reference-and-analysis' },
+      { type: 'risks', title: 'Market Challenges & Risk Factors', summary: 'Material risks are stated separately so they can be assigned controls before market entry or sourcing commitment.', points: generated.risks || [], confidence: 84, evidenceType: 'evidence-and-risk-analysis' },
+      { type: 'outlook', title: 'Future Outlook & AI Recommendations', summary: generated.outlook || 'Future opportunity depends on validated classification, demand evidence and execution capability.', points: generated.recommendations || [], confidence: 72, evidenceType: 'ai-assisted-analysis' },
+      { type: 'conclusion', title: 'Conclusion', summary: generated.conclusion || 'Use the findings as a structured starting point and verify all material commercial and regulatory assumptions with primary evidence.', points: ['Prioritize validation tasks that can materially change landed cost, compliance or supplier risk.', 'Refresh the report when classifications, regulations, quotations or marketplace conditions change.'], confidence: 82, evidenceType: 'analyst-conclusion' },
     ];
     const marketplaceSection = {
       title: 'Related Opportunities on Esyglob',
@@ -122,6 +195,10 @@ class MarketResearchService {
     const report = {
       id: researchId, reportType: mode, query: researchQuery, title: `${productName || researchQuery} — Global Trade Intelligence`, executiveSummary: generated.summary,
       reportYear: 2026,
+      productName: productName || researchQuery,
+      country,
+      category,
+      reportVersion: REPORT_VERSION,
       kpis: [
         { label: 'Official sources', value: connectedSources, trend: 'stable', note: 'Connected datasets with returned data' },
         { label: 'HS status', value: global.hsCode || 'Unverified', trend: 'stable', note: global.hsCode ? 'User-supplied classification' : 'Needed for product-level trade' },
@@ -130,15 +207,50 @@ class MarketResearchService {
       ],
       sections, charts, tables: globalTables, recommendations: (generated.recommendations || []).slice(0, 4), risks: (generated.risks || []).slice(0, 3).map((reason, index) => ({ label: `Research risk ${index + 1}`, level: 'medium', reason: String(reason) })),
       sources: [...global.sources, ...marketplaceSources], dataGaps: global.gaps, dataIntegrityNotes: global.gaps, marketplaceSection,
-      model: ai?.model || process.env.OLLAMA_MODEL || 'qwen2.5:3b', provider: ai?.provider || 'deterministic-evidence', sourceCount: global.sources.length + 1, datasetsCollected: 3, createdAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+      model: ai?.model || process.env.OLLAMA_MODEL || 'qwen2.5:3b', provider: ai?.provider || 'deterministic-evidence', generatedBy: 'EsyGlob AI', platformName: 'EsyGlob', sourceCount: global.sources.length + 1, datasetsCollected: 3, createdAt: new Date().toISOString(), generatedAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
     };
-    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', section, index, progress: 82 + index * 3, sourceCount: report.sourceCount, datasetsCollected: 3 }));
+    report.title = `${productName || researchQuery} - Global Market Intelligence`;
+    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', section, index, progress: 82 + Math.floor(index * 11 / Math.max(1, sections.length)), sourceCount: report.sourceCount, datasetsCollected: 3 }));
     this.step(emit, startedAt, 'Evidence Review', 'Validating provenance, scope labels and data gaps', 94, 'success', report.sourceCount, 3);
-    const saved = await SavedResearchReport.create({ userId, roleContext: roleContext(session), reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd', title: report.title, productName, country, query: researchQuery, reportData: report });
-    report.savedReportId = String(saved._id); cache.set(cacheKey, { createdAt: Date.now(), report });
-    this.step(emit, startedAt, 'Report Generator', 'Professional global trade report completed', 98, 'success', report.sourceCount, 3);
-    this.emit(emit, startedAt, { type: 'report', report, progress: 100, sourceCount: report.sourceCount, datasetsCollected: 3 });
-    return report;
+    this.step(emit, startedAt, 'PDF Designer', 'Designing cover, contents, charts, tables and report pages', 96, 'running', report.sourceCount, 3);
+    const saved = new SavedResearchReport({
+      userId,
+      roleContext: roleContext(session),
+      reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd',
+      title: report.title,
+      productName,
+      country,
+      query: researchQuery,
+      queryHash,
+      reportVersion: REPORT_VERSION,
+      reportData: report,
+      pdfStatus: 'pending',
+      lastOpenedAt: new Date(),
+    });
+    report.savedReportId = String(saved._id);
+    const completedReport = reportLinks(report, saved._id);
+    try {
+      saved.pdfData = await buildMarketInsightPdf(completedReport, {
+        reportId: completedReport.reportId,
+        generatedAt: completedReport.generatedAt,
+        query: researchQuery,
+        reportVersion: REPORT_VERSION,
+      });
+      saved.pdfStatus = 'ready';
+      saved.pdfGeneratedAt = new Date();
+      saved.reportData = completedReport;
+      await saved.save();
+    } catch (error) {
+      saved.pdfStatus = 'failed';
+      saved.pdfError = String(error.message || error).slice(0, 500);
+      saved.reportData = report;
+      await saved.save().catch(() => undefined);
+      throw Object.assign(new Error('The market analysis completed, but the PDF report could not be prepared. Please retry.'), { cause: error });
+    }
+    cache.set(cacheKey, { createdAt: Date.now(), report: completedReport });
+    this.step(emit, startedAt, 'Report Generator', 'Professional market intelligence PDF completed and saved', 99, 'success', report.sourceCount, 3);
+    this.emit(emit, startedAt, { type: 'report', report: completedReport, progress: 100, sourceCount: report.sourceCount, datasetsCollected: 3 });
+    return completedReport;
   }
 }
 

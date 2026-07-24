@@ -1,11 +1,12 @@
 // pages/CategoriesPage.jsx
-import { Search, Package, Truck, Zap, Grid3X3, ChevronRight } from 'lucide-react';
+import { Package, Truck, Zap, Grid3X3, ChevronRight } from 'lucide-react';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '../components/AppShell';
 import { SafeImage } from '../components/MarketplaceCards';
 import { fetchCategories } from '../api/marketplace';
 import useAsyncData from '../hooks/useAsyncData';
+import UnifiedSearchInput from '../components/UnifiedSearchInput';
 
 export default function CategoriesPage() {
   const query = useAsyncData(fetchCategories);
@@ -93,11 +94,7 @@ export default function CategoriesPage() {
 
         <main ref={mainRef} className="flex-1 overflow-y-auto scrollbar-hide">
           <div className="p-3">
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm">
-              <Search size={15} className="text-gray-400 flex-shrink-0" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search categories..." className="flex-1 border-0 bg-transparent text-[12px] focus:outline-none" />
-              {search && <button onClick={() => setSearch('')} className="text-[10px] font-semibold text-blue-600">Clear</button>}
-            </div>
+            <UnifiedSearchInput className="mb-3" compact value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search categories and subcategories…" />
 
             <div className="mb-3 flex items-center justify-between rounded-xl bg-gradient-to-br from-indigo-950 to-blue-950 p-3 text-white">
               <div className="flex-1">
@@ -156,11 +153,7 @@ export default function CategoriesPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           
           {/* Search Bar */}
-          <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm max-w-xl">
-            <Search size={18} className="text-gray-400 flex-shrink-0" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search categories..." className="flex-1 border-0 bg-transparent text-sm focus:outline-none" />
-            {search && <button onClick={() => setSearch('')} className="text-xs font-semibold text-blue-600">Clear</button>}
-          </div>
+          <UnifiedSearchInput className="mb-4 max-w-xl" value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search categories and subcategories…" />
 
           {/* Content Row */}
           <div className="flex gap-5 lg:gap-6">

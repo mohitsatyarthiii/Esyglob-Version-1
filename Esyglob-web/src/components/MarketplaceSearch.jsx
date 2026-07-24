@@ -1,20 +1,22 @@
-import { Search } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import UnifiedSearchInput from './UnifiedSearchInput'
 
 export default function MarketplaceSearch({ className = '' }) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
 
-  function submitSearch(event) {
-    event.preventDefault()
-    const value = query.trim()
+  function submitSearch(value) {
     navigate(value ? `/search?q=${encodeURIComponent(value)}` : '/search')
   }
 
-  return <form className={`header-search ${className}`.trim()} onSubmit={submitSearch} role="search">
-    <Search />
-    <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search products, suppliers and categories" aria-label="Search marketplace" />
-    <button>Search</button>
-  </form>
+  return <UnifiedSearchInput
+    className={`header-search ${className}`.trim()}
+    value={query}
+    onChange={setQuery}
+    onSubmit={submitSearch}
+    placeholder="Search products, manufacturers, services and categories"
+    ariaLabel="Search marketplace"
+    showSubmit
+  />
 }

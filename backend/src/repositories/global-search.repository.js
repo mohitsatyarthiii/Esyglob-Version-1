@@ -41,13 +41,35 @@ class GlobalSearchRepository {
   /**
    * Search products using aggregation
    */
-  static async searchProducts(regex, limit = 16, textQuery = null) {
+  static async searchProducts(regex, limit = 16) {
+    const matchingSellers = await Seller.find({
+      isActive: true,
+      isSuspended: { $ne: true },
+      $or: [
+        { companyName: { $regex: regex, $options: 'i' } },
+        { companyDescription: { $regex: regex, $options: 'i' } },
+        { productCategories: { $regex: regex, $options: 'i' } },
+        { mainProducts: { $regex: regex, $options: 'i' } },
+        { industries: { $regex: regex, $options: 'i' } },
+      ],
+    }).select('_id').limit(limit * 3).lean();
+
+    const matchingSellerIds = matchingSellers.map((seller) => seller._id);
     return Product.aggregate([
       {
         $match: {
           status: { $in: ['active', 'published'] },
-          isVerifiedSeller: true,
-          ...(textQuery ? { $text: textQuery } : { name: { $regex: regex, $options: 'i' } }),
+          visibility: { $ne: 'private' },
+          $or: [
+            { name: { $regex: regex, $options: 'i' } },
+            { category: { $regex: regex, $options: 'i' } },
+            { subcategory: { $regex: regex, $options: 'i' } },
+            { brand: { $regex: regex, $options: 'i' } },
+            { countryOfOrigin: { $regex: regex, $options: 'i' } },
+            { tags: { $regex: regex, $options: 'i' } },
+            { description: { $regex: regex, $options: 'i' } },
+            ...(matchingSellerIds.length ? [{ sellerId: { $in: matchingSellerIds } }] : []),
+          ],
         },
       },
       { $sort: { averageRating: -1, totalOrders: -1, createdAt: -1 } },
@@ -66,6 +88,8 @@ class GlobalSearchRepository {
                 isTrustedSeller: 1,
                 address: 1,
                 companyType: 1,
+                rating: 1,
+                trustScore: 1,
               },
             },
           ],
@@ -87,6 +111,7 @@ class GlobalSearchRepository {
           description: 1,
           averageRating: 1,
           totalOrders: 1,
+          isVerifiedSeller: 1,
           sellerId: '$seller',
         },
       },
@@ -96,13 +121,25 @@ class GlobalSearchRepository {
   /**
    * Search suppliers
    */
-  static async searchSuppliers(regex, limit = 16, textQuery = null) {
+  static async searchSuppliers(regex, limit = 16) {
     return Seller.find({
       isActive: true,
       isSuspended: { $ne: true },
-      ...(textQuery ? { $text: textQuery } : { companyName: { $regex: regex, $options: 'i' } }),
+      $or: [
+        { companyName: { $regex: regex, $options: 'i' } },
+        { companyDescription: { $regex: regex, $options: 'i' } },
+        { companyType: { $regex: regex, $options: 'i' } },
+        { productCategories: { $regex: regex, $options: 'i' } },
+        { productSubcategories: { $regex: regex, $options: 'i' } },
+        { mainProducts: { $regex: regex, $options: 'i' } },
+        { industries: { $regex: regex, $options: 'i' } },
+        { exportMarkets: { $regex: regex, $options: 'i' } },
+        { 'address.city': { $regex: regex, $options: 'i' } },
+        { 'address.state': { $regex: regex, $options: 'i' } },
+        { 'address.country': { $regex: regex, $options: 'i' } },
+      ],
     })
-      .select('companyName companyType companyDescription address isVerified isTrustedSeller trustScore rating productCategories exportMarkets logo logoUrl companyLogo')
+      .select('companyName companyType companyDescription address isVerified isTrustedSeller trustScore rating productCategories productSubcategories exportMarkets industries mainProducts logo logoUrl companyLogo')
       .sort({ isTrustedSeller: -1, isVerified: -1, trustScore: -1, rating: -1 })
       .limit(limit * 2)
       .lean();
@@ -111,10 +148,15 @@ class GlobalSearchRepository {
   /**
    * Search categories
    */
-  static async searchCategories(regex, limit = 8, textQuery = null) {
+  static async searchCategories(regex, limit = 8) {
     return Category.find({
       isActive: true,
-      ...(textQuery ? { $text: textQuery } : { name: { $regex: regex, $options: 'i' } }),
+      $or: [
+        { name: { $regex: regex, $options: 'i' } },
+        { slug: { $regex: regex, $options: 'i' } },
+        { description: { $regex: regex, $options: 'i' } },
+        { 'metadata.keywords': { $regex: regex, $options: 'i' } },
+      ],
     })
       .select('name slug description image metadata')
       .sort({ 'metadata.isFeatured': -1, 'metadata.sortOrder': 1, name: 1 })

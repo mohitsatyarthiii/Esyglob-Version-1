@@ -74,6 +74,52 @@ export async function deleteAIChat(chatId) { return unwrapData(await apiRequest(
 
 export async function fetchMarketInsights() { return unwrapData(await apiRequest('/market-insights', { cache: false })) || {} }
 export async function fetchMarketReports() { return normalizeList(await apiRequest('/market-insights/reports', { cache: false }), ['reports', 'items']) }
+export async function fetchMarketReport(reportId) {
+  const data = unwrapData(await apiRequest(`/market-insights/reports/${reportId}`, { cache: false })) || {}
+  return data.report || data
+}
+export async function streamMarketResearch(input, onEvent, signal) {
+  const response = await fetch(buildApiUrl('/market-insights/research/stream'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  })
+  if (!response.ok) {
+    const raw = await response.text().catch(() => '')
+    let payload = raw
+    try { payload = JSON.parse(raw) } catch { /* Keep plain-text server errors. */ }
+    throw new ApiError(payload?.error || payload?.message || `Request failed with status ${response.status}`, response.status, payload)
+  }
+  if (!response.body) throw new ApiError('Streaming report generation is not supported by this browser.', 0)
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const dispatch = (frame) => {
+    const data = frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
+    if (!data) return
+    try { onEvent(JSON.parse(data)) } catch { /* Ignore malformed heartbeat frames. */ }
+  }
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    const frames = buffer.split(/\r?\n\r?\n/)
+    buffer = frames.pop() || ''
+    frames.forEach(dispatch)
+    if (done) break
+  }
+  if (buffer.trim()) dispatch(buffer)
+}
+export function marketReportPdfUrl(reportId, download = false) {
+  return buildApiUrl(`/market-insights/reports/${reportId}/pdf`, download ? { download: 1 } : undefined)
+}
+export async function shareMarketReport(reportId) {
+  return unwrapData(await apiRequest(`/market-insights/reports/${reportId}/share`, { method: 'POST' })) || {}
+}
+export async function deleteMarketReport(reportId) {
+  return unwrapData(await apiRequest(`/market-insights/reports/${reportId}`, { method: 'DELETE' })) || {}
+}
 export async function generateMarketInsight(input) {
   const data = unwrapData(await apiRequest('/market-insights', { method: 'POST', body: input })) || {}
   return data.report || data

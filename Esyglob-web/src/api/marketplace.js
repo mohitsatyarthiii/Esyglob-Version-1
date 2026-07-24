@@ -81,13 +81,26 @@ export async function updateReview(input) {
   return unwrapData(await apiRequest('/reviews', { method: 'PUT', body: input })) || {}
 }
 
-export async function searchMarketplace(query) {
-  const payload = await apiRequest('/search', { query: { q: query, raw: true }, cacheTtlMs: 45_000 })
+export async function searchMarketplace(query, options = {}) {
+  const payload = await apiRequest('/search', { query: { q: query, raw: true, limit: options.limit }, cacheTtlMs: 45_000, signal: options.signal })
   return {
     products: normalizeList(payload, ['products']),
     sellers: normalizeList(payload, ['suppliers', 'sellers', 'manufacturers']),
     categories: normalizeList(payload, ['categories']),
+    subcategories: normalizeList(payload, ['subcategories']),
+    services: normalizeList(payload, ['services']),
+    rfqs: normalizeList(payload, ['rfqs']),
+    results: normalizeList(payload, ['results']),
   }
+}
+
+export async function fetchSearchSuggestions(query, options = {}) {
+  const payload = await apiRequest('/search', {
+    query: { q: query, limit: options.limit || 6 },
+    cacheTtlMs: 20_000,
+    signal: options.signal,
+  })
+  return normalizeList(payload, ['results']).slice(0, options.limit || 8)
 }
 
 export async function fetchServiceActivity() {

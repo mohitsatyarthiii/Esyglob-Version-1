@@ -1,6 +1,6 @@
 import {
   ArrowDownLeft, ArrowUpRight, Building2, CreditCard, Landmark, Plus,
-  RefreshCw, Search, ShieldCheck, Smartphone, Star, Trash2, WalletCards, X,
+  RefreshCw, ShieldCheck, Smartphone, Star, Trash2, WalletCards, X,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import {
@@ -13,6 +13,7 @@ import { PageHead } from '../components/PageHead'
 import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
+import UnifiedSearchInput from '../components/UnifiedSearchInput'
 
 export default function WalletPage() {
   const { user } = useAuth()
@@ -94,7 +95,7 @@ export default function WalletPage() {
         })}</div> : <div className="empty-results"><Landmark /><h2>No payment accounts</h2><p>Add a bank account or UPI ID. It stays pending until the provider confirms ownership.</p></div>}
       </section>
       <section className="module-panel">
-        <div className="compact-heading"><h2>Wallet activity</h2><div className="ledger-filters"><label><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search ledger" /></label><select value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All activity</option><option value="credit">Credits</option><option value="debit">Debits</option></select></div></div>
+        <div className="compact-heading"><h2>Wallet activity</h2><div className="ledger-filters"><UnifiedSearchInput compact suggestions={false} value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search ledger" /><select value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All activity</option><option value="credit">Credits</option><option value="debit">Debits</option></select></div></div>
         {activity.length ? <div className="wallet-ledger">{activity.map((item, index) => <article key={resolveId(item) || index}>
           <i className={item.direction === 'credit' ? 'credit' : 'debit'}>{item.direction === 'credit' ? <ArrowDownLeft /> : <ArrowUpRight />}</i>
           <div><b>{item.description || String(item.type || item.section).replaceAll('_', ' ')}</b><p>{item.reference || item.transactionNumber || item.paymentId || item.withdrawalNumber || 'Wallet activity'}</p></div>

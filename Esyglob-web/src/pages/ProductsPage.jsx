@@ -1,11 +1,12 @@
 // pages/ProductsPage.jsx
-import { Search, ChevronDown, X, Package, Grid3X3, Filter, ArrowUpDown, Check, Star } from 'lucide-react';
+import { ChevronDown, X, Package, Grid3X3, Filter, ArrowUpDown, Check, Star } from 'lucide-react';
 import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchProducts, fetchCategories } from '../api/marketplace';
 import AppShell from '../components/AppShell';
 import { ProductCard, SkeletonCards, SafeImage } from '../components/MarketplaceCards';
 import { PageHead } from '../components/PageHead';
+import UnifiedSearchInput from '../components/UnifiedSearchInput';
 import useAsyncData from '../hooks/useAsyncData';
 
 const SORT_OPTIONS = [
@@ -84,9 +85,8 @@ export default function ProductsPage() {
     return () => window.clearTimeout(timer);
   }, [q, search, updateParams]);
 
-  function submit(e) {
-    e.preventDefault();
-    updateParams({ q: search.trim() || '' });
+  function submit(value) {
+    updateParams({ q: value || '' });
   }
 
   function clearAllFilters() {
@@ -217,18 +217,7 @@ export default function ProductsPage() {
 
             {/* ─── Toolbar ──────────────────────────────────────── */}
             <div className="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
-              <form onSubmit={submit} className="flex flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm transition-all focus-within:border-blue-300 focus-within:shadow-md">
-                <Search size={16} className="text-gray-400 flex-shrink-0" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search products..."
-                  className="flex-1 border-0 bg-transparent text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none"
-                />
-                <button type="submit" className="hidden rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700 sm:block">
-                  Search
-                </button>
-              </form>
+              <UnifiedSearchInput className="products-unified-search" value={search} onChange={setSearch} onSubmit={submit} placeholder="Search products, brands, categories or suppliers" showSubmit />
 
               <div className="flex items-center gap-2">
                 <button

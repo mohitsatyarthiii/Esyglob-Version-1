@@ -1,4 +1,4 @@
-import { Download, FileSignature, Search, ShieldCheck } from 'lucide-react'
+import { Download, FileSignature, ShieldCheck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { fetchQuotations } from '../api/trade'
@@ -10,6 +10,7 @@ import useAsyncData from '../hooks/useAsyncData'
 import { getRealtimeClient } from '../realtime/socket'
 import { displayName, resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
+import UnifiedSearchInput from '../components/UnifiedSearchInput'
 
 const filters = ['signed', 'waiting', 'all']
 const finalStatuses = new Set(['buyer_accepted', 'final_quotation_pending', 'final_quotation_signed', 'won'])
@@ -27,7 +28,7 @@ export default function AgreementsPage() {
   const reloadAgreements = query.reload
   useEffect(() => { let socket; const refresh = () => reloadAgreements(); getRealtimeClient().then(client => { socket = client; client.on('quotation_updated', refresh) }).catch(() => {}); return () => socket?.off('quotation_updated', refresh) }, [reloadAgreements])
   const records = useMemo(() => (query.data || []).filter(hasFinalQuotation).filter(item => !selectedQuotation || resolveId(item) === selectedQuotation).filter(item => filter === 'all' || group(item) === filter).filter(item => !search || JSON.stringify(item).toLowerCase().includes(search.toLowerCase())), [filter, query.data, search, selectedQuotation])
-  return <AppShell><main className="container agreements-page"><header className="agreements-hero"><div><span className="eyebrow"><ShieldCheck /> Official signed records</span><h1>Signed Final Quotations</h1><p>Your executed Final Quotations are stored here as the permanent commercial agreement between Buyer and Seller.</p></div>{canSell && <div className="role-switch"><button className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>Buyer</button><button className={role === 'seller' ? 'active' : ''} onClick={() => setRole('seller')}>Seller</button></div>}</header><div className="agreements-toolbar"><label><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search number, product, buyer or seller" /></label><nav>{filters.map(value => <button className={filter === value ? 'active' : ''} onClick={() => setFilter(value)} key={value}>{label(value)}</button>)}</nav></div>{query.loading ? <TradeSkeleton /> : query.error ? <div className="inline-error">{query.error.message}</div> : records.length ? <div className="agreement-manager-grid">{records.map(item => <FinalQuotationCard item={item} role={role} key={resolveId(item)} />)}</div> : <div className="empty-results"><FileSignature /><h2>No Final Quotations in this view</h2><p>Fully signed records appear here automatically after both parties complete e-signing.</p></div>}</main></AppShell>
+  return <AppShell><main className="container agreements-page"><header className="agreements-hero"><div><span className="eyebrow"><ShieldCheck /> Official signed records</span><h1>Signed Final Quotations</h1><p>Your executed Final Quotations are stored here as the permanent commercial agreement between Buyer and Seller.</p></div>{canSell && <div className="role-switch"><button className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>Buyer</button><button className={role === 'seller' ? 'active' : ''} onClick={() => setRole('seller')}>Seller</button></div>}</header><div className="agreements-toolbar"><UnifiedSearchInput compact suggestions={false} value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search number, product, buyer or seller" /><nav>{filters.map(value => <button className={filter === value ? 'active' : ''} onClick={() => setFilter(value)} key={value}>{label(value)}</button>)}</nav></div>{query.loading ? <TradeSkeleton /> : query.error ? <div className="inline-error">{query.error.message}</div> : records.length ? <div className="agreement-manager-grid">{records.map(item => <FinalQuotationCard item={item} role={role} key={resolveId(item)} />)}</div> : <div className="empty-results"><FileSignature /><h2>No Final Quotations in this view</h2><p>Fully signed records appear here automatically after both parties complete e-signing.</p></div>}</main></AppShell>
 }
 
 function FinalQuotationCard({ item, role }) {
