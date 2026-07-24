@@ -1,23 +1,50 @@
-import { Award as Certificate, BadgeCheck, BarChart3, Building2, CalendarDays, CheckCircle2, Clock3, CreditCard, Factory, Globe2, Images, Mail, MapPin, MessageSquare, PackageCheck, Phone, Send, ShieldCheck, ShoppingBag, Star, Truck, Video } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import {
+  Award,
+  BadgeCheck,
+  BarChart3,
+  Building2,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  Download,
+  ExternalLink,
+  Factory,
+  FileCheck2,
+  Globe2,
+  Heart,
+  Images,
+  MapPin,
+  MessageSquare,
+  PackageCheck,
+  Play,
+  Send,
+  ShieldCheck,
+  ShoppingBag,
+  Star,
+  Users,
+  Video,
+} from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { fetchSellerDetails } from '../api/marketplace'
 import { resolveApiResourceUrl } from '../api/client'
+import { fetchSellerDetails } from '../api/marketplace'
 import { createChat } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
-import { ProductCard, SafeImage, SkeletonCards } from '../components/MarketplaceCards'
+import { SafeImage, SkeletonCards } from '../components/MarketplaceCards'
 import WishlistButton from '../components/WishlistButton'
 import useAsyncData from '../hooks/useAsyncData'
 
-const tabs = [
-  ['company', 'Company', Building2],
-  ['products', 'Products', PackageCheck],
-  ['factory', 'Factory', Factory],
-  ['trade', 'Trade', Globe2],
-  ['media', 'Media', Images],
-  ['certifications', 'Certs', Certificate],
-  ['reviews', 'Reviews', Star],
+const sectionLinks = [
+  ['overview', 'Overview'],
+  ['factory', 'Factory'],
+  ['capabilities', 'Capabilities'],
+  ['certifications', 'Certifications'],
+  ['products', 'Products'],
+  ['reviews', 'Reviews'],
+  ['media', 'Media'],
 ]
 
 export default function SellerDetailsPage() {
@@ -26,8 +53,8 @@ export default function SellerDetailsPage() {
   const { status } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [tab, setTab] = useState('company')
   const [busy, setBusy] = useState(false)
+  const [activeMedia, setActiveMedia] = useState(0)
 
   if (query.loading) return <AppShell><div className="listing-page container"><SkeletonCards count={3} variant="manufacturer" /></div></AppShell>
   if (query.error) return <AppShell><div className="listing-page container"><p className="inline-error">{query.error.message}</p></div></AppShell>
@@ -37,30 +64,45 @@ export default function SellerDetailsPage() {
   const factory = data.factoryProfile || {}
   const products = data.products || []
   const reviews = data.reviews || []
-  const name = seller.companyName || seller.businessName || seller.name || 'Supplier'
-  const verified = seller.isVerified || seller.verificationStatus === 'verified' || seller.verificationStatus === 'approved'
+  const name = seller.companyName || seller.businessName || seller.name || 'EsyGlob Supplier'
+  const verified = seller.isVerified || ['verified', 'approved'].includes(seller.verificationStatus)
+  const factoryVerified = ['verified', 'approved'].includes(factory.verificationStatus)
   const address = seller.address || {}
   const locationText = [address.city, address.state, address.country || seller.country].filter(Boolean).join(', ')
-  const fullAddress = [address.street, address.city, address.state, address.country || seller.country, address.pincode || address.zipCode].filter(Boolean).join(', ')
   const logo = seller.companyLogo || seller.logo || seller.logoUrl
-  const gallery = uniqueMedia([seller.coverImage, ...(seller.companyPhotos || []), ...(seller.factoryImages || []), ...(factory.images || [])])
-  const cover = seller.coverImage || gallery[0] || logo
+  const media = uniqueMedia([
+    seller.coverImage,
+    ...(seller.companyPhotos || []),
+    ...(factory.images || []),
+  ])
+  const cover = media[activeMedia] || logo
   const certifications = normalizeList(seller.certifications?.length ? seller.certifications : factory.certifications)
   const categories = normalizeList(seller.productCategories || seller.mainCategories)
+  const subcategories = normalizeList(seller.productSubcategories)
   const exportMarkets = normalizeList(seller.exportMarkets?.length ? seller.exportMarkets : factory.exportMarkets)
-  const capabilities = normalizeList(seller.businessCapabilities?.length ? seller.businessCapabilities : factory.capabilities)
-  const mainProducts = normalizeList(seller.mainProducts)
+  const capabilities = normalizeList(factory.capabilities || seller.businessCapabilities)
   const industries = normalizeList(seller.industries)
-  const companyVideos = uniqueMedia([...(seller.companyVideos || []), ...(factory.videos || [])])
-  const paymentMethods = normalizeList(seller.paymentMethods || seller.acceptedPaymentMethods)
-  const response = seller.responseRate !== undefined ? `${seller.responseRate}%` : '—'
-  const responseTime = seller.responseTime || (seller.averageResponseTimeHours ? `${seller.averageResponseTimeHours} hours` : '')
-  const establishedYear = seller.yearEstablished
-  const years = seller.yearsInBusiness || (establishedYear ? Math.max(0, new Date().getFullYear() - Number(establishedYear)) : '—')
-  const productCount = seller.totalProducts || seller.productCount || products.length
+  const mainProducts = normalizeList(seller.mainProducts)
+  const videos = uniqueMedia([...(seller.companyVideos || []), ...(factory.videos || [])])
+  const trade = seller.tradeCapabilities || {}
+  const shipping = seller.shippingInfo || {}
+  const establishedYear = Number(seller.yearEstablished || 0)
+  const years = seller.yearsInBusiness || (establishedYear ? Math.max(1, new Date().getFullYear() - establishedYear) : null)
+  const responseRate = seller.responseRate !== undefined ? `${seller.responseRate}%` : 'Not published'
+  const responseTime = seller.responseTime || (seller.averageResponseTimeHours ? `Within ${seller.averageResponseTimeHours}h` : 'Ask supplier')
+  const completedOrders = seller.totalOrders || seller.tradeHistorySummary?.completedOrders || 0
+  const repeatBuyerRate = seller.tradeHistorySummary?.repeatBuyerRate
+  const productCount = seller.totalProducts || products.length
   const reviewCount = seller.reviewCount || reviews.length
   const rating = Number(seller.rating || averageReviewRating(reviews) || 0)
-  const subscription = seller.subscriptionPlan && seller.subscriptionPlan !== 'free' ? String(seller.subscriptionPlan).replaceAll('_', ' ') : ''
+  const sampleProduct = products.find(product => product.sampleAvailable)
+  const trustItems = [
+    verified && 'Business identity verified',
+    factoryVerified && 'Factory profile verified',
+    certifications.some(cert => typeof cert === 'object' && cert.status === 'verified') && 'Documents verified',
+    trade.qualityAssurance && 'Quality process published',
+    seller.onTimeDeliveryRate && `${seller.onTimeDeliveryRate}% on-time delivery`,
+  ].filter(Boolean)
 
   async function contactSupplier() {
     if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname } })
@@ -77,232 +119,330 @@ export default function SellerDetailsPage() {
   }
 
   function requestQuote() {
-    const path = '/rfqs/new'
+    const target = '/rfqs/new'
     status === 'authenticated'
-      ? navigate(path, { state: { sellerUserId: seller.userId?._id || seller.userId, sellerId, supplierName: name } })
+      ? navigate(target, { state: { sellerUserId: seller.userId?._id || seller.userId, sellerId, supplierName: name } })
       : navigate('/login', { state: { from: location.pathname } })
   }
 
-  const visibleTabs = tabs
+  function orderSample() {
+    if (!sampleProduct) return scrollToSection('products')
+    const target = `/checkout?mode=sample&productId=${encodeURIComponent(sampleProduct._id || sampleProduct.id)}&quantity=1`
+    status === 'authenticated' ? navigate(target) : navigate('/login', { state: { from: location.pathname } })
+  }
 
-  return <AppShell><main className="manufacturer-page">
-    <div className="container manufacturer-shell">
-      <section className="manufacturer-hero">
-        <div className="manufacturer-cover">{cover ? <SafeImage src={cover} alt="" /> : <Factory />}</div>
-        <div className="manufacturer-identity">
-          <div className="manufacturer-logo-wrap">
-            {logo ? <SafeImage src={logo} alt={`${name} logo`} className="manufacturer-logo" /> : <span>{name.slice(0, 2).toUpperCase()}</span>}
-            {verified && <i><BadgeCheck /></i>}
-          </div>
-          <div className="manufacturer-title">
-            <div className="manufacturer-title-line"><h1>{name}</h1><WishlistButton type="supplier" itemId={sellerId} className="outline-icon" /></div>
-            <p><MapPin /> {locationText || 'Global supplier'}</p>
-            <div className="manufacturer-pills">
-              {verified && <span className="is-verified"><ShieldCheck /> Verified</span>}
-              <span>{formatLabel(seller.companyType || seller.businessType || 'Manufacturer / supplier')}</span>
-              {subscription && <span className="is-subscription"><Star /> {formatLabel(subscription)}</span>}
-              {seller.isTrustedSeller && <span className="is-trusted"><BadgeCheck /> Trusted Seller</span>}
+  const actions = { contactSupplier, requestQuote, orderSample }
+
+  return <AppShell>
+    <main className="manufacturer-page manufacturer-page--premium">
+      <div className="container manufacturer-shell manufacturer-shell--premium">
+        <section className="manufacturer-hero-v2">
+          <div className="manufacturer-hero-v2__identity">
+            <div className="manufacturer-hero-v2__brand">
+              <div className="manufacturer-logo-v2">
+                {logo ? <SafeImage src={logo} alt={`${name} logo`} /> : <span>{initials(name)}</span>}
+                {verified && <i title="Verified supplier"><BadgeCheck /></i>}
+              </div>
+              <div>
+                <div className="manufacturer-kicker"><ShieldCheck /> EsyGlob supplier profile</div>
+                <h1>{name}</h1>
+                <p className="manufacturer-meta-line">
+                  <span><MapPin /> {locationText || 'Global supplier'}</span>
+                  {years && <span><CalendarDays /> {years} years in business</span>}
+                  {seller.employeeCount && <span><Users /> {displayValue(seller.employeeCount)} employees</span>}
+                </p>
+                <div className="manufacturer-trust-badges">
+                  {verified && <span className="verified"><BadgeCheck /> Verified business</span>}
+                  {factoryVerified && <span className="factory"><Factory /> Factory verified</span>}
+                  {seller.isTrustedSeller && <span className="trusted"><ShieldCheck /> Trusted seller</span>}
+                  <span><Building2 /> {formatLabel(seller.companyType || seller.businessType || 'Manufacturer / supplier')}</span>
+                </div>
+              </div>
             </div>
+
+            <p className="manufacturer-hero-v2__summary">
+              {seller.companyDescription || seller.companyIntroduction || seller.description || `${name} supplies business buyers through EsyGlob. Review the company's products, production capabilities and trade background below.`}
+            </p>
+
+            <div className="manufacturer-proof-row">
+              <div className="manufacturer-rating-proof">
+                <strong>{rating ? rating.toFixed(1) : 'New'}</strong>
+                <span><Stars value={rating} /><small>{reviewCount ? `${reviewCount} buyer reviews` : 'Supplier profile'}</small></span>
+              </div>
+              <Proof value={responseRate} label="Response rate" />
+              <Proof value={responseTime} label="Response time" />
+              <Proof value={numberLabel(completedOrders)} label="Completed orders" />
+              <Proof value={repeatBuyerRate ? `${repeatBuyerRate}%` : numberLabel(seller.tradeHistorySummary?.successfulTransactions || completedOrders)} label={repeatBuyerRate ? 'Repeat buyers' : 'Successful transactions'} />
+            </div>
+
+            {!!trustItems.length && <div className="manufacturer-verified-strip">
+              {trustItems.slice(0, 4).map(item => <span key={item}><CheckCircle2 /> {item}</span>)}
+            </div>}
           </div>
-        </div>
-        <div className="manufacturer-stats">
-          <Stat icon={PackageCheck} value={productCount} label="Products" />
-          <Stat icon={Star} value={rating ? rating.toFixed(1) : '—'} label={`${reviewCount} reviews`} />
-          <Stat icon={Clock3} value={response} label={responseTime || 'Response rate'} />
-          <Stat icon={CalendarDays} value={years} label="Years" />
-          <Stat icon={BadgeCheck} value={seller.totalOrders || seller.tradeHistorySummary?.completedOrders || 0} label="Orders" />
-          <Stat icon={BarChart3} value={`${seller.trustScore || 0}/100`} label="Trust score" />
-        </div>
-        <div className="manufacturer-actions">
-          <button className="manufacturer-chat" disabled={busy || !seller.userId} onClick={contactSupplier}><MessageSquare /> {busy ? 'Opening…' : 'Chat Now'}</button>
-          <button className="manufacturer-rfq" onClick={requestQuote}><Send /> Send Enquiry</button>
-          
-        </div>
-      </section>
 
-      <nav className="manufacturer-tabs" aria-label="Manufacturer information">
-        {visibleTabs.map(([key, label, Icon]) => <button className={tab === key ? 'active' : ''} onClick={() => setTab(key)} key={key}><Icon /> {label}</button>)}
-      </nav>
+          <MediaShowcase media={media} cover={cover} activeMedia={activeMedia} setActiveMedia={setActiveMedia} videos={videos} />
+        </section>
 
-      <div className="manufacturer-content">
-        {tab === 'company' && <CompanyTab seller={seller} factory={factory} name={name} fullAddress={fullAddress} locationText={locationText} categories={categories} markets={exportMarkets} capabilities={capabilities} paymentMethods={paymentMethods} responseTime={responseTime} contactSupplier={contactSupplier} busy={busy} />}
-        {tab === 'products' && <ProductsTab products={products} sellerId={sellerId} />}
-        {tab === 'factory' && <FactoryTab factory={factory} gallery={gallery} />}
-        {tab === 'trade' && <TradeTab seller={seller} markets={exportMarkets} industries={industries} capabilities={capabilities} mainProducts={mainProducts} />}
-        {tab === 'media' && <MediaTab gallery={gallery} videos={companyVideos} brochures={seller.brochures || []} />}
-        {tab === 'certifications' && <CertificationsTab certifications={certifications} />}
-        {tab === 'reviews' && <ReviewsTab reviews={reviews} rating={rating} reviewCount={reviewCount} />}
+        <nav className="manufacturer-section-nav" aria-label="Manufacturer page sections">
+          {sectionLinks.map(([id, label]) => <button type="button" onClick={() => scrollToSection(id)} key={id}>{label}</button>)}
+          <Link to={`/products?seller=${sellerId}`}>Full catalogue <ChevronRight /></Link>
+        </nav>
+
+        <div className="manufacturer-layout-v2">
+          <div className="manufacturer-main-v2">
+            <section className="manufacturer-section-card manufacturer-snapshot" id="overview">
+              <SectionHeading eyebrow="At a glance" title="Business snapshot" icon={BarChart3} description="Commercial and operational indicators supplied through the EsyGlob business profile." />
+              <div className="manufacturer-snapshot-grid">
+                <Snapshot icon={CalendarDays} value={years ? `${years} yrs` : '—'} label="In business" />
+                <Snapshot icon={Users} value={seller.employeeCount || factory.employeeCount || '—'} label="Employees" />
+                <Snapshot icon={Factory} value={factory.floorArea || factory.factorySize || '—'} label="Factory area" />
+                <Snapshot icon={BarChart3} value={factory.productionLines || '—'} label="Production lines" />
+                <Snapshot icon={PackageCheck} value={factory.monthlyCapacity || '—'} label="Monthly capacity" />
+                <Snapshot icon={Globe2} value={exportMarkets.length || '—'} label="Export markets" />
+                <Snapshot icon={Building2} value={[trade.oem && 'OEM', trade.odm && 'ODM'].filter(Boolean).join(' / ') || 'On request'} label="Custom service" />
+                <Snapshot icon={ShoppingBag} value={productCount || '—'} label="Active products" />
+              </div>
+              <div className="manufacturer-overview-grid">
+                <div>
+                  <h3>Company overview</h3>
+                  <InfoRows rows={[
+                    ['Legal company name', seller.companyName],
+                    ['Business type', seller.companyType || seller.businessType],
+                    ['Established', seller.yearEstablished],
+                    ['Registration number', seller.businessRegistrationNumber],
+                    ['Import / export code', seller.importExportCode],
+                    ['Accepted languages', seller.languages],
+                  ]} />
+                </div>
+                <div>
+                  <h3>Markets and categories</h3>
+                  <LabelledTags label="Main products" values={mainProducts} empty="Browse the live catalogue below." />
+                  <LabelledTags label="Categories" values={[...categories, ...subcategories]} empty="Categories follow active listings." />
+                  <LabelledTags label="Industries served" values={industries} empty="Ask the supplier about your industry." />
+                </div>
+              </div>
+            </section>
+
+            <section className="manufacturer-section-card" id="factory">
+              <SectionHeading eyebrow={factoryVerified ? 'Verified facility' : 'Production profile'} title="Factory showcase" icon={Factory} description="Facility, machinery and quality information from the manufacturer profile." badge={factoryVerified ? 'Factory verified' : ''} />
+              <div className="manufacturer-factory-grid">
+                <div>
+                  <InfoRows rows={[
+                    ['Factory name', factory.name || factory.factoryName],
+                    ['Factory location', formatAddress(factory.address)],
+                    ['Floor area', factory.floorArea || factory.factorySize],
+                    ['Factory employees', factory.employeeCount],
+                    ['Production lines', factory.productionLines],
+                    ['Monthly capacity', factory.monthlyCapacity],
+                    ['Annual capacity', factory.annualCapacity],
+                    ['Last inspection', factory.inspectedAt ? new Date(factory.inspectedAt).toLocaleDateString() : ''],
+                  ]} />
+                  {factory.description && <p className="manufacturer-section-note">{factory.description}</p>}
+                </div>
+                <div className="manufacturer-factory-media">
+                  {media.slice(0, 4).map((image, index) => <button type="button" onClick={() => { setActiveMedia(index); window.scrollTo({ top: 0, behavior: 'smooth' }) }} key={`${image}-${index}`}><SafeImage src={image} alt={`Factory and company view ${index + 1}`} />{index === 3 && media.length > 4 && <span>+{media.length - 4} more</span>}</button>)}
+                  {!media.length && <Empty icon={Images} text="Factory media has not been published." />}
+                </div>
+              </div>
+              {!!normalizeList(factory.machinery).length && <div className="manufacturer-machinery-v2">
+                {normalizeList(factory.machinery).slice(0, 6).map((machine, index) => <article key={`${displayValue(machine)}-${index}`}><Factory /><span><b>{typeof machine === 'object' ? machine.name : machine}</b><small>{typeof machine === 'object' ? [machine.model, machine.quantity ? `Quantity ${machine.quantity}` : '', machine.year].filter(Boolean).join(' · ') : 'Production equipment'}</small></span></article>)}
+              </div>}
+            </section>
+
+            <section className="manufacturer-section-card" id="capabilities">
+              <SectionHeading eyebrow="Buyer assurance" title="Production and trade capabilities" icon={ShieldCheck} description="A consolidated view of customization, quality, logistics and export readiness." />
+              <div className="manufacturer-capability-columns">
+                <Capability title="Manufacturing services" icon={Factory}>
+                  <div className="manufacturer-service-flags">
+                    {[['OEM service', trade.oem], ['ODM service', trade.odm], ['Private label', trade.privateLabel]].map(([label, enabled]) => <span className={enabled ? 'active' : ''} key={label}>{enabled ? <Check /> : <Clock3 />}{label}</span>)}
+                  </div>
+                  <LabelledTags label="Production capabilities" values={capabilities} empty="Available on enquiry." />
+                </Capability>
+                <Capability title="Quality control" icon={FileCheck2}>
+                  <p>{trade.qualityAssurance || factory.qualityControl || 'Quality requirements can be confirmed during quotation.'}</p>
+                  <LabelledTags label="Published processes" values={factory.qualityProcesses} empty="No public process list." />
+                </Capability>
+                <Capability title="Commercial terms" icon={ShoppingBag}>
+                  <InfoRows rows={[
+                    ['Minimum order quantity', trade.minimumOrderQuantity],
+                    ['Production lead time', trade.productionLeadTime],
+                    ['Origin port', shipping.originPort],
+                    ['Handling time', shipping.handlingTime],
+                  ]} compact />
+                </Capability>
+                <Capability title="Trade background" icon={Globe2}>
+                  <LabelledTags label="Main export markets" values={exportMarkets} empty="Markets available on request." />
+                  <LabelledTags label="Shipping support" values={shipping.shippingSupport} empty="Confirm during negotiation." />
+                </Capability>
+              </div>
+              {trade.rdCapability && <div className="manufacturer-rd-note"><BarChart3 /><span><b>R&amp;D capability</b><p>{trade.rdCapability}</p></span></div>}
+            </section>
+
+            <section className="manufacturer-section-card" id="certifications">
+              <SectionHeading eyebrow="Document centre" title="Certifications" icon={Award} description="Review available business and production certificates before starting a transaction." />
+              {certifications.length ? <div className="manufacturer-certificate-grid">
+                {certifications.map((cert, index) => <CertificateCard cert={cert} index={index} key={`${certificateName(cert, index)}-${index}`} />)}
+              </div> : <Empty icon={Award} text="No public certifications are currently available." />}
+            </section>
+
+            <section className="manufacturer-section-card" id="products">
+              <SectionHeading eyebrow="Supplier catalogue" title="Main products" icon={PackageCheck} description={`${productCount || products.length} active products associated with this manufacturer.`} action={<Link to={`/products?seller=${sellerId}`}>View full catalogue <ChevronRight /></Link>} />
+              {products.length ? <div className="manufacturer-product-grid-v2">
+                {products.slice(0, 12).map(product => <ManufacturerProduct product={product} verified={verified} requestQuote={requestQuote} key={product._id || product.id} />)}
+              </div> : <Empty icon={PackageCheck} text="No public products are currently listed." />}
+            </section>
+
+            <section className="manufacturer-section-card" id="reviews">
+              <SectionHeading eyebrow="Buyer feedback" title={`Reviews${reviewCount ? ` (${reviewCount})` : ''}`} icon={Star} description="Ratings and purchase feedback from EsyGlob marketplace buyers." />
+              <ReviewExperience reviews={reviews} rating={rating} reviewCount={reviewCount} />
+            </section>
+
+            <section className="manufacturer-section-card" id="media">
+              <SectionHeading eyebrow="Inside the business" title="Company gallery and videos" icon={Video} description="Office, factory, warehouse and production media published by the supplier." />
+              {!!media.length && <div className="manufacturer-gallery-v2">{media.map((image, index) => <a href={resolveApiResourceUrl(image)} target="_blank" rel="noreferrer" key={`${image}-${index}`}><SafeImage src={image} alt={`Company media ${index + 1}`} /><span><Images /> View image</span></a>)}</div>}
+              {!!videos.length && <div className="manufacturer-video-grid-v2">{videos.map((url, index) => <article key={`${url}-${index}`}><video controls preload="metadata"><source src={resolveApiResourceUrl(url)} /></video><p><Play /> Company video {index + 1}</p></article>)}</div>}
+              {!media.length && !videos.length && <Empty icon={Images} text="No company media is currently available." />}
+              {!!seller.brochures?.length && <div className="manufacturer-brochure-row">{seller.brochures.map((url, index) => <a href={resolveApiResourceUrl(url)} target="_blank" rel="noreferrer" key={`${url}-${index}`}><Download /><span><b>Company brochure {index + 1}</b><small>Open or download document</small></span><ExternalLink /></a>)}</div>}
+            </section>
+          </div>
+
+          <ContactRail seller={seller} sellerId={sellerId} name={name} logo={logo} verified={verified} sampleAvailable={Boolean(sampleProduct)} busy={busy} actions={actions} />
+        </div>
       </div>
+
+      <MobileActionBar busy={busy} seller={seller} actions={actions} />
+    </main>
+  </AppShell>
+}
+
+function MediaShowcase({ media, cover, activeMedia, setActiveMedia, videos }) {
+  return <div className="manufacturer-showcase">
+    <div className="manufacturer-showcase__main">
+      {cover ? <SafeImage src={cover} alt="Company and factory showcase" /> : <div className="manufacturer-showcase__placeholder"><Factory /><span>Manufacturer showcase</span></div>}
+      {!!videos.length && <button type="button" onClick={() => scrollToSection('media')} className="manufacturer-video-pill"><Play /> Watch company video</button>}
+      <span className="manufacturer-showcase__label"><ShieldCheck /> Supplier-published media</span>
     </div>
-  </main></AppShell>
-}
-
-function CompanyTab({ seller, factory, name, fullAddress, locationText, categories, markets, capabilities, paymentMethods, responseTime, contactSupplier, busy }) {
-  return <div className="manufacturer-company-grid">
-    <section className="manufacturer-card manufacturer-about">
-      <h2>About {name}</h2>
-      <p>{seller.companyDescription || seller.companyIntroduction || seller.description || 'This supplier has not published a company introduction yet.'}</p>
-      <InfoRows rows={[
-        ['Company name', seller.companyName],
-        ['Business type', seller.companyType || seller.businessType],
-        ['Established', seller.yearEstablished],
-        ['Employees', seller.employeeCount],
-        ['Location', locationText],
-        ['Response rate', seller.responseRate !== undefined ? `${seller.responseRate}%` : ''],
-        ['Response time', responseTime],
-        ['Total products', seller.totalProducts],
-        ['Total orders', seller.totalOrders],
-        ['Annual revenue', seller.annualRevenueRange || seller.annualRevenue],
-      ]} />
-    </section>
-
-    <section className="manufacturer-card manufacturer-contact">
-      <h2>Contact Information</h2>
-      <ContactRow icon={Mail} label="Business email" value={seller.businessEmail || seller.email} href={seller.businessEmail ? `mailto:${seller.businessEmail}` : ''} />
-      <ContactRow icon={Phone} label="Phone number" value={seller.businessPhone || seller.phone} href={seller.businessPhone ? `tel:${seller.businessPhone}` : ''} />
-      <ContactRow icon={Globe2} label="Website" value={seller.companyWebsite || seller.website} href={safeWebsite(seller.companyWebsite || seller.website)} />
-      <ContactRow icon={MapPin} label="Complete address" value={fullAddress} />
-      <button onClick={contactSupplier} disabled={busy || !seller.userId}><MessageSquare /> Contact Supplier</button>
-    </section>
-
-    <section className="manufacturer-card">
-      <h2><ShoppingBag /> Product Categories</h2>
-      <TagList values={categories} empty="Categories are represented by the supplier's live products." />
-      <h3><Globe2 /> Export Markets</h3>
-      <TagList values={markets} empty="Export markets have not been published." />
-    </section>
-
-    <section className="manufacturer-card">
-      <h2><Building2 /> Business Capabilities</h2>
-      <TagList values={capabilities} empty={factory.description || 'Contact the supplier for detailed production capabilities.'} />
-      <h3><Truck /> Shipping Information</h3>
-      <InfoRows rows={[
-        ['Origin port', seller.shippingInfo?.originPort],
-        ['Preferred carriers', seller.shippingInfo?.preferredCarriers],
-        ['Export countries', seller.shippingInfo?.exportCountries],
-        ['Handling time', seller.shippingInfo?.handlingTime],
-      ]} compact />
-      <h3><CreditCard /> Payment Methods</h3>
-      <TagList values={paymentMethods} empty="Confirm supported payment methods during quotation." />
-    </section>
+    {!!media.length && <div className="manufacturer-showcase__thumbs">
+      {media.slice(0, 5).map((image, index) => <button type="button" className={activeMedia === index ? 'active' : ''} onClick={() => setActiveMedia(index)} key={`${image}-${index}`}><SafeImage src={image} alt={`Showcase thumbnail ${index + 1}`} />{index === 4 && media.length > 5 && <span>+{media.length - 5}</span>}</button>)}
+    </div>}
   </div>
 }
 
-function ProductsTab({ products, sellerId }) {
-  return <section className="manufacturer-tab-section">
-    <header><div><span className="eyebrow">Supplier catalogue</span><h2>Products from this supplier</h2></div><Link to={`/products?seller=${sellerId}`}>View all products</Link></header>
-    <div className="product-grid">{products.length ? products.map(item => <ProductCard key={item._id || item.id} product={item} />) : <div className="manufacturer-empty"><PackageCheck /><p>No public products are currently listed.</p></div>}</div>
-  </section>
+function ContactRail({ seller, sellerId, name, logo, verified, sampleAvailable, busy, actions }) {
+  return <aside className="manufacturer-contact-rail">
+    <div className="manufacturer-contact-rail__trust"><ShieldCheck /><span><b>Contact with confidence</b><small>Trade through EsyGlob’s verified workflow</small></span></div>
+    <div className="manufacturer-contact-rail__company">
+      <div>{logo ? <SafeImage src={logo} alt="" /> : initials(name)}</div>
+      <span><b>{name}</b><small>{verified ? <><BadgeCheck /> Verified supplier</> : 'Marketplace supplier'}</small></span>
+    </div>
+    <button type="button" className="primary" disabled={busy || !seller.userId} onClick={actions.contactSupplier}><MessageSquare /> {busy ? 'Opening chat…' : 'Chat now'}</button>
+    <button type="button" onClick={actions.requestQuote}><Send /> Send enquiry</button>
+    <button type="button" disabled={!sampleAvailable} onClick={actions.orderSample}><PackageCheck /> {sampleAvailable ? 'Order a sample' : 'Samples on request'}</button>
+    <Link to={`/products?seller=${sellerId}`}><ShoppingBag /> View catalogue</Link>
+    <div className="manufacturer-contact-rail__save"><WishlistButton type="supplier" itemId={sellerId} className="manufacturer-save-button" /><span><Heart /> Save manufacturer</span></div>
+    <div className="manufacturer-contact-rail__assurance">
+      <span><CheckCircle2 /> Protected enquiry workflow</span>
+      <span><Clock3 /> Response: {seller.responseTime || (seller.averageResponseTimeHours ? `${seller.averageResponseTimeHours}h avg.` : 'ask supplier')}</span>
+      <span><ShieldCheck /> Supplier details are audit-ready</span>
+    </div>
+  </aside>
 }
 
-function FactoryTab({ factory, gallery }) {
-  return <div className="manufacturer-company-grid">
-    <section className="manufacturer-card">
-      <h2><Factory /> Factory Information</h2>
-      {factory.description && <p>{factory.description}</p>}
-      <InfoRows rows={[
-        ['Factory name', factory.name || factory.factoryName],
-        ['Address', formatAddress(factory.address)],
-        ['Floor area', factory.floorArea || factory.factorySize],
-        ['Employees', factory.employeeCount],
-        ['Production lines', factory.productionLines],
-        ['Monthly capacity', factory.monthlyCapacity],
-        ['Annual capacity', factory.annualCapacity],
-        ['Quality control', factory.qualityControl],
-        ['Verification', factory.verificationStatus],
-        ['Last inspected', factory.inspectedAt ? new Date(factory.inspectedAt).toLocaleDateString() : ''],
-      ]} />
-    </section>
-    <section className="manufacturer-card">
-      <h2><Building2 /> Machinery & Capabilities</h2>
-      <TagList values={factory.capabilities} empty="Factory capabilities have not been published." />
-      <div className="manufacturer-machinery">{normalizeList(factory.machinery).map((item, index) => <article key={`${item.name || item}-${index}`}><Factory /><span><b>{item.name || String(item)}</b>{typeof item === 'object' && <small>{[item.model, item.quantity ? `Qty ${item.quantity}` : '', item.year].filter(Boolean).join(' · ')}</small>}</span></article>)}</div>
-    </section>
-    <GalleryCard gallery={gallery} />
+function MobileActionBar({ busy, seller, actions }) {
+  return <div className="manufacturer-mobile-actions">
+    <button type="button" disabled={busy || !seller.userId} onClick={actions.contactSupplier}><MessageSquare /><span>Chat</span></button>
+    <button type="button" onClick={actions.requestQuote}><Send /><span>Enquiry</span></button>
+    <button type="button" className="primary" onClick={actions.orderSample}><PackageCheck /><span>Sample</span></button>
   </div>
 }
 
-function TradeTab({ seller, markets, industries, capabilities, mainProducts }) {
-  const trade = seller.tradeCapabilities || {}
-  const shipping = seller.shippingInfo || {}
-  return <div className="manufacturer-company-grid">
-    <section className="manufacturer-card">
-      <h2><Globe2 /> Export & Trade Background</h2>
-      <InfoRows rows={[
-        ['Minimum order quantity', trade.minimumOrderQuantity],
-        ['Production lead time', trade.productionLeadTime],
-        ['Origin port', shipping.originPort],
-        ['Handling time', shipping.handlingTime],
-        ['Completed orders', seller.totalOrders || seller.tradeHistorySummary?.completedOrders],
-        ['Repeat buyers', seller.tradeHistorySummary?.repeatBuyerRate ? `${seller.tradeHistorySummary.repeatBuyerRate}%` : ''],
-        ['Countries served', seller.tradeHistorySummary?.countriesServed],
-        ['Years on EsyGlob', seller.createdAt ? Math.max(1, new Date().getFullYear() - new Date(seller.createdAt).getFullYear() + 1) : ''],
-      ]} />
-      <h3><Globe2 /> Main Markets</h3><TagList values={markets} empty="Export markets have not been published." />
-    </section>
-    <section className="manufacturer-card">
-      <h2><Factory /> Manufacturing Services</h2>
-      <div className="manufacturer-service-flags">
-        {[['OEM', trade.oem], ['ODM', trade.odm], ['Private label', trade.privateLabel]].map(([label, enabled]) => <span className={enabled ? 'active' : ''} key={label}>{enabled ? <CheckCircle2 /> : <Clock3 />}{label}</span>)}
+function ManufacturerProduct({ product, verified, requestQuote }) {
+  const id = product._id || product.id
+  const image = product.image || product.images?.[0]
+  const price = product.price || product.priceTiers?.[0]?.unitPrice
+  const maxPrice = product.maxPrice
+  const currency = currencySymbol(product.currency)
+  const moq = product.minimumOrderQuantity || product.moq || 1
+  return <article className="manufacturer-product-v2">
+    <Link to={`/products/${id}`} className="manufacturer-product-v2__image">
+      <SafeImage src={image} alt={product.name || 'Product'} />
+      {verified && <span><ShieldCheck /> Verified supplier</span>}
+      {product.sampleAvailable && <i>Sample available</i>}
+    </Link>
+    <div className="manufacturer-product-v2__body">
+      <Link to={`/products/${id}`}><h3>{product.name || 'Supplier product'}</h3></Link>
+      <strong>{price ? `${currency}${Number(price).toLocaleString('en-IN')}${maxPrice ? ` – ${currency}${Number(maxPrice).toLocaleString('en-IN')}` : ''}` : 'Request latest price'}</strong>
+      <small>MOQ {moq} {product.unit || 'piece'}{moq > 1 ? 's' : ''}</small>
+      <div><Link to={`/products/${id}`}>View details</Link><button type="button" onClick={requestQuote}><Send /> Enquire</button></div>
+    </div>
+  </article>
+}
+
+function CertificateCard({ cert, index }) {
+  const name = certificateName(cert, index)
+  const url = typeof cert === 'object' ? cert.documentUrl || cert.url : ''
+  const status = typeof cert === 'object' ? cert.status : ''
+  const isImage = /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(url)
+  return <article className="manufacturer-certificate-v2">
+    <div className="manufacturer-certificate-v2__preview">{url && isImage ? <SafeImage src={url} alt={`${name} certificate`} /> : <Award />}</div>
+    <div>
+      <span className={status === 'verified' ? 'verified' : ''}>{status === 'verified' ? <BadgeCheck /> : <FileCheck2 />}{formatLabel(status || 'Published')}</span>
+      <h3>{name}</h3>
+      <p>{typeof cert === 'object' ? [cert.issuer, cert.certificateNumber, cert.expiryDate ? `Valid until ${new Date(cert.expiryDate).toLocaleDateString()}` : ''].filter(Boolean).join(' · ') : 'Company certification'}</p>
+      {url ? <a href={resolveApiResourceUrl(url)} target="_blank" rel="noreferrer"><ExternalLink /> View certificate</a> : <small>Certificate details available from supplier</small>}
+    </div>
+  </article>
+}
+
+function ReviewExperience({ reviews, rating, reviewCount }) {
+  const breakdown = useMemo(() => {
+    const values = reviews.map(reviewRating).filter(Boolean)
+    return [5, 4, 3, 2, 1].map(star => [star, values.length ? Math.round((values.filter(value => Math.round(value) === star).length / values.length) * 100) : 0])
+  }, [reviews])
+  const dimensions = [
+    ['Product quality', averageDimension(reviews, 'quality')],
+    ['Supplier communication', averageDimension(reviews, 'communication')],
+    ['On-time shipping', averageDimension(reviews, 'shipping')],
+  ]
+  return <div className="manufacturer-review-experience">
+    <div className="manufacturer-review-summary">
+      <div><strong>{rating ? rating.toFixed(1) : '—'}</strong><Stars value={rating} /><span>{reviewCount ? `${reviewCount} reviews` : 'No ratings yet'}</span></div>
+      <div className="manufacturer-rating-bars">{breakdown.map(([star, percent]) => <span key={star}><small>{star} <Star /></small><i><b style={{ width: `${percent}%` }} /></i><em>{percent}%</em></span>)}</div>
+      <div className="manufacturer-review-dimensions">{dimensions.map(([label, value]) => <span key={label}><small>{label}</small><b>{value ? value.toFixed(1) : '—'}</b></span>)}</div>
+    </div>
+    {reviews.length ? <div className="manufacturer-review-list">{reviews.slice(0, 6).map((review, index) => <article key={review._id || index}>
+      <div className="manufacturer-review-buyer"><i>{reviewerName(review).slice(0, 1).toUpperCase()}</i><span><b>{reviewerName(review)}</b><small>{review.buyerCountry || review.userId?.country || 'EsyGlob buyer'}{review.createdAt ? ` · ${new Date(review.createdAt).toLocaleDateString()}` : ''}</small></span></div>
+      <div><Stars value={reviewRating(review)} />{review.title && <h3>{review.title}</h3>}<p>{review.comment || review.review || review.content}</p>{review.verifiedPurchase && <small className="verified-purchase"><CheckCircle2 /> Verified purchase</small>}
+        {!!review.images?.length && <div className="manufacturer-review-images">{review.images.map((image, imageIndex) => <a href={resolveApiResourceUrl(image)} target="_blank" rel="noreferrer" key={`${image}-${imageIndex}`}><SafeImage src={image} alt="Buyer review" /></a>)}</div>}
+        {review.productId && <div className="manufacturer-review-purchase"><ShoppingBag /><span><b>{review.productId.name || 'Product purchase'}</b><small>Purchase information verified through EsyGlob</small></span></div>}
       </div>
-      <h3>Production capabilities</h3><TagList values={capabilities} empty="Contact the supplier for production capability details." />
-      <h3>Main products</h3><TagList values={mainProducts} empty="View the supplier catalogue for active products." />
-    </section>
-    <section className="manufacturer-card">
-      <h2><BarChart3 /> Quality & R&D Capabilities</h2>
-      <h3>Quality assurance</h3><p>{trade.qualityAssurance || 'Quality assurance details have not been published.'}</p>
-      <h3>Research and development</h3><p>{trade.rdCapability || 'R&D capabilities have not been published.'}</p>
-      <h3>Industries served</h3><TagList values={industries} empty="Industry coverage follows the active product catalogue." />
-    </section>
-    <section className="manufacturer-card">
-      <h2><Truck /> Shipping Support</h2>
-      <TagList values={shipping.shippingSupport} empty="Confirm logistics support during quotation." />
-      <h3>Preferred carriers</h3><TagList values={shipping.preferredCarriers} empty="Carrier details are available during negotiation." />
-      <h3>Export countries</h3><TagList values={shipping.exportCountries} empty="Contact the supplier for supported destinations." />
-    </section>
+    </article>)}</div> : <Empty icon={Star} text="This supplier has not received a published buyer review yet." />}
   </div>
 }
 
-function MediaTab({ gallery, videos, brochures }) {
-  return <div className="manufacturer-media-tab">
-    <GalleryCard gallery={gallery} />
-    <section className="manufacturer-card manufacturer-videos"><h2><Video /> Factory & Company Videos</h2>{videos.length ? <div>{videos.map((url, index) => <video controls preload="metadata" key={`${url}-${index}`}><source src={resolveApiResourceUrl(url)} /></video>)}</div> : <div className="manufacturer-empty"><Video /><p>No public videos are available.</p></div>}</section>
-    <section className="manufacturer-card manufacturer-brochures"><h2><Certificate /> Company Brochures</h2>{brochures.length ? brochures.map((url, index) => <a href={resolveApiResourceUrl(url)} target="_blank" rel="noreferrer" key={`${url}-${index}`}><Certificate /><span><b>Company brochure {index + 1}</b><small>Open document</small></span></a>) : <div className="manufacturer-empty"><Certificate /><p>No company brochures are available.</p></div>}</section>
-  </div>
+function SectionHeading({ eyebrow, title, icon: Icon, description, badge, action }) {
+  return <header className="manufacturer-section-heading"><div><span className="eyebrow">{eyebrow}</span><h2><Icon /> {title}</h2><p>{description}</p></div>{badge && <span className="manufacturer-section-badge"><BadgeCheck /> {badge}</span>}{action}</header>
 }
-
-function CertificationsTab({ certifications }) {
-  return <section className="manufacturer-card manufacturer-certifications"><h2><Certificate /> Certifications</h2>{certifications.length ? certifications.map((cert, index) => {
-    const name = typeof cert === 'string' ? cert : cert.name || cert.certificateNumber || `Certificate ${index + 1}`
-    const url = typeof cert === 'object' ? cert.documentUrl || cert.url : ''
-    return <article key={`${name}-${index}`}><Certificate /><span><b>{name}</b><small>{typeof cert === 'object' ? [cert.issuer, cert.status, cert.expiryDate ? `Expires ${new Date(cert.expiryDate).toLocaleDateString()}` : ''].filter(Boolean).join(' · ') : 'Company certification'}</small></span>{url && <a href={url} target="_blank" rel="noreferrer">View</a>}</article>
-  }) : <div className="manufacturer-empty"><Certificate /><p>No public certifications are available.</p></div>}</section>
-}
-
-function ReviewsTab({ reviews, rating, reviewCount }) {
-  return <section className="manufacturer-card manufacturer-reviews">
-    <header><div><b>{rating ? rating.toFixed(1) : '—'}</b><Stars value={rating} /><small>{reviewCount} reviews</small></div><span><ShieldCheck /> Marketplace buyer feedback</span></header>
-    {reviews.length ? <div>{reviews.map((review, index) => <article key={review._id || index}><i>{reviewerName(review).slice(0, 1).toUpperCase()}</i><div><header><b>{reviewerName(review)}</b><Stars value={reviewRating(review)} /><time>{review.createdAt ? new Date(review.createdAt).toLocaleDateString() : ''}</time></header>{review.title && <h3>{review.title}</h3>}<p>{review.comment || review.review || review.content}</p>{review.verifiedPurchase && <small><CheckCircle2 /> Verified purchase</small>}</div></article>)}</div> : <div className="manufacturer-empty"><Star /><p>No published reviews yet.</p></div>}
-  </section>
-}
-
-function GalleryCard({ gallery }) {
-  if (!gallery.length) return <section className="manufacturer-card"><h2><Images /> Company Gallery</h2><div className="manufacturer-empty"><Images /><p>No company photos have been published.</p></div></section>
-  return <section className="manufacturer-card manufacturer-gallery"><h2><Images /> Company Gallery</h2><div>{gallery.map((image, index) => <a href={image} target="_blank" rel="noreferrer" key={`${image}-${index}`}><SafeImage src={image} alt={`Company view ${index + 1}`} /></a>)}</div></section>
-}
-
-function Stat({ icon: Icon, value, label }) { return <span><Icon /><b>{value ?? '—'}</b><small>{label}</small></span> }
-function ContactRow({ icon: Icon, label, value, href }) { if (!value) return null; const content = <><Icon /><span><small>{label}</small><b>{value}</b></span></>; return href ? <a href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noreferrer">{content}</a> : <div>{content}</div> }
-function InfoRows({ rows, compact = false }) { return <dl className={`manufacturer-info ${compact ? 'compact' : ''}`}>{rows.filter(([, value]) => hasValue(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{displayValue(value)}</dd></div>)}</dl> }
-function TagList({ values = [], empty }) { const list = normalizeList(values); return list.length ? <div className="manufacturer-tags">{list.map((value, index) => <span key={`${displayValue(value)}-${index}`}>{displayValue(value)}</span>)}</div> : <p className="manufacturer-muted">{empty}</p> }
-function Stars({ value = 0 }) { return <span className="manufacturer-stars">{[1,2,3,4,5].map(star => <Star className={star <= Math.round(Number(value || 0)) ? 'filled' : ''} key={star} />)}</span> }
+function Snapshot({ icon: Icon, value, label }) { return <article><Icon /><span><b>{displayValue(value)}</b><small>{label}</small></span></article> }
+function Proof({ value, label }) { return <div className="manufacturer-proof"><strong>{displayValue(value)}</strong><span>{label}</span></div> }
+function Capability({ title, icon: Icon, children }) { return <article className="manufacturer-capability"><h3><Icon /> {title}</h3>{children}</article> }
+function LabelledTags({ label, values, empty }) { return <div className="manufacturer-labelled-tags"><h4>{label}</h4><TagList values={values} empty={empty} /></div> }
+function Empty({ icon: Icon, text }) { return <div className="manufacturer-empty-v2"><Icon /><p>{text}</p></div> }
+function InfoRows({ rows, compact = false }) { return <dl className={`manufacturer-info-v2 ${compact ? 'compact' : ''}`}>{rows.filter(([, value]) => hasValue(value)).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{displayValue(value)}</dd></div>)}</dl> }
+function TagList({ values = [], empty }) { const list = normalizeList(values); return list.length ? <div className="manufacturer-tags-v2">{list.map((value, index) => <span key={`${displayValue(value)}-${index}`}>{displayValue(value)}</span>)}</div> : <p className="manufacturer-muted">{empty}</p> }
+function Stars({ value = 0 }) { return <span className="manufacturer-stars-v2" aria-label={`${Number(value || 0).toFixed(1)} out of 5 stars`}>{[1, 2, 3, 4, 5].map(star => <Star className={star <= Math.round(Number(value || 0)) ? 'filled' : ''} key={star} />)}</span> }
+function scrollToSection(id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
 function normalizeList(value) { if (!value) return []; if (Array.isArray(value)) return value.filter(hasValue); return String(value).split(',').map(item => item.trim()).filter(Boolean) }
 function uniqueMedia(values) { return [...new Set(values.flatMap(value => typeof value === 'string' ? [value] : value?.url ? [value.url] : []).filter(Boolean))] }
 function hasValue(value) { return value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0) }
 function displayValue(value) { if (Array.isArray(value)) return value.map(displayValue).join(', '); if (typeof value === 'object') return value.name || Object.values(value).filter(item => typeof item !== 'object' && hasValue(item)).join(', '); return formatLabel(String(value)) }
 function formatLabel(value) { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase()) }
 function formatAddress(value = {}) { return [value.street, value.city, value.state, value.country, value.pincode || value.zipCode].filter(Boolean).join(', ') }
-function safeWebsite(value) { if (!value) return ''; return /^https?:\/\//i.test(value) ? value : `https://${value}` }
 function reviewerName(review) { return review.userId?.fullName || review.userName || review.reviewerName || 'Marketplace buyer' }
 function reviewRating(review) { return Number(review.rating?.overall || review.overallRating || (typeof review.rating === 'number' ? review.rating : 0)) }
 function averageReviewRating(reviews) { if (!reviews.length) return 0; return reviews.reduce((sum, review) => sum + reviewRating(review), 0) / reviews.length }
+function averageDimension(reviews, key) { const values = reviews.map(review => Number(review.rating?.[key] || 0)).filter(Boolean); return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0 }
+function initials(value) { return String(value || 'ES').split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() }
+function numberLabel(value) { const number = Number(value || 0); return number >= 1000 ? `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k+` : String(number) }
+function certificateName(cert, index) { return typeof cert === 'string' ? cert : cert.name || cert.certificateNumber || `Certificate ${index + 1}` }
+function currencySymbol(currency) { return ({ INR: '₹', USD: '$', EUR: '€', GBP: '£' })[String(currency || 'INR').toUpperCase()] || `${currency || '₹'} ` }

@@ -7,7 +7,7 @@ import {
   summarizeRows,
   BULK_PRODUCT_HEADERS,
 } from '../lib/bulk-product-import.js';
-import { storeRemoteUpload } from '../lib/storage.js';
+import UploadService from './upload.service.js';
 
 const BATCH_SIZE = 50;
 const IMAGE_LIMIT = 8;
@@ -29,7 +29,7 @@ async function uploadImageUrls(urls, sellerId) {
 
   for (const url of urlsToProcess) {
     try {
-      const stored = await storeRemoteUpload(url, `products/bulk/${sellerId}`);
+      const stored = await UploadService.uploadRemote(url, `products/bulk/${sellerId}`);
       uploaded.push(stored.url);
     } catch {
       // Skip failed image uploads

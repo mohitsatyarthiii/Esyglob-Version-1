@@ -52,10 +52,14 @@ const uploadMultipleFiles = multer({
 // ============ EXPORTS ============
 
 /**
- * Single file upload middleware (field name configurable)
- * Usage: uploadSingle('image') or uploadSingle('logo')
+ * Single file upload middleware using the platform-standard "file" field.
  */
-export const uploadSingle = (fieldName = 'file') => uploadSingleFile.single(fieldName);
+export const uploadSingle = uploadSingleFile.single('file');
+
+/**
+ * Single-file middleware factory for endpoints that use a non-default field name.
+ */
+export const uploadSingleField = (fieldName) => uploadSingleFile.single(fieldName);
 
 /**
  * Multiple files upload middleware (field name configurable, max 10)

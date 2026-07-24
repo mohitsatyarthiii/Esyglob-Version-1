@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import * as supplierService from '../services/supplier.service.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
-import { storeUpload } from '../lib/storage.js';
+import UploadService from '../services/upload.service.js';
 import { UPLOAD, ALLOWED_DOCUMENT_TYPES_SET } from '../lib/constants.js';
 import { invalidateMemoryCache } from '../lib/cache.js';
 import { toPositiveInt, sellerSortField } from '../lib/supplier-helpers.js';
@@ -298,7 +298,7 @@ export async function uploadDocument(req, res, next) {
       documentType
     );
 
-    const stored = await storeUpload(
+    const stored = await UploadService.uploadFile(
       {
         arrayBuffer: async () => file.buffer,
         name: file.originalname,

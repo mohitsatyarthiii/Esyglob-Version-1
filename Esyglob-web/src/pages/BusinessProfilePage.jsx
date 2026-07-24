@@ -77,10 +77,11 @@ const emptyFactory = {
 
 export default function BusinessProfilePage() {
   const [searchParams] = useSearchParams()
+  const requestedSection = searchParams.get('section')
   const [data, setData] = useState(null)
   const [seller, setSeller] = useState(emptySeller)
   const [factory, setFactory] = useState(emptyFactory)
-  const [active, setActive] = useState(() => sections.some(([key]) => key === searchParams.get('section')) ? searchParams.get('section') : 'overview')
+  const [active, setActive] = useState(() => sections.some(([key]) => key === requestedSection) ? requestedSection : 'overview')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -90,7 +91,8 @@ export default function BusinessProfilePage() {
     setData(result)
     setSeller(normalizeSeller(result.seller))
     setFactory(normalizeFactory(result.factory))
-  }, [])
+    if (!requestedSection && !result.seller?.companyName) setActive('company')
+  }, [requestedSection])
 
   useEffect(() => { load().catch((next) => setError(next.message)) }, [load])
 
@@ -274,7 +276,12 @@ function Section({ title, description, action, children }) { return <div classNa
 function Subhead({ title, action }) { return <div className="business-subhead"><h3>{title}</h3>{action}</div> }
 function Field({ label, value, onChange, type = 'text', textarea = false, wide = false }) { return <label className={wide ? 'wide' : ''}><span>{label}</span>{textarea ? <textarea value={value || ''} onChange={(event) => onChange(event.target.value)} /> : <input type={type} value={value ?? ''} onChange={(event) => onChange(event.target.value)} />}</label> }
 function SelectField({ label, value, onChange, options }) { return <label><span>{label}</span><select value={value || ''} onChange={(event) => onChange(event.target.value)}><option value="">Select</option>{options.map((item) => <option value={item} key={item}>{formatStatus(item)}</option>)}</select></label> }
-function ListField({ label, value, onChange }) { return <Field label={label} value={listValue(value).join(', ')} onChange={(next) => onChange(split(next))} /> }
+function ListField({ label, value, onChange }) {
+  const serialized = listValue(value).join(', ')
+  const [draft, setDraft] = useState(serialized)
+  useEffect(() => setDraft(serialized), [serialized])
+  return <label><span>{label}</span><input value={draft} placeholder="Separate multiple values with commas" onChange={(event) => setDraft(event.target.value)} onBlur={() => onChange(split(draft))} /></label>
+}
 function AddressFields({ value, onChange }) { return <div className="business-form-grid">{['street', 'city', 'state', 'country', 'pincode'].map((key) => <Field label={formatStatus(key)} value={value?.[key]} onChange={(next) => onChange({ ...value, [key]: next })} key={key} />)}</div> }
 function TrustState({ label, status }) { const verified = ['verified', 'approved'].includes(String(status).toLowerCase()); return <span className={verified ? 'verified' : ''}>{verified ? <Check /> : <Clock3 />}<small>{label}</small><b>{verified ? 'Verified' : formatStatus(status)}</b></span> }
 

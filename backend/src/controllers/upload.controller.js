@@ -26,9 +26,10 @@ class UploadController {
         return res.status(413).json({ error: error.message });
       }
 
-      const isCloudinaryConfigError = error.message?.includes('Cloudinary storage is missing');
-      return res.status(isCloudinaryConfigError ? 503 : 500).json({
-        error: isCloudinaryConfigError ? error.message : 'Unable to upload files',
+      const isStorageError = error.name === 'UploadStorageError';
+      return res.status(error.statusCode || (isStorageError ? 503 : 500)).json({
+        error: isStorageError ? error.message : 'Unable to upload files',
+        ...(isStorageError && error.code ? { code: error.code } : {}),
       });
     }
   }

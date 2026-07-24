@@ -103,7 +103,7 @@ export async function findPublicSellerRelatedData(sellerId) {
       sellerId,
       status: { $in: ['active', 'published'] },
     })
-      .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime createdAt')
+      .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime certifications isVerifiedSeller createdAt')
       .sort({ createdAt: -1 })
       .limit(60)
       .lean(),
@@ -111,7 +111,8 @@ export async function findPublicSellerRelatedData(sellerId) {
       .select('name address floorArea description employeeCount productionLines machinery monthlyCapacity annualCapacity capabilities qualityControl qualityProcesses exportMarkets images videos certifications verificationStatus inspectedAt inspection verifiedAt')
       .lean(),
     Review.find({ sellerId, status: 'published' })
-      .populate('userId', 'fullName avatarUrl')
+      .populate('userId', 'fullName avatarUrl country address.country')
+      .populate('productId', 'name image images price currency')
       .sort({ createdAt: -1 })
       .limit(20)
       .lean(),
