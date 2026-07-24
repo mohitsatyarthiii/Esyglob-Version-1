@@ -1,11 +1,27 @@
-// pages/SellersPage.jsx
-import { Search, X, SlidersHorizontal, MapPin, BadgeCheck, Heart, Factory, ChevronRight, Star, Shield, Award, Crown } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
-import { fetchSellers } from '../api/marketplace';
-import AppShell from '../components/AppShell';
-import { SkeletonCards, SafeImage } from '../components/MarketplaceCards';
-import useAsyncData from '../hooks/useAsyncData';
-import { Link } from 'react-router-dom';
+import {
+  ArrowUpRight,
+  BadgeCheck,
+  Building2,
+  Clock3,
+  Factory,
+  Heart,
+  MapPin,
+  MessageCircle,
+  PackageCheck,
+  Search,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  X,
+} from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { fetchSellers } from '../api/marketplace'
+import AppShell from '../components/AppShell'
+import { SafeImage, SkeletonCards } from '../components/MarketplaceCards'
+import useAsyncData from '../hooks/useAsyncData'
 
 const COMPANY_TYPES = [
   { value: '', label: 'All Types' },
@@ -13,14 +29,14 @@ const COMPANY_TYPES = [
   { value: 'wholesaler', label: 'Wholesaler' },
   { value: 'distributor', label: 'Distributor' },
   { value: 'exporter', label: 'Exporter' },
-];
+]
 
 const SORT_OPTIONS = [
   { value: 'verified', label: 'Verified First' },
   { value: 'rating', label: 'Highest Rated' },
   { value: 'products', label: 'Most Products' },
   { value: 'newest', label: 'Newest' },
-];
+]
 
 const REGIONS = [
   { value: '', label: 'All Regions' },
@@ -30,342 +46,205 @@ const REGIONS = [
   { value: 'USA', label: 'USA' },
   { value: 'Vietnam', label: 'Vietnam' },
   { value: 'Turkey', label: 'Turkey' },
-];
+]
 
 export default function SellersPage() {
-  const [input, setInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [regionFilter, setRegionFilter] = useState('');
-  const [sort, setSort] = useState('verified');
-  const [showFilters, setShowFilters] = useState(false);
+  const [input, setInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
+  const [regionFilter, setRegionFilter] = useState('')
+  const [sort, setSort] = useState('verified')
+  const [showFilters, setShowFilters] = useState(false)
 
   const loader = useCallback(
     () => fetchSellers({ limit: 20, search, sort, ...(typeFilter && { companyType: typeFilter }), ...(regionFilter && { region: regionFilter }) }),
-    [search, sort, typeFilter, regionFilter]
-  );
+    [search, sort, typeFilter, regionFilter],
+  )
+  const query = useAsyncData(loader)
+  const sellers = useMemo(() => query.data || [], [query.data])
+  const hasActiveFilters = Boolean(typeFilter || regionFilter || sort !== 'verified' || search)
 
-  const query = useAsyncData(loader);
-  const sellers = useMemo(() => query.data || [], [query.data]);
-  const hasActiveFilters = typeFilter || regionFilter || sort !== 'verified' || search;
+  function handleSubmit(event) {
+    event.preventDefault()
+    setSearch(input.trim())
+  }
 
-  function handleSubmit(e) { e.preventDefault(); setSearch(input.trim()); }
-  function clearAll() { setInput(''); setSearch(''); setTypeFilter(''); setRegionFilter(''); setSort('verified'); }
+  function clearAll() {
+    setInput('')
+    setSearch('')
+    setTypeFilter('')
+    setRegionFilter('')
+    setSort('verified')
+  }
 
-  return (
-    <AppShell>
-      {/* Warm orange-tinted background */}
-      <div className="min-h-screen" style={{ background: '#fef9f4' }}>
-        {/* Header */}
-        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-orange-100 shadow-sm">
-          <div className="max-w-4xl mx-auto px-4 py-2.5">
-            <div className="flex items-center gap-2">
-              <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-2 bg-orange-50/50 rounded-lg px-3 py-2 border border-orange-100 focus-within:bg-white focus-within:border-orange-300 transition-all">
-                <Search size={15} className="text-orange-400 flex-shrink-0" />
-                <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Search suppliers..." className="flex-1 bg-transparent border-none outline-none text-xs text-slate-700 placeholder:text-slate-400" />
-                {input && <button type="button" onClick={() => setInput('')} className="p-0.5 hover:bg-orange-100 rounded-full"><X size={12} className="text-slate-400" /></button>}
-              </form>
-              <button onClick={() => setShowFilters(true)} className="relative flex items-center gap-1.5 px-3 py-2 bg-white border border-orange-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-orange-50 active:scale-95 transition-all">
-                <SlidersHorizontal size={14} />
-                <span className="hidden sm:inline">Filters</span>
-                {hasActiveFilters && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-orange-500 rounded-full border-2 border-white" />}
-              </button>
-              <select value={sort} onChange={(e) => setSort(e.target.value)} className="hidden sm:block px-3 py-2 bg-white border border-orange-200 rounded-lg text-xs font-semibold text-slate-600 cursor-pointer outline-none">
-                {SORT_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
-              </select>
-            </div>
-            {hasActiveFilters && (
-              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                {search && <Chip label={`"${search}"`} onRemove={() => { setInput(''); setSearch(''); }} />}
-                {typeFilter && <Chip label={COMPANY_TYPES.find(t => t.value === typeFilter)?.label} onRemove={() => setTypeFilter('')} />}
-                {regionFilter && <Chip label={regionFilter} onRemove={() => setRegionFilter('')} />}
-                <button onClick={clearAll} className="text-[10px] font-semibold text-red-500 hover:text-red-600 ml-1">Clear</button>
-              </div>
-            )}
+  return <AppShell>
+    <div className="min-h-screen bg-[#f8f9fa]">
+      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 py-3">
+          <div className="flex items-center gap-3">
+            <form onSubmit={handleSubmit} className="flex flex-1 items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 transition-all focus-within:border-blue-500">
+              <Search size={16} className="flex-shrink-0 text-gray-400" />
+              <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="Search suppliers..." aria-label="Search suppliers" className="flex-1 border-none bg-transparent text-sm text-gray-700 outline-none placeholder:text-gray-400" />
+              {input && <button type="button" onClick={() => setInput('')} aria-label="Clear search" className="rounded-full p-0.5 hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>}
+            </form>
+            <button onClick={() => setShowFilters(true)} className="relative flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-all hover:bg-gray-50">
+              <SlidersHorizontal size={16} /><span className="hidden sm:inline">Filter</span>
+              {hasActiveFilters && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />}
+            </button>
+            <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort suppliers" className="hidden cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none sm:block">
+              {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
           </div>
-        </div>
-
-        {/* Content */}
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex gap-5">
-            <aside className="hidden lg:block w-44 flex-shrink-0">
-              <div className="sticky top-20 space-y-4">
-                <div>
-                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Type</h3>
-                  <div className="space-y-0.5">
-                    {COMPANY_TYPES.map((t) => (
-                      <button key={t.value} onClick={() => setTypeFilter(t.value)} className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${typeFilter === t.value ? 'bg-orange-50 text-orange-600' : 'text-slate-600 hover:bg-slate-50'}`}>{t.label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Region</h3>
-                  <div className="space-y-0.5">
-                    {REGIONS.filter(r => r.value).map((r) => (
-                      <button key={r.value} onClick={() => setRegionFilter(r.value)} className={`w-full text-left px-2.5 py-1.5 rounded-md text-xs font-medium transition-all ${regionFilter === r.value ? 'bg-orange-50 text-orange-600' : 'text-slate-600 hover:bg-slate-50'}`}>{r.label}</button>
-                    ))}
-                  </div>
-                </div>
-                {hasActiveFilters && <button onClick={clearAll} className="w-full py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 rounded-md">Clear Filters</button>}
-              </div>
-            </aside>
-
-            <div className="flex-1 min-w-0">
-              {!query.loading && <p className="text-[11px] text-slate-500 mb-3"><span className="font-semibold text-slate-700">{sellers.length}</span> suppliers</p>}
-              {query.loading ? (
-                <div className="space-y-3"><SkeletonCards count={4} variant="manufacturer" /></div>
-              ) : sellers.length > 0 ? (
-                <div className="space-y-3">
-                  {sellers.map((item) => <LinkedInStyleCard key={item._id || item.id} seller={item} />)}
-                </div>
-              ) : (
-                <div className="text-center py-16">
-                  <Factory size={32} className="text-slate-300 mx-auto mb-3" />
-                  <p className="text-sm font-semibold text-slate-500">No suppliers found</p>
-                </div>
-              )}
-              <div className="h-16 sm:h-4" />
-            </div>
-          </div>
+          {hasActiveFilters && <div className="mt-2 flex flex-wrap items-center gap-2">
+            {search && <Chip label={`"${search}"`} onRemove={() => { setInput(''); setSearch('') }} />}
+            {typeFilter && <Chip label={COMPANY_TYPES.find((item) => item.value === typeFilter)?.label} onRemove={() => setTypeFilter('')} />}
+            {regionFilter && <Chip label={regionFilter} onRemove={() => setRegionFilter('')} />}
+            <button onClick={clearAll} className="ml-1 text-xs font-medium text-gray-500 hover:text-red-500">Clear all</button>
+          </div>}
         </div>
       </div>
 
-      {showFilters && <MobileFilters sort={sort} setSort={setSort} typeFilter={typeFilter} setTypeFilter={setTypeFilter} regionFilter={regionFilter} setRegionFilter={setRegionFilter} hasActiveFilters={hasActiveFilters} clearAll={clearAll} onClose={() => setShowFilters(false)} SORT_OPTIONS={SORT_OPTIONS} COMPANY_TYPES={COMPANY_TYPES} REGIONS={REGIONS} />}
-      <style>{`@keyframes slide-up{from{transform:translateY(100%)}to{transform:translateY(0)}}.animate-slide-up{animation:slide-up .3s ease}`}</style>
-    </AppShell>
-  );
-}
+      <div className="mx-auto max-w-7xl px-4 py-4">
+        <div className="flex gap-6">
+          <aside className="hidden w-48 flex-shrink-0 lg:block">
+            <div className="sticky top-20 space-y-4">
+              <FilterGroup title="Company Type" items={COMPANY_TYPES} selected={typeFilter} onSelect={setTypeFilter} tone="blue" />
+              <FilterGroup title="Region" items={REGIONS.filter((item) => item.value)} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
+            </div>
+          </aside>
 
-// ─── Premium LinkedIn-Style Seller Card ───────────────────────────
-function LinkedInStyleCard({ seller }) {
-  const id = seller._id || seller.id;
-  const name = seller.companyName || seller.businessName || seller.name || 'Supplier';
-  const verified = seller.isVerified || seller.verificationStatus === 'verified' || seller.verificationStatus === 'approved';
-  const trusted = seller.isTrustedSeller;
-  const logo = seller.companyLogo || seller.logo || seller.logoUrl;
-  const bannerImage = seller.factoryImages?.[0] || seller.coverImage || seller.companyPhotos?.[0];
-  const location = [seller.address?.city, seller.address?.state, seller.address?.country || seller.country].filter(Boolean).join(', ') || 'Global';
-  const type = seller.companyType || seller.businessType || 'Supplier';
-  const establishedYear = seller.yearEstablished;
-  const yearsInBusiness = seller.yearsInBusiness || (establishedYear ? new Date().getFullYear() - Number(establishedYear) : null);
-  const employeeCount = seller.employeeCount;
-  const annualRevenue = seller.annualRevenueRange || seller.annualRevenue;
-  const rating = seller.rating ? Number(seller.rating).toFixed(1) : null;
-  const reviewCount = seller.reviewCount || 0;
-  const productCount = seller.totalProducts || seller.productCount || 0;
-  const responseRate = seller.responseRate;
-  const description = seller.companyDescription || seller.description || seller.companyIntroduction;
-  const categories = (seller.productCategories || seller.mainCategories || []);
-  const exportMarkets = (seller.exportMarkets || []);
-  const certifications = (seller.certifications || []);
-  const paymentMethods = (seller.paymentMethods || seller.acceptedPaymentMethods || []);
-  const factoryProfile = seller.factoryProfile || {};
-  const [saved, setSaved] = useState(false);
-
-  return (
-    <div className={`group bg-white rounded-lg border overflow-hidden transition-all duration-300 hover:shadow-lg ${
-      verified 
-        ? 'border-emerald-200 hover:border-emerald-300 shadow-sm shadow-emerald-100/50 bg-gradient-to-br from-white via-white to-emerald-50/30' 
-        : 'border-slate-200 hover:border-orange-200'
-    }`}>
-      {/* Banner */}
-      <div className="relative h-24 sm:h-28 bg-gradient-to-r from-slate-200 to-slate-300 overflow-hidden">
-        {bannerImage ? (
-          <SafeImage src={bannerImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-        ) : (
-          <div className="w-full h-full bg-gradient-to-r from-orange-100 via-amber-50 to-yellow-100" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
-        
-        {/* VERIFIED - Top Badge (Only verified shows here) */}
-        {verified && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-emerald-500 text-white rounded text-[9px] font-bold uppercase shadow-lg shadow-emerald-200/50">
-            <BadgeCheck size={10} /> Verified Supplier
+          <div className="min-w-0 flex-1">
+            {!query.loading && <p className="mb-3 text-sm text-gray-500"><span className="font-bold text-gray-800">{sellers.length}</span> suppliers found</p>}
+            {query.loading
+              ? <div className="space-y-3"><SkeletonCards count={3} variant="manufacturer" /></div>
+              : sellers.length
+                ? <div className="flex flex-col gap-3">{sellers.map((seller) => <SellerListingCard key={seller._id || seller.id} seller={seller} />)}</div>
+                : <div className="rounded-lg border border-gray-200 bg-white py-16 text-center shadow-sm"><Factory size={48} className="mx-auto mb-3 text-gray-300" /><p className="text-base font-semibold text-gray-600">No suppliers found</p><p className="mt-1 text-sm text-gray-400">Try adjusting your search or filters</p></div>}
+            <div className="h-8" />
           </div>
-        )}
-        {trusted && !verified && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 px-2 py-0.5 bg-amber-500 text-white rounded text-[9px] font-bold uppercase shadow-lg">
-            <Award size={10} /> Trusted
-          </div>
-        )}
-
-        <button onClick={(e) => { e.preventDefault(); setSaved(!saved); }} className={`absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-full backdrop-blur-md transition-all ${saved ? 'bg-rose-500 text-white shadow-lg shadow-rose-200' : 'bg-white/90 text-slate-500 hover:bg-white'}`}>
-          <Heart size={12} fill={saved ? 'currentColor' : 'none'} />
-        </button>
-      </div>
-
-      {/* Card Body */}
-      <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-        {/* Logo + Name - Clear & Visible */}
-        <div className="flex items-end gap-3 -mt-8 sm:-mt-10 relative z-10 mb-3">
-          <div className="relative flex-shrink-0">
-            {logo ? (
-              <SafeImage src={logo} alt={name} className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-3 object-contain bg-white ${verified ? 'border-emerald-400 shadow-lg shadow-emerald-200/50' : 'border-white shadow-md'}`} />
-            ) : (
-              <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-3 flex items-center justify-center text-white font-extrabold text-lg shadow-lg ${verified ? 'border-emerald-400 bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-200/50' : 'border-white bg-gradient-to-br from-orange-500 to-amber-600'}`}>
-                {name.slice(0, 2).toUpperCase()}
-              </div>
-            )}
-            {verified && <BadgeCheck size={16} className="absolute -bottom-0.5 -right-0.5 text-emerald-500 bg-white rounded-full drop-shadow-sm" />}
-          </div>
-          
-          <div className="flex-1 min-w-0 pb-1">
-            <Link to={`/sellers/${id}`} className="text-sm sm:text-base font-bold text-slate-800 group-hover:text-orange-600 transition-colors block leading-tight truncate">
-              {name}
-              {verified && <Crown size={13} className="inline ml-1 text-amber-400 fill-amber-400" />}
-            </Link>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 truncate mt-0.5">{type}</p>
-            <p className="text-[9px] sm:text-[10px] text-slate-400 truncate flex items-center gap-0.5"><MapPin size={9} /> {location}</p>
-          </div>
-        </div>
-
-        {/* Description */}
-        {description && (
-          <p className="text-[10px] sm:text-[11px] text-slate-600 leading-relaxed mb-2.5 line-clamp-2 italic border-l-2 border-orange-200 pl-2">
-            {description}
-          </p>
-        )}
-
-        {/* Stats Grid - Colorful Numbers */}
-        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-2.5">
-          {productCount > 0 && (
-            <div className="bg-orange-50 rounded-md p-1.5 text-center">
-              <p className="text-sm sm:text-base font-bold text-orange-600 leading-tight">{productCount}</p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">Products</p>
-            </div>
-          )}
-          {rating && (
-            <div className="bg-amber-50 rounded-md p-1.5 text-center">
-              <p className="text-sm sm:text-base font-bold text-amber-600 leading-tight flex items-center justify-center gap-0.5">{rating}<Star size={10} className="fill-amber-400 text-amber-400" /></p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">{reviewCount} reviews</p>
-            </div>
-          )}
-          {yearsInBusiness && (
-            <div className="bg-blue-50 rounded-md p-1.5 text-center">
-              <p className="text-sm sm:text-base font-bold text-blue-600 leading-tight">{yearsInBusiness}</p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">Years</p>
-            </div>
-          )}
-          {responseRate !== undefined && (
-            <div className="bg-green-50 rounded-md p-1.5 text-center">
-              <p className="text-sm sm:text-base font-bold text-green-600 leading-tight">{responseRate}%</p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">Response</p>
-            </div>
-          )}
-          {employeeCount && (
-            <div className="bg-purple-50 rounded-md p-1.5 text-center">
-              <p className="text-sm sm:text-base font-bold text-purple-600 leading-tight">{employeeCount}</p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">Staff</p>
-            </div>
-          )}
-          {annualRevenue && (
-            <div className="bg-teal-50 rounded-md p-1.5 text-center">
-              <p className="text-[10px] sm:text-xs font-bold text-teal-600 leading-tight truncate">{annualRevenue}</p>
-              <p className="text-[8px] sm:text-[9px] text-slate-500 leading-tight">Revenue</p>
-            </div>
-          )}
-        </div>
-
-        {/* Info Lines - Premium formatted */}
-        <div className="space-y-1 text-[9px] sm:text-[10px] text-slate-600">
-          {categories.length > 0 && (
-            <p className="leading-relaxed">
-              <span className="font-semibold text-slate-700">Products:</span>{' '}
-              {categories.slice(0, 6).map(c => typeof c === 'string' ? c : c.name || c).join(' · ')}
-              {categories.length > 6 && <span className="text-slate-400"> +{categories.length - 6} more</span>}
-            </p>
-          )}
-          {exportMarkets.length > 0 && (
-            <p className="leading-relaxed">
-              <span className="font-semibold text-slate-700">Exports:</span>{' '}
-              {exportMarkets.slice(0, 6).map(m => typeof m === 'string' ? m : m.name || m).join(' · ')}
-              {exportMarkets.length > 6 && <span className="text-slate-400"> +{exportMarkets.length - 6} more</span>}
-            </p>
-          )}
-          {certifications.length > 0 && (
-            <p className="leading-relaxed">
-              <span className="font-semibold text-slate-700">Certified:</span>{' '}
-              {certifications.slice(0, 4).map(c => (
-                <span key={typeof c === 'string' ? c : c.name} className="inline-flex items-center gap-0.5 mr-1.5 px-1.5 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[8px] sm:text-[9px] font-medium">
-                  {typeof c === 'string' ? c : (c.name || c.certificateNumber)}
-                </span>
-              ))}
-            </p>
-          )}
-          {factoryProfile.name && (
-            <p className="leading-relaxed">
-              <span className="font-semibold text-slate-700">Factory:</span>{' '}
-              {[factoryProfile.name, factoryProfile.floorArea, factoryProfile.monthlyCapacity && `${factoryProfile.monthlyCapacity}/mo`].filter(Boolean).join(' · ')}
-            </p>
-          )}
-        </div>
-
-        {/* Bottom Bar */}
-        <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-2">
-            {verified && (
-              <span className="text-[8px] sm:text-[9px] font-semibold text-emerald-600 flex items-center gap-1">
-                <Shield size={10} /> Verified
-              </span>
-            )}
-            {paymentMethods.length > 0 && (
-              <span className="text-[8px] sm:text-[9px] text-slate-400 hidden sm:inline">
-                {paymentMethods.slice(0, 2).map(p => typeof p === 'string' ? p : p.name).join(', ')}
-              </span>
-            )}
-          </div>
-          <Link to={`/sellers/${id}`} className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-            verified 
-              ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shadow-emerald-200' 
-              : 'bg-orange-600 text-white hover:bg-orange-700'
-          }`}>
-            View Profile <ChevronRight size={11} />
-          </Link>
         </div>
       </div>
     </div>
-  );
+
+    {showFilters && <MobileFilters sort={sort} setSort={setSort} typeFilter={typeFilter} setTypeFilter={setTypeFilter} regionFilter={regionFilter} setRegionFilter={setRegionFilter} hasActiveFilters={hasActiveFilters} clearAll={clearAll} onClose={() => setShowFilters(false)} />}
+  </AppShell>
 }
 
-// ─── Mobile Filters ────────────────────────────────────────────────
-function MobileFilters({ sort, setSort, typeFilter, setTypeFilter, regionFilter, setRegionFilter, hasActiveFilters, clearAll, onClose, SORT_OPTIONS, COMPANY_TYPES, REGIONS }) {
-  return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 max-h-[75vh] bg-white rounded-t-2xl overflow-y-auto animate-slide-up">
-        <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-          <h3 className="text-sm font-bold">Filters</h3>
-          <button onClick={onClose} className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center"><X size={16} /></button>
+function SellerListingCard({ seller }) {
+  const [saved, setSaved] = useState(false)
+  const id = seller._id || seller.id
+  const name = seller.companyName || seller.businessName || seller.name || 'Marketplace supplier'
+  const verified = Boolean(seller.isVerified || ['verified', 'approved'].includes(seller.verificationStatus))
+  const factoryVerified = Boolean(seller.factoryVerified || seller.isFactoryVerified || seller.factoryAudit?.verified)
+  const premium = Boolean(seller.isPremium || seller.premiumSeller || seller.membershipTier === 'premium' || seller.subscriptionTier === 'premium')
+  const logo = seller.companyLogo || seller.logo || seller.logoUrl
+  const facilityImage = seller.facilityImage || seller.factoryImage || seller.coverImage || seller.bannerImage || seller.videoThumbnail
+  const location = [seller.address?.city, seller.address?.state, seller.address?.country || seller.country].filter(Boolean).join(', ') || 'Global supplier'
+  const type = seller.companyType || seller.businessType || 'Manufacturer'
+  const years = seller.yearsInBusiness || (seller.yearEstablished ? Math.max(0, new Date().getFullYear() - Number(seller.yearEstablished)) : null)
+  const rating = Number(seller.rating || seller.averageRating || 0)
+  const reviews = Number(seller.reviewCount || seller.totalReviews || seller.reviewsCount || 0)
+  const responseRate = Number(seller.responseRate || seller.inquiryResponseRate || 0)
+  const responseTime = seller.responseTime || seller.averageResponseTime || seller.avgResponseTime || 'Within 24h'
+  const productCount = Number(seller.totalProducts || seller.productCount || seller.products?.length || 0)
+  const orders = Number(seller.ordersCompleted || seller.completedOrders || seller.totalOrders || 0)
+  const moq = seller.minimumOrderQuantity || seller.moq || seller.products?.find((product) => product.minimumOrderQuantity || product.moq)?.minimumOrderQuantity || seller.products?.find((product) => product.moq)?.moq
+  const description = seller.companyDescription || seller.description || seller.about || `Explore sourcing and manufacturing capabilities from ${name}.`
+  const categories = normalizeCategories(seller.businessCategories || seller.productCategories || seller.categories || seller.industries, seller.products)
+
+  return <article className="seller-list-card">
+    <header className="seller-list-card__header">
+      <div className="seller-list-card__identity">
+        <div className="seller-list-card__logo">
+          {logo ? <SafeImage src={logo} alt={`${name} logo`} className="h-full w-full object-contain" /> : <span>{name.slice(0, 2).toUpperCase()}</span>}
         </div>
-        <div className="p-4 space-y-5 pb-24">
-          <div>
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Sort</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {SORT_OPTIONS.map((o) => <button key={o.value} onClick={() => setSort(o.value)} className={`px-3 py-2 rounded-full text-xs font-semibold ${sort === o.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{o.label}</button>)}
-            </div>
+        <div>
+          <div className="seller-list-card__title">
+            <Link to={`/sellers/${id}`}>{name}</Link>
+            {verified && <span className="seller-trust-badge verified"><BadgeCheck /> Verified</span>}
+            {factoryVerified && <span className="seller-trust-badge factory"><ShieldCheck /> Factory verified</span>}
+            {premium && <span className="seller-trust-badge premium"><Sparkles /> Premium</span>}
           </div>
-          <div>
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Type</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {COMPANY_TYPES.map((t) => <button key={t.value} onClick={() => setTypeFilter(t.value)} className={`px-3 py-2 rounded-full text-xs font-semibold ${typeFilter === t.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{t.label}</button>)}
-            </div>
-          </div>
-          <div>
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase mb-2">Region</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {REGIONS.filter(r => r.value).map((r) => <button key={r.value} onClick={() => setRegionFilter(r.value)} className={`px-3 py-2 rounded-full text-xs font-semibold ${regionFilter === r.value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}>{r.label}</button>)}
-            </div>
-          </div>
-        </div>
-        <div className="sticky bottom-0 bg-white border-t px-4 py-3 space-y-2" style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}>
-          <button onClick={onClose} className="w-full py-3 bg-slate-800 text-white rounded-xl text-sm font-bold active:scale-[0.98] transition-all">Show Results</button>
-          {hasActiveFilters && <button onClick={() => { clearAll(); onClose(); }} className="w-full py-2 text-sm font-semibold text-red-500">Clear All</button>}
+          <div className="seller-list-card__subline"><span><Building2 /> {type}</span><span><MapPin /> {location}</span>{years !== null && <span>{years}+ years</span>}</div>
         </div>
       </div>
+      <button className={`seller-save-button ${saved ? 'saved' : ''}`} onClick={() => setSaved((value) => !value)} aria-label={saved ? 'Remove supplier from saved' : 'Save supplier'} aria-pressed={saved}><Heart /></button>
+    </header>
+
+    <div className="seller-list-card__content">
+      <div className="seller-list-card__details">
+        <p className="seller-list-card__description">{description}</p>
+        <div className="seller-category-chips" aria-label="Product categories">
+          {categories.slice(0, 5).map((category) => <span key={category}>{category}</span>)}
+          {categories.length > 5 && <span>+{categories.length - 5}</span>}
+        </div>
+        <div className="seller-metric-grid">
+          <Metric icon={<Star />} label="Rating" value={rating ? `${rating.toFixed(1)} (${reviews})` : 'New supplier'} tone="amber" />
+          <Metric icon={<Clock3 />} label="Response" value={responseRate ? `${responseRate}% · ${responseTime}` : responseTime} tone="emerald" />
+          <Metric icon={<PackageCheck />} label="Products" value={productCount ? productCount.toLocaleString() : 'Catalog ready'} tone="blue" />
+          <Metric icon={<BadgeCheck />} label="Orders" value={orders ? orders.toLocaleString() : '—'} tone="violet" />
+          {moq && <Metric icon={<Factory />} label="MOQ from" value={`${moq} units`} tone="slate" />}
+        </div>
+      </div>
+
+      <div className="seller-list-card__media">
+        {facilityImage
+          ? <SafeImage src={facilityImage} alt={`${name} facility`} className="h-full w-full object-cover" />
+          : <div className="seller-list-card__placeholder"><Factory /><span>Company facility</span></div>}
+        <span><Factory /> Manufacturing profile</span>
+      </div>
     </div>
-  );
+
+    <footer className="seller-list-card__footer">
+      <div className="seller-card-proof">{verified ? <><ShieldCheck /> Identity and business details verified</> : <><Building2 /> Marketplace business profile</>}</div>
+      <div className="seller-card-actions">
+        <Link className="seller-card-action secondary" to={`/messages?participant=${id}`}><MessageCircle /> Chat now</Link>
+        <Link className="seller-card-action secondary" to={`/rfqs/new?sellerId=${id}`}><Send /> Send enquiry</Link>
+        <Link className="seller-card-action primary" to={`/sellers/${id}`}>View profile <ArrowUpRight /></Link>
+      </div>
+    </footer>
+  </article>
+}
+
+function Metric({ icon, label, value, tone }) {
+  return <div className={`seller-metric seller-metric--${tone}`}><i>{icon}</i><span><small>{label}</small><b>{value}</b></span></div>
+}
+
+function normalizeCategories(value, products = []) {
+  const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : []
+  const productCategories = Array.isArray(products) ? products.map((product) => product.category?.name || product.categoryName || product.category).filter(Boolean) : []
+  return [...new Set([...source, ...productCategories].map((item) => typeof item === 'string' ? item.trim() : item?.name || item?.title).filter(Boolean))]
+}
+
+function FilterGroup({ title, items, selected, onSelect, tone }) {
+  return <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+    <h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">{title}</h3>
+    <div className="space-y-1">{items.map((item) => <button key={item.value} onClick={() => onSelect(item.value)} className={`w-full rounded px-2 py-1.5 text-left text-xs font-medium transition-all ${selected === item.value ? tone === 'amber' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>{item.label}</button>)}</div>
+  </div>
+}
+
+function MobileFilters({ sort, setSort, typeFilter, setTypeFilter, regionFilter, setRegionFilter, hasActiveFilters, clearAll, onClose }) {
+  return <div className="fixed inset-0 z-50 lg:hidden">
+    <button className="absolute inset-0 h-full w-full bg-black/50 backdrop-blur-sm" onClick={onClose} aria-label="Close filters" />
+    <div className="seller-filter-sheet absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-2xl bg-white">
+      <div className="sticky top-0 flex items-center justify-between border-b bg-white px-4 py-3"><h3 className="text-sm font-bold text-gray-800">Filters & Sorting</h3><button onClick={onClose} aria-label="Close filters" className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"><X size={16} /></button></div>
+      <div className="space-y-5 p-4 pb-24">
+        <MobileChoices title="Sort by" items={SORT_OPTIONS} selected={sort} onSelect={setSort} />
+        <MobileChoices title="Company type" items={COMPANY_TYPES} selected={typeFilter} onSelect={setTypeFilter} />
+        <MobileChoices title="Region" items={REGIONS.filter((item) => item.value)} selected={regionFilter} onSelect={setRegionFilter} tone="amber" />
+      </div>
+      <div className="sticky bottom-0 space-y-2 border-t bg-white px-4 py-3 [padding-bottom:calc(.75rem+env(safe-area-inset-bottom,0px))]">
+        <button onClick={onClose} className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition-all active:scale-[.98]">Show results</button>
+        {hasActiveFilters && <button onClick={() => { clearAll(); onClose() }} className="w-full py-2 text-sm font-semibold text-red-500">Clear all filters</button>}
+      </div>
+    </div>
+  </div>
+}
+
+function MobileChoices({ title, items, selected, onSelect, tone = 'blue' }) {
+  return <div><h4 className="mb-2 text-[10px] font-bold uppercase text-gray-400">{title}</h4><div className="flex flex-wrap gap-1.5">{items.map((item) => <button key={item.value} onClick={() => onSelect(item.value)} className={`rounded-full px-3 py-2 text-xs font-semibold ${selected === item.value ? tone === 'amber' ? 'bg-amber-500 text-white' : 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{item.label}</button>)}</div></div>
 }
 
 function Chip({ label, onRemove }) {
-  return <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 border border-orange-200 rounded-full text-[10px] font-semibold text-orange-600">{label}<button onClick={onRemove} className="hover:bg-orange-100 rounded-full p-0.5"><X size={9} /></button></span>;
+  return <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">{label}<button onClick={onRemove} aria-label={`Remove ${label} filter`} className="rounded-full p-0.5 hover:bg-blue-100"><X size={9} /></button></span>
 }

@@ -1,7 +1,8 @@
-import { Award as Certificate, BadgeCheck, Building2, CalendarDays, CheckCircle2, Clock3, CreditCard, Factory, Globe2, Images, Mail, MapPin, MessageSquare, PackageCheck, Phone, Send, ShieldCheck, ShoppingBag, Star, Truck } from 'lucide-react'
+import { Award as Certificate, BadgeCheck, BarChart3, Building2, CalendarDays, CheckCircle2, Clock3, CreditCard, Factory, Globe2, Images, Mail, MapPin, MessageSquare, PackageCheck, Phone, Send, ShieldCheck, ShoppingBag, Star, Truck, Video } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { fetchSellerDetails } from '../api/marketplace'
+import { resolveApiResourceUrl } from '../api/client'
 import { createChat } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
@@ -13,6 +14,8 @@ const tabs = [
   ['company', 'Company', Building2],
   ['products', 'Products', PackageCheck],
   ['factory', 'Factory', Factory],
+  ['trade', 'Trade', Globe2],
+  ['media', 'Media', Images],
   ['certifications', 'Certs', Certificate],
   ['reviews', 'Reviews', Star],
 ]
@@ -46,6 +49,9 @@ export default function SellerDetailsPage() {
   const categories = normalizeList(seller.productCategories || seller.mainCategories)
   const exportMarkets = normalizeList(seller.exportMarkets?.length ? seller.exportMarkets : factory.exportMarkets)
   const capabilities = normalizeList(seller.businessCapabilities?.length ? seller.businessCapabilities : factory.capabilities)
+  const mainProducts = normalizeList(seller.mainProducts)
+  const industries = normalizeList(seller.industries)
+  const companyVideos = uniqueMedia([...(seller.companyVideos || []), ...(factory.videos || [])])
   const paymentMethods = normalizeList(seller.paymentMethods || seller.acceptedPaymentMethods)
   const response = seller.responseRate !== undefined ? `${seller.responseRate}%` : '—'
   const responseTime = seller.responseTime || (seller.averageResponseTimeHours ? `${seller.averageResponseTimeHours} hours` : '')
@@ -104,6 +110,8 @@ export default function SellerDetailsPage() {
           <Stat icon={Star} value={rating ? rating.toFixed(1) : '—'} label={`${reviewCount} reviews`} />
           <Stat icon={Clock3} value={response} label={responseTime || 'Response rate'} />
           <Stat icon={CalendarDays} value={years} label="Years" />
+          <Stat icon={BadgeCheck} value={seller.totalOrders || seller.tradeHistorySummary?.completedOrders || 0} label="Orders" />
+          <Stat icon={BarChart3} value={`${seller.trustScore || 0}/100`} label="Trust score" />
         </div>
         <div className="manufacturer-actions">
           <button className="manufacturer-chat" disabled={busy || !seller.userId} onClick={contactSupplier}><MessageSquare /> {busy ? 'Opening…' : 'Chat Now'}</button>
@@ -120,6 +128,8 @@ export default function SellerDetailsPage() {
         {tab === 'company' && <CompanyTab seller={seller} factory={factory} name={name} fullAddress={fullAddress} locationText={locationText} categories={categories} markets={exportMarkets} capabilities={capabilities} paymentMethods={paymentMethods} responseTime={responseTime} contactSupplier={contactSupplier} busy={busy} />}
         {tab === 'products' && <ProductsTab products={products} sellerId={sellerId} />}
         {tab === 'factory' && <FactoryTab factory={factory} gallery={gallery} />}
+        {tab === 'trade' && <TradeTab seller={seller} markets={exportMarkets} industries={industries} capabilities={capabilities} mainProducts={mainProducts} />}
+        {tab === 'media' && <MediaTab gallery={gallery} videos={companyVideos} brochures={seller.brochures || []} />}
         {tab === 'certifications' && <CertificationsTab certifications={certifications} />}
         {tab === 'reviews' && <ReviewsTab reviews={reviews} rating={rating} reviewCount={reviewCount} />}
       </div>
@@ -209,6 +219,55 @@ function FactoryTab({ factory, gallery }) {
       <div className="manufacturer-machinery">{normalizeList(factory.machinery).map((item, index) => <article key={`${item.name || item}-${index}`}><Factory /><span><b>{item.name || String(item)}</b>{typeof item === 'object' && <small>{[item.model, item.quantity ? `Qty ${item.quantity}` : '', item.year].filter(Boolean).join(' · ')}</small>}</span></article>)}</div>
     </section>
     <GalleryCard gallery={gallery} />
+  </div>
+}
+
+function TradeTab({ seller, markets, industries, capabilities, mainProducts }) {
+  const trade = seller.tradeCapabilities || {}
+  const shipping = seller.shippingInfo || {}
+  return <div className="manufacturer-company-grid">
+    <section className="manufacturer-card">
+      <h2><Globe2 /> Export & Trade Background</h2>
+      <InfoRows rows={[
+        ['Minimum order quantity', trade.minimumOrderQuantity],
+        ['Production lead time', trade.productionLeadTime],
+        ['Origin port', shipping.originPort],
+        ['Handling time', shipping.handlingTime],
+        ['Completed orders', seller.totalOrders || seller.tradeHistorySummary?.completedOrders],
+        ['Repeat buyers', seller.tradeHistorySummary?.repeatBuyerRate ? `${seller.tradeHistorySummary.repeatBuyerRate}%` : ''],
+        ['Countries served', seller.tradeHistorySummary?.countriesServed],
+        ['Years on EsyGlob', seller.createdAt ? Math.max(1, new Date().getFullYear() - new Date(seller.createdAt).getFullYear() + 1) : ''],
+      ]} />
+      <h3><Globe2 /> Main Markets</h3><TagList values={markets} empty="Export markets have not been published." />
+    </section>
+    <section className="manufacturer-card">
+      <h2><Factory /> Manufacturing Services</h2>
+      <div className="manufacturer-service-flags">
+        {[['OEM', trade.oem], ['ODM', trade.odm], ['Private label', trade.privateLabel]].map(([label, enabled]) => <span className={enabled ? 'active' : ''} key={label}>{enabled ? <CheckCircle2 /> : <Clock3 />}{label}</span>)}
+      </div>
+      <h3>Production capabilities</h3><TagList values={capabilities} empty="Contact the supplier for production capability details." />
+      <h3>Main products</h3><TagList values={mainProducts} empty="View the supplier catalogue for active products." />
+    </section>
+    <section className="manufacturer-card">
+      <h2><BarChart3 /> Quality & R&D Capabilities</h2>
+      <h3>Quality assurance</h3><p>{trade.qualityAssurance || 'Quality assurance details have not been published.'}</p>
+      <h3>Research and development</h3><p>{trade.rdCapability || 'R&D capabilities have not been published.'}</p>
+      <h3>Industries served</h3><TagList values={industries} empty="Industry coverage follows the active product catalogue." />
+    </section>
+    <section className="manufacturer-card">
+      <h2><Truck /> Shipping Support</h2>
+      <TagList values={shipping.shippingSupport} empty="Confirm logistics support during quotation." />
+      <h3>Preferred carriers</h3><TagList values={shipping.preferredCarriers} empty="Carrier details are available during negotiation." />
+      <h3>Export countries</h3><TagList values={shipping.exportCountries} empty="Contact the supplier for supported destinations." />
+    </section>
+  </div>
+}
+
+function MediaTab({ gallery, videos, brochures }) {
+  return <div className="manufacturer-media-tab">
+    <GalleryCard gallery={gallery} />
+    <section className="manufacturer-card manufacturer-videos"><h2><Video /> Factory & Company Videos</h2>{videos.length ? <div>{videos.map((url, index) => <video controls preload="metadata" key={`${url}-${index}`}><source src={resolveApiResourceUrl(url)} /></video>)}</div> : <div className="manufacturer-empty"><Video /><p>No public videos are available.</p></div>}</section>
+    <section className="manufacturer-card manufacturer-brochures"><h2><Certificate /> Company Brochures</h2>{brochures.length ? brochures.map((url, index) => <a href={resolveApiResourceUrl(url)} target="_blank" rel="noreferrer" key={`${url}-${index}`}><Certificate /><span><b>Company brochure {index + 1}</b><small>Open document</small></span></a>) : <div className="manufacturer-empty"><Certificate /><p>No company brochures are available.</p></div>}</section>
   </div>
 }
 

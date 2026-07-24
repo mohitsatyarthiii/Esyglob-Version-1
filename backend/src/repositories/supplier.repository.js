@@ -34,6 +34,7 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
               companyType: 1,
               companyDescription: 1,
               companyLogo: 1,
+              coverImage: 1,
               logo: 1,
               logoUrl: 1,
               isVerified: 1,
@@ -51,6 +52,9 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
               certifications: 1,
               productCategories: 1,
               exportMarkets: 1,
+              industries: 1,
+              mainProducts: 1,
+              tradeCapabilities: 1,
               createdAt: 1,
             },
           },
@@ -83,7 +87,7 @@ export async function findPublicSellerById(sellerId) {
     isActive: true,
     isSuspended: { $ne: true },
   })
-    .select('userId companyName companyType companyDescription companyLogo logo logoUrl companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone address shippingInfo isVerified isTrustedSeller trustedSellerBadge verificationStatus verificationLevel rating reviewCount responseRate trustScore totalProducts totalOrders certifications productCategories exportMarkets createdAt')
+    .select('userId companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos companyVideos brochures companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone languages socialLinks teamContacts address shippingInfo tradeCapabilities isVerified isTrustedSeller trustedSellerBadge verificationStatus verificationLevel rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate trustScore totalProducts totalOrders certifications productCategories productSubcategories industries mainProducts exportMarkets tradeHistorySummary createdAt')
     .populate('userId', 'fullName avatarUrl')
     .lean()
     .exec();
@@ -104,7 +108,7 @@ export async function findPublicSellerRelatedData(sellerId) {
       .limit(60)
       .lean(),
     FactoryProfile.findOne({ sellerId })
-      .select('name address floorArea description employeeCount productionLines machinery monthlyCapacity annualCapacity capabilities qualityControl images videos certifications verificationStatus inspectedAt')
+      .select('name address floorArea description employeeCount productionLines machinery monthlyCapacity annualCapacity capabilities qualityControl qualityProcesses exportMarkets images videos certifications verificationStatus inspectedAt inspection verifiedAt')
       .lean(),
     Review.find({ sellerId, status: 'published' })
       .populate('userId', 'fullName avatarUrl')
@@ -142,9 +146,13 @@ export async function findSellerWithFactory(userId) {
               annualCapacity: 1,
               capabilities: 1,
               qualityControl: 1,
+              qualityProcesses: 1,
+              exportMarkets: 1,
               images: 1,
               videos: 1,
+              certifications: 1,
               verificationStatus: 1,
+              inspection: 1,
               lastDraftSavedAt: 1,
               inspectedAt: 1,
               updatedAt: 1,

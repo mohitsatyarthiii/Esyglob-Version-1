@@ -28,6 +28,22 @@ const sellerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    coverImage: {
+      type: String,
+      trim: true,
+    },
+    companyPhotos: {
+      type: [String],
+      default: [],
+    },
+    companyVideos: {
+      type: [String],
+      default: [],
+    },
+    brochures: {
+      type: [String],
+      default: [],
+    },
     logoUrl: {
       type: String,
       trim: true,
@@ -82,6 +98,22 @@ const sellerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    languages: {
+      type: [String],
+      default: [],
+    },
+    socialLinks: {
+      linkedin: String,
+      facebook: String,
+      instagram: String,
+      youtube: String,
+    },
+    teamContacts: [{
+      name: String,
+      designation: String,
+      email: String,
+      phone: String,
+    }],
     
     // Address
     address: {
@@ -105,6 +137,16 @@ const sellerSchema = new mongoose.Schema(
       preferredCarriers: [String],
       exportCountries: [String],
       handlingTime: String,
+      shippingSupport: [String],
+    },
+    tradeCapabilities: {
+      oem: { type: Boolean, default: false },
+      odm: { type: Boolean, default: false },
+      privateLabel: { type: Boolean, default: false },
+      minimumOrderQuantity: String,
+      productionLeadTime: String,
+      qualityAssurance: String,
+      rdCapability: String,
     },
     
     // Verification Status
@@ -218,6 +260,7 @@ const sellerSchema = new mongoose.Schema(
     productCategories: [String],
     productSubcategories: [String],
     industries: [String],
+    mainProducts: [String],
     tradeHistorySummary: {
       completedOrders: { type: Number, default: 0 },
       repeatBuyerRate: { type: Number, default: 0 },
@@ -251,6 +294,11 @@ const sellerSchema = new mongoose.Schema(
       issuer: String,
       validUntil: Date,
       documentUrl: String,
+      status: {
+        type: String,
+        enum: ['unverified', 'pending', 'verified', 'rejected'],
+        default: 'unverified',
+      },
     }],
     
     // Business Hours

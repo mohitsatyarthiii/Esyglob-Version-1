@@ -84,6 +84,6 @@ export async function signupUser(userData) {
 
   return {
     user: serializeUser(user),
-    redirectTo: role === 'seller' ? '/seller/verification' : '/buyer/onboarding',
+    redirectTo: role === 'seller' ? '/seller/business-profile' : '/buyer/onboarding',
   };
 }

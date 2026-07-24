@@ -53,8 +53,7 @@ const TradeCalculatorPage = lazy(() => import('./pages/TradeCalculatorPage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const MarketplaceDashboardPage = lazy(() => import('./pages/MarketplaceDashboardPage'))
-const SellerVerificationPage = lazy(() => import('./pages/SellerVerificationPage'))
-const FactoryManagementPage = lazy(() => import('./pages/FactoryManagementPage'))
+const BusinessProfilePage = lazy(() => import('./pages/BusinessProfilePage'))
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
 const VerificationAdminPage = lazy(() => import('./pages/VerificationAdminPage'))
 const SellerOrderQueuePage = lazy(() => import('./pages/SellerOrderQueuePage'))
@@ -126,8 +125,9 @@ export default function App() {
       <Route path="/buyer" element={<Navigate replace to="/dashboard?role=buyer" />} />
       <Route path="/seller" element={<Navigate replace to="/dashboard?role=seller" />} />
       <Route path="/seller/dashboard" element={<Navigate replace to="/dashboard?role=seller" />} />
-      <Route path="/seller/verification" element={<SellerVerificationPage />} />
-      <Route path="/seller/factory" element={<FactoryManagementPage />} />
+      <Route path="/seller/business-profile" element={<BusinessProfilePage />} />
+      <Route path="/seller/verification" element={<Navigate replace to="/seller/business-profile?section=verification" />} />
+      <Route path="/seller/factory" element={<Navigate replace to="/seller/business-profile?section=factory" />} />
       <Route path="/subscriptions" element={<SubscriptionPage />} />
       <Route path="/admin/verifications" element={<VerificationAdminPage />} />
       <Route path="/seller/order-queue" element={<SellerOrderQueuePage />} />

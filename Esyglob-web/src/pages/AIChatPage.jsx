@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, Paperclip, Pencil, Plus, RefreshCw, Search, Send, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, MoreHorizontal, Paperclip, Pencil, Plus, RefreshCw, Search, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
 import { resolveApiResourceUrl } from '../api/client'
 import { uploadFiles } from '../api/trade'
@@ -15,6 +15,7 @@ const sellerPrompts = ['Find RFQ opportunities for my products', 'How can I impr
 
 export default function AIChatPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const role = user?.primaryRole || 'buyer'
   const [chats, setChats] = useState([])
   const [chatId, setChatId] = useState('')
@@ -33,7 +34,12 @@ export default function AIChatPage() {
   const [editingId, setEditingId] = useState('')
   const [editingTitle, setEditingTitle] = useState('')
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false)
+  const [shareStatus, setShareStatus] = useState('')
   const endRef = useRef(null)
+  const messagesRef = useRef(null)
+  const textareaRef = useRef(null)
+  const composerRef = useRef(null)
+  const conversationMenuRef = useRef(null)
   const imageRef = useRef(null)
   const cameraRef = useRef(null)
   const fileRef = useRef(null)
@@ -41,6 +47,8 @@ export default function AIChatPage() {
   const streamRef = useRef(null)
   const streamSequence = useRef(0)
   const sendingRef = useRef(false)
+  const stickToBottomRef = useRef(true)
+  const shareTimerRef = useRef(null)
 
   const loadChats = useCallback(async () => {
     try { setChats(await fetchAIChats(role)) }
@@ -50,10 +58,43 @@ export default function AIChatPage() {
   useEffect(() => { loadChats().catch((next) => setError(next.message)) }, [loadChats])
   useEffect(() => () => {
     streamRef.current?.abort()
+    window.clearTimeout(shareTimerRef.current)
+  }, [])
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const updateViewport = () => document.documentElement.style.setProperty('--ai-viewport-height', `${viewport?.height || window.innerHeight}px`)
+    updateViewport()
+    viewport?.addEventListener('resize', updateViewport)
+    window.addEventListener('resize', updateViewport)
+    return () => {
+      viewport?.removeEventListener('resize', updateViewport)
+      window.removeEventListener('resize', updateViewport)
+      document.documentElement.style.removeProperty('--ai-viewport-height')
+    }
+  }, [])
+  useEffect(() => {
+    const closeMenu = (event) => {
+      if (event.type === 'keydown') {
+        if (event.key !== 'Escape') return
+        conversationMenuRef.current?.removeAttribute('open')
+      }
+      if (event.type === 'pointerdown') {
+        if (!conversationMenuRef.current?.contains(event.target)) conversationMenuRef.current?.removeAttribute('open')
+        if (composerRef.current?.contains(event.target)) return
+      }
+      setAttachmentMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeMenu)
+    document.addEventListener('keydown', closeMenu)
+    return () => {
+      document.removeEventListener('pointerdown', closeMenu)
+      document.removeEventListener('keydown', closeMenu)
+    }
   }, [])
   useEffect(() => {
     if (!chatId) { setMessages([]); return }
     let live = true
+    stickToBottomRef.current = true
     setConversationLoading(true)
     fetchAIChat(chatId)
       .then((chat) => { if (live) setMessages(chat.messages || []) })
@@ -61,7 +102,17 @@ export default function AIChatPage() {
       .finally(() => { if (live) setConversationLoading(false) })
     return () => { live = false }
   }, [chatId])
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, busy])
+  useEffect(() => {
+    if (!stickToBottomRef.current) return undefined
+    const frame = window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: busy ? 'auto' : 'smooth', block: 'end' }))
+    return () => window.cancelAnimationFrame(frame)
+  }, [messages, busy])
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 28), 160)}px`
+  }, [draft])
 
   const active = useMemo(() => chats.find((item) => resolveId(item) === chatId), [chatId, chats])
   const visibleChats = useMemo(() => {
@@ -89,6 +140,7 @@ export default function AIChatPage() {
   async function send(text = draft) {
     const content = text.trim() || (attachments.length ? 'Please analyze the attached files for my marketplace request.' : '')
     if (!content || busy || conversationLoading || sendingRef.current) return
+    stickToBottomRef.current = true
     sendingRef.current = true
     const sentAttachments = attachments
     const streamMessageId = `stream-${++streamSequence.current}`
@@ -129,7 +181,26 @@ export default function AIChatPage() {
   }
 
   function newConversation() {
-    streamRef.current?.abort(); sendingRef.current = false; setBusy(false); setChatId(''); setMessages([]); setError(''); setFailed(''); setSidebarOpen(false)
+    streamRef.current?.abort(); sendingRef.current = false; stickToBottomRef.current = true; setBusy(false); setChatId(''); setMessages([]); setError(''); setFailed(''); setSidebarOpen(false); window.requestAnimationFrame(() => textareaRef.current?.focus())
+  }
+
+  async function shareConversation() {
+    const title = active?.title || 'ESY AI conversation'
+    try {
+      if (navigator.share) await navigator.share({ title, text: 'ESY AI marketplace conversation', url: window.location.href })
+      else {
+        await navigator.clipboard.writeText(window.location.href)
+        setShareStatus('Link copied')
+        window.clearTimeout(shareTimerRef.current)
+        shareTimerRef.current = window.setTimeout(() => setShareStatus(''), 1800)
+      }
+    } catch (next) {
+      if (next?.name !== 'AbortError') {
+        setShareStatus('Unable to share')
+        window.clearTimeout(shareTimerRef.current)
+        shareTimerRef.current = window.setTimeout(() => setShareStatus(''), 1800)
+      }
+    }
   }
 
   async function renameConversation(id) {
@@ -158,7 +229,7 @@ export default function AIChatPage() {
       <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>ESY AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
       <button className="ai-new-chat" onClick={newConversation}><Plus /> New conversation</button>
       <div className="ai-history-tools"><label><Search /><input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} placeholder="Search conversations" /></label><label className="ai-history-sort"><span>Sort</span><select value={historySort} onChange={(event) => setHistorySort(event.target.value)}><option value="recent">Most recent</option><option value="oldest">Oldest first</option></select><ChevronDown /></label></div>
-      <div className="ai-sidebar-head"><b><History /> Saved chats</b><small>{visibleChats.length}</small></div>
+      <div className="ai-sidebar-head"><b><History /> Recent chats</b><small>{visibleChats.length}</small></div>
       <div className="ai-history-list">{historyLoading ? <div className="ai-history-empty"><div className="typing-dots"><span /><span /><span /></div><p>Loading chats...</p></div> : visibleChats.length ? visibleChats.map((item) => {
         const id = resolveId(item)
         const timestamp = item.lastMessageAt || item.updatedAt || item.createdAt
@@ -169,15 +240,44 @@ export default function AIChatPage() {
       }) : <div className="ai-history-empty"><History /><b>{historySearch ? 'No chats found' : 'No saved chats yet'}</b><p>{historySearch ? 'Try a different search.' : 'Your conversations will appear here.'}</p></div>}</div>
     </aside>
     <section className="ai-chat">
-      <header><div><button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open conversation history"><Menu /></button><i><Sparkles /></i><span><h1>{active?.title || 'ESY AI'}</h1><p><em /> AI marketplace assistant <span>· {role}</span></p></span></div><button className="ai-header-new" onClick={newConversation}><Plus /> <span>New chat</span></button></header>
-      <div className="ai-messages">{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">Your intelligent trade partner</span><h2>What can I help you discover today?</h2><p>Find products, evaluate suppliers, prepare RFQs and explore global market opportunities with live EsyGlob context.</p><div>{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
+      <header>
+        <div className="ai-chat-identity">
+          <button className="ai-mobile-back" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
+          <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open conversation history"><Menu /></button>
+          <i><Sparkles /></i>
+          <span><small>ESY AI</small><h1>{active?.title || 'New conversation'}</h1><p><em /> Ready to help <span>· {role}</span></p></span>
+        </div>
+        <div className="ai-header-actions">
+          <span className="ai-share-status" role="status">{shareStatus}</span>
+          <button className="ai-header-tool ai-share-button" type="button" onClick={shareConversation} aria-label="Share conversation"><Share2 /><span>Share</span></button>
+          <details className="ai-conversation-menu" ref={conversationMenuRef}>
+            <summary aria-label="Conversation options"><MoreHorizontal /></summary>
+            <div>
+              <button type="button" disabled={!chatId} onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); setEditingId(chatId); setEditingTitle(active?.title || 'Marketplace assistant'); setSidebarOpen(true) }}><Pencil /> Rename conversation</button>
+              <button type="button" className="danger" disabled={!chatId} onClick={(event) => { event.currentTarget.closest('details')?.removeAttribute('open'); removeConversation(chatId) }}><Trash2 /> Delete conversation</button>
+            </div>
+          </details>
+          <button className="ai-header-new" onClick={newConversation}><Plus /> <span>New chat</span></button>
+        </div>
+      </header>
+      <div
+        className="ai-messages"
+        ref={messagesRef}
+        role="log"
+        aria-live="polite"
+        aria-busy={busy || conversationLoading}
+        onScroll={(event) => {
+          const element = event.currentTarget
+          stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120
+        }}
+      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">Your intelligent trade partner</span><h2>What can I help you discover today?</h2><p>Find products, evaluate suppliers, prepare RFQs and explore global market opportunities with live EsyGlob context.</p><div>{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
       <div className="ai-composer-dock">
         {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
         {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
-        <form className="ai-composer" onSubmit={(event) => { event.preventDefault(); send() }}>
+        <form className="ai-composer" ref={composerRef} onSubmit={(event) => { event.preventDefault(); send() }}>
           <div className="ai-plus-wrap">
             <button type="button" className="ai-plus-button" disabled={uploading || busy} aria-label="Add attachment" aria-expanded={attachmentMenuOpen} onClick={() => setAttachmentMenuOpen((value) => !value)}><Plus /></button>
-            {attachmentMenuOpen && <div className="ai-attachment-popover">
+            {attachmentMenuOpen && <div className="ai-attachment-popover" role="menu" aria-label="Attachment options">
               <button type="button" onClick={() => { setAttachmentMenuOpen(false); cameraRef.current?.click() }}><Camera /><span><b>Camera</b><small>Take a photo</small></span></button>
               <button type="button" onClick={() => { setAttachmentMenuOpen(false); imageRef.current?.click() }}><Image /><span><b>Upload image</b><small>PNG, JPG or WebP</small></span></button>
               <button type="button" onClick={() => { setAttachmentMenuOpen(false); fileRef.current?.click() }}><File /><span><b>Upload file</b><small>Choose any supported file</small></span></button>
@@ -188,7 +288,7 @@ export default function AIChatPage() {
           <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={attach} />
           <input ref={fileRef} hidden type="file" multiple onChange={attach} />
           <input ref={documentRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={attach} />
-          <textarea rows="1" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'ESY AI is responding...' : 'Message ESY AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
+          <textarea ref={textareaRef} rows="1" value={draft} disabled={conversationLoading} maxLength={12000} aria-label="Message ESY AI" onFocus={() => { stickToBottomRef.current = true; requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' })) }} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'ESY AI is responding...' : 'Message ESY AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
           <div className="ai-composer-actions"><button className="ai-send-button" aria-label="Send message" disabled={busy || uploading || (!draft.trim() && !attachments.length)}>{busy ? <span className="ai-send-loader" /> : <Send />}</button></div>
         </form>
         <small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small>

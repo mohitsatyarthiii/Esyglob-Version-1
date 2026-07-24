@@ -66,7 +66,7 @@ const knowledge = [
   ['How international trade works', 'Understand the milestones between sourcing, contracting, payment and delivery.', '/market-insights', Globe2],
   ['Export documentation guide', 'Learn where invoices, packing lists, origin certificates and transport records fit.', '/services/customs-brokerage', FileCheck2],
   ['RFQ best practices', 'Create requirements suppliers can quote accurately and efficiently.', '/rfqs/new', Target],
-  ['Supplier verification process', 'See how evidence, factory information and trust levels protect buyers.', '/seller/verification', ShieldCheck],
+  ['Build your Business Profile', 'Manage company, factory, evidence and trust information from one workspace.', '/seller/business-profile', ShieldCheck],
 ]
 
 export default function HomePage() {
@@ -116,7 +116,7 @@ export default function HomePage() {
 
     <section className="home-audience-section home-reveal"><div className="container">
       <article className="home-audience-card home-audience-card--buyer"><span><PackageSearch /> For buyers</span><h2>Source with clarity and control.</h2><ul>{['Search relevant products', 'Find verified suppliers', 'Create structured RFQs', 'Compare and negotiate quotations', 'Complete a traceable secure trade'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to="/products">Start sourcing <ArrowRight /></Link></article>
-      <article className="home-audience-card home-audience-card--seller"><span><Factory /> For sellers</span><h2>Take your business to global buyers.</h2><ul>{['Verify your business', 'Publish professional products', 'Receive qualified RFQs', 'Send structured quotations', 'Build a global trade history'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to={status === 'authenticated' ? '/seller/verification' : '/signup'}>Start selling <ArrowRight /></Link></article>
+      <article className="home-audience-card home-audience-card--seller"><span><Factory /> For sellers</span><h2>Take your business to global buyers.</h2><ul>{['Build your Business Profile', 'Publish professional products', 'Receive qualified RFQs', 'Send structured quotations', 'Build a global trade history'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to={status === 'authenticated' ? '/seller/business-profile' : '/signup'}>Start selling <ArrowRight /></Link></article>
     </div></section>
   </div></AppShell>
 }

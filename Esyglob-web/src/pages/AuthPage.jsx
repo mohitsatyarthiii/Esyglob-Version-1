@@ -61,11 +61,11 @@ export default function AuthPage({ mode }) {
         navigate('/login', { replace: true, state: { notice: 'Password reset. You can now sign in.' } })
       } else if (isSignup) {
         await signUp({ name: form.name.trim(), email: form.email.trim(), password: form.password, role })
-        navigate(role === 'seller' ? '/seller/verification' : '/buyer/onboarding', { replace: true })
+        navigate(role === 'seller' ? '/seller/business-profile' : '/buyer/onboarding', { replace: true })
       } else {
         const account = await signIn({ email: form.email.trim(), password: form.password })
         const onboarding = account?.hasCompletedOnboarding === false
-          ? account.roles?.includes('seller') ? '/seller/verification' : '/buyer/onboarding'
+          ? account.roles?.includes('seller') ? '/seller/business-profile' : '/buyer/onboarding'
           : ''
         navigate(onboarding || location.state?.from || '/home', { replace: true })
       }
