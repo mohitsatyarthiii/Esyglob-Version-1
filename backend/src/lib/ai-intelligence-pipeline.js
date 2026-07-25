@@ -98,7 +98,18 @@ export function buildConversationMemory({ messages = [], context = {}, language 
     product: /\b(steel pipes?|textiles?|chemicals?|electronics?|machinery|rice|cotton|packaging|solar panels?)\b/i,
     manufacturer: /\b(?:supplier|manufacturer|factory)\s+(?:named\s+)?([A-Z][\w& -]{2,50})/i,
   };
-  const entities = { ...(context.entities || {}) };
+  const entities = {
+    ...(context.entities || {}),
+    ...(context.productId ? { productId: String(context.productId) } : {}),
+    ...(context.manufacturerId || context.sellerId
+      ? { manufacturerId: String(context.manufacturerId || context.sellerId) }
+      : {}),
+    ...(context.productName ? { product: String(context.productName) } : {}),
+    ...(context.manufacturerName || context.sellerName
+      ? { manufacturer: String(context.manufacturerName || context.sellerName) }
+      : {}),
+    ...(context.sourcePath ? { currentPage: String(context.sourcePath) } : {}),
+  };
   for (const [key, pattern] of Object.entries(entityPatterns)) {
     const match = joined.match(pattern);
     if (match) entities[key] = match[1] || match[0];

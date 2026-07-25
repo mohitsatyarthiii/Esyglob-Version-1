@@ -18,6 +18,7 @@ router.get('/reports', MarketInsightsController.listResearchReports);
 router.get('/reports/:reportId', MarketInsightsController.getResearchReport);
 router.get('/reports/:reportId/pdf', MarketInsightsController.downloadResearchPdf);
 router.post('/reports/:reportId/share', MarketInsightsController.createShareLink);
+router.post('/reports/:reportId/regenerate', requireSubscriptionFeature('marketInsights', { ai: true, aiFeature: 'market_trends' }), MarketInsightsController.regenerateReport);
 router.delete('/reports/:reportId', MarketInsightsController.deleteReport);
 
 router.post('/research/stream', requireSubscriptionFeature('marketInsights', { ai: true, aiFeature: 'market_trends' }), MarketInsightsController.streamResearch);

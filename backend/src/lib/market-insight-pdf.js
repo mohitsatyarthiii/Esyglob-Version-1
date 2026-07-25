@@ -100,6 +100,74 @@ function barChart(doc, chart) {
   doc.moveDown(.55);
 }
 
+function pieChart(doc, chart) {
+  const rows = (chart?.data || []).filter(item => Number(item.value) > 0).slice(0, 6);
+  const total = rows.reduce((sum, item) => sum + Number(item.value), 0);
+  if (!rows.length || !total) return;
+  ensureSpace(doc, 190);
+  doc.fillColor(COLORS.navy).font('Helvetica-Bold').fontSize(10.5).text(text(chart.title, 'Distribution'));
+  doc.moveDown(.45);
+  const palette = [COLORS.blue, COLORS.cyan, COLORS.green, COLORS.amber, '#7c3aed', '#db2777'];
+  const centerX = PAGE.left + 88;
+  const centerY = doc.y + 70;
+  const radius = 62;
+  let angle = -Math.PI / 2;
+  rows.forEach((item, index) => {
+    const next = angle + (Number(item.value) / total) * Math.PI * 2;
+    const points = [[centerX, centerY]];
+    const steps = Math.max(2, Math.ceil((next - angle) / (Math.PI / 20)));
+    for (let step = 0; step <= steps; step += 1) {
+      const current = angle + (next - angle) * (step / steps);
+      points.push([centerX + Math.cos(current) * radius, centerY + Math.sin(current) * radius]);
+    }
+    doc.polygon(...points).fill(palette[index % palette.length]);
+    angle = next;
+  });
+  rows.forEach((item, index) => {
+    const y = doc.y + index * 22;
+    doc.roundedRect(PAGE.left + 188, y + 2, 10, 10, 2).fill(palette[index % palette.length]);
+    doc.fillColor(COLORS.slate).font('Helvetica').fontSize(8).text(text(item.label), PAGE.left + 205, y, { width: 205, ellipsis: true });
+    doc.fillColor(COLORS.ink).font('Helvetica-Bold').fontSize(8).text(`${(Number(item.value) / total * 100).toFixed(1)}%`, PAGE.left + 420, y, { width: 70, align: 'right' });
+  });
+  doc.y = centerY + radius + 22;
+}
+
+function lineChart(doc, chart) {
+  const rows = (chart?.data || []).filter(item => Number.isFinite(Number(item.value))).slice(0, 10);
+  if (rows.length < 2) return;
+  ensureSpace(doc, 190);
+  doc.fillColor(COLORS.navy).font('Helvetica-Bold').fontSize(10.5).text(text(chart.title, 'Trend'));
+  doc.moveDown(.6);
+  const x = PAGE.left + 20;
+  const y = doc.y;
+  const width = PAGE.width - 40;
+  const height = 112;
+  const values = rows.map(item => Number(item.value));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const spread = max - min || 1;
+  doc.strokeColor(COLORS.line).lineWidth(1).moveTo(x, y).lineTo(x, y + height).lineTo(x + width, y + height).stroke();
+  const points = rows.map((item, index) => [
+    x + index * (width / (rows.length - 1)),
+    y + height - ((Number(item.value) - min) / spread) * (height - 12),
+  ]);
+  doc.strokeColor(COLORS.blue).lineWidth(2.5).moveTo(...points[0]);
+  points.slice(1).forEach(point => doc.lineTo(...point));
+  doc.stroke();
+  points.forEach((point, index) => {
+    doc.circle(point[0], point[1], 3.5).fill(COLORS.cyan);
+    doc.fillColor(COLORS.muted).font('Helvetica').fontSize(6.4)
+      .text(text(rows[index].label), point[0] - 28, y + height + 7, { width: 56, align: 'center', ellipsis: true });
+  });
+  doc.y = y + height + 30;
+}
+
+function renderChart(doc, chart) {
+  if (chart?.type === 'pie') return pieChart(doc, chart);
+  if (chart?.type === 'line') return lineChart(doc, chart);
+  return barChart(doc, chart);
+}
+
 function dataTable(doc, table) {
   const columns = (table?.columns || Object.keys(table?.rows?.[0] || {})).slice(0, 5);
   const rows = (table?.rows || []).slice(0, 10);
@@ -157,6 +225,7 @@ function coverPage(doc, report, metadata) {
 export async function buildMarketInsightPdf(report, metadata = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let generatedPageCount = 0;
     const doc = new PDFDocument({
       size: 'A4',
       margin: PAGE.left,
@@ -170,7 +239,11 @@ export async function buildMarketInsightPdf(report, metadata = {}) {
     });
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('error', reject);
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('end', () => {
+      const buffer = Buffer.concat(chunks);
+      buffer.pageCount = generatedPageCount;
+      resolve(buffer);
+    });
 
     coverPage(doc, report, metadata);
     const sections = Array.isArray(report.sections) ? report.sections : [];
@@ -217,13 +290,13 @@ export async function buildMarketInsightPdf(report, metadata = {}) {
       paragraph(doc, section.summary || section.content);
       bullets(doc, section.points || section.bullets || []);
       (section.tables || []).forEach(table => dataTable(doc, table));
-      (section.charts || []).forEach(chart => barChart(doc, chart));
+      (section.charts || []).forEach(chart => renderChart(doc, chart));
       doc.moveDown(.7);
       rule(doc);
       doc.moveDown(.7);
     });
 
-    (report.charts || []).forEach(chart => barChart(doc, chart));
+    (report.charts || []).forEach(chart => renderChart(doc, chart));
     (report.tables || []).forEach(table => dataTable(doc, table));
     if (report.marketplaceSection) {
       sectionHeading(doc, sections.length + 1, report.marketplaceSection.title, 'Live EsyGlob marketplace context');
@@ -263,6 +336,7 @@ export async function buildMarketInsightPdf(report, metadata = {}) {
     }
 
     const range = doc.bufferedPageRange();
+    generatedPageCount = range.count;
     for (let index = range.start; index < range.start + range.count; index += 1) {
       doc.switchToPage(index);
       if (index > 0) {
@@ -276,6 +350,14 @@ export async function buildMarketInsightPdf(report, metadata = {}) {
 }
 
 export function sendMarketInsightPdf(res, buffer, report, disposition = 'inline') {
+  const frameOrigins = [
+    process.env.PUBLIC_WEB_URL,
+    ...String(process.env.CORS_ORIGIN || '').split(','),
+  ]
+    .map(value => String(value || '').trim().replace(/\/$/, ''))
+    .filter(value => /^https?:\/\//i.test(value));
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${[...new Set(frameOrigins)].join(' ')}`.trim());
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `${disposition}; filename="${safeFilename(report.title)}"`);
   res.setHeader('Content-Length', buffer.length);

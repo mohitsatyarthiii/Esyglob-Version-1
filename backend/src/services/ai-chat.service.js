@@ -85,7 +85,7 @@ class AIChatService {
     if (['greeting', 'general_knowledge'].includes(intelligence.route)) {
       return {
         results: emptyResults,
-        snapshot: { roleContext: role, intelligence, memory, navigationActions: [] },
+        snapshot: { roleContext: role, intelligence, navigationActions: [] },
         internal: { rewrittenQuery, memory },
         text: `${languageInstruction(intelligence.language)}\nDetected route: ${intelligence.route}. Answer directly using native model knowledge. Be natural, concise, and do not invent EsyGlob platform facts. Return clean plain text without Markdown symbols or raw URLs.`,
       };
@@ -96,7 +96,7 @@ class AIChatService {
       catch (error) { console.warn('[Live search]', error.message); }
       return {
         results: emptyResults,
-        snapshot: { roleContext: role, intelligence, memory, liveSources: live.results, navigationActions: [] },
+        snapshot: { roleContext: role, intelligence, liveSources: live.results, navigationActions: [] },
         internal: { rewrittenQuery, memory },
         text: [
           languageInstruction(intelligence.language),
@@ -136,7 +136,11 @@ class AIChatService {
 
     return {
       results,
-      internal: { rewrittenQuery, memory },
+      internal: {
+        rewrittenQuery,
+        memory,
+        knowledgeDocumentIds: knowledgeDocuments.map(document => String(document._id)),
+      },
       snapshot: {
         roleContext: role,
         terms: results.terms,
@@ -174,11 +178,7 @@ class AIChatService {
         hsCodes: knowledge.hsCodes,
         account: knowledge.account,
         navigationActions: knowledge.navigationActions,
-        memory,
-        intelligence: {
-          ...intelligence,
-          knowledgeDocumentIds: knowledgeDocuments.map(document => document._id),
-        },
+        intelligence,
       },
       text: [
         `${role} assistant context:`,
@@ -247,6 +247,15 @@ class AIChatService {
     if (/import|export|ship|custom|tariff|logistic/.test(text)) suggestions.push('Explain the documents, Incoterms, costs, and compliance risks');
     suggestions.push(role === 'seller' ? 'What should I improve to win more buyer enquiries?' : 'What due-diligence checks should I complete before ordering?');
     return [...new Set(suggestions)].slice(0, 3);
+  }
+
+  static publicMarketplaceSnapshot(snapshot = {}) {
+    const {
+      intelligence: _intelligence,
+      liveSources: _liveSources,
+      ...publicSnapshot
+    } = snapshot || {};
+    return publicSnapshot;
   }
 
   /**
@@ -427,7 +436,10 @@ class AIChatService {
     }
 
     // Build platform context
-    const platformContext = await this.buildPlatformContext(message, roleContext, userId, chat);
+    const platformContext = await this.buildPlatformContext(message, roleContext, userId, {
+      messages: chat.messages,
+      context: { ...(chat.context?.toObject?.() || chat.context || {}), ...(body.context || {}) },
+    });
 
     // Build system prompt
     const systemPrompt = AIService.buildMarketplaceSystemPrompt(
@@ -504,9 +516,9 @@ class AIChatService {
       'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
       'context.language': platformContext.snapshot.intelligence?.language,
       'context.intent': platformContext.snapshot.intelligence?.intent,
-      'context.conversationSummary': platformContext.snapshot.memory?.summary,
-      'context.entities': platformContext.snapshot.memory?.entities,
-      'context.preferences': platformContext.snapshot.memory?.preferences,
+      'context.conversationSummary': platformContext.internal?.memory?.summary,
+      'context.entities': platformContext.internal?.memory?.entities,
+      'context.preferences': platformContext.internal?.memory?.preferences,
       'context.marketplaceSnapshot': platformContext.snapshot,
       'context.supportMode': Boolean(body.supportMode),
       ...(body.context?.sourcePath && { 'context.sourcePath': body.context.sourcePath }),

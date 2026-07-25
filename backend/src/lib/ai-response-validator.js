@@ -77,7 +77,7 @@ export function buildRepairPrompt({ message, response, validation, intelligence 
     `Required language: ${validation.requestedLanguage || intelligence?.language || 'en'}`,
     `Allowed sources: ${(intelligence?.sources || ['knowledge_base']).join(', ')}`,
     `Failures: ${validation.issues.map(issue => issue.code).join(', ')}`,
-    'Answer the actual request completely. Do not invent records, identifiers, links, policies, products, or suppliers. Never include credentials or another user\'s data. Use clean concise Markdown.',
+    'Answer the actual request completely. Do not invent records, identifiers, links, policies, products, or suppliers. Never include credentials or another user\'s data. Use clean concise plain text without Markdown control symbols, code fences, raw URLs, or tables.',
     `Draft to repair:\n${String(response || '').slice(0, 6000)}`,
   ].join('\n\n');
 }

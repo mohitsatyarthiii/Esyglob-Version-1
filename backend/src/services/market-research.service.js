@@ -5,6 +5,9 @@ import MarketInsightsRepository from '../repositories/market-insights.repository
 import SavedResearchReport from '../models/SavedResearchReport.js';
 import { getAISearchResults, getSearchTerms } from '../lib/ai-marketplace-context.js';
 import { buildMarketInsightPdf } from '../lib/market-insight-pdf.js';
+import KnowledgeBaseService from './knowledge-base.service.js';
+import MarketReportStorageService from './market-report-storage.service.js';
+import { analyzeRequest, rewriteSearchQuery } from '../lib/ai-intelligence-pipeline.js';
 
 const cache = new Map();
 const CACHE_TTL = Number(process.env.MARKET_RESEARCH_CACHE_TTL_MS || 15 * 60 * 1000);
@@ -45,17 +48,27 @@ function fmtUsd(value) {
   return `$${Math.round(amount).toLocaleString('en-US')}`;
 }
 
-function reportLinks(report, id) {
+function reportMetadata(report, id, persisted = {}) {
   const reportId = String(id);
   return {
-    ...report,
     savedReportId: reportId,
     reportId: report.id || reportId,
+    title: report.title,
+    query: report.query,
+    reportType: report.reportType,
+    productName: report.productName,
+    country: report.country,
     reportVersion: report.reportVersion || REPORT_VERSION,
     status: 'ready',
     pdfStatus: 'ready',
+    previewUrl: persisted.previewUrl || `/api/market-insights/reports/${reportId}/pdf`,
     pdfUrl: `/api/market-insights/reports/${reportId}/pdf`,
-    downloadUrl: `/api/market-insights/reports/${reportId}/pdf?download=1`,
+    downloadUrl: persisted.downloadUrl || `/api/market-insights/reports/${reportId}/pdf?download=1`,
+    pages: Number(persisted.pageCount || 0),
+    fileSize: Number(persisted.fileSize || 0),
+    generationTimeMs: Number(persisted.generationTimeMs || report.elapsedMs || 0),
+    generatedAt: report.generatedAt || persisted.createdAt,
+    createdAt: persisted.createdAt || report.createdAt,
   };
 }
 
@@ -63,7 +76,7 @@ class MarketResearchService {
   static emit(emit, startedAt, event) { emit({ elapsedMs: Date.now() - startedAt, timestamp: new Date().toISOString(), ...event }); }
   static step(emit, startedAt, agent, operation, progress, status = 'success', sourceCount = 0, datasetsCollected = 0) { this.emit(emit, startedAt, { type: 'step', agent, operation, progress, status, sourceCount, datasetsCollected }); }
 
-  static async run({ userId, session, query, productName = '', country = '', category = '', mode = 'product_rd' }, emit) {
+  static async run({ userId, session, query, productName = '', country = '', category = '', mode = 'product_rd', force = false }, emit) {
     const startedAt = Date.now();
     const researchQuery = String(query || [productName, category, country].filter(Boolean).join(' ')).trim();
     if (researchQuery.length < 2) throw Object.assign(new Error('Research request is required'), { statusCode: 400 });
@@ -77,57 +90,82 @@ class MarketResearchService {
     })).digest('hex');
     const cacheKey = `${userId}:${queryHash}`;
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.createdAt < CACHE_TTL) {
-      this.emit(emit, startedAt, { type: 'research_started', researchId: cached.report.id, cached: true, progress: 2 });
-      cached.report.sections?.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', index, section, progress: 90 }));
+    if (!force && cached && Date.now() - cached.createdAt < CACHE_TTL) {
+      this.emit(emit, startedAt, { type: 'research_started', researchId: cached.report.reportId, cached: true, progress: 2 });
       this.emit(emit, startedAt, { type: 'report', report: cached.report, progress: 100 });
       return cached.report;
     }
-    const reusable = await SavedResearchReport.findOne({
+    const reusable = !force && await SavedResearchReport.findOne({
       userId,
       queryHash,
       status: 'active',
       pdfStatus: 'ready',
       createdAt: { $gte: new Date(Date.now() - REPORT_REUSE_TTL) },
-    }).select('reportData reportVersion createdAt').sort({ createdAt: -1 }).lean();
+    }).select('reportData reportVersion previewUrl downloadUrl pageCount fileSize generationTimeMs createdAt').sort({ createdAt: -1 }).lean();
     if (reusable?.reportData) {
-      const report = reportLinks(reusable.reportData, reusable._id);
-      this.emit(emit, startedAt, { type: 'research_started', researchId: report.id, cached: true, persisted: true, progress: 5 });
-      this.step(emit, startedAt, 'Research Library', 'A current matching report was found and reused', 92, 'success', report.sourceCount, report.datasetsCollected);
+      const report = reportMetadata(reusable.reportData, reusable._id, reusable);
+      this.emit(emit, startedAt, { type: 'research_started', researchId: report.reportId, cached: true, persisted: true, progress: 5 });
+      this.step(emit, startedAt, 'Research Library', 'A current matching report was found and reused', 92, 'success');
       this.emit(emit, startedAt, { type: 'report', report, cached: true, progress: 100 });
       cache.set(cacheKey, { createdAt: Date.now(), report });
       return report;
     }
 
     const researchId = `research-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-    this.emit(emit, startedAt, { type: 'research_started', researchId, query: researchQuery, model: process.env.OLLAMA_MODEL || 'qwen2.5:3b', progress: 1 });
-    const plannedQueries = [`${productName || researchQuery} global trade statistics`, `${productName || researchQuery} ${country || 'global'} imports exports`, `${productName || researchQuery} industry pricing logistics regulations`];
-    this.emit(emit, startedAt, { type: 'step', agent: 'Research Planner', operation: 'Generating targeted research queries and source priorities', searchQueries: plannedQueries, progress: 4, status: 'success', sourceCount: 0, datasetsCollected: 0 });
-    this.step(emit, startedAt, 'Global Trade Research', 'Exploring official statistics and trusted public-market sources', 8, 'running');
-    const global = await GlobalTradeResearchService.collect({ query: researchQuery, productName, country });
+    this.emit(emit, startedAt, { type: 'research_started', researchId, progress: 1 });
+    this.emit(emit, startedAt, { type: 'step', agent: 'Research Planner', operation: 'Preparing evidence and source priorities', progress: 4, status: 'success' });
+    this.step(emit, startedAt, 'Hybrid Research', 'Retrieving official, marketplace and knowledge evidence in parallel', 8, 'running');
+    const terms = getSearchTerms(researchQuery, { keywords: [productName, category].filter(Boolean), countries: country ? [country] : [] });
+    const filters = { keywords: terms, categories: category ? [category] : [], countries: country ? [country] : [] };
+    const role = roleContext(session);
+    const intelligence = analyzeRequest({ message: researchQuery, role });
+    const rewrittenQuery = rewriteSearchQuery({ message: researchQuery, intelligence: { ...intelligence, intent: 'market_research' } });
+    const [global, results, marketplaceMetrics, knowledgeDocuments] = await Promise.all([
+      GlobalTradeResearchService.collect({ query: researchQuery, productName, country }),
+      getAISearchResults({ query: rewrittenQuery, filters, userId }),
+      MarketInsightsRepository.getMarketplaceData(productName || researchQuery, category, country),
+      KnowledgeBaseService.retrieve({
+        query: researchQuery,
+        rewrittenQuery,
+        role,
+        intent: 'market_research',
+        language: intelligence.language,
+        limit: 4,
+      }),
+    ]);
     const connectedSources = global.sources.filter(source => source.status === 'connected').length;
     this.step(emit, startedAt, 'Official Data', 'World Bank country and macro trade indicators collected', 18, 'success', connectedSources, 1);
-    this.emit(emit, startedAt, { type: 'step', agent: 'Public Market Research', operation: global.publicArticles.length ? `Reviewing ${global.publicArticles.length} recent public market and industry records` : 'No recent public-market records passed source collection', searchQueries: global.searchQueries, progress: 23, status: 'success', sourceCount: global.sources.length, datasetsCollected: global.publicArticles.length ? 2 : 1 });
+    this.emit(emit, startedAt, { type: 'step', agent: 'Public Market Research', operation: global.publicArticles.length ? `Reviewing ${global.publicArticles.length} recent public market and industry records` : 'No recent public-market records passed source collection', progress: 23, status: 'success', sourceCount: global.sources.length, datasetsCollected: global.publicArticles.length ? 2 : 1 });
     this.step(emit, startedAt, 'HS & Customs', global.hsCode ? `Validating HS ${global.hsCode} through UN Comtrade` : 'HS code not supplied; product-level customs claims withheld', 28, 'success', global.sources.length, global.officialProductRows.length ? 2 : 1);
     this.step(emit, startedAt, 'Import / Export Intelligence', 'Comparing official import and export indicators', 38, 'success', global.sources.length, 2);
     this.step(emit, startedAt, 'Industry & Competitor Research', 'Checking connected evidence for industry and competitor claims', 45, 'success', global.sources.length, 2);
     this.step(emit, startedAt, 'Pricing Intelligence', 'Separating verified trade values from unavailable commercial pricing', 51, 'success', global.sources.length, 2);
     this.step(emit, startedAt, 'Supply Chain & Logistics', 'Preparing customs, logistics and verification requirements', 57, 'success', global.sources.length, 2);
 
-    const terms = getSearchTerms(researchQuery, { keywords: [productName, category].filter(Boolean), countries: country ? [country] : [] });
-    const filters = { keywords: terms, categories: category ? [category] : [], countries: country ? [country] : [] };
-    this.step(emit, startedAt, 'EsyGlob Opportunities', 'Global research complete; finding related marketplace opportunities', 64, 'running', global.sources.length, 2);
-    const [results, marketplaceMetrics] = await Promise.all([
-      getAISearchResults({ query: researchQuery, filters, userId }),
-      MarketInsightsRepository.getMarketplaceData(productName || researchQuery, category, country),
-    ]);
-    this.step(emit, startedAt, 'EsyGlob Opportunities', 'Related platform products, sellers and services collected', 72, 'success', global.sources.length + 1, 3);
+    this.step(emit, startedAt, 'Hybrid Retrieval', `${knowledgeDocuments.length} knowledge references and live marketplace evidence ranked`, 72, 'success', global.sources.length + knowledgeDocuments.length + 1, 4);
 
-    const evidence = { request: researchQuery, hsCode: global.hsCode || 'unverified', targetCountry: global.target?.name || country || 'not specified', topMacroImporters: global.macroImports.slice(0, 4), topMacroExporters: global.macroExports.slice(0, 4), productLevelRecords: global.officialProductRows.slice(0, 4), dataGaps: global.gaps };
+    const evidence = {
+      request: researchQuery,
+      hsCode: global.hsCode || 'unverified',
+      targetCountry: global.target?.name || country || 'not specified',
+      topMacroImporters: global.macroImports.slice(0, 4),
+      topMacroExporters: global.macroExports.slice(0, 4),
+      productLevelRecords: global.officialProductRows.slice(0, 4),
+      marketplace: {
+        productCount: marketplaceMetrics.productCount,
+        supplierCount: marketplaceMetrics.supplierCount,
+        verifiedSupplierCount: marketplaceMetrics.verifiedSupplierCount,
+        rfqCount: marketplaceMetrics.rfqCount,
+        averagePrice: marketplaceMetrics.averagePrice,
+        averageMoq: marketplaceMetrics.averageMoq,
+      },
+      knowledge: KnowledgeBaseService.format(knowledgeDocuments).slice(0, 3_200),
+      dataGaps: global.gaps,
+    };
     this.step(emit, startedAt, 'Trade Analyst', 'Synthesizing evidence and recommendations', 78, 'running', global.sources.length, 3);
     let ai = null; let generated = null;
     try {
-      ai = await AIChatService.callOllama(`Use only the supplied evidence. Return valid JSON with {"summary":"90-140 word executive summary","insights":["5 concise evidence-based findings"],"trends":["4 market trends"],"opportunities":["4 commercially useful opportunities"],"recommendations":["5 practical actions"],"risks":["4 material risks"],"outlook":"60-100 word future outlook","conclusion":"40-70 word conclusion"}. Clearly distinguish product-level evidence from macro context and explicitly disclose missing HS, market-size, CAGR, pricing or tariff data. Never invent figures, companies or sources. Evidence: ${JSON.stringify(evidence).slice(0, 5200)}`, [], 'You are a senior evidence-first international trade and market intelligence analyst. Be comprehensive, decision-oriented and precise. Never convert macro totals into product market size.', { maxTokens: 1100, temperature: 0.12, timeoutMs: 65000, jsonMode: true });
+      ai = await AIChatService.callOllama(`Read, compare and reason over all supplied evidence. Do not copy knowledge passages. Return valid JSON with {"summary":"90-140 word executive summary","insights":["5 concise evidence-based findings"],"trends":["4 market trends"],"opportunities":["4 commercially useful opportunities"],"recommendations":["5 practical actions"],"risks":["4 material risks"],"outlook":"60-100 word future outlook","conclusion":"40-70 word conclusion"}. Reconcile marketplace, knowledge and official evidence, remove duplication, distinguish product-level facts from macro context, and explicitly disclose missing HS, market-size, CAGR, pricing or tariff data. Never invent figures, companies or sources. Evidence: ${JSON.stringify(evidence).slice(0, 7600)}`, [], 'You are a senior evidence-first international trade and market intelligence analyst. Synthesize sources into original, decision-oriented analysis. Never expose retrieval metadata or convert macro totals into product market size.', { maxTokens: 1100, temperature: 0.12, timeoutMs: 65000, jsonMode: true });
       generated = extractJson(ai.message);
     } catch { /* deterministic evidence report remains available */ }
     generated ||= {
@@ -150,12 +188,20 @@ class MarketResearchService {
     const charts = [
       { type: 'bar', title: 'Macro import market comparison', data: global.macroImports.slice(0, 6).map(row => ({ label: row.country, value: row.valueUsd })) },
       { type: 'bar', title: 'Macro export market comparison', data: global.macroExports.slice(0, 6).map(row => ({ label: row.country, value: row.valueUsd })) },
-      { type: 'bar', title: 'EsyGlob marketplace activity signals', data: [
+      { type: 'pie', title: 'EsyGlob marketplace signal distribution', data: [
         { label: 'Matching products', value: marketplaceMetrics.productCount || 0 },
         { label: 'Suppliers', value: marketplaceMetrics.supplierCount || 0 },
         { label: 'Verified suppliers', value: marketplaceMetrics.verifiedSupplierCount || 0 },
         { label: 'Active RFQs', value: marketplaceMetrics.rfqCount || 0 },
         { label: 'Quotations', value: marketplaceMetrics.quotationCount || 0 },
+        { label: 'Orders', value: marketplaceMetrics.orderCount || 0 },
+      ] },
+      { type: 'line', title: 'Marketplace sourcing funnel', data: [
+        { label: 'Products', value: marketplaceMetrics.productCount || 0 },
+        { label: 'Suppliers', value: marketplaceMetrics.supplierCount || 0 },
+        { label: 'Verified', value: marketplaceMetrics.verifiedSupplierCount || 0 },
+        { label: 'RFQs', value: marketplaceMetrics.rfqCount || 0 },
+        { label: 'Quotes', value: marketplaceMetrics.quotationCount || 0 },
         { label: 'Orders', value: marketplaceMetrics.orderCount || 0 },
       ] },
     ];
@@ -192,6 +238,12 @@ class MarketResearchService {
       ],
     };
     const marketplaceSources = [{ name: 'EsyGlob Marketplace — related opportunities', type: 'marketplace', url: WEB_URL, status: 'connected' }];
+    const knowledgeSources = knowledgeDocuments.map(document => ({
+      name: document.title,
+      type: 'AI knowledge database',
+      status: 'connected',
+      version: document.version,
+    }));
     const report = {
       id: researchId, reportType: mode, query: researchQuery, title: `${productName || researchQuery} — Global Trade Intelligence`, executiveSummary: generated.summary,
       reportYear: 2026,
@@ -206,11 +258,11 @@ class MarketResearchService {
         { label: 'Product records', value: global.officialProductRows.length, trend: 'stable', note: 'Connected UN Comtrade rows' },
       ],
       sections, charts, tables: globalTables, recommendations: (generated.recommendations || []).slice(0, 4), risks: (generated.risks || []).slice(0, 3).map((reason, index) => ({ label: `Research risk ${index + 1}`, level: 'medium', reason: String(reason) })),
-      sources: [...global.sources, ...marketplaceSources], dataGaps: global.gaps, dataIntegrityNotes: global.gaps, marketplaceSection,
-      model: ai?.model || process.env.OLLAMA_MODEL || 'qwen2.5:3b', provider: ai?.provider || 'deterministic-evidence', generatedBy: 'EsyGlob AI', platformName: 'EsyGlob', sourceCount: global.sources.length + 1, datasetsCollected: 3, createdAt: new Date().toISOString(), generatedAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
+      sources: [...global.sources, ...knowledgeSources, ...marketplaceSources], dataGaps: global.gaps, dataIntegrityNotes: global.gaps, marketplaceSection,
+      model: ai?.model || process.env.OLLAMA_MODEL || 'qwen2.5:3b', provider: ai?.provider || 'deterministic-evidence', generatedBy: 'EsyGlob AI', platformName: 'EsyGlob', sourceCount: global.sources.length + knowledgeSources.length + 1, datasetsCollected: 4, createdAt: new Date().toISOString(), generatedAt: new Date().toISOString(), elapsedMs: Date.now() - startedAt,
     };
     report.title = `${productName || researchQuery} - Global Market Intelligence`;
-    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section', section, index, progress: 82 + Math.floor(index * 11 / Math.max(1, sections.length)), sourceCount: report.sourceCount, datasetsCollected: 3 }));
+    sections.forEach((section, index) => this.emit(emit, startedAt, { type: 'section_ready', index, progress: 82 + Math.floor(index * 11 / Math.max(1, sections.length)), sourceCount: report.sourceCount, datasetsCollected: 4 }));
     this.step(emit, startedAt, 'Evidence Review', 'Validating provenance, scope labels and data gaps', 94, 'success', report.sourceCount, 3);
     this.step(emit, startedAt, 'PDF Designer', 'Designing cover, contents, charts, tables and report pages', 96, 'running', report.sourceCount, 3);
     const saved = new SavedResearchReport({
@@ -228,17 +280,24 @@ class MarketResearchService {
       lastOpenedAt: new Date(),
     });
     report.savedReportId = String(saved._id);
-    const completedReport = reportLinks(report, saved._id);
     try {
-      saved.pdfData = await buildMarketInsightPdf(completedReport, {
-        reportId: completedReport.reportId,
-        generatedAt: completedReport.generatedAt,
+      const pdf = await buildMarketInsightPdf(report, {
+        reportId: report.id,
+        generatedAt: report.generatedAt,
         query: researchQuery,
         reportVersion: REPORT_VERSION,
       });
+      const storedPdf = await MarketReportStorageService.write(saved._id, pdf);
       saved.pdfStatus = 'ready';
       saved.pdfGeneratedAt = new Date();
-      saved.reportData = completedReport;
+      saved.previewUrl = `/api/market-insights/reports/${saved._id}/pdf`;
+      saved.downloadUrl = `/api/market-insights/reports/${saved._id}/pdf?download=1`;
+      saved.pageCount = Number(pdf.pageCount || 0);
+      saved.fileSize = storedPdf.fileSize;
+      saved.storageProvider = storedPdf.storageProvider;
+      saved.storageKey = storedPdf.storageKey;
+      saved.generationTimeMs = Date.now() - startedAt;
+      saved.reportData = report;
       await saved.save();
     } catch (error) {
       saved.pdfStatus = 'failed';
@@ -247,9 +306,10 @@ class MarketResearchService {
       await saved.save().catch(() => undefined);
       throw Object.assign(new Error('The market analysis completed, but the PDF report could not be prepared. Please retry.'), { cause: error });
     }
+    const completedReport = reportMetadata(report, saved._id, saved);
     cache.set(cacheKey, { createdAt: Date.now(), report: completedReport });
     this.step(emit, startedAt, 'Report Generator', 'Professional market intelligence PDF completed and saved', 99, 'success', report.sourceCount, 3);
-    this.emit(emit, startedAt, { type: 'report', report: completedReport, progress: 100, sourceCount: report.sourceCount, datasetsCollected: 3 });
+    this.emit(emit, startedAt, { type: 'report', report: completedReport, progress: 100, sourceCount: report.sourceCount, datasetsCollected: 4 });
     return completedReport;
   }
 }

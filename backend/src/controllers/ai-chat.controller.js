@@ -171,7 +171,10 @@ class AIChatController {
       try {
         // Build platform context
         const retrievalStartedAt = Date.now();
-        const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId, chat);
+        const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId, {
+          messages: chat.messages,
+          context: { ...(chat.context || {}), ...(body.context || {}) },
+        });
         const retrievalMs = Date.now() - retrievalStartedAt;
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
@@ -362,6 +365,7 @@ class AIChatController {
           role: roleContext,
           snapshot: platformContext.snapshot,
         });
+        const publicMarketplace = AIChatService.publicMarketplaceSnapshot(platformContext.snapshot);
 
         // ── SINGLE database write ────────────────────────────────────────
         const persistenceStartedAt = Date.now();
@@ -385,7 +389,7 @@ class AIChatController {
               model: activeModel,
               streamed: true,
               card: body.responseCard || undefined,
-              marketplace: platformContext.snapshot,
+              marketplace: publicMarketplace,
               suggestedFollowUps,
               validation: {
                 passed: validation.passed,
@@ -402,9 +406,9 @@ class AIChatController {
             'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
             'context.language': platformContext.snapshot.intelligence?.language,
             'context.intent': platformContext.snapshot.intelligence?.intent,
-            'context.conversationSummary': platformContext.snapshot.memory?.summary,
-            'context.entities': platformContext.snapshot.memory?.entities,
-            'context.preferences': platformContext.snapshot.memory?.preferences,
+            'context.conversationSummary': platformContext.internal?.memory?.summary,
+            'context.entities': platformContext.internal?.memory?.entities,
+            'context.preferences': platformContext.internal?.memory?.preferences,
             'context.marketplaceSnapshot': platformContext.snapshot,
           },
         });
@@ -416,7 +420,7 @@ class AIChatController {
           model: activeModel,
           provider: activeProvider,
           tokensUsed,
-          marketplace: platformContext.snapshot,
+          marketplace: publicMarketplace,
           suggestedFollowUps,
           validation: {
             passed: validation.passed,

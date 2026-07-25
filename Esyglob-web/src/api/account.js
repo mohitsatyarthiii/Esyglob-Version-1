@@ -73,7 +73,13 @@ export async function updateAIChat(input) { return unwrapData(await apiRequest('
 export async function deleteAIChat(chatId) { return unwrapData(await apiRequest('/ai-chat', { method: 'DELETE', query: { chatId } })) }
 
 export async function fetchMarketInsights() { return unwrapData(await apiRequest('/market-insights', { cache: false })) || {} }
-export async function fetchMarketReports() { return normalizeList(await apiRequest('/market-insights/reports', { cache: false }), ['reports', 'items']) }
+export async function fetchMarketReports(page = 1, limit = 12) {
+  const data = unwrapData(await apiRequest('/market-insights/reports', { query: { page, limit }, cache: false })) || {}
+  return {
+    reports: normalizeList(data, ['reports', 'items']),
+    pagination: data.pagination || { page, limit, total: 0, pages: 1, hasMore: false },
+  }
+}
 export async function fetchMarketReport(reportId) {
   const data = unwrapData(await apiRequest(`/market-insights/reports/${reportId}`, { cache: false })) || {}
   return data.report || data
@@ -114,11 +120,32 @@ export async function streamMarketResearch(input, onEvent, signal) {
 export function marketReportPdfUrl(reportId, download = false) {
   return buildApiUrl(`/market-insights/reports/${reportId}/pdf`, download ? { download: 1 } : undefined)
 }
+export async function fetchMarketReportPdf(reportId, download = false, signal) {
+  const response = await fetch(marketReportPdfUrl(reportId, download), {
+    credentials: 'include',
+    headers: { Accept: 'application/pdf' },
+    signal,
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}))
+    throw new ApiError(payload?.error || 'The PDF could not be loaded.', response.status, payload)
+  }
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.toLowerCase().includes('application/pdf')) throw new ApiError('The server returned an invalid PDF response.', 500)
+  return {
+    blob: await response.blob(),
+    filename: response.headers.get('content-disposition')?.match(/filename="([^"]+)"/i)?.[1] || 'EsyGlob-Market-Insight.pdf',
+  }
+}
 export async function shareMarketReport(reportId) {
   return unwrapData(await apiRequest(`/market-insights/reports/${reportId}/share`, { method: 'POST' })) || {}
 }
 export async function deleteMarketReport(reportId) {
   return unwrapData(await apiRequest(`/market-insights/reports/${reportId}`, { method: 'DELETE' })) || {}
+}
+export async function regenerateMarketReport(reportId) {
+  const data = unwrapData(await apiRequest(`/market-insights/reports/${reportId}/regenerate`, { method: 'POST' })) || {}
+  return data.report || data
 }
 export async function generateMarketInsight(input) {
   const data = unwrapData(await apiRequest('/market-insights', { method: 'POST', body: input })) || {}

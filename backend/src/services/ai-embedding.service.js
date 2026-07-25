@@ -1,6 +1,29 @@
+import crypto from 'node:crypto';
+
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
 const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || 'nomic-embed-text';
 let disabledUntil = 0;
+const embeddingCache = new Map();
+const EMBEDDING_CACHE_TTL = Number(process.env.AI_EMBEDDING_CACHE_TTL_MS || 60 * 60 * 1000);
+const EMBEDDING_CACHE_MAX = Number(process.env.AI_EMBEDDING_CACHE_MAX || 1_000);
+
+function cacheKey(text) {
+  return crypto.createHash('sha256').update(`${EMBEDDING_MODEL}:${text}`).digest('hex');
+}
+
+function getCached(key) {
+  const entry = embeddingCache.get(key);
+  if (!entry || Date.now() - entry.createdAt > EMBEDDING_CACHE_TTL) {
+    embeddingCache.delete(key);
+    return null;
+  }
+  return entry.embedding;
+}
+
+function setCached(key, embedding) {
+  if (embeddingCache.size >= EMBEDDING_CACHE_MAX) embeddingCache.delete(embeddingCache.keys().next().value);
+  embeddingCache.set(key, { embedding, createdAt: Date.now() });
+}
 
 export default class AIEmbeddingService {
   static get model() {
@@ -10,6 +33,9 @@ export default class AIEmbeddingService {
   static async embed(input) {
     const text = String(input || '').trim();
     if (!text || process.env.AI_EMBEDDINGS_ENABLED === 'false' || Date.now() < disabledUntil) return null;
+    const key = cacheKey(text);
+    const cached = getCached(key);
+    if (cached) return cached;
 
     try {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
@@ -24,7 +50,10 @@ export default class AIEmbeddingService {
       }
       const data = await response.json();
       const embedding = data.embeddings?.[0] || data.embedding;
-      return Array.isArray(embedding) && embedding.length ? embedding.map(Number) : null;
+      if (!Array.isArray(embedding) || !embedding.length) return null;
+      const normalized = embedding.map(Number);
+      setCached(key, normalized);
+      return normalized;
     } catch (error) {
       disabledUntil = Date.now() + Number(process.env.AI_EMBEDDING_RETRY_DELAY_MS || 60_000);
       if (process.env.AI_DEBUG === 'true') {

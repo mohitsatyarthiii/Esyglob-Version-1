@@ -71,6 +71,36 @@ const savedResearchReportSchema = new mongoose.Schema(
       index: true,
     },
     pdfGeneratedAt: Date,
+    previewUrl: {
+      type: String,
+      default: '',
+    },
+    downloadUrl: {
+      type: String,
+      default: '',
+    },
+    pageCount: {
+      type: Number,
+      default: 0,
+    },
+    fileSize: {
+      type: Number,
+      default: 0,
+    },
+    generationTimeMs: {
+      type: Number,
+      default: 0,
+    },
+    storageProvider: {
+      type: String,
+      enum: ['mongodb', 'filesystem', 'object-storage'],
+      default: 'mongodb',
+    },
+    storageKey: {
+      type: String,
+      default: '',
+      select: false,
+    },
     pdfError: {
       type: String,
       default: '',
