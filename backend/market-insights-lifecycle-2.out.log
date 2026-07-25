@@ -1,0 +1,31 @@
+◇ injected env (33) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected successfully
+{
+  "success": true,
+  "samples": [
+    {
+      "query": "Steel Market Analysis - India",
+      "id": "6a6509e1ae0eccadfcad1be8",
+      "bytes": 45926,
+      "storageKey": "6a6509e1ae0eccadfcad1be8.pdf"
+    },
+    {
+      "query": "Textile Export Opportunities - UAE",
+      "id": "6a6509f4ae0eccadfcad1be9",
+      "bytes": 44935,
+      "storageKey": "6a6509f4ae0eccadfcad1be9.pdf"
+    }
+  ],
+  "verified": [
+    "generation",
+    "physical-storage",
+    "mongodb-metadata",
+    "history",
+    "refresh",
+    "preview",
+    "download",
+    "share",
+    "regenerate",
+    "delete"
+  ]
+}

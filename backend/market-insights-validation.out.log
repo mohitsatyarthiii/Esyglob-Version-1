@@ -1,0 +1,7 @@
+◇ injected env (33) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+MongoDB connected successfully
+Marketplace database connected successfully
+Pre-warming database queries...
+Database warmup complete
+Server running on port 5000 in production mode
+[AI] Ollama warm-up complete

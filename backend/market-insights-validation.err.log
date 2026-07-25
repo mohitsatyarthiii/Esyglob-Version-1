@@ -1,0 +1,24 @@
+(node:14196) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"orderNumber":1} for model "Order". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+AI knowledge MongoDB disconnected
+AI knowledge database unavailable; AI will use marketplace/model fallbacks: querySrv ETIMEOUT _mongodb._tcp.cluster0.8tyk3y0.mongodb.net
+AI knowledge MongoDB connection error: Error: querySrv ETIMEOUT _mongodb._tcp.cluster0.8tyk3y0.mongodb.net
+    at QueryReqWrap.onresolve [as oncomplete] (node:internal/dns/promises:294:17) {
+  errno: undefined,
+  code: 'ETIMEOUT',
+  syscall: 'querySrv',
+  hostname: '_mongodb._tcp.cluster0.8tyk3y0.mongodb.net'
+}
+[Ollama] Error: TypeError: fetch failed
+    at node:internal/deps/undici/undici:13510:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async AIChatService.callOllama (file:///F:/Desktop/esyglob-app/backend/src/services/ai-chat.service.js:279:24)
+    at async MarketResearchService.run (file:///F:/Desktop/esyglob-app/backend/src/services/market-research.service.js:168:12)
+    at async regenerateReport (file:///F:/Desktop/esyglob-app/backend/src/controllers/market-insights.controller.js:132:22) {
+  [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: ai.esyglob.in:443, timeout: 10000ms)
+      at onConnectTimeout (node:internal/deps/undici/undici:2602:28)
+      at Immediate._onImmediate (node:internal/deps/undici/undici:2568:35)
+      at process.processImmediate (node:internal/timers:485:21) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}

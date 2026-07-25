@@ -57,7 +57,7 @@ class MarketInsightsController {
   static async getResearchReport(req, res) {
     try {
       const row = await SavedResearchReport.findOne({ _id: req.params.reportId, userId: req.user._id, status: 'active' })
-        .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt').lean();
+        .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs storageProvider isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt').lean();
       if (!row) return res.status(404).json({ error: 'Report not found' });
       await SavedResearchReport.updateOne({ _id: row._id }, { $set: { lastOpenedAt: new Date() } });
       return res.json({ report: reportPayload({ ...row, lastOpenedAt: new Date() }) });
@@ -66,46 +66,82 @@ class MarketInsightsController {
     }
   }
 
-  static async downloadResearchPdf(req, res) {
-    try {
-      const row = await SavedResearchReport.findOne({ _id: req.params.reportId, userId: req.user._id, status: 'active' })
-        .select('+pdfData +storageKey reportData reportVersion pdfStatus query downloadCount lastOpenedAt createdAt pdfGeneratedAt storageProvider');
-      if (!row) return res.status(404).json({ error: 'Report not found' });
-      let buffer = await MarketReportStorageService.read(row.storageKey);
-      if (!buffer?.length) buffer = row.pdfData;
-      if (!buffer?.length) {
-        const pdfStartedAt = Date.now();
-        buffer = await buildMarketInsightPdf(row.reportData, {
-          reportId: row.reportData?.id || String(row._id),
-          generatedAt: row.reportData?.generatedAt || row.createdAt,
-          query: row.query,
-          reportVersion: row.reportVersion,
-        });
-        const storedPdf = await MarketReportStorageService.write(row._id, buffer);
-        row.pdfStatus = 'ready';
-        row.pdfGeneratedAt = new Date();
-        row.previewUrl = `/api/market-insights/reports/${row._id}/pdf`;
-        row.downloadUrl = `/api/market-insights/reports/${row._id}/pdf?download=1`;
-        row.pageCount = Number(buffer.pageCount || 0);
-        row.fileSize = storedPdf.fileSize;
-        row.storageProvider = storedPdf.storageProvider;
-        row.storageKey = storedPdf.storageKey;
-        row.generationTimeMs = Date.now() - pdfStartedAt;
-      } else if (!row.storageKey) {
-        const storedPdf = await MarketReportStorageService.write(row._id, buffer);
-        row.storageProvider = storedPdf.storageProvider;
-        row.storageKey = storedPdf.storageKey;
-        row.fileSize = storedPdf.fileSize;
+static async downloadResearchPdf(req, res) {
+  try {
+    const row = await SavedResearchReport.findOne({ 
+      _id: req.params.reportId, 
+      userId: req.user._id, 
+      status: 'active' 
+    }).select('+pdfData +storageKey reportData reportVersion pdfStatus query downloadCount lastOpenedAt createdAt pdfGeneratedAt storageProvider');
+
+    if (!row) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+
+    let buffer = null;
+
+    // Step 1: Try filesystem storage
+    if (row.storageKey) {
+      buffer = await MarketReportStorageService.read(row.storageKey);
+      if (buffer?.length) {
+        console.log(`PDF loaded from filesystem for report: ${row._id}`);
       }
-      if (req.query.download === '1') row.downloadCount = Number(row.downloadCount || 0) + 1;
-      row.lastOpenedAt = new Date();
+    }
+
+    // Step 2: Fallback to database pdfData
+    if (!buffer?.length && row.pdfData?.length) {
+      buffer = row.pdfData;
+      console.log(`PDF loaded from database fallback for report: ${row._id}`);
+    }
+
+    // Step 3: Regenerate if both failed
+    if (!buffer?.length) {
+      console.log(`Regenerating PDF for report: ${row._id}`);
+      const pdfStartedAt = Date.now();
+      
+      buffer = await buildMarketInsightPdf(row.reportData, {
+        reportId: row.reportData?.id || String(row._id),
+        generatedAt: row.reportData?.generatedAt || row.createdAt,
+        query: row.query,
+        reportVersion: row.reportVersion || '1.0',
+      });
+
+      // Save regenerated PDF
+      const storedPdf = await MarketReportStorageService.write(row._id, buffer);
+      row.pdfStatus = 'ready';
+      row.pdfGeneratedAt = new Date();
+      row.previewUrl = `/api/market-insights/reports/${row._id}/pdf`;
+      row.downloadUrl = `/api/market-insights/reports/${row._id}/pdf?download=1`;
+      row.pageCount = Number(buffer.pageCount || 0);
+      row.fileSize = storedPdf.fileSize;
+      row.storageProvider = storedPdf.storageProvider || 'filesystem';
+      row.storageKey = storedPdf.storageKey;
+      row.generationTimeMs = Date.now() - pdfStartedAt;
+    }
+
+    // Update download count and last opened
+    if (req.query.download === '1') {
+      row.downloadCount = Number(row.downloadCount || 0) + 1;
+    }
+    row.lastOpenedAt = new Date();
+
+    try {
       await row.save();
-      return sendMarketInsightPdf(res, buffer, row.reportData, req.query.download === '1' ? 'attachment' : 'inline');
-    } catch (error) {
-      console.error('[Market-Insights-PDF] Error:', error);
-      if (!res.headersSent) return res.status(500).json({ error: 'The PDF could not be prepared. Please retry.' });
+    } catch (saveError) {
+      console.error('Failed to save report metadata:', saveError);
+      // Continue even if save fails - PDF is still valid
+    }
+
+    const disposition = req.query.download === '1' ? 'attachment' : 'inline';
+    return sendMarketInsightPdf(res, buffer, row.reportData, disposition);
+
+  } catch (error) {
+    console.error('[Market-Insights-PDF] Error:', error);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'The PDF could not be prepared. Please retry.' });
     }
   }
+}
 
   static async createShareLink(req, res) {
     try {

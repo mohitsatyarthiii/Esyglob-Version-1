@@ -7,6 +7,8 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 5000,
+      // Point this to a mounted persistent volume when deploying containers.
+      MARKET_REPORT_STORAGE_DIR: './storage/market-insights',
     },
     max_memory_restart: '1G',
     log_date_format: 'YYYY-MM-DD HH:mm:ss',

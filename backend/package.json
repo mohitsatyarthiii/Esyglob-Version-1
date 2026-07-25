@@ -12,7 +12,8 @@
     "restart": "pm2 restart esyglob-backend",
     "logs": "pm2 logs esyglob-backend",
     "status": "pm2 status",
-    "knowledge:migrate": "node scripts/migrate-knowledge-database.js"
+    "knowledge:migrate": "node scripts/migrate-knowledge-database.js",
+    "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js"
   },
   "keywords": [],
   "author": "",

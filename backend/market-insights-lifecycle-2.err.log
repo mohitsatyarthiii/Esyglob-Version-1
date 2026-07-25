@@ -1,0 +1,29 @@
+(node:14048) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"orderNumber":1} for model "Order". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[Ollama] Error: TypeError: fetch failed
+    at node:internal/deps/undici/undici:13510:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async AIChatService.callOllama (file:///F:/Desktop/esyglob-app/backend/src/services/ai-chat.service.js:279:24)
+    at async MarketResearchService.run (file:///F:/Desktop/esyglob-app/backend/src/services/market-research.service.js:168:12)
+    at async main (file:///F:/Desktop/esyglob-app/backend/scripts/validate-market-insights-lifecycle.js:70:22) {
+  [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: ai.esyglob.in:443, timeout: 10000ms)
+      at onConnectTimeout (node:internal/deps/undici/undici:2602:28)
+      at Immediate._onImmediate (node:internal/deps/undici/undici:2568:35)
+      at process.processImmediate (node:internal/timers:485:21) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+[Ollama] Error: TypeError: fetch failed
+    at node:internal/deps/undici/undici:13510:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async AIChatService.callOllama (file:///F:/Desktop/esyglob-app/backend/src/services/ai-chat.service.js:279:24)
+    at async MarketResearchService.run (file:///F:/Desktop/esyglob-app/backend/src/services/market-research.service.js:168:12)
+    at async main (file:///F:/Desktop/esyglob-app/backend/scripts/validate-market-insights-lifecycle.js:70:22) {
+  [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: ai.esyglob.in:443, timeout: 10000ms)
+      at onConnectTimeout (node:internal/deps/undici/undici:2602:28)
+      at Immediate._onImmediate (node:internal/deps/undici/undici:2568:35)
+      at process.processImmediate (node:internal/timers:485:21) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+MongoDB disconnected
