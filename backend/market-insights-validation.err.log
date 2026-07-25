@@ -35,3 +35,5 @@ AI knowledge MongoDB connection error: Error: querySrv ETIMEOUT _mongodb._tcp.cl
     code: 'UND_ERR_CONNECT_TIMEOUT'
   }
 }
+[Ollama] Warm-up failed: fetch failed
+MongoDB disconnected
