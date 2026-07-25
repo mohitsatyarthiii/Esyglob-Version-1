@@ -74,31 +74,23 @@ static async downloadResearchPdf(req, res) {
       status: 'active' 
     }).select('+pdfData +storageKey reportData reportVersion pdfStatus query downloadCount lastOpenedAt createdAt pdfGeneratedAt storageProvider');
 
-    if (!row) {
-      return res.status(404).json({ error: 'Report not found' });
-    }
+    if (!row) return res.status(404).json({ error: 'Report not found' });
 
     let buffer = null;
 
-    // Step 1: Try filesystem storage
+    // 1. Filesystem
     if (row.storageKey) {
       buffer = await MarketReportStorageService.read(row.storageKey);
-      if (buffer?.length) {
-        console.log(`PDF loaded from filesystem for report: ${row._id}`);
-      }
     }
 
-    // Step 2: Fallback to database pdfData
+    // 2. Database fallback
     if (!buffer?.length && row.pdfData?.length) {
       buffer = row.pdfData;
-      console.log(`PDF loaded from database fallback for report: ${row._id}`);
     }
 
-    // Step 3: Regenerate if both failed
+    // 3. Regenerate
     if (!buffer?.length) {
-      console.log(`Regenerating PDF for report: ${row._id}`);
       const pdfStartedAt = Date.now();
-      
       buffer = await buildMarketInsightPdf(row.reportData, {
         reportId: row.reportData?.id || String(row._id),
         generatedAt: row.reportData?.generatedAt || row.createdAt,
@@ -106,12 +98,10 @@ static async downloadResearchPdf(req, res) {
         reportVersion: row.reportVersion || '1.0',
       });
 
-      // Save regenerated PDF
       const storedPdf = await MarketReportStorageService.write(row._id, buffer);
       row.pdfStatus = 'ready';
       row.pdfGeneratedAt = new Date();
       row.previewUrl = `/api/market-insights/reports/${row._id}/pdf`;
-      row.downloadUrl = `/api/market-insights/reports/${row._id}/pdf?download=1`;
       row.pageCount = Number(buffer.pageCount || 0);
       row.fileSize = storedPdf.fileSize;
       row.storageProvider = storedPdf.storageProvider || 'filesystem';
@@ -119,24 +109,15 @@ static async downloadResearchPdf(req, res) {
       row.generationTimeMs = Date.now() - pdfStartedAt;
     }
 
-    // Update download count and last opened
     if (req.query.download === '1') {
       row.downloadCount = Number(row.downloadCount || 0) + 1;
     }
     row.lastOpenedAt = new Date();
+    await row.save().catch(() => {});
 
-    try {
-      await row.save();
-    } catch (saveError) {
-      console.error('Failed to save report metadata:', saveError);
-      // Continue even if save fails - PDF is still valid
-    }
-
-    const disposition = req.query.download === '1' ? 'attachment' : 'inline';
-    return sendMarketInsightPdf(res, buffer, row.reportData, disposition);
-
+    return sendMarketInsightPdf(res, buffer, row.reportData, req.query.download === '1' ? 'attachment' : 'inline');
   } catch (error) {
-    console.error('[Market-Insights-PDF] Error:', error);
+    console.error('[PDF] Error:', error);
     if (!res.headersSent) {
       return res.status(500).json({ error: 'The PDF could not be prepared. Please retry.' });
     }
