@@ -1,13 +1,14 @@
 // src/models/knowledgeDocument.js
 
 import mongoose from 'mongoose';
+import { getAIKnowledgeConnection } from '../config/knowledge-database.js';
 
 const faqSchema = new mongoose.Schema({ 
   question: String, 
   answer: String 
 }, { _id: false });
 
-const knowledgeDocumentSchema = new mongoose.Schema({
+export const knowledgeDocumentSchema = new mongoose.Schema({
   title: { 
     type: String, 
     required: true, 
@@ -23,6 +24,11 @@ const knowledgeDocumentSchema = new mongoose.Schema({
     type: String, 
     default: '', 
     index: true 
+  },
+  category: {
+    type: String,
+    default: 'Knowledge Base',
+    index: true
   },
   content: {
     type: String,
@@ -98,12 +104,10 @@ const knowledgeDocumentSchema = new mongoose.Schema({
   },
   relatedHsCodes: {
     type: [mongoose.Schema.Types.ObjectId],
-    ref: 'HSCode',
     default: []
   },
   relatedProducts: {
     type: [mongoose.Schema.Types.ObjectId],
-    ref: 'Product',
     default: []
   },
   relatedServices: {
@@ -150,9 +154,36 @@ const knowledgeDocumentSchema = new mongoose.Schema({
     type: String,
     select: false
   },
+  source: {
+    type: {
+      type: String,
+      enum: ['manual', 'pdf', 'docx', 'markdown', 'html', 'text', 'migration'],
+      default: 'manual'
+    },
+    fileName: String,
+    mimeType: String,
+    uri: String
+  },
+  contentHash: {
+    type: String,
+    index: true
+  },
+  chunkCount: {
+    type: Number,
+    default: 0
+  },
+  ingestionStatus: {
+    type: String,
+    enum: ['pending', 'processing', 'ready', 'failed'],
+    default: 'ready',
+    index: true
+  },
+  ingestionError: {
+    type: String,
+    select: false
+  },
   updatedBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
     select: false
   }
 }, { 
@@ -173,6 +204,7 @@ knowledgeDocumentSchema.pre('validate', function deriveSearchText() {
     this.overview,
     this.content,
     this.subcategory,
+    this.category,
     ...(this.keywords || []),
     ...(this.synonyms || []),
     ...(this.exampleQuestions || []),
@@ -214,6 +246,10 @@ knowledgeDocumentSchema.index({ targetRoles: 1 });
 knowledgeDocumentSchema.index({ intentTags: 1 });
 knowledgeDocumentSchema.index({ priority: -1 });
 
-const KnowledgeDocument = mongoose.models.KnowledgeDocument || mongoose.model('KnowledgeDocument', knowledgeDocumentSchema);
+export function getKnowledgeDocumentModel() {
+  const connection = getAIKnowledgeConnection();
+  return connection.models.KnowledgeDocument
+    || connection.model('KnowledgeDocument', knowledgeDocumentSchema, 'knowledge_documents');
+}
 
-export default KnowledgeDocument;
+export default getKnowledgeDocumentModel;

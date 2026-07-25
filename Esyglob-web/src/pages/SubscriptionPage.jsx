@@ -3,8 +3,8 @@ import { CalendarClock, Check, CreditCard, Crown, History, RefreshCw, ShieldChec
 import { useCallback, useEffect, useState } from 'react'
 import { createSubscriptionOrder, fetchSubscription, fetchSubscriptionPlans, setSubscriptionAutoRenew, verifySubscriptionPayment } from '../api/verification'
 import AppShell from '../components/AppShell'
+import { Money } from '../components/TradeUI'
 
-const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`
 const features = (plan) => Array.isArray(plan.features) ? plan.features : [...(plan.features?.highlighted || []), ...(plan.features?.core || [])].slice(0, 8)
 
 function loadRazorpay() {
@@ -86,16 +86,18 @@ export default function SubscriptionPage() {
     <div className="billing-toggle">{['monthly', 'quarterly', 'yearly'].map((item) => <button className={duration === item ? 'active' : ''} onClick={() => setDuration(item)} key={item}>{item}</button>)}</div>
     <label className="check-field module-panel"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I accept the subscription, renewal and recurring billing terms.</label>
     <section className="plan-grid">{plans.map((plan) => {
-      const price = plan.prices?.[duration]?.amount ?? plan.prices?.[duration] ?? 0
+      const priceEntry = plan.prices?.[duration]
+      const price = priceEntry?.amount ?? priceEntry ?? 0
+      const priceCurrency = priceEntry?.currency || plan.currency || 'INR'
       const isCurrent = plan.key === subscription.planKey || plan.key === subscription.sellerPlan
       return <article className={plan.isPopular || plan.recommended ? 'recommended' : ''} key={plan.key || plan.name}>
         {(plan.isPopular || plan.recommended) && <em>Recommended</em>}
         <h2>{plan.name}</h2><p>{plan.description || 'Built for global marketplace growth.'}</p>
-        <strong>{money(price)}<small> / {duration}</small></strong>
+        <strong><Money value={price} currency={priceCurrency} /><small> / {duration}</small></strong>
         <ul>{features(plan).map((feature) => <li key={String(feature)}><Check />{typeof feature === 'string' ? feature : feature.label}</li>)}</ul>
         <button className={`button ${isCurrent ? 'button--ghost' : 'button--primary'} button--full`} disabled={busy || isCurrent || Number(price) === 0 || !terms} onClick={() => checkout(plan)}>{isCurrent ? 'Current plan' : Number(price) > Number(current.prices?.[duration]?.amount || 0) ? 'Upgrade' : 'Change plan'}</button>
       </article>
     })}</section>
-    <section className="module-panel payment-history"><h2><History />Payment history</h2>{subscription.paymentHistoryIds?.length ? <div>{subscription.paymentHistoryIds.map((item) => <p key={item._id || item}><CreditCard /><span><b>{item.description || 'Subscription payment'}</b><small>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : String(item)}</small></span><strong>{money(item.amount)}</strong></p>)}</div> : <p className="factory-note">No subscription payments yet.</p>}</section>
+    <section className="module-panel payment-history"><h2><History />Payment history</h2>{subscription.paymentHistoryIds?.length ? <div>{subscription.paymentHistoryIds.map((item) => <p key={item._id || item}><CreditCard /><span><b>{item.description || 'Subscription payment'}</b><small>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : String(item)}</small></span><strong><Money value={item.amount} currency={item.currency || 'INR'} /></strong></p>)}</div> : <p className="factory-note">No subscription payments yet.</p>}</section>
   </main></AppShell>
 }

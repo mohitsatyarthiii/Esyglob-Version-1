@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { memo, useState } from 'react';
 import WishlistButton from './WishlistButton';
 import { resolveApiResourceUrl } from '../api/client';
+import { Money } from './TradeUI';
 
 // ─── SafeImage ──────────────────────────────────────────────────
 export const SafeImage = memo(function SafeImage({ src, alt, className = '' }) {
@@ -210,13 +211,12 @@ export const ProductCard = memo(function ProductCard({ product }) {
         <div className="product-card-price-section">
           <div className="price-main">
             <div className="price-value">
-              <span className="price-currency">₹</span>
               <span className="price-amount">
-                {price ? price.toLocaleString('en-IN') : '—'}
+                {price ? <Money value={price} currency={product.currency} /> : '—'}
               </span>
             </div>
             {originalPrice && originalPrice > price && (
-              <span className="price-original">₹{originalPrice.toLocaleString('en-IN')}</span>
+              <span className="price-original"><Money value={originalPrice} currency={product.currency} /></span>
             )}
             <span className="price-unit">/ {product.unit || 'piece'}</span>
           </div>

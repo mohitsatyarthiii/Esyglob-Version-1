@@ -5,12 +5,14 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "test": "node --test test/*.test.js",
     "dev": "nodemon src/server.js",
     "prod": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop esyglob-backend",
     "restart": "pm2 restart esyglob-backend",
     "logs": "pm2 logs esyglob-backend",
-    "status": "pm2 status"
+    "status": "pm2 status",
+    "knowledge:migrate": "node scripts/migrate-knowledge-database.js"
   },
   "keywords": [],
   "author": "",
@@ -24,15 +26,22 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "fs-extra": "^11.4.0",
+    "gray-matter": "^4.0.3",
     "jsonwebtoken": "^9.0.3",
+    "mammoth": "^1.12.0",
+    "marked": "^18.0.7",
     "mongoose": "^9.7.4",
     "multer": "^2.2.0",
     "node-cache": "^5.1.2",
-    "nodemon": "^3.1.14",
+    "pdf-parse": "^1.1.1",
     "pdfkit": "^0.19.1",
     "razorpay": "^2.9.6",
     "socket.io": "^4.8.3",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

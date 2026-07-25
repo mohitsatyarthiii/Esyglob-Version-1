@@ -77,5 +77,6 @@ dist
 !.yarn/versions
 
 .env
+.env.development
 .env.example
 dist/

@@ -4,7 +4,13 @@ import { resolveSmartResponse } from '../lib/smart-intelligence.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIPlatformContextService from './ai-platform-context.service.js';
 import KnowledgeBaseService from './knowledge-base.service.js';
-import { analyzeRequest, languageInstruction, templateInstruction } from '../lib/ai-intelligence-pipeline.js';
+import {
+  analyzeRequest,
+  buildConversationMemory,
+  languageInstruction,
+  rewriteSearchQuery,
+  templateInstruction,
+} from '../lib/ai-intelligence-pipeline.js';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import LiveSearchService from './live-search.service.js';
 
@@ -63,14 +69,25 @@ class AIChatService {
   /**
    * Build platform context for AI
    */
-  static async buildPlatformContext(message, role, userId) {
-    const intelligence = analyzeRequest({ message, role });
+  static async buildPlatformContext(message, role, userId, conversation = {}) {
+    const memory = buildConversationMemory({
+      messages: conversation.messages || [],
+      context: conversation.context || {},
+      language: conversation.context?.language || 'en',
+    });
+    const intelligence = analyzeRequest({
+      message,
+      role,
+      previousLanguage: memory.language,
+    });
+    const rewrittenQuery = rewriteSearchQuery({ message, intelligence, memory });
     const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
     if (['greeting', 'general_knowledge'].includes(intelligence.route)) {
       return {
         results: emptyResults,
-        snapshot: { roleContext: role, intelligence, navigationActions: [] },
-        text: `${languageInstruction(intelligence.language)}\nDetected route: ${intelligence.route}. Answer directly using native model knowledge. Be natural, concise, and do not invent Esyglob platform facts. Return clean plain text without Markdown symbols or raw URLs.`,
+        snapshot: { roleContext: role, intelligence, memory, navigationActions: [] },
+        internal: { rewrittenQuery, memory },
+        text: `${languageInstruction(intelligence.language)}\nDetected route: ${intelligence.route}. Answer directly using native model knowledge. Be natural, concise, and do not invent EsyGlob platform facts. Return clean plain text without Markdown symbols or raw URLs.`,
       };
     }
     if (intelligence.route === 'live_information') {
@@ -79,7 +96,8 @@ class AIChatService {
       catch (error) { console.warn('[Live search]', error.message); }
       return {
         results: emptyResults,
-        snapshot: { roleContext: role, intelligence, liveSources: live.results, navigationActions: [] },
+        snapshot: { roleContext: role, intelligence, memory, liveSources: live.results, navigationActions: [] },
+        internal: { rewrittenQuery, memory },
         text: [
           languageInstruction(intelligence.language),
           'Detected route: live_information. Use only the current sources below. Clearly say when current information could not be verified.',
@@ -88,27 +106,37 @@ class AIChatService {
         ].filter(Boolean).join('\n\n'),
       };
     }
-    let results = emptyResults;
     const retrievalAllowed = intelligence.sources.some(source =>
       ['products', 'suppliers', 'user_data'].includes(source),
     );
-    if (retrievalAllowed && this.needsMarketplaceContext(message)) {
-      const filters = AIService.deriveSearchFilters(message);
-      results = await getAISearchResults({ query: message, filters, userId });
-    }
-    const [knowledge, knowledgeDocuments] = await Promise.all([
-      AIPlatformContextService.enrich({ message, role, results, userId }),
-      KnowledgeBaseService.retrieve({
+    const derivedFilters = AIService.deriveSearchFilters(message);
+    const marketplaceFilters = {
+      ...derivedFilters,
+      ...(memory.preferences?.verifiedSuppliers ? { requireVerified: true } : {}),
+      ...(memory.preferences?.lowMoq ? { lowMoq: true } : {}),
+      ...(memory.entities?.country && !(derivedFilters.countries || []).length
+        ? { countries: [memory.entities.country] }
+        : {}),
+    };
+    const marketplacePromise = retrievalAllowed && this.needsMarketplaceContext(message)
+      ? getAISearchResults({ query: rewrittenQuery, filters: marketplaceFilters, userId })
+      : Promise.resolve(emptyResults);
+    const knowledgePromise = intelligence.sources.includes('knowledge_base')
+      ? KnowledgeBaseService.retrieve({
         query: message,
+        rewrittenQuery,
         role,
         intent: intelligence.intent,
         language: intelligence.language,
-      }),
-    ]);
+      })
+      : Promise.resolve([]);
+    const [results, knowledgeDocuments] = await Promise.all([marketplacePromise, knowledgePromise]);
+    const knowledge = await AIPlatformContextService.enrich({ message, role, results, userId });
     const knowledgeText = KnowledgeBaseService.format(knowledgeDocuments);
 
     return {
       results,
+      internal: { rewrittenQuery, memory },
       snapshot: {
         roleContext: role,
         terms: results.terms,
@@ -146,10 +174,9 @@ class AIChatService {
         hsCodes: knowledge.hsCodes,
         account: knowledge.account,
         navigationActions: knowledge.navigationActions,
+        memory,
         intelligence: {
-          intent: intelligence.intent,
-          language: intelligence.language,
-          sources: intelligence.sources,
+          ...intelligence,
           knowledgeDocumentIds: knowledgeDocuments.map(document => document._id),
         },
       },
@@ -158,6 +185,8 @@ class AIChatService {
         languageInstruction(intelligence.language),
         'Write naturally in clean plain text. Do not copy retrieved documents verbatim. Do not emit Markdown control symbols or raw URLs.',
         `Detected intent: ${intelligence.intent}. Use only the sources required for this intent: ${intelligence.sources.join(', ')}.`,
+        memory.summary ? `Conversation summary:\n${memory.summary}` : '',
+        Object.keys(memory.entities || {}).length ? `Remembered entities and preferences:\n${JSON.stringify({ entities: memory.entities, preferences: memory.preferences })}` : '',
         templateInstruction(intelligence.intent),
         intelligence.requiresPrivateData ? 'Private-data request: only use records already scoped to this authenticated user. Never infer or expose another user\'s data.' : '',
         knowledgeText ? `Platform knowledge base:\n${knowledgeText}` : '',
@@ -398,7 +427,7 @@ class AIChatService {
     }
 
     // Build platform context
-    const platformContext = await this.buildPlatformContext(message, roleContext, userId);
+    const platformContext = await this.buildPlatformContext(message, roleContext, userId, chat);
 
     // Build system prompt
     const systemPrompt = AIService.buildMarketplaceSystemPrompt(
@@ -472,6 +501,12 @@ class AIChatService {
     // Context updates
     const contextUpdates = {
       'context.lastQuery': message,
+      'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
+      'context.language': platformContext.snapshot.intelligence?.language,
+      'context.intent': platformContext.snapshot.intelligence?.intent,
+      'context.conversationSummary': platformContext.snapshot.memory?.summary,
+      'context.entities': platformContext.snapshot.memory?.entities,
+      'context.preferences': platformContext.snapshot.memory?.preferences,
       'context.marketplaceSnapshot': platformContext.snapshot,
       'context.supportMode': Boolean(body.supportMode),
       ...(body.context?.sourcePath && { 'context.sourcePath': body.context.sourcePath }),

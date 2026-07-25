@@ -87,6 +87,20 @@ function setCache(key, data) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
+function relevanceScore(values, terms, qualityScore = 0) {
+  const normalized = values.filter(Boolean).map(value => String(value).toLowerCase());
+  const matches = terms.reduce((total, term) => {
+    const needle = String(term).toLowerCase();
+    return total + normalized.reduce((score, value, index) => {
+      if (value === needle) return score + Math.max(3, 10 - index);
+      if (value.startsWith(needle)) return score + Math.max(2, 7 - index);
+      if (value.includes(needle)) return score + Math.max(1, 5 - index);
+      return score;
+    }, 0);
+  }, 0);
+  return matches + Number(qualityScore || 0);
+}
+
 export async function getAISearchResults({ query, filters = {}, userId = null }) {
   const productLimit = Math.min(Number(process.env.AI_MARKETPLACE_PRODUCT_LIMIT || 24), 60);
   const supplierLimit = Math.min(Number(process.env.AI_MARKETPLACE_SUPPLIER_LIMIT || 16), 40);
@@ -174,7 +188,7 @@ async function getAISearchResultsUncached({
     ...(categoryOr.length ? { $or: categoryOr } : {}),
   };
 
-  const [rawProducts, suppliers, categories, rfqs] = await Promise.all([
+  const [rawProducts, rawSuppliers, categories, rfqs] = await Promise.all([
     Product.find(productQuery)
       .select('name slug category subcategory price currency minimumOrderQuantity unit images documents variants primaryHsCodeId hsCodeIds hsCodes averageRating reviewCount totalOrders sellerId tags description specifications certifications countryOfOrigin shipping packaging sampleAvailable samplePrice leadTime deliveryTime')
       .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
@@ -205,7 +219,24 @@ async function getAISearchResultsUncached({
       .exec(),
   ]);
 
-  const products = rawProducts;
+  const products = [...rawProducts].sort((a, b) => relevanceScore(
+    [b.name, b.category, b.subcategory, b.tags?.join?.(' '), b.description],
+    terms,
+    Number(b.averageRating || 0) + Math.log10(Number(b.totalOrders || 0) + 1),
+  ) - relevanceScore(
+    [a.name, a.category, a.subcategory, a.tags?.join?.(' '), a.description],
+    terms,
+    Number(a.averageRating || 0) + Math.log10(Number(a.totalOrders || 0) + 1),
+  ));
+  const suppliers = [...rawSuppliers].sort((a, b) => relevanceScore(
+    [b.companyName, b.companyType, b.productCategories?.join?.(' '), b.address?.country, b.address?.state, b.companyDescription],
+    terms,
+    Number(b.trustScore || 0) / 20 + Number(b.rating || 0) + (b.isVerified ? 3 : 0),
+  ) - relevanceScore(
+    [a.companyName, a.companyType, a.productCategories?.join?.(' '), a.address?.country, a.address?.state, a.companyDescription],
+    terms,
+    Number(a.trustScore || 0) / 20 + Number(a.rating || 0) + (a.isVerified ? 3 : 0),
+  ));
 
   let quotations = [];
   let orders = [];

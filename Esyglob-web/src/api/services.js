@@ -22,7 +22,21 @@ export const SERVICE_CATALOG = [
   service('consulting', 'Trade Consulting', 'Advisory', 'both', 'Get specialist guidance for sourcing, logistics, compliance or market entry.', 'From INR 1,999', ['Business context', 'Expert review', 'Action plan'], [...contactFields(), field('subject', 'Consulting topic', 'text', true), field('details', 'What do you need help with?', 'textarea', true)]),
 ]
 
-function service(key, title, category, role, description, startingPrice, steps, fields) { return { key, title, category, role, description, startingPrice, steps, fields } }
+function service(key, title, category, role, description, startingPrice, steps, fields) {
+  const parsedPrice = /^From\s+([A-Z]{3})\s+([\d,]+(?:\.\d+)?)$/i.exec(startingPrice)
+  return {
+    key,
+    title,
+    category,
+    role,
+    description,
+    startingPrice,
+    startingPriceAmount: parsedPrice ? Number(parsedPrice[2].replaceAll(',', '')) : null,
+    startingPriceCurrency: parsedPrice?.[1]?.toUpperCase() || null,
+    steps,
+    fields,
+  }
+}
 function field(key, label, type = 'text', required = false, options) { return { key, label, type, required, options } }
 function contactFields() { return [field('companyName', 'Company name'), field('contactName', 'Contact name', 'text', true), field('contactEmail', 'Email', 'email', true), field('contactPhone', 'Phone', 'tel')] }
 function commonFields(label) { return [...contactFields(), field('details', label, 'textarea', true)] }

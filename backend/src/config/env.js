@@ -17,6 +17,10 @@ if (isProduction && authSecret.length < 32) {
   throw new Error('AUTH_SECRET must be at least 32 characters in production');
 }
 
+if (isProduction && !process.env.AI_KNOWLEDGE_MONGODB_URI) {
+  throw new Error('Missing required environment variable: AI_KNOWLEDGE_MONGODB_URI');
+}
+
 function parseCorsOrigin(value) {
   if (!value || value === '*') return isProduction ? [] : true;
   return value.split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -37,6 +41,8 @@ export const config = {
   nodeEnv,
   isProduction,
   mongodbUri: process.env.MONGODB_URI,
+  aiKnowledgeMongoUri: process.env.AI_KNOWLEDGE_MONGODB_URI || process.env.MONGODB_URI,
+  aiKnowledgeDbName: process.env.AI_KNOWLEDGE_DB_NAME || 'esyglob_ai_knowledge',
   authSecret,
   sessionCookie: process.env.SESSION_COOKIE_NAME || 'esyglob_session',
   sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE_SECONDS, 10) || 60 * 60 * 24 * 30,
@@ -52,4 +58,6 @@ export const config = {
   formLimit: process.env.FORM_LIMIT || '1mb',
   mongoMaxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE, 10) || 50,
   mongoMinPoolSize: parseInt(process.env.MONGO_MIN_POOL_SIZE, 10) || 5,
+  aiKnowledgeMongoMaxPoolSize: parseInt(process.env.AI_KNOWLEDGE_MONGO_MAX_POOL_SIZE, 10) || 20,
+  aiKnowledgeMongoMinPoolSize: parseInt(process.env.AI_KNOWLEDGE_MONGO_MIN_POOL_SIZE, 10) || 2,
 };

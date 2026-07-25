@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
 import { config, isCorsOriginAllowed } from './config/env.js';
+import { getAIKnowledgeDatabaseState } from './config/knowledge-database.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 
 // Routes
@@ -90,7 +91,10 @@ app.get('/api/health', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json({
         status: 'ok',
-        mongodb: mongoose.connection.readyState,
+        mongodb: {
+          marketplace: mongoose.connection.readyState,
+          knowledge: getAIKnowledgeDatabaseState(),
+        },
         uptime: process.uptime(),
         timestamp: new Date().toISOString()
     });

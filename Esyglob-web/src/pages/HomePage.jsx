@@ -113,11 +113,7 @@ export default function HomePage() {
     <FeaturedProducts query={featured} />
 
     <AllProducts query={feed} />
-
-    <section className="home-audience-section home-reveal"><div className="container">
-      <article className="home-audience-card home-audience-card--buyer"><span><PackageSearch /> For buyers</span><h2>Source with clarity and control.</h2><ul>{['Search relevant products', 'Find verified suppliers', 'Create structured RFQs', 'Compare and negotiate quotations', 'Complete a traceable secure trade'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to="/products">Start sourcing <ArrowRight /></Link></article>
-      <article className="home-audience-card home-audience-card--seller"><span><Factory /> For sellers</span><h2>Take your business to global buyers.</h2><ul>{['Build your Business Profile', 'Publish professional products', 'Receive qualified RFQs', 'Send structured quotations', 'Build a global trade history'].map(item => <li key={item}><CheckCircle2 /> {item}</li>)}</ul><Link to={status === 'authenticated' ? '/seller/business-profile' : '/signup'}>Start selling <ArrowRight /></Link></article>
-    </div></section>
+    <AllProducts query={feed} />
   </div></AppShell>
 }
 

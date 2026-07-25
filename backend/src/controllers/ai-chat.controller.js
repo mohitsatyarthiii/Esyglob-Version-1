@@ -171,7 +171,7 @@ class AIChatController {
       try {
         // Build platform context
         const retrievalStartedAt = Date.now();
-        const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId);
+        const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId, chat);
         const retrievalMs = Date.now() - retrievalStartedAt;
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
@@ -399,6 +399,12 @@ class AIChatController {
           tokensUsed,
           contextUpdates: {
             'context.lastQuery': message,
+            'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
+            'context.language': platformContext.snapshot.intelligence?.language,
+            'context.intent': platformContext.snapshot.intelligence?.intent,
+            'context.conversationSummary': platformContext.snapshot.memory?.summary,
+            'context.entities': platformContext.snapshot.memory?.entities,
+            'context.preferences': platformContext.snapshot.memory?.preferences,
             'context.marketplaceSnapshot': platformContext.snapshot,
           },
         });

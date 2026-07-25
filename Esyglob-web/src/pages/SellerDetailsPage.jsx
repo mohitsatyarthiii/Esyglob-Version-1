@@ -34,6 +34,7 @@ import { createChat } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { SafeImage, SkeletonCards } from '../components/MarketplaceCards'
+import { Money } from '../components/TradeUI'
 import WishlistButton from '../components/WishlistButton'
 import useAsyncData from '../hooks/useAsyncData'
 
@@ -361,7 +362,6 @@ function ManufacturerProduct({ product, verified, requestQuote }) {
   const image = product.image || product.images?.[0]
   const price = product.price || product.priceTiers?.[0]?.unitPrice
   const maxPrice = product.maxPrice
-  const currency = currencySymbol(product.currency)
   const moq = product.minimumOrderQuantity || product.moq || 1
   return <article className="manufacturer-product-v2">
     <Link to={`/products/${id}`} className="manufacturer-product-v2__image">
@@ -371,7 +371,7 @@ function ManufacturerProduct({ product, verified, requestQuote }) {
     </Link>
     <div className="manufacturer-product-v2__body">
       <Link to={`/products/${id}`}><h3>{product.name || 'Supplier product'}</h3></Link>
-      <strong>{price ? `${currency}${Number(price).toLocaleString('en-IN')}${maxPrice ? ` – ${currency}${Number(maxPrice).toLocaleString('en-IN')}` : ''}` : 'Request latest price'}</strong>
+      <strong>{price ? <><Money value={price} currency={product.currency} />{maxPrice ? <> – <Money value={maxPrice} currency={product.currency} /></> : null}</> : 'Request latest price'}</strong>
       <small>MOQ {moq} {product.unit || 'piece'}{moq > 1 ? 's' : ''}</small>
       <div><Link to={`/products/${id}`}>View details</Link><button type="button" onClick={requestQuote}><Send /> Enquire</button></div>
     </div>
@@ -445,4 +445,3 @@ function averageDimension(reviews, key) { const values = reviews.map(review => N
 function initials(value) { return String(value || 'ES').split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() }
 function numberLabel(value) { const number = Number(value || 0); return number >= 1000 ? `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k+` : String(number) }
 function certificateName(cert, index) { return typeof cert === 'string' ? cert : cert.name || cert.certificateNumber || `Certificate ${index + 1}` }
-function currencySymbol(currency) { return ({ INR: '₹', USD: '$', EUR: '€', GBP: '£' })[String(currency || 'INR').toUpperCase()] || `${currency || '₹'} ` }

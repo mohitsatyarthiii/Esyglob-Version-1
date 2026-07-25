@@ -8,6 +8,7 @@ import { ProductCard, SkeletonCards, SafeImage } from '../components/Marketplace
 import { PageHead } from '../components/PageHead';
 import UnifiedSearchInput from '../components/UnifiedSearchInput';
 import useAsyncData from '../hooks/useAsyncData';
+import { useCurrency } from '../preferences/currency-context';
 
 const SORT_OPTIONS = [
   { value: 'latest', label: 'Latest' },
@@ -25,6 +26,7 @@ const PRICE_RANGES = [
 ];
 
 export default function ProductsPage() {
+  const { formatPrice } = useCurrency();
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get('q') || '');
   const [showFilters, setShowFilters] = useState(false);
@@ -159,7 +161,7 @@ export default function ProductsPage() {
                       priceRange === range.label ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    {range.label}
+                    {displayPriceRange(range, formatPrice)}
                     {priceRange === range.label && <Check size={14} />}
                   </button>
                 ))}
@@ -270,7 +272,7 @@ export default function ProductsPage() {
                 {category && <FilterChip label={category} onRemove={() => updateParams({ category: '', subcategory: '' })} />}
                 {subcategory && <FilterChip label={subcategory} onRemove={() => updateParams({ subcategory: '' })} />}
                 {sort !== 'latest' && <FilterChip label={SORT_OPTIONS.find((o) => o.value === sort)?.label} onRemove={() => updateParams({ sort: '' })} />}
-                {priceRange && <FilterChip label={priceRange} onRemove={() => updateParams({ priceRange: '' })} />}
+                {priceRange && <FilterChip label={displayPriceRange(PRICE_RANGES.find((range) => range.label === priceRange), formatPrice)} onRemove={() => updateParams({ priceRange: '' })} />}
                 {verifiedOnly && <FilterChip label="Verified" onRemove={() => updateParams({ verified: '' })} />}
                 {minRating && <FilterChip label={`${minRating}+ Stars`} onRemove={() => updateParams({ minRating: '' })} />}
                 <button onClick={clearAllFilters} className="ml-1 text-[10px] font-bold text-red-500 hover:text-red-600">
@@ -411,7 +413,7 @@ export default function ProductsPage() {
                         priceRange === range.label ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
-                      {range.label}
+                      {displayPriceRange(range, formatPrice)}
                     </button>
                   ))}
                 </div>
@@ -496,6 +498,13 @@ export default function ProductsPage() {
 }
 
 // ─── Filter Chip Component ──────────────────────────────────────
+function displayPriceRange(range, formatPrice) {
+  if (!range) return ''
+  if (range.min === 0) return `Under ${formatPrice(range.max, 'INR')}`
+  if (range.max === null) return `Above ${formatPrice(range.min, 'INR')}`
+  return `${formatPrice(range.min, 'INR')} - ${formatPrice(range.max, 'INR')}`
+}
+
 function FilterChip({ label, onRemove }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[10px] font-semibold text-blue-700">

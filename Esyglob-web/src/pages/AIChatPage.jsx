@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, Mic, MoreHorizontal, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, Check, ChevronDown, File, FileText, History, Image, Menu, Mic, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
@@ -32,6 +32,10 @@ export default function AIChatPage() {
   const [historySearch, setHistorySearch] = useState('')
   const [historySort, setHistorySort] = useState('recent')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return window.localStorage.getItem('esyglob.ai.sidebar-collapsed') === 'true' }
+    catch { return false }
+  })
   const [editingId, setEditingId] = useState('')
   const [editingTitle, setEditingTitle] = useState('')
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false)
@@ -59,6 +63,10 @@ export default function AIChatPage() {
   }, [role])
 
   useEffect(() => { loadChats().catch((next) => setError(next.message)) }, [loadChats])
+  useEffect(() => {
+    try { window.localStorage.setItem('esyglob.ai.sidebar-collapsed', String(sidebarCollapsed)) }
+    catch { /* Storage may be unavailable in privacy mode. */ }
+  }, [sidebarCollapsed])
   useEffect(() => () => {
     streamRef.current?.abort()
     voiceRecognitionRef.current?.abort?.()
@@ -261,7 +269,7 @@ export default function AIChatPage() {
     catch (next) { setChats(previous); setError(next.message) }
   }
 
-  return <AppShell><div className="ai-workspace">
+  return <AppShell><div className={`ai-workspace ${sidebarCollapsed ? 'ai-workspace--sidebar-collapsed' : ''}`}>
     {sidebarOpen && <button className="ai-sidebar-backdrop" aria-label="Close conversation history" onClick={() => setSidebarOpen(false)} />}
     <aside className={sidebarOpen ? 'open' : ''} aria-label="Recent AI chats" aria-modal={sidebarOpen ? 'true' : undefined}>
       <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>ESY AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
@@ -277,9 +285,10 @@ export default function AIChatPage() {
         </div>
       }) : <div className="ai-history-empty"><History /><b>{historySearch ? 'No chats found' : 'No saved chats yet'}</b><p>{historySearch ? 'Try a different search.' : 'Your conversations will appear here.'}</p></div>}</div>
     </aside>
-    <section className="ai-chat">
+    <section className={`ai-chat ${!messages.length && !conversationLoading ? 'ai-chat--empty' : ''}`}>
       <header>
         <div className="ai-chat-identity">
+          <button className="ai-desktop-sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? 'Expand conversation sidebar' : 'Collapse conversation sidebar'} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</button>
           <button className="ai-mobile-back" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
           <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open recent chats"><Menu /><span>Chats</span></button>
           <i><Sparkles /></i>
@@ -308,7 +317,7 @@ export default function AIChatPage() {
           const element = event.currentTarget
           stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120
         }}
-      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">Your intelligent trade partner</span><h2>What can I help you discover today?</h2><p>Find products, evaluate suppliers, prepare RFQs and explore global market opportunities with live EsyGlob context.</p><div>{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
+      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">ESY AI sourcing workspace</span><h2>All your sourcing tasks, one conversation.</h2><p>Discover products, evaluate verified suppliers, prepare RFQs and understand global markets with live EsyGlob context.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div><div className="ai-welcome-capabilities" aria-label="ESY AI capabilities"><span><Check /> Marketplace-aware</span><span><Check /> Procurement focused</span><span><Check /> Available 24/7</span></div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
       <div className="ai-composer-dock">
         {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
         {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
@@ -366,6 +375,7 @@ function RichMessage({ content, streaming }) {
     }
     if (/^\s*[-*]\s+/.test(line)) { const items = []; while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) { items.push(lines[index].replace(/^\s*[-*]\s+/, '')); index += 1 } nodes.push(<ul key={`list-${index}`}>{items.map((value, itemIndex) => <li key={itemIndex}>{inlineMarkdown(value)}</li>)}</ul>); continue }
     if (/^\s*\d+\.\s+/.test(line)) { const items = []; while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) { items.push(lines[index].replace(/^\s*\d+\.\s+/, '')); index += 1 } nodes.push(<ol key={`ordered-${index}`}>{items.map((value, itemIndex) => <li key={itemIndex}>{inlineMarkdown(value)}</li>)}</ol>); continue }
+    if (/^\s*>\s?/.test(line)) { const quote = []; while (index < lines.length && /^\s*>\s?/.test(lines[index])) { quote.push(lines[index].replace(/^\s*>\s?/, '')); index += 1 } nodes.push(<blockquote key={`quote-${index}`}>{quote.map((value, quoteIndex) => <p key={quoteIndex}>{inlineMarkdown(value)}</p>)}</blockquote>); continue }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line)
     if (heading) { const Tag = `h${heading[1].length + 2}`; nodes.push(<Tag key={`heading-${index}`}>{inlineMarkdown(heading[2])}</Tag>); index += 1; continue }
     if (line.trim()) nodes.push(<p key={`paragraph-${index}`}>{inlineMarkdown(line)}</p>)

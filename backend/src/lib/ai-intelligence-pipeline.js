@@ -1,6 +1,7 @@
 const INTENTS = [
   ['supplier_search', /supplier|manufacturer|factory/i],
   ['product_search', /(find|search|source|compare).*product|product.*(search|supplier|alternative)/i],
+  ['trade_advice', /\b(moq|minimum order|incoterms?|fob|cif|exw|ddp|ce certification|certificate of origin|bill of lading|import documents?|export documents?|customs documents?)\b/i],
   ['rfq', /\brfq\b|request for quotation|आरएफक्यू|कोटेशन.*अनुरोध|cotización/i],
   ['quotation', /quotation|quote/i],
   ['order', /order|purchase lifecycle|track|ऑर्डर|आदेश|pedido|commande/i],
@@ -32,13 +33,20 @@ export function analyzeRequest({ message, role = 'general', previousLanguage = '
   const greeting = /^(hi|hello|hey|namaste|hola|bonjour|thanks|thank you|shukriya|धन्यवाद|नमस्ते)[\s.!?]*$/iu.test(message);
   const liveInformation = /\b(current|today|latest|right now|live|202[5-9])\b.*\b(duty|tariff|rate|regulation|news|price|statistics)|\b(duty|tariff|regulation)\b.*\b(current|today|latest|live)\b/i.test(message);
   const platformIntent = ['rfq', 'quotation', 'order', 'shipping', 'trade_assurance', 'payment', 'membership', 'policy', 'platform_help', 'hs_code', 'market_research'].includes(intent);
+  const hasMarketplaceDiscovery = /\b(find|show|search|compare|source|recommend)\b/i.test(message)
+    && /\b(suppliers?|manufacturers?|factories|factory|products?|prices?|moq)\b/i.test(message);
+  const hasKnowledgeQuestion = /\b(how|why|explain|guide|documents?|process|risk|compliance|import|export|shipping|customs|certification|policy)\b/i.test(message);
+  const mixedQuery = hasMarketplaceDiscovery && hasKnowledgeQuestion;
   const route = greeting ? 'greeting'
     : requiresPrivateData ? 'private_data'
     : liveInformation ? 'live_information'
+    : mixedQuery ? 'mixed'
     : ['product_search', 'supplier_search'].includes(intent) ? 'marketplace_data'
+    : intent === 'trade_advice' ? 'knowledge_data'
     : platformIntent ? 'platform_knowledge'
     : 'general_knowledge';
-  const sources = intent === 'product_search' ? ['products', 'suppliers']
+  const sources = mixedQuery ? ['products', 'suppliers', 'knowledge_base']
+    : intent === 'product_search' ? ['products', 'suppliers']
     : intent === 'supplier_search' ? ['suppliers', 'products']
     : intent === 'hs_code' ? ['hs_codes', 'knowledge_base']
     : requiresPrivateData ? ['user_data', 'knowledge_base']
@@ -46,6 +54,67 @@ export function analyzeRequest({ message, role = 'general', previousLanguage = '
     : route === 'live_information' ? ['live_search']
     : ['knowledge_base'];
   return { intent, language, role, route, requiresPrivateData, sources, classifiedAt: Date.now() };
+}
+
+export function rewriteSearchQuery({ message = '', intelligence = {}, memory = {} }) {
+  let rewritten = String(message || '').trim().replace(/\s+/g, ' ');
+  const previousEntities = memory.entities || {};
+  const refersBack = /\b(it|this|that|those|them|same|iske|iska|uska|yeh|woh)\b/i.test(rewritten);
+  if (refersBack) {
+    const contextTerms = [
+      previousEntities.product,
+      previousEntities.manufacturer,
+      previousEntities.country,
+      previousEntities.category,
+    ].filter(Boolean);
+    if (contextTerms.length) rewritten = `${rewritten} Context: ${contextTerms.join(', ')}`;
+  }
+
+  const expansions = [
+    [/\bmoq\b/gi, 'minimum order quantity (MOQ)'],
+    [/\bchina se\b/gi, 'from China'],
+    [/\bimport karna hai\b/gi, 'import process, sourcing, customs, duties, shipping and documents'],
+    [/\bexport karna hai\b/gi, 'export process, compliance, shipping and documents'],
+    [/\bmanufacturer(s)?\b/gi, 'verified manufacturer$1'],
+  ];
+  for (const [pattern, replacement] of expansions) rewritten = rewritten.replace(pattern, replacement);
+
+  const routeHint = {
+    marketplace_data: 'marketplace products and suppliers',
+    knowledge_data: 'trade guidance and business knowledge',
+    platform_knowledge: 'EsyGlob platform guidance',
+    private_data: 'authenticated user records',
+    mixed: 'marketplace matches plus trade guidance',
+  }[intelligence.route];
+  return `${rewritten}${routeHint ? ` — ${routeHint}` : ''}`.slice(0, 700);
+}
+
+export function buildConversationMemory({ messages = [], context = {}, language = 'en' } = {}) {
+  const recent = messages.slice(-8);
+  const userMessages = recent.filter(item => item.role === 'user').map(item => String(item.content || ''));
+  const joined = userMessages.join(' ');
+  const entityPatterns = {
+    country: /\b(India|China|UAE|United Arab Emirates|USA|United States|UK|United Kingdom|Germany|Japan|Australia|Canada|Gujarat)\b/i,
+    product: /\b(steel pipes?|textiles?|chemicals?|electronics?|machinery|rice|cotton|packaging|solar panels?)\b/i,
+    manufacturer: /\b(?:supplier|manufacturer|factory)\s+(?:named\s+)?([A-Z][\w& -]{2,50})/i,
+  };
+  const entities = { ...(context.entities || {}) };
+  for (const [key, pattern] of Object.entries(entityPatterns)) {
+    const match = joined.match(pattern);
+    if (match) entities[key] = match[1] || match[0];
+  }
+  const preferences = { ...(context.preferences || {}) };
+  const currency = joined.match(/\b(INR|USD|EUR|GBP|AED|CNY|JPY|AUD)\b/i);
+  if (currency) preferences.currency = currency[1].toUpperCase();
+  if (/\bverified (supplier|manufacturer|factory)/i.test(joined)) preferences.verifiedSuppliers = true;
+  if (/\b(low|small|minimum)\s+moq\b|\blow minimum order\b/i.test(joined)) preferences.lowMoq = true;
+  return {
+    language: context.language || language,
+    intent: context.intent,
+    entities,
+    summary: recent.map(item => `${item.role}: ${String(item.content || '').slice(0, 240)}`).join('\n').slice(0, 1_500),
+    preferences,
+  };
 }
 
 export function languageInstruction(language) {

@@ -60,6 +60,21 @@ const aiChatSchema = new mongoose.Schema(
       searchType: String,
       searchFilters: mongoose.Schema.Types.Mixed,
       lastQuery: String,
+      rewrittenQuery: String,
+      language: {
+        type: String,
+        default: 'en',
+      },
+      intent: String,
+      conversationSummary: String,
+      entities: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+      },
+      preferences: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {},
+      },
       productId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Product',

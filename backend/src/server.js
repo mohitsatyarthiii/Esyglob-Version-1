@@ -1,6 +1,7 @@
 import app from './app.js';
 import { config } from './config/env.js';
 import { closeDatabase, connectToDatabase, warmupDatabase } from './config/database.js';
+import { closeAIKnowledgeDatabase, connectToAIKnowledgeDatabase } from './config/knowledge-database.js';
 import { createServer } from 'node:http';
 import { initializeSocket } from './lib/socket-server.js';
 import AIChatService from './services/ai-chat.service.js';
@@ -10,7 +11,9 @@ let server;
 async function startServer() {
   try {
     await connectToDatabase();
-    console.log('Database connected successfully');
+    console.log('Marketplace database connected successfully');
+    await connectToAIKnowledgeDatabase()
+      .catch(error => console.error('AI knowledge database unavailable; AI will use marketplace/model fallbacks:', error.message));
 
     await warmupDatabase();
 
@@ -39,13 +42,13 @@ async function shutdown(signal) {
 
   if (server) {
     server.close(async () => {
-      await closeDatabase();
+      await Promise.all([closeDatabase(), closeAIKnowledgeDatabase()]);
       process.exit(0);
     });
     return;
   }
 
-  await closeDatabase();
+  await Promise.all([closeDatabase(), closeAIKnowledgeDatabase()]);
   process.exit(0);
 }
 
