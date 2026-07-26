@@ -25,6 +25,20 @@ export const knowledgeDocumentSchema = new mongoose.Schema({
     default: '', 
     index: true 
   },
+  folderPath: {
+    type: String,
+    default: '',
+    index: true,
+  },
+  documentType: {
+    type: String,
+    default: '',
+    index: true,
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {},
+  },
   category: {
     type: String,
     default: 'Knowledge Base',
@@ -205,6 +219,9 @@ knowledgeDocumentSchema.pre('validate', function deriveSearchText() {
     this.content,
     this.subcategory,
     this.category,
+    this.folderPath,
+    this.documentType,
+    JSON.stringify(this.metadata || {}),
     ...(this.keywords || []),
     ...(this.synonyms || []),
     ...(this.exampleQuestions || []),

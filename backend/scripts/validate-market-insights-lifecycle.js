@@ -1,17 +1,32 @@
 import crypto from 'crypto';
 import { connectToDatabase, closeDatabase } from '../src/config/database.js';
+import { connectToAIKnowledgeDatabase, closeAIKnowledgeDatabase } from '../src/config/knowledge-database.js';
 import MarketResearchService from '../src/services/market-research.service.js';
 import MarketReportStorageService from '../src/services/market-report-storage.service.js';
 import SavedResearchReport from '../src/models/SavedResearchReport.js';
 import User from '../src/models/User.js';
 import Subscription from '../src/models/Subscription.js';
 import AIUsage from '../src/models/AIUsage.js';
+import { getKnowledgeChunkModel } from '../src/models/KnowledgeChunk.js';
 import { createToken } from '../src/lib/crypto.js';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 
 const API_ORIGIN = String(process.env.MARKET_INSIGHTS_VALIDATION_API_URL || 'http://127.0.0.1:5000/api').replace(/\/$/, '');
 const samples = [
-  { query: 'Steel Market Analysis - India', productName: 'Steel', country: 'India' },
-  { query: 'Textile Export Opportunities - UAE', productName: 'Textiles', country: 'United Arab Emirates' },
+  {
+    query: 'India Textile Industry Market Analysis',
+    productName: 'Textiles',
+    country: 'India',
+    expectedSource: 'India Textile Industry Report 2025',
+    evidenceMarker: '8.21',
+  },
+  {
+    query: 'UAE Steel Market Opportunity Analysis',
+    productName: 'Steel',
+    country: 'United Arab Emirates',
+    expectedSource: 'UAE Steel Market Report 2025',
+    evidenceMarker: '3.7',
+  },
 ];
 
 function assert(condition, message) {
@@ -43,6 +58,13 @@ async function verifyPdfResponse(response, disposition) {
 
 async function main() {
   await connectToDatabase();
+  await connectToAIKnowledgeDatabase();
+  const KnowledgeChunk = getKnowledgeChunkModel();
+  const seededVectorChunks = await KnowledgeChunk.countDocuments({
+    'metadata.folderPath': /^market-insights\//,
+    embedding: { $exists: true, $ne: [] },
+  });
+  assert(seededVectorChunks >= 4, 'Seeded knowledge reports do not have persistent vector embeddings');
   const email = `market-insights-validation-${Date.now()}-${crypto.randomBytes(3).toString('hex')}@example.invalid`;
   const user = await User.create({
     email,
@@ -83,9 +105,19 @@ async function main() {
       assert(row.previewUrl && row.downloadUrl, `${sample.query}: delivery URLs are missing`);
       assert(row.storageProvider === 'filesystem' && row.storageKey, `${sample.query}: storage metadata is incomplete`);
       assert(row.fileSize > 1000, `${sample.query}: stored file size is invalid`);
+      const knowledgeMetric = row.reportData?.keyMetrics?.find(metric => metric.label === 'Knowledge sources');
+      assert(Number(knowledgeMetric?.value) > 0, `${sample.query}: AI Knowledge Database did not contribute evidence`);
+      assert(row.reportData?.pdfValidation?.passed === true, `${sample.query}: PDF quality validation did not pass`);
+      assert(row.reportData?.sources?.some(source => source.name === sample.expectedSource), `${sample.query}: expected folder-aware source was not cited`);
+      const serializedReport = JSON.stringify(row.reportData);
+      assert(serializedReport.includes(sample.evidenceMarker), `${sample.query}: seeded evidence did not influence the report`);
+      assert(!serializedReport.includes('Leading import markets — macro trade context'), `${sample.query}: unrelated generic macro table was included`);
+      assert(row.reportData?.sections?.some(section => section.tables?.some(table => table.source === sample.expectedSource)), `${sample.query}: dynamic source table was not generated`);
       assert(await MarketReportStorageService.exists(row.storageKey), `${sample.query}: physical PDF file does not exist`);
       const stored = await MarketReportStorageService.read(row.storageKey);
       assert(stored.subarray(0, 4).toString() === '%PDF', `${sample.query}: physical file is not a PDF`);
+      const parsedPdf = await pdf(stored);
+      assert(parsedPdf.text.includes(sample.evidenceMarker), `${sample.query}: seeded evidence is missing from the rendered PDF`);
       checks.push({ query: sample.query, id: result.savedReportId, bytes: stored.length, storageKey: row.storageKey });
     }
 
@@ -144,12 +176,12 @@ async function main() {
       AIUsage.deleteMany({ userId: user._id }),
       User.deleteOne({ _id: user._id }),
     ]);
-    await closeDatabase();
+    await Promise.all([closeDatabase(), closeAIKnowledgeDatabase()]);
   }
 }
 
 main().catch(async error => {
   console.error(error);
-  await closeDatabase().catch(() => undefined);
+  await Promise.all([closeDatabase().catch(() => undefined), closeAIKnowledgeDatabase().catch(() => undefined)]);
   process.exitCode = 1;
 });

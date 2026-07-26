@@ -42,7 +42,9 @@ export const config = {
   isProduction,
   mongodbUri: process.env.MONGODB_URI,
   aiKnowledgeMongoUri: process.env.AI_KNOWLEDGE_MONGODB_URI || process.env.MONGODB_URI,
-  aiKnowledgeDbName: process.env.AI_KNOWLEDGE_DB_NAME || 'esyglob_ai_knowledge',
+  // When a dedicated URI is supplied, respect the database encoded in that
+  // URI unless an explicit override is configured.
+  aiKnowledgeDbName: process.env.AI_KNOWLEDGE_DB_NAME || (process.env.AI_KNOWLEDGE_MONGODB_URI ? undefined : 'esyglob_ai_knowledge'),
   authSecret,
   sessionCookie: process.env.SESSION_COOKIE_NAME || 'esyglob_session',
   sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE_SECONDS, 10) || 60 * 60 * 24 * 30,

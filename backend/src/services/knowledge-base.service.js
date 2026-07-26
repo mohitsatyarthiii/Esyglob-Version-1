@@ -8,7 +8,7 @@ import {
   contentHash,
   extractKeywords,
 } from '../lib/knowledge-ingestion.js';
-import { getAIKnowledgeDatabaseState } from '../config/knowledge-database.js';
+import { getAIKnowledgeConnection, getAIKnowledgeDatabaseState } from '../config/knowledge-database.js';
 
 const retrievalCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false, maxKeys: 500 });
 const ROLE_LABELS = {
@@ -20,6 +20,35 @@ const ROLE_LABELS = {
 
 function tokens(value = '') {
   return [...new Set(String(value).toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [])].slice(0, 24);
+}
+
+function retrievalFacets(query = '') {
+  const value = String(query).toLowerCase();
+  const hsCodes = [...value.matchAll(/\b(?:hs\s*)?(\d{4,10})\b/g)].map(match => match[1]);
+  const genericPathTerms = new Set([
+    'market', 'markets', 'insight', 'insights', 'research', 'report', 'reports',
+    'industry', 'industries', 'analysis', 'trade', 'latest', 'current', 'production',
+    'value', 'growth', 'data', 'business',
+  ]);
+  const pathTerms = tokens(value).filter(term => !genericPathTerms.has(term));
+  const topicFolders = [
+    [/import|export|trade flow/, 'import-export'],
+    [/tariff|duty/, 'tariffs'],
+    [/customs|clearance/, 'customs'],
+    [/compliance|regulation|policy/, 'compliance'],
+    [/logistics|shipping|freight|route/, 'logistics'],
+    [/certificate|certification|standard/, 'certifications'],
+    [/free trade|fta|agreement/, 'free-trade-agreements'],
+    [/price|pricing|cost/, 'pricing'],
+    [/competitor|competition/, 'competitors'],
+    [/opportunit|investment/, 'opportunities'],
+    [/risk|threat/, 'risks'],
+    [/forecast|outlook|growth/, 'forecasts'],
+    [/trend/, 'trends'],
+  ];
+  topicFolders.forEach(([pattern, folder]) => { if (pattern.test(value)) pathTerms.push(folder); });
+  hsCodes.forEach(code => pathTerms.push(`hs-${code}`));
+  return { hsCodes, pathTerms: [...new Set(pathTerms)].slice(0, 30) };
 }
 
 function asArray(value, fallback = []) {
@@ -40,7 +69,7 @@ function roleFilter(role) {
   return { $in: ROLE_LABELS[role] || ROLE_LABELS.general };
 }
 
-function scoreDocument(document, queryTerms, language, intent, chunkScore = 0) {
+function scoreDocument(document, queryTerms, language, intent, chunkScore = 0, facets = {}) {
   const haystack = [
     document.title,
     document.summary,
@@ -48,18 +77,73 @@ function scoreDocument(document, queryTerms, language, intent, chunkScore = 0) {
     document.searchableText,
     ...(document.keywords || []),
     ...(document.intentTags || []),
+    document.folderPath,
+    document.documentType,
+    JSON.stringify(document.metadata || {}),
   ].join(' ').toLowerCase();
   const termMatches = queryTerms.reduce((score, term) => score + (haystack.includes(term) ? 1 : 0), 0);
   return Number(chunkScore || 0)
     + termMatches * 2
     + (document.intentTags?.includes(intent) ? 8 : 0)
     + (document.supportedLanguages?.includes(language) ? 3 : 0)
+    + (facets.pathTerms || []).reduce((score, term) => score + (String(document.folderPath || '').toLowerCase().includes(term) ? 2 : 0), 0)
     + Number(document.priority || 0) / 10;
 }
 
+function cosineSimilarity(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || !a.length || a.length !== b.length) return 0;
+  let dot = 0; let normA = 0; let normB = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    dot += Number(a[index]) * Number(b[index]);
+    normA += Number(a[index]) ** 2;
+    normB += Number(b[index]) ** 2;
+  }
+  return normA && normB ? dot / (Math.sqrt(normA) * Math.sqrt(normB)) : 0;
+}
+
+async function legacyKnowledge(queryTerms, queryEmbedding, limit) {
+  const collection = getAIKnowledgeConnection().db.collection('knowledges');
+  const documents = await collection.find({}, {
+    projection: { slug: 1, title: 1, name: 1, category: 1, summary: 1, version: 1, chunks: 1, updatedAt: 1 },
+  }).toArray();
+  return documents.map(document => {
+    const rankedChunks = asArray(document.chunks).map((chunk, index) => {
+      const content = String(chunk.content || '');
+      const lower = content.toLowerCase();
+      const lexicalScore = queryTerms.reduce((score, term) => score + (lower.includes(term) ? 1 : 0), 0);
+      const vectorScore = cosineSimilarity(queryEmbedding, chunk.embedding);
+      return { documentId: document._id, chunkIndex: index, content, score: lexicalScore * 2 + vectorScore * 8 };
+    }).filter(chunk => chunk.score > 0).sort((a, b) => b.score - a.score);
+    const title = document.title || document.name || String(document.slug || 'Knowledge source').replace(/[-_]+/g, ' ').replace(/\b\w/g, value => value.toUpperCase());
+    const titleText = `${title} ${document.category || ''} ${document.slug || ''}`.toLowerCase();
+    const titleMatches = queryTerms.reduce((score, term) => score + (titleText.includes(term) ? 3 : 0), 0);
+    return {
+      ...document,
+      title,
+      status: 'published',
+      ingestionStatus: 'ready',
+      targetRoles: ['All Users'],
+      retrievedChunks: rankedChunks.slice(0, 3),
+      relevanceScore: titleMatches + rankedChunks.slice(0, 3).reduce((sum, chunk) => sum + chunk.score, 0),
+    };
+  }).filter(document => document.relevanceScore > 0)
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, limit);
+}
+
 async function vectorChunks(queryEmbedding, limit) {
-  if (!queryEmbedding?.length || !process.env.AI_KNOWLEDGE_VECTOR_INDEX) return [];
+  if (!queryEmbedding?.length) return [];
   const KnowledgeChunk = getKnowledgeChunkModel();
+  if (!process.env.AI_KNOWLEDGE_VECTOR_INDEX) {
+    const candidates = await KnowledgeChunk.find({ embedding: { $exists: true } })
+      .select('+embedding documentId chunkIndex heading content language intentTags')
+      .limit(Math.min(1_000, Number(process.env.AI_KNOWLEDGE_LOCAL_VECTOR_SCAN_LIMIT || 500)))
+      .lean();
+    return candidates.map(chunk => ({ ...chunk, score: cosineSimilarity(queryEmbedding, chunk.embedding) }))
+      .filter(chunk => chunk.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
+  }
   try {
     return await KnowledgeChunk.aggregate([
       {
@@ -121,10 +205,13 @@ export default class KnowledgeBaseService {
     if (getAIKnowledgeDatabaseState() !== 1) return [];
     const searchQuery = String(rewrittenQuery || query || '').trim();
     const queryTerms = tokens(searchQuery);
+    const facets = retrievalFacets(searchQuery);
     if (!queryTerms.length) return [];
 
-    const boundedLimit = Math.min(6, Math.max(1, Number(limit)));
-    const cacheKey = JSON.stringify([queryTerms, role, intent, language, boundedLimit]);
+    // Market research can require a broader evidence set than conversational
+    // answers. Ranking and deduplication below still bound the final context.
+    const boundedLimit = Math.min(12, Math.max(1, Number(limit)));
+    const cacheKey = JSON.stringify([queryTerms, facets, role, intent, language, boundedLimit]);
     const cached = retrievalCache.get(cacheKey);
     if (cached) return cached;
 
@@ -151,6 +238,16 @@ export default class KnowledgeBaseService {
       ingestionStatus: { $ne: 'failed' },
       targetRoles: roleFilter(role),
     };
+    if (facets.pathTerms.length) {
+      const folderExpression = facets.pathTerms.map(term => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+      baseMatch.$and = [{
+        $or: [
+          { folderPath: { $exists: false } },
+          { folderPath: '' },
+          { folderPath: { $regex: folderExpression, $options: 'i' } },
+        ],
+      }];
+    }
 
     let documents = documentIds.length
       ? await KnowledgeDocument.find({ ...baseMatch, _id: { $in: documentIds } })
@@ -173,6 +270,12 @@ export default class KnowledgeBaseService {
         .lean();
     }
 
+    if (!documents.length) {
+      const legacy = await legacyKnowledge(queryTerms, queryEmbedding, boundedLimit);
+      retrievalCache.set(cacheKey, legacy);
+      return legacy;
+    }
+
     const ranked = documents
       .map(document => {
         const matchingChunks = chunkRows
@@ -183,7 +286,7 @@ export default class KnowledgeBaseService {
         return {
           ...document,
           retrievedChunks: matchingChunks,
-          relevanceScore: scoreDocument(document, queryTerms, language, intent, chunkScore),
+          relevanceScore: scoreDocument(document, queryTerms, language, intent, chunkScore, facets),
         };
       })
       .sort((a, b) => b.relevanceScore - a.relevanceScore || new Date(b.lastUpdated) - new Date(a.lastUpdated))
@@ -252,6 +355,9 @@ export default class KnowledgeBaseService {
         ...asArray(payload.synonyms),
         ...asArray(payload.intentTags),
         ...asArray(payload.searchTerms),
+        payload.folderPath,
+        payload.documentType,
+        JSON.stringify(payload.metadata || {}),
       ].filter(Boolean).join(' ').toLowerCase(),
       lastUpdated: new Date(),
       updatedBy: actorId,
@@ -319,6 +425,9 @@ export default class KnowledgeBaseService {
             sourceType: source.type,
             fileName: source.fileName,
             documentSlug: document.slug,
+            folderPath: payload.folderPath,
+            documentType: payload.documentType,
+            ...(payload.metadata || {}),
           },
         })));
       }

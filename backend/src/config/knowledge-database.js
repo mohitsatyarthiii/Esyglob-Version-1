@@ -25,7 +25,7 @@ export async function connectToAIKnowledgeDatabase() {
   if (connectPromise) return connectPromise;
 
   connectPromise = activeConnection.openUri(config.aiKnowledgeMongoUri, {
-    dbName: config.aiKnowledgeDbName,
+    ...(config.aiKnowledgeDbName ? { dbName: config.aiKnowledgeDbName } : {}),
     maxPoolSize: config.aiKnowledgeMongoMaxPoolSize,
     minPoolSize: config.aiKnowledgeMongoMinPoolSize,
     socketTimeoutMS: 45_000,

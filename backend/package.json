@@ -13,6 +13,7 @@
     "logs": "pm2 logs esyglob-backend",
     "status": "pm2 status",
     "knowledge:migrate": "node scripts/migrate-knowledge-database.js",
+    "knowledge:seed-market-insights": "node scripts/seed-market-insights-knowledge.js",
     "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js"
   },
   "keywords": [],

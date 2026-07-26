@@ -6,6 +6,23 @@ let disabledUntil = 0;
 const embeddingCache = new Map();
 const EMBEDDING_CACHE_TTL = Number(process.env.AI_EMBEDDING_CACHE_TTL_MS || 60 * 60 * 1000);
 const EMBEDDING_CACHE_MAX = Number(process.env.AI_EMBEDDING_CACHE_MAX || 1_000);
+// Match nomic-embed-text's default dimensionality so locally generated
+// fallback vectors can coexist with provider vectors in the same index.
+const LOCAL_DIMENSIONS = Number(process.env.AI_LOCAL_EMBEDDING_DIMENSIONS || 768);
+
+function localEmbedding(text) {
+  const vector = new Array(LOCAL_DIMENSIONS).fill(0);
+  const terms = String(text).toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}-]{1,}/gu) || [];
+  for (const term of terms) {
+    const digest = crypto.createHash('sha256').update(term).digest();
+    for (let offset = 0; offset < 4; offset += 1) {
+      const index = digest.readUInt16BE(offset * 2) % LOCAL_DIMENSIONS;
+      vector[index] += digest[offset + 8] % 2 ? 1 : -1;
+    }
+  }
+  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)) || 1;
+  return vector.map(value => value / magnitude);
+}
 
 function cacheKey(text) {
   return crypto.createHash('sha256').update(`${EMBEDDING_MODEL}:${text}`).digest('hex');
@@ -32,10 +49,15 @@ export default class AIEmbeddingService {
 
   static async embed(input) {
     const text = String(input || '').trim();
-    if (!text || process.env.AI_EMBEDDINGS_ENABLED === 'false' || Date.now() < disabledUntil) return null;
+    if (!text || process.env.AI_EMBEDDINGS_ENABLED === 'false') return null;
     const key = cacheKey(text);
     const cached = getCached(key);
     if (cached) return cached;
+    if (Date.now() < disabledUntil) {
+      const embedding = localEmbedding(text);
+      setCached(key, embedding);
+      return embedding;
+    }
 
     try {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
@@ -46,7 +68,9 @@ export default class AIEmbeddingService {
       });
       if (!response.ok) {
         disabledUntil = Date.now() + Number(process.env.AI_EMBEDDING_RETRY_DELAY_MS || 60_000);
-        return null;
+        const embedding = localEmbedding(text);
+        setCached(key, embedding);
+        return embedding;
       }
       const data = await response.json();
       const embedding = data.embeddings?.[0] || data.embedding;
@@ -59,7 +83,9 @@ export default class AIEmbeddingService {
       if (process.env.AI_DEBUG === 'true') {
         console.warn('[AI embeddings] Provider unavailable:', error.message);
       }
-      return null;
+      const embedding = localEmbedding(text);
+      setCached(key, embedding);
+      return embedding;
     }
   }
 
