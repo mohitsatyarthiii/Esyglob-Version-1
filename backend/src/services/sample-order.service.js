@@ -2,6 +2,7 @@ import SampleOrderRepository from '../repositories/sample-order.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
+import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 
 class SampleOrderService {
   /**
@@ -55,6 +56,9 @@ class SampleOrderService {
       orderSubType: 'sample_order',
       destination: shippingAddress || {},
       selectedLogisticsKey: logisticsOption,
+      userId,
+      couponCodes: body.couponCodes || body.couponCode,
+      giftCardCode: body.giftCardCode,
     });
 
     if (!quote.selectedLogistics) {
@@ -77,6 +81,7 @@ class SampleOrderService {
     const merchandiseAmount = quote.productTotal + quote.logisticsCharges;
     const platformFee = quote.platformFee;
     const totalPrice = quote.grandTotal;
+    const requiresPayment = Number(totalPrice) > 0;
 
     // Generate order number
     const orderNumber = await SampleOrderRepository.generateOrderNumber('SAM');
@@ -96,13 +101,19 @@ class SampleOrderService {
       subtotal: quote.productTotal,
       shippingCost: quote.logisticsCharges,
       taxAmount: quote.gstAmount,
+      discount: (quote.appliedCoupons || []).filter(item => item.discountType !== 'free_shipping').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      productSavings: quote.productSavings,
+      couponDiscount: quote.couponDiscount,
+      giftCardAmount: quote.giftCardAmount,
+      platformPromotionFunding: Number(quote.giftCardAmount || 0) + (quote.appliedCoupons || []).filter(item => item.ownerType === 'platform').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      promotionSnapshot: quote.promotionSnapshot,
       merchandiseAmount,
       platformFeeRate: quote.platformFeeRate,
       platformFee,
       gatewayFee: 0,
-      netAmount: totalPrice - platformFee,
+      netAmount: totalPrice + Number(quote.giftCardAmount || 0) + (quote.appliedCoupons || []).filter(item => item.ownerType === 'platform').reduce((sum, item) => sum + Number(item.amount || 0), 0) - platformFee,
       totalAmount: totalPrice,
-      currency: 'INR',
+      currency: quote.currency || product.currency || 'INR',
       unit: product.unit || 'piece',
       shippingMethod: quote.selectedLogistics.key,
       checkout: {
@@ -131,8 +142,8 @@ class SampleOrderService {
         status: 'pending',
         source: 'system',
       })),
-      status: 'pending_payment',
-      paymentStatus: 'pending',
+      status: requiresPayment ? 'pending_payment' : 'pending_approval',
+      paymentStatus: requiresPayment ? 'pending' : 'paid',
       shippingAddress: {
         fullName: shippingAddress?.fullName || '',
         name: shippingAddress?.fullName || '',
@@ -178,15 +189,23 @@ class SampleOrderService {
 
     // Create order
     const order = await SampleOrderRepository.createOrder(orderData);
+    try {
+      await reserveOrderPromotions(order);
+      if (!requiresPayment) await commitOrderPromotions(order);
+    } catch (error) {
+      await releaseOrderPromotions(order).catch(() => undefined);
+      await order.deleteOne();
+      throw error;
+    }
 
     // Create pending payment
     let payment = null;
-    try {
+    if (requiresPayment) try {
       const { ensurePendingOrderPayment } = await import('../lib/order-payments.js');
       payment = await ensurePendingOrderPayment(order, {
         userId,
         amount: totalPrice,
-        currency: 'INR',
+        currency: quote.currency || product.currency || 'INR',
       });
 
       if (payment) {

@@ -58,6 +58,19 @@ const productSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    discount: {
+      type: {
+        type: String,
+        enum: ['percentage', 'fixed_amount'],
+        default: 'percentage',
+      },
+      value: { type: Number, min: 0, default: 0 },
+      discountedPrice: { type: Number, min: 0, default: null },
+      label: { type: String, trim: true, default: '' },
+      status: { type: String, enum: ['inactive', 'active', 'scheduled'], default: 'inactive', index: true },
+      startsAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+    },
     currency: {
       type: String,
       default: 'INR',
@@ -306,6 +319,15 @@ function slugify(value) {
 productSchema.pre('validate', function setProductSlug() {
   if (!this.slug && this.name) {
     this.slug = `${slugify(this.name)}-${String(this._id).slice(-6)}`;
+  }
+  if (this.discount?.type === 'percentage' && Number(this.discount.value) > 100) {
+    this.invalidate('discount.value', 'Discount percentage cannot exceed 100');
+  }
+  if (this.discount?.discountedPrice != null && Number(this.discount.discountedPrice) > Number(this.price || 0)) {
+    this.invalidate('discount.discountedPrice', 'Discounted price cannot exceed the original price');
+  }
+  if (this.discount?.startsAt && this.discount?.expiresAt && this.discount.expiresAt <= this.discount.startsAt) {
+    this.invalidate('discount.expiresAt', 'Discount expiry must be after its start time');
   }
 });
 

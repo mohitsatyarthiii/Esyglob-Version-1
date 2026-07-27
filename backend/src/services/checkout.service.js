@@ -57,6 +57,9 @@ export async function getCheckoutQuote(session, body) {
     orderSubType: body.orderSubType || 'direct_order',
     destination: body.destination || {},
     selectedLogisticsKey: body.logisticsOption,
+    userId: session._id || session.id,
+    couponCodes: body.couponCodes || body.couponCode,
+    giftCardCode: body.giftCardCode,
   });
 
   // Return standardized response
@@ -66,6 +69,8 @@ export async function getCheckoutQuote(session, body) {
       currency: quote.currency || 'INR',
       quantity: quote.quantity,
       unitPrice: quote.unitPrice,
+      originalUnitPrice: quote.originalUnitPrice,
+      originalProductTotal: quote.originalProductTotal,
       productTotal: quote.productTotal,
       logisticsOptions: quote.logisticsOptions || [],
       selectedLogistics: quote.selectedLogistics || null,
@@ -75,6 +80,13 @@ export async function getCheckoutQuote(session, body) {
       gstRate: quote.gstRate || 0.18,
       gstAmount: quote.gstAmount || 0,
       discount: quote.discount || 0,
+      productSavings: quote.productSavings || 0,
+      couponDiscount: quote.couponDiscount || 0,
+      giftCardAmount: quote.giftCardAmount || 0,
+      savings: quote.savings || 0,
+      appliedCoupon: quote.appliedCoupon || null,
+      appliedCoupons: quote.appliedCoupons || [],
+      giftCard: quote.giftCard || null,
       grandTotal: quote.grandTotal || quote.productTotal || 0,
       automatedServices: quote.automatedServices || [],
       subtotal: quote.productTotal || 0,

@@ -1,24 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchProfile, updatePreferredCurrency } from '../api/account'
 import { useAuth } from '../auth/auth-context'
-import { CURRENCIES, CurrencyContext } from './currency-context'
+import { CURRENCIES, CURRENCY_META, CurrencyContext } from './currency-context'
 
 const RATE_URL = 'https://open.er-api.com/v6/latest/INR'
 const HOUR = 60 * 60_000
 const CURRENCY_KEY = 'esyglob.currency'
 const RATES_KEY = 'esyglob.currency.rates'
 const fallbackRates = { INR: 1 }
-const meta = {
-  INR: { symbol: '₹', locale: 'en-IN', position: 'prefix', digits: 0 },
-  USD: { symbol: '$', locale: 'en-US', position: 'prefix', digits: 2 },
-  EUR: { symbol: '€', locale: 'de-DE', position: 'suffix', digits: 2 },
-  GBP: { symbol: '£', locale: 'en-GB', position: 'prefix', digits: 2 },
-  AED: { symbol: 'د.إ', locale: 'ar-AE', position: 'prefix', digits: 2 },
-  JPY: { symbol: '¥', locale: 'ja-JP', position: 'prefix', digits: 0 },
-  CAD: { symbol: 'CA$', locale: 'en-CA', position: 'prefix', digits: 2 },
-  AUD: { symbol: 'A$', locale: 'en-AU', position: 'prefix', digits: 2 },
-  SGD: { symbol: 'S$', locale: 'en-SG', position: 'prefix', digits: 2 },
-}
+const zeroDigitCurrencies = new Set(['JPY', 'KRW', 'VND'])
 
 function readString(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeString(key, value) { try { window.localStorage.setItem(key, value) } catch { /* Storage may be unavailable. */ } }
@@ -117,17 +107,18 @@ export default function CurrencyProvider({ children }) {
     return Number(amount || 0) / source * target
   }, [rates, selectedCurrency])
   const formatPrice = useCallback((amount, fromCurrency = 'INR') => {
-    const config = meta[selectedCurrency]
-    const number = convertPrice(amount, fromCurrency).toLocaleString(config.locale, {
-      minimumFractionDigits: config.digits,
-      maximumFractionDigits: config.digits,
-    })
-    return config.position === 'suffix' ? `${number} ${config.symbol}` : `${config.symbol}${number}`
+    const digits = zeroDigitCurrencies.has(selectedCurrency) ? 0 : 2
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: selectedCurrency,
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(convertPrice(amount, fromCurrency))
   }, [convertPrice, selectedCurrency])
   const value = useMemo(() => ({
     selectedCurrency,
     currencyCode: selectedCurrency,
-    currencySymbol: meta[selectedCurrency].symbol,
+    currencySymbol: CURRENCY_META[selectedCurrency].symbol,
     exchangeRate: rates[selectedCurrency] || 1,
     rates,
     exchangeRates: rates,

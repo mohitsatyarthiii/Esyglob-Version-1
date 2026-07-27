@@ -6,6 +6,7 @@ import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } f
 import mongoose from 'mongoose';
 import { getIO } from '../lib/socket.js';
 import TradeWorkflowService from './trade-workflow.service.js';
+import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -161,6 +162,9 @@ class OrderService {
       product, seller, quantity, orderType, orderSubType,
       destination: cleanAddress(body.shippingAddress),
       selectedLogisticsKey: logisticsOption,
+      userId,
+      couponCodes: body.couponCodes || body.couponCode,
+      giftCardCode: body.giftCardCode,
     });
 
     if (!quote.selectedLogistics) {
@@ -202,15 +206,21 @@ class OrderService {
       subtotal,
       shippingCost: shippingCharge,
       taxAmount: gstAmount,
+      discount: (quote.appliedCoupons || []).filter(item => item.discountType !== 'free_shipping').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      productSavings: quote.productSavings,
+      couponDiscount: quote.couponDiscount,
+      giftCardAmount: quote.giftCardAmount,
+      platformPromotionFunding: Number(quote.giftCardAmount || 0) + (quote.appliedCoupons || []).filter(item => item.ownerType === 'platform').reduce((sum, item) => sum + Number(item.amount || 0), 0),
+      promotionSnapshot: quote.promotionSnapshot,
       merchandiseAmount,
       platformFeeRate,
       platformFee,
       gatewayFee: 0,
-      netAmount: totalAmount - platformFee,
+      netAmount: totalAmount + Number(quote.giftCardAmount || 0) + (quote.appliedCoupons || []).filter(item => item.ownerType === 'platform').reduce((sum, item) => sum + Number(item.amount || 0), 0) - platformFee,
       totalAmount,
       currency: product.currency || 'INR',
       status: requiresPayment ? 'pending_payment' : 'pending_approval',
-      paymentStatus: requiresPayment ? 'pending' : 'pending',
+      paymentStatus: requiresPayment ? 'pending' : 'paid',
       shippingAddress: cleanAddress(body.shippingAddress),
       products: [{
         productId: product._id,
@@ -287,6 +297,15 @@ class OrderService {
         platformFeeSlab: quote.platformFeeSlab,
       },
     });
+
+    try {
+      await reserveOrderPromotions(order);
+      if (!requiresPayment) await commitOrderPromotions(order);
+    } catch (error) {
+      await releaseOrderPromotions(order).catch(() => undefined);
+      await order.deleteOne();
+      throw error;
+    }
 
     // Create pending payment
     if (requiresPayment) {
@@ -514,7 +533,7 @@ class OrderService {
       await TradeWorkflowService.transition({ order, toStatus:'rejected', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer rejected final terms' });
       order.approvalHistory.push({ action:'reject_changes', previousStatus:'pending_approval', newStatus:'rejected', actorId:userId, actorRole:'buyer', notes:data.notes || 'Buyer rejected final terms', documents:data.documents || [] });
     }
-    else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'cancelled', actorId:userId, actorRole:'buyer', note:data.notes || 'Cancelled by buyer' }); order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); }
+    else if (data.action === 'cancel') { if (!['pending','pending_approval','awaiting_payment','pending_payment'].includes(order.status)) throw Object.assign(new Error('Order can no longer be cancelled directly'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'cancelled', actorId:userId, actorRole:'buyer', note:data.notes || 'Cancelled by buyer' }); order.cancelReason=data.notes || 'Cancelled by buyer'; order.cancelledAt=new Date(); await releaseOrderPromotions(order); }
     else if (data.action === 'confirm_delivery') { if (order.status !== 'delivered') throw Object.assign(new Error('Delivery is not ready for confirmation'), { statusCode:409 }); await TradeWorkflowService.transition({ order, toStatus:'completed', actorId:userId, actorRole:'buyer', note:data.notes || 'Buyer confirmed delivery' }); order.completedAt=new Date(); }
     else throw Object.assign(new Error('Invalid buyer action'), { statusCode:422 });
     if (['select_logistics', 'accept_terms'].includes(data.action) && order.status === 'pending_approval' && order.tradeInformation?.initiatedBy === 'buyer' && order.checkout?.logisticsSelected && order.checkout?.termsAccepted) {

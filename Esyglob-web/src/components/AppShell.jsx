@@ -1,15 +1,15 @@
-import { Bell, BriefcaseBusiness, ChevronDown, Globe2, Grid2X2, Heart, Home, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Settings, UserRound, X } from 'lucide-react'
+import { Bell, BriefcaseBusiness, ChevronDown, Grid2X2, Heart, Home, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Settings, UserRound, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/auth-context'
 import Brand from './Brand'
-import { CURRENCIES, useCurrency } from '../preferences/currency-context'
 import { fetchProfile } from '../api/account'
 import { fetchUnreadNotificationCount } from '../api/trade'
 import BackButton from './BackButton'
 import { getRealtimeClient } from '../realtime/socket'
 import TradeWorkspaceDock from './TradeWorkspaceDock'
 import MarketplaceSearch from './MarketplaceSearch'
+import CurrencySelector from './CurrencySelector'
 
 export default function AppShell({ children }) {
   const { user, status, signOut } = useAuth()
@@ -20,7 +20,6 @@ export default function AppShell({ children }) {
   const [profile, setProfile] = useState(null)
   const [unreadNotifications, setUnreadNotifications] = useState(0)
   const accountRef = useRef(null)
-  const { selectedCurrency, setCurrency } = useCurrency()
   const [region, setRegion] = useState(() => { try { return JSON.parse(localStorage.getItem('esyglob.region'))?.country || 'Global' } catch { return 'Global' } })
   const authenticated = status === 'authenticated'
   const chatDetail = /^\/messages\/[^/]+\/?$/.test(location.pathname)
@@ -76,7 +75,7 @@ export default function AppShell({ children }) {
         <div className="header-actions">
           {authenticated ? <>
             <Link className="header-region" to="/location"><MapPin /><span>{region}</span></Link>
-            <label className="header-currency"><Globe2 /><select value={selectedCurrency} onChange={(e) => setCurrency(e.target.value)} aria-label="Preferred currency">{CURRENCIES.map(item => <option key={item}>{item}</option>)}</select></label>
+            <CurrencySelector />
             <Link className="icon-button" to="/saved" aria-label="Saved items"><Heart /></Link>
             <Link className="icon-button notification-button" to="/notifications" aria-label={`${unreadNotifications} unread notifications`}><Bell />{unreadNotifications > 0 && <b>{unreadNotifications > 99 ? '99+' : unreadNotifications}</b>}</Link>
             <div className={`account-menu ${accountOpen ? 'open' : ''}`} ref={accountRef}><button className="account-menu__trigger" onClick={() => setAccountOpen((value) => !value)} aria-expanded={accountOpen}><span className="avatar">{accountImage ? <img src={accountImage} alt="" /> : accountName.slice(0, 1).toUpperCase()}</span><span className="account-menu__copy"><small>Welcome back</small><b>{accountName}</b></span><ChevronDown size={16} /></button>{accountOpen && <div className="account-dropdown"><div><span className="avatar">{accountImage ? <img src={accountImage} alt="" /> : accountName.slice(0, 1).toUpperCase()}</span><span><b>{accountName}</b><small>{profile?.email || user?.email}</small></span></div><Link to="/profile" onClick={() => setAccountOpen(false)}><UserRound /> Profile</Link><Link to="/account" onClick={() => setAccountOpen(false)}><LayoutDashboard /> Account</Link><Link to="/saved" onClick={() => setAccountOpen(false)}><Heart /> Saved items</Link><Link to="/settings" onClick={() => setAccountOpen(false)}><Settings /> Settings</Link><button onClick={handleSignOut}><LogOut /> Sign out</button></div>}</div>

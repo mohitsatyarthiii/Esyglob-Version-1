@@ -1,6 +1,9 @@
 import CommerceSettings from '../models/CommerceSettings.js';
 import { calculatePlatformFeeFromSettings, shouldApplyPlatformFee } from '../lib/platform-fees.js'
 import { getNormalizedLogisticsRates } from '../lib/integrations/logistics.js';
+import { calculatePromotions, productPriceForQuantity } from '../services/promotion.service.js';
+
+const roundMoney = value => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 export const DEFAULT_LOGISTICS_RULES = [
   {
@@ -99,11 +102,17 @@ export async function buildCheckoutQuote({
   selectedLogisticsKey,
   quotation,
   seller = {},
+  userId,
+  couponCodes = [],
+  giftCardCode,
 } = {}) {
   const settings = await getCommerceSettings();
   const qty = Math.max(Number(quantity || 1), 1);
-  const unitPrice = Number(quotation?.unitPrice || (orderType === 'sample' ? product?.samplePrice || product?.price : product?.price) || 0);
+  const calculatedPrice = productPriceForQuantity(product, qty);
+  const unitPrice = Number(quotation?.unitPrice || (orderType === 'sample' ? product?.samplePrice || product?.price : calculatedPrice.unitPrice) || 0);
+  const originalUnitPrice = Number(quotation?.unitPrice || (orderType === 'sample' ? product?.samplePrice || product?.price : calculatedPrice.originalUnitPrice) || 0);
   const productTotal = Number(quotation?.totalPrice || unitPrice * qty || 0);
+  const originalProductTotal = Number(quotation?.totalPrice || originalUnitPrice * qty || 0);
 
   const activeRules = settings.logisticsRules
     .filter((rule) => {
@@ -150,19 +159,37 @@ export async function buildCheckoutQuote({
     .sort((a, b) => Number(normalizedByKey.get(a.key)?.priority || 100) - Number(normalizedByKey.get(b.key)?.priority || 100));
 
   const selectedLogistics = logisticsOptions.find((option) => option.key === selectedLogisticsKey) || logisticsOptions[0] || null;
-  const logisticsCharges = Number(selectedLogistics?.amount || 0);
-  const taxableAmount = productTotal + logisticsCharges;
+  const rawLogisticsCharges = Number(selectedLogistics?.amount || 0);
+  const promotions = await calculatePromotions({
+    userId,
+    product,
+    seller,
+    quantity: qty,
+    productTotal,
+    shipping: rawLogisticsCharges,
+    couponCodes,
+    giftCardCode,
+    currency: product?.currency || quotation?.currency || 'INR',
+    country: destination?.country,
+  });
+  const logisticsCharges = promotions.shippingAfterDiscount;
+  const discountedProductTotal = promotions.productAfterDiscount;
+  const taxableAmount = discountedProductTotal + logisticsCharges;
   const { platformFee, platformFeeRate, platformFeeSlab } = shouldApplyPlatformFee({ orderType, orderSubType })
     ? await calculatePlatformFeeFromSettings(taxableAmount)
     : { platformFee: 0, platformFeeRate: 0, platformFeeSlab: null };
   const gstAmount = Math.round((platformFee * settings.gstRate) * 100) / 100;
-  const discount = 0;
-  const grandTotal = taxableAmount + platformFee + gstAmount - discount;
+  const productSavings = Math.max(0, originalProductTotal - productTotal);
+  const discount = roundMoney(productSavings + promotions.couponDiscount);
+  const payableBeforeGiftCard = roundMoney(taxableAmount + platformFee + gstAmount);
+  const grandTotal = roundMoney(Math.max(0, payableBeforeGiftCard - promotions.giftCardAmount));
 
   return {
     currency: product?.currency || quotation?.currency || 'INR',
     quantity: qty,
+    originalUnitPrice,
     unitPrice,
+    originalProductTotal,
     productTotal,
     logisticsOptions,
     selectedLogistics,
@@ -173,6 +200,14 @@ export async function buildCheckoutQuote({
     gstRate: settings.gstRate,
     gstAmount,
     discount,
+    productSavings: roundMoney(productSavings),
+    couponDiscount: promotions.couponDiscount,
+    giftCardAmount: promotions.giftCardAmount,
+    savings: roundMoney(discount + promotions.giftCardAmount),
+    appliedCoupon: promotions.appliedCoupons[0] || null,
+    appliedCoupons: promotions.appliedCoupons,
+    giftCard: promotions.giftCard,
+    promotionSnapshot: promotions,
     grandTotal,
     automatedServices: AUTOMATED_PLATFORM_SERVICES,
   };

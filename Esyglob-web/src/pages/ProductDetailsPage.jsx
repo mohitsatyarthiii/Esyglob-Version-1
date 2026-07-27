@@ -41,7 +41,9 @@ export default function ProductDetailsPage() {
   const moq = Number(variant?.minimumOrderQuantity || product.moq || product.minimumOrderQuantity || 1)
   const tiers = useMemo(() => [...(product.priceTiers || [])].sort((a, b) => Number(a.minimumQuantity || a.minQty || 0) - Number(b.minimumQuantity || b.minQty || 0)), [product.priceTiers])
   const eligibleTier = tiers.filter((tier) => quantity >= Number(tier.minimumQuantity || tier.minQty || 1)).at(-1)
-  const price = Number(eligibleTier?.unitPrice || eligibleTier?.price || variant?.price || product.price || 0)
+  const originalPrice = Number(eligibleTier?.unitPrice || eligibleTier?.price || variant?.price || product.price || 0)
+  const discountActive = ['active', 'scheduled'].includes(product.discount?.status) && (!product.discount.startsAt || new Date(product.discount.startsAt) <= new Date()) && (!product.discount.expiresAt || new Date(product.discount.expiresAt) > new Date())
+  const price = Math.max(0, discountActive ? product.discount.type === 'fixed_amount' ? originalPrice - Number(product.discount.value || 0) : originalPrice * (1 - Number(product.discount.value || 0) / 100) : originalPrice)
   const units = product.availableUnits?.length ? product.availableUnits : [product.unit || 'piece']
   const sellerId = seller._id || seller.id
   const sellerUserId = seller.userId?._id || seller.userId || product.userId?._id || product.userId
@@ -82,7 +84,7 @@ export default function ProductDetailsPage() {
               {(seller.isVerified || seller.verificationStatus === 'verified') && <i><ShieldCheck /> Verified supplier</i>}
             </div>
             
-            <div className="detail-price"><Money value={price} currency={product.currency} /> <small>/ {unit}</small></div>
+            <div className="detail-price"><Money value={price} currency={product.currency} /> <small>/ {unit}</small>{discountActive && <><del><Money value={originalPrice} currency={product.currency} /></del><em>{Math.round((originalPrice-price)/originalPrice*100)}% off</em></>}</div>
             
             <MoqSelector tiers={tiers} quantity={quantity} setQuantity={setQuantity} currency={product.currency} unit={unit} />
             

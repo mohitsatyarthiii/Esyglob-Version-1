@@ -14,7 +14,7 @@ const buyerSections = [
     ['All Orders', '/orders', PackageCheck, 'violet'], ['Pending', '/orders?status=pending', Bell, 'amber'], ['Shipped', '/orders?status=shipped', Truck, 'sky'], ['Completed', '/orders?status=completed', CheckCircle2, 'green'],
   ] },
   { title: 'Buying Services', items: [
-    ['My RFQs', '/rfqs', Target, 'amber', 'rfqs'], ['Quotations', '/quotations', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=buyer', FileSignature, 'violet'], ['Invoices', '/invoices', CreditCard, 'amber'], ['Documents', '/documents', FileText, 'sky'], ['Wallet', '/wallet', WalletCards, 'green'], ['Saved Items', '/saved', Heart, 'rose'], ['Addresses', '/addresses', MapPin, 'sky'],
+    ['My RFQs', '/rfqs', Target, 'amber', 'rfqs'], ['Quotations', '/quotations', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=buyer', FileSignature, 'violet'], ['Invoices', '/invoices', CreditCard, 'amber'], ['Documents', '/documents', FileText, 'sky'], ['Wallet', '/wallet', WalletCards, 'green'], ['Gift Cards', '/promotions', CreditCard, 'violet'], ['Saved Items', '/saved', Heart, 'rose'], ['Addresses', '/addresses', MapPin, 'sky'],
   ] },
   { title: 'Tools & Insights', items: [
     ['AI Sourcing', '/ai-chat', Bot, 'violet'], ['Market Insights', '/market-insights', BarChart3, 'violet'], ['Find Manufacturers', '/sellers', Store, 'green'], ['Messages', '/messages', MessageSquare, 'sky', 'messages'],
@@ -23,7 +23,7 @@ const buyerSections = [
 
 const sellerSections = [
   { title: 'Store Management', items: [
-    ['Profile', '/profile', CircleUserRound, 'sky'], ['Products', '/seller/products', Boxes, 'violet'], ['Order Queue', '/seller/order-queue', Target, 'amber'], ['Orders', '/orders?role=seller', PackageCheck, 'green'], ['Store Settings', '/settings', Settings, 'rose'],
+    ['Profile', '/profile', CircleUserRound, 'sky'], ['Products', '/seller/products', Boxes, 'violet'], ['Seller Coupons', '/promotions', CreditCard, 'amber'], ['Order Queue', '/seller/order-queue', Target, 'amber'], ['Orders', '/orders?role=seller', PackageCheck, 'green'], ['Store Settings', '/settings', Settings, 'rose'],
   ] },
   { title: 'Sales Services', items: [
     ['RFQs', '/rfqs?role=seller', Target, 'amber', 'rfqs'], ['Quotations', '/quotations?role=seller', FileText, 'green', 'quotations'], ['Agreements', '/agreements?role=seller', FileSignature, 'violet'], ['Invoices', '/invoices', CreditCard, 'amber'], ['Documents', '/documents', FileText, 'sky'], ['Wallet', '/wallet?role=seller', WalletCards, 'green'], ['Business Profile', '/seller/business-profile', ShieldCheck, 'sky'], ['Membership', '/subscriptions', CreditCard, 'violet'],

@@ -51,6 +51,7 @@ import hsCodeRoutes from './routes/hs-code.routes.js';
 import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
 import tradeArtifactRoutes from './routes/trade-artifact.routes.js';
 import marketplaceHomeRoutes from './routes/marketplace-home.routes.js';
+import promotionRoutes from './routes/promotion.routes.js';
 
 const app = express();
 
@@ -152,6 +153,7 @@ app.use('/api/location', locationRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/trade-workspace', tradeArtifactRoutes);
 app.use('/api/admin/knowledge-base', knowledgeBaseRoutes);
+app.use('/api/promotions', promotionRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

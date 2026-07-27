@@ -13,7 +13,11 @@ function splitName(fullName) {
 
 class ProfileService {
   static async updatePreferredCurrency(userId, currency) {
-    const allowed = new Set(['INR', 'USD', 'EUR', 'GBP', 'AED', 'JPY', 'CAD', 'AUD', 'SGD']);
+    const allowed = new Set([
+      'INR','USD','EUR','GBP','AED','SAR','QAR','KWD','BHD','OMR','JPY','CNY','KRW','AUD','CAD',
+      'NZD','CHF','SGD','MYR','THB','IDR','VND','PHP','ZAR','BRL','MXN','TRY','RUB','EGP','PKR',
+      'BDT','NPR','LKR','HKD','TWD','PLN','SEK','NOK','DKK','CZK','HUF','ILS','KES','NGN','GHS',
+    ]);
     const normalized = String(currency || '').toUpperCase();
     if (!allowed.has(normalized)) throw Object.assign(new Error('Unsupported currency'), { statusCode: 422 });
     const user = await ProfileRepository.updateUser(userId, { 'metadata.preferredCurrency': normalized });

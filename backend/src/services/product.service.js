@@ -1,9 +1,36 @@
 import ProductRepository from '../repositories/product.repository.js';
 import mongoose from 'mongoose';
 import { productSchema, productUpdateSchema } from '../validators/product.validator.js';
+import { normalizePricingTiers } from './promotion.service.js';
 
-function normalizeProductInput(data) {
+function normalizeProductInput(data, currentMinimum = 1, currentPrice = 0) {
   const normalized = { ...data };
+  const minimum = Number(data.minimumOrderQuantity || currentMinimum || 1);
+  if (Array.isArray(data.priceTiers)) {
+    normalized.priceTiers = normalizePricingTiers(data.priceTiers, minimum);
+  }
+  if (data.discount) {
+    const price = Number(data.price ?? currentPrice ?? 0);
+    const discount = { ...data.discount };
+    if (discount.status !== 'inactive') {
+      if (discount.type === 'percentage' && Number(discount.value) > 100) {
+        throw Object.assign(new Error('Discount percentage cannot exceed 100'), { statusCode: 422 });
+      }
+      if (discount.discountedPrice != null && Number(discount.value || 0) === 0 && price > 0) {
+        discount.value = discount.type === 'percentage'
+          ? Math.max(0, (price - Number(discount.discountedPrice)) / price * 100)
+          : Math.max(0, price - Number(discount.discountedPrice));
+        discount.value = Math.round(discount.value * 100) / 100;
+      }
+      if (discount.discountedPrice == null) {
+        discount.discountedPrice = discount.type === 'percentage'
+          ? Math.max(0, price * (1 - Number(discount.value || 0) / 100))
+          : Math.max(0, price - Number(discount.value || 0));
+      }
+      discount.discountedPrice = Math.round(discount.discountedPrice * 100) / 100;
+    }
+    normalized.discount = discount;
+  }
 
   if (data.leadTime !== undefined) {
     normalized.leadTime = {
@@ -377,7 +404,11 @@ class ProductService {
         .filter((key) => Object.hasOwn(parsedUpdate, key))
         .map((key) => [key, parsedUpdate[key]])
     );
-    Object.assign(product, normalizeProductInput(validatedData));
+    Object.assign(product, normalizeProductInput(
+      validatedData,
+      validatedData.minimumOrderQuantity || product.minimumOrderQuantity,
+      validatedData.price ?? product.price,
+    ));
     product.updatedAt = new Date();
     await ProductRepository.save(product);
 

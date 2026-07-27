@@ -78,7 +78,13 @@ export const CategoryBubble = memo(function CategoryBubble({ category }) {
 export const ProductCard = memo(function ProductCard({ product }) {
   const id = product._id || product.id;
   const image = product.image || product.images?.[0];
-  const price = Number(product.price || product.priceTiers?.[0]?.unitPrice || 0);
+  const originalPrice = Number(product.originalPrice || product.price || product.priceTiers?.[0]?.unitPrice || product.mrp || 0);
+  const productDiscount = product.discount && typeof product.discount === 'object' ? product.discount : null;
+  const discountActive = productDiscount?.status === 'active';
+  const computedDiscountPrice = productDiscount?.type === 'fixed_amount'
+    ? originalPrice - Number(productDiscount.value || 0)
+    : originalPrice * (1 - Number(productDiscount?.value || 0) / 100);
+  const price = Math.max(0, Number(discountActive ? productDiscount.discountedPrice ?? computedDiscountPrice : originalPrice));
   const rating = Number(product.rating || product.averageRating || 0);
   const moq = product.moq || product.minimumOrderQuantity || 1;
   const [saved, setSaved] = useState(false);
@@ -89,8 +95,9 @@ export const ProductCard = memo(function ProductCard({ product }) {
   const supplierLocation = product.sellerId?.address?.country || product.sellerId?.country || product.country;
   const isBestSeller = product.isBestSeller || product.badge === 'bestseller';
   const isNew = product.isNew || product.badge === 'new';
-  const discount = product.discount || product.discountPercentage;
-  const originalPrice = product.originalPrice || product.mrp;
+  const discount = discountActive
+    ? Number(productDiscount.type === 'percentage' ? productDiscount.value : originalPrice ? (originalPrice - price) / originalPrice * 100 : 0)
+    : Number(product.discountPercentage || 0);
   const reviewCount = product.reviewCount || product.totalReviews || 0;
   const orderCount = product.orderCount || product.totalOrders || 0;
 

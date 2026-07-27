@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, CreditCard, MapPin, ShieldCheck, Truck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, CreditCard, Gift, MapPin, ShieldCheck, Tag, Truck, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchAddresses } from '../api/account'
@@ -56,6 +56,10 @@ export default function CheckoutPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pendingOrderId, setPendingOrderId] = useState('')
+  const [couponInput, setCouponInput] = useState('')
+  const [giftCardInput, setGiftCardInput] = useState('')
+  const [couponCode, setCouponCode] = useState('')
+  const [giftCardCode, setGiftCardCode] = useState('')
 
   const base = useAsyncData(useCallback(async () => {
     const [details, addresses] = await Promise.all([fetchProductDetails(productId), fetchAddresses()])
@@ -77,8 +81,10 @@ export default function CheckoutPage() {
       orderSubType: mode === 'sample' ? 'sample_order' : 'direct_order',
       logisticsOption: logistics || undefined,
       destination,
+      couponCode: couponCode || undefined,
+      giftCardCode: giftCardCode || undefined,
     })
-    : Promise.reject(new Error('Product is required')), [destination, logistics, mode, productId, quantity]))
+    : Promise.reject(new Error('Product is required')), [couponCode, destination, giftCardCode, logistics, mode, productId, quantity]))
   const pricing = quote.data || {}
   const logisticsKey = logistics || pricing.selectedLogistics?.key || pricing.logisticsOptions?.[0]?.key || ''
 
@@ -109,6 +115,8 @@ export default function CheckoutPage() {
       tradeInformation: { incoterms: 'DAP', shippingOption: logisticsKey },
       buyerNotes: notes,
       termsAccepted: true,
+      couponCode: couponCode || undefined,
+      giftCardCode: giftCardCode || undefined,
     }
     return mode === 'sample' ? createSampleOrder(payload) : createTradeOrder(payload)
   }
@@ -126,6 +134,10 @@ export default function CheckoutPage() {
         orderId = resolveId(order)
         if (!orderId) throw new Error('The order was created without a valid reference. Please contact support.')
         setPendingOrderId(orderId)
+      }
+      if (Number(pricing.grandTotal || 0) <= 0) {
+        navigate(`/orders/${orderId}`, { replace: true, state: { paymentComplete: true } })
+        return
       }
       const loaded = await loadRazorpay()
       if (!loaded) throw new Error('Secure checkout could not be loaded. Check your connection and retry.')
@@ -165,14 +177,23 @@ export default function CheckoutPage() {
           })}</div>}
         </section>
         <section className="module-panel"><h2>Order notes</h2><textarea value={notes} disabled={Boolean(pendingOrderId)} onChange={(event) => setNotes(event.target.value)} placeholder="Packaging, labeling or delivery instructions" /></section>
+        <section className="module-panel checkout-promotions">
+          <h2><Tag /> Promotions</h2>
+          <p>Coupons and gift cards are securely validated by EsyGlob before payment.</p>
+          <div className="promotion-entry"><label><span>Coupon code</span><input value={couponInput} disabled={Boolean(pendingOrderId)} onChange={(event) => setCouponInput(event.target.value.toUpperCase())} placeholder="Enter coupon" /></label><button className="button button--secondary" disabled={!couponInput || Boolean(pendingOrderId)} onClick={() => setCouponCode(couponInput.trim())}>Apply</button>{couponCode && <button className="icon-button" aria-label="Remove coupon" onClick={() => { setCouponCode(''); setCouponInput('') }}><X /></button>}</div>
+          <div className="promotion-entry"><label><span>Gift card</span><input value={giftCardInput} disabled={Boolean(pendingOrderId)} onChange={(event) => setGiftCardInput(event.target.value.toUpperCase())} placeholder="Enter gift card code" /></label><button className="button button--secondary" disabled={!giftCardInput || Boolean(pendingOrderId)} onClick={() => setGiftCardCode(giftCardInput.trim())}>Redeem</button>{giftCardCode && <button className="icon-button" aria-label="Remove gift card" onClick={() => { setGiftCardCode(''); setGiftCardInput('') }}><X /></button>}</div>
+          {pricing.appliedCoupon && <p className="promotion-success"><CheckCircle2 /> {pricing.appliedCoupon.code} applied — you save <Money value={pricing.couponDiscount} currency={pricing.currency} /></p>}
+          {pricing.giftCard && <p className="promotion-success"><Gift /> Gift card ending {pricing.giftCard.codeLast4} applied.</p>}
+          {quote.error && <p className="action-error">{quote.error.message}</p>}
+        </section>
       </div>
       <aside className="module-panel checkout-summary">
         <ShieldCheck /><h2>Order summary</h2>
-        <div className="quote-breakdown"><span>Products <b><Money value={pricing.productTotal} currency={pricing.currency} /></b></span><span>Logistics <b><Money value={pricing.logisticsCharges} currency={pricing.currency} /></b></span><span>Platform fee <b><Money value={pricing.platformFee} currency={pricing.currency} /></b></span><span>GST <b><Money value={pricing.gstAmount} currency={pricing.currency} /></b></span><strong>Total <b><Money value={pricing.grandTotal} currency={pricing.currency} /></b></strong></div>
+        <div className="quote-breakdown"><span>Original products <b><Money value={pricing.originalProductTotal ?? pricing.productTotal} currency={pricing.currency} /></b></span>{pricing.productSavings > 0 && <span className="saving">Product discount <b>−<Money value={pricing.productSavings} currency={pricing.currency} /></b></span>}<span>Logistics <b><Money value={pricing.logisticsCharges} currency={pricing.currency} /></b></span>{pricing.couponDiscount > 0 && <span className="saving">Coupon <b>−<Money value={pricing.couponDiscount} currency={pricing.currency} /></b></span>}<span>Platform fee <b><Money value={pricing.platformFee} currency={pricing.currency} /></b></span><span>Tax <b><Money value={pricing.gstAmount} currency={pricing.currency} /></b></span>{pricing.giftCardAmount > 0 && <span className="saving">Gift card <b>−<Money value={pricing.giftCardAmount} currency={pricing.currency} /></b></span>}<strong>Grand total <b><Money value={pricing.grandTotal} currency={pricing.currency} /></b></strong>{pricing.savings > 0 && <em className="checkout-savings">You save <Money value={pricing.savings} currency={pricing.currency} /></em>}</div>
         <label className="check-field"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I accept the trade, payment and fulfillment terms.</label>
         {error && <p className="action-error">{error}</p>}
         {pendingOrderId && <p><CheckCircle2 /> Order saved. Complete payment to submit it to the seller.</p>}
-        <button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || !logisticsKey || !terms}><CreditCard /> {busy ? 'Opening secure payment…' : pendingOrderId ? 'Retry payment' : 'Proceed to payment'}</button>
+        <button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || Boolean(quote.error) || !logisticsKey || !terms}><CreditCard /> {busy ? 'Processing…' : Number(pricing.grandTotal || 0) <= 0 ? 'Place fully covered order' : pendingOrderId ? 'Retry payment' : 'Proceed to payment'}</button>
         <small>Razorpay verifies payment before fulfillment begins.</small>
       </aside>
     </div>

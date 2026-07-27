@@ -58,6 +58,7 @@ const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
 const VerificationAdminPage = lazy(() => import('./pages/VerificationAdminPage'))
 const SellerOrderQueuePage = lazy(() => import('./pages/SellerOrderQueuePage'))
 const TradeWorkspacePage = lazy(() => import('./pages/TradeWorkspacePage'))
+const PromotionsPage = lazy(() => import('./pages/PromotionsPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 function StartRoute() {
@@ -131,6 +132,8 @@ export default function App() {
       <Route path="/subscriptions" element={<SubscriptionPage />} />
       <Route path="/admin/verifications" element={<VerificationAdminPage />} />
       <Route path="/seller/order-queue" element={<SellerOrderQueuePage />} />
+      <Route path="/promotions" element={<PromotionsPage />} />
+      <Route path="/admin/promotions" element={<PromotionsPage />} />
       <Route path="/trade-workspace/:entityType/:entityId" element={<TradeWorkspacePage />} />
     </Route>
     <Route path="*" element={<NotFoundPage />} />

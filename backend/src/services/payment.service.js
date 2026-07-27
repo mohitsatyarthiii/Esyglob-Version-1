@@ -12,6 +12,7 @@ import Subscription from '../models/Subscription.js';
 import { getMonthsIncluded, getPlanDetails, getPlanPrice } from '../lib/subscription-pricing.js';
 import { getPlan } from '../lib/subscription-plans.js';
 import Invoice from '../models/Invoice.js';
+import { commitOrderPromotions } from './promotion.service.js';
 
 // Initialize Razorpay
 let razorpay = null;
@@ -260,6 +261,7 @@ class PaymentService {
         order, payment: paymentRecord, updatedBy: userId,
       });
       order = lifecycle.order;
+      if (!wasOrderPaid) await commitOrderPromotions(order);
 
       // Update seller stats
       const sellerNetRevenue = Number(order.netAmount ?? (Number(order.totalPrice || order.totalAmount || 0) - Number(order.platformFee || 0) - Number(order.gatewayFee || 0)));
