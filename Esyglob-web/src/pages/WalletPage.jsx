@@ -14,8 +14,11 @@ import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
+import { useConfirm, useToast } from '../components/EnterpriseUX'
 
 export default function WalletPage() {
+  const confirm = useConfirm()
+  const toast = useToast()
   const { user } = useAuth()
   const roles = user?.roles || ['buyer']
   const [role, setRole] = useState(user?.primaryRole === 'seller' ? 'seller' : 'buyer')
@@ -43,8 +46,9 @@ export default function WalletPage() {
     setMethodBusy(key); setError('')
     try {
       if (action === 'remove') {
-        if (!window.confirm('Remove this saved payment account?')) return
+        if (!await confirm({ title: 'Remove payment account?', message: 'This saved account will no longer be available for future payments or withdrawals.', confirmLabel: 'Remove account' })) return
         await removePaymentMethod(resolveId(method), role)
+        toast.success('Payment account removed.')
       } else {
         await managePaymentMethod(resolveId(method), { action, role })
       }

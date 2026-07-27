@@ -10,11 +10,13 @@ import AppShell from '../components/AppShell'
 import { Money } from '../components/TradeUI'
 import { resolveId } from '../utils/trade'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
+import { useConfirm } from '../components/EnterpriseUX'
 
 const buyerPrompts = ['Find verified suppliers with low MOQ', 'Draft an RFQ for 500 units', 'Compare suppliers by trust, price and lead time', 'Explain shipping documents for my order']
 const sellerPrompts = ['Find RFQ opportunities for my products', 'How can I improve my product listings?', 'Prepare a professional quotation', 'Analyze demand for my category']
 
 export default function AIChatPage() {
+  const confirm = useConfirm()
   const { user } = useAuth()
   const navigate = useNavigate()
   const role = user?.primaryRole || 'buyer'
@@ -261,7 +263,7 @@ export default function AIChatPage() {
 
   async function removeConversation(id) {
     const conversation = chats.find((item) => resolveId(item) === id)
-    if (!window.confirm(`Delete "${conversation?.title || 'this conversation'}"? This cannot be undone.`)) return
+    if (!await confirm({ title: 'Delete conversation?', message: `"${conversation?.title || 'This conversation'}" and its message history will be permanently removed.`, confirmLabel: 'Delete conversation' })) return
     const previous = chats
     setChats((current) => current.filter((item) => resolveId(item) !== id))
     if (id === chatId) newConversation()

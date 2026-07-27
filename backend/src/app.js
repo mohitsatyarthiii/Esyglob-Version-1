@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import mongoose from 'mongoose';
+import { randomUUID } from 'node:crypto';
 import { config, isCorsOriginAllowed } from './config/env.js';
 import { getAIKnowledgeDatabaseState } from './config/knowledge-database.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
@@ -52,6 +53,7 @@ import knowledgeBaseRoutes from './routes/knowledge-base.routes.js';
 import tradeArtifactRoutes from './routes/trade-artifact.routes.js';
 import marketplaceHomeRoutes from './routes/marketplace-home.routes.js';
 import promotionRoutes from './routes/promotion.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
 
@@ -59,6 +61,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
+  req.id = String(req.headers['x-request-id'] || randomUUID());
+  res.setHeader('X-Request-Id', req.id);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -154,6 +158,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/trade-workspace', tradeArtifactRoutes);
 app.use('/api/admin/knowledge-base', knowledgeBaseRoutes);
 app.use('/api/promotions', promotionRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

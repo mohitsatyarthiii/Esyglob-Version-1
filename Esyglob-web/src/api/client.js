@@ -8,6 +8,10 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
     this.details = details
+    this.code = details?.code || 'REQUEST_FAILED'
+    this.fieldErrors = details?.fieldErrors || {}
+    this.requestId = details?.requestId || ''
+    this.retryable = status === 0 || [408, 429, 502, 503, 504].includes(status)
   }
 }
 
@@ -82,12 +86,13 @@ export async function apiRequest(path, options = {}) {
         })
         const payload = await readPayload(response)
         if (!response.ok) {
-          const message = payload?.error || payload?.message || `Request failed with status ${response.status}`
+          const message = readableApiError(response.status, payload)
           const error = new ApiError(message, response.status, payload)
           if (attempt + 1 < attempts && [502, 503, 504].includes(response.status)) {
             await new Promise((resolve) => window.setTimeout(resolve, 250))
             continue
           }
+          announceRequestError(error, method, options)
           throw error
         }
         if (canCache) cache.set(cacheKey, { value: payload, expiresAt: Date.now() + (options.cacheTtlMs || 30_000) })
@@ -98,8 +103,16 @@ export async function apiRequest(path, options = {}) {
           await new Promise((resolve) => window.setTimeout(resolve, 250))
           continue
         }
-        if (error?.name === 'AbortError') throw new ApiError('The request timed out. Please retry.', 0)
-        if (error instanceof TypeError) throw new ApiError('Unable to reach EsyGlob. Check your connection and retry.', 0)
+        if (error?.name === 'AbortError') {
+          const timeoutError = new ApiError('The request timed out. Please retry.', 0, { code: 'REQUEST_TIMEOUT' })
+          announceRequestError(timeoutError, method, options)
+          throw timeoutError
+        }
+        if (error instanceof TypeError) {
+          const networkError = new ApiError('Unable to reach EsyGlob. Check your connection and retry.', 0, { code: 'NETWORK_ERROR' })
+          announceRequestError(networkError, method, options)
+          throw networkError
+        }
         throw error
       } finally {
         window.clearTimeout(timeout)
@@ -111,6 +124,34 @@ export async function apiRequest(path, options = {}) {
 
   if (canCache) inflight.set(cacheKey, request)
   return request
+}
+
+function readableApiError(status, payload) {
+  if (payload?.error || payload?.message) return payload.error || payload.message
+  if (status === 401) return 'Your session has expired. Please sign in again.'
+  if (status === 403) return 'You do not have permission to complete this action.'
+  if (status === 404) return 'The requested information could not be found.'
+  if (status === 409) return 'This information already exists or was updated elsewhere.'
+  if (status === 422) return 'Please review the highlighted information and try again.'
+  if (status === 429) return 'Too many requests. Please wait a moment and retry.'
+  if (status >= 500) return 'EsyGlob is temporarily unable to complete this request. Please retry.'
+  return `Request failed with status ${status}`
+}
+
+function announceRequestError(error, method, options) {
+  if (options.toastErrors === false || typeof window === 'undefined') return
+  const shouldAnnounce = error.status === 0 || error.status === 401 || error.status === 403 || error.status === 429 || error.status >= 500
+  if (!shouldAnnounce) return
+  window.dispatchEvent(new CustomEvent('esyglob:toast', {
+    detail: {
+      type: 'error',
+      message: error.message,
+      action: error.retryable && typeof options.onRetry === 'function'
+        ? { label: 'Retry', onClick: options.onRetry }
+        : undefined,
+      duration: method === 'GET' ? 5200 : 6500,
+    },
+  }))
 }
 
 export function clearApiCache() {

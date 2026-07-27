@@ -36627,3 +36627,173 @@ html body .ai-composer textarea {
   .promotion-hero { padding: 1.1rem; }
   .promotion-hero > svg { width: 42px; height: 42px; }
 }
+
+.business-verification-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: .7rem;
+  margin: .8rem 0;
+  padding: .85rem;
+  border: 1px solid #f0d59e;
+  border-radius: 12px;
+  color: #7a4d0b;
+  background: #fffbeb;
+}
+.business-verification-feedback > svg { flex: 0 0 20px; margin-top: .1rem; }
+.business-verification-feedback p { margin: .2rem 0; color: #69410a; }
+.business-verification-feedback small { color: #8a651f; }
+
+/* Enterprise interaction, validation, notification and recovery layer */
+.route-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10000;
+  height: 3px;
+  pointer-events: none;
+  opacity: 0;
+  overflow: hidden;
+  transition: opacity .15s ease;
+}
+.route-progress.is-active { opacity: 1; }
+.route-progress i {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(90deg, #f26a21, #ff9f43);
+  box-shadow: 0 0 12px rgba(242, 106, 33, .45);
+  transform: translateX(-110%);
+}
+.route-progress.is-active i { animation: route-progress 420ms cubic-bezier(.2, .8, .2, 1) forwards; }
+@keyframes route-progress { to { transform: translateX(240%); } }
+
+.enterprise-toasts {
+  position: fixed;
+  z-index: 10020;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  display: grid;
+  width: min(390px, calc(100vw - 2rem));
+  gap: .65rem;
+  pointer-events: none;
+}
+.enterprise-toast {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .72rem;
+  padding: .85rem;
+  border: 1px solid #d7dde7;
+  border-left: 4px solid #2563eb;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .98);
+  color: #101828;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, .16);
+  pointer-events: auto;
+  animation: enterprise-toast-in .22s ease both;
+}
+.enterprise-toast.is-leaving { animation: enterprise-toast-out .18s ease both; }
+.enterprise-toast > i {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: #2563eb;
+  border-radius: 50%;
+  background: #eff6ff;
+}
+.enterprise-toast > i svg { width: 18px; height: 18px; }
+.enterprise-toast > div { min-width: 0; }
+.enterprise-toast b { display: block; font-size: .9rem; }
+.enterprise-toast p { margin: .18rem 0 0; color: #475467; font-size: .84rem; line-height: 1.45; overflow-wrap: anywhere; }
+.enterprise-toast > div button { margin-top: .45rem; padding: 0; border: 0; background: transparent; color: #1d4ed8; font-weight: 750; }
+.enterprise-toast__close { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: #667085; }
+.enterprise-toast__close:hover { background: #f2f4f7; color: #101828; }
+.enterprise-toast__close svg { width: 17px; }
+.enterprise-toast--success { border-left-color: #079455; }
+.enterprise-toast--success > i { color: #067647; background: #ecfdf3; }
+.enterprise-toast--error { border-left-color: #d92d20; }
+.enterprise-toast--error > i { color: #b42318; background: #fef3f2; }
+.enterprise-toast--warning { border-left-color: #dc6803; }
+.enterprise-toast--warning > i { color: #b54708; background: #fffaeb; }
+.enterprise-toast--loading > i svg { animation: enterprise-spin .8s linear infinite; }
+@keyframes enterprise-toast-in { from { opacity: 0; transform: translateY(-10px) scale(.98); } }
+@keyframes enterprise-toast-out { to { opacity: 0; transform: translateX(24px) scale(.98); } }
+@keyframes enterprise-spin { to { transform: rotate(360deg); } }
+
+.enterprise-dialog-backdrop {
+  position: fixed;
+  z-index: 10030;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, .58);
+  backdrop-filter: blur(4px);
+  animation: enterprise-fade-in .16s ease both;
+}
+.enterprise-dialog {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  width: min(470px, 100%);
+  padding: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, .7);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, .28);
+  animation: enterprise-dialog-in .2s ease both;
+}
+.enterprise-dialog__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: #b42318;
+  background: #fee4e2;
+}
+.enterprise-dialog__icon svg { width: 21px; }
+.enterprise-dialog h2 { margin: .08rem 0 .38rem; color: #101828; font-size: 1.12rem; }
+.enterprise-dialog p { margin: 0; color: #475467; line-height: 1.55; }
+.enterprise-dialog footer { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .65rem; margin-top: .25rem; }
+@keyframes enterprise-fade-in { from { opacity: 0; } }
+@keyframes enterprise-dialog-in { from { opacity: 0; transform: translateY(9px) scale(.98); } }
+
+.enterprise-field-error {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  margin-top: .35rem;
+  color: #b42318;
+  font-size: .78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"],
+.field__control:has(input[aria-invalid="true"]) {
+  border-color: #d92d20 !important;
+  box-shadow: 0 0 0 3px rgba(217, 45, 32, .1) !important;
+}
+label:has(> input[required], > textarea[required], > select[required])::first-line,
+.field:has(input[required]) > span {
+  font-weight: 650;
+}
+.field:has(input[required]) > span::after { content: " *"; color: #d92d20; }
+button:disabled,
+[aria-disabled="true"] { cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .enterprise-toasts { top: max(.65rem, env(safe-area-inset-top)); right: .65rem; width: calc(100vw - 1.3rem); }
+  .enterprise-toast { padding: .75rem; }
+  .enterprise-dialog { padding: 1rem; border-radius: 16px; }
+  .enterprise-dialog footer { display: grid; grid-template-columns: 1fr 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-progress i,
+  .enterprise-toast,
+  .enterprise-dialog-backdrop,
+  .enterprise-dialog { animation: none !important; }
+}

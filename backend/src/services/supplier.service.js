@@ -234,15 +234,24 @@ export async function reviewVerificationApplication(admin, verificationId, input
   }
   const verification = await supplierRepository.findVerificationById(verificationId);
   if (!verification) { const error = new Error('Verification not found'); error.statusCode = 404; throw error; }
-  if (['additional_information_required', 'rejected', 'reverification_required'].includes(input.status) && !String(input.notes || '').trim()) {
-    const error = new Error('Reviewer notes are required for this status'); error.statusCode = 422; throw error;
+  const sellerFeedback = String(input.sellerFeedback || input.notes || '').trim();
+  const internalNote = String(input.internalNote || '').trim();
+  if (['additional_information_required', 'rejected', 'reverification_required'].includes(input.status) && !sellerFeedback) {
+    const error = new Error('Seller feedback is required for this status'); error.statusCode = 422; throw error;
   }
   const previousStatus = verification.status;
   verification.status = input.status;
   verification.reviewedAt = new Date();
   verification.reviewedBy = admin.id;
-  verification.adminNotes = String(input.notes || '').slice(0, 4000);
-  if (input.status === 'rejected') verification.rejectionReason = verification.adminNotes;
+  if (internalNote) {
+    verification.internalNotes.push({ note: internalNote.slice(0, 4000), authorId: admin.id, createdAt: new Date() });
+    verification.adminNotes = internalNote.slice(0, 4000);
+  }
+  verification.sellerFeedback = sellerFeedback.slice(0, 4000);
+  if (input.status === 'rejected') verification.rejectionReason = verification.sellerFeedback;
+  if (['additional_information_required', 'reverification_required'].includes(input.status)) {
+    verification.informationRequests.push({ message: verification.sellerFeedback, requestedAt: new Date(), requestedBy: admin.id });
+  }
   if (input.status === 'factory_inspection_scheduled') verification.inspectionScheduledAt = new Date(input.inspectionScheduledAt);
   if (input.status === 'approved') {
     verification.verifiedAt = new Date();
@@ -260,9 +269,9 @@ export async function reviewVerificationApplication(admin, verificationId, input
     await FactoryProfile.findOneAndUpdate({ sellerId: verification.sellerId }, { $set: { verificationStatus: 'inspection_scheduled', 'inspection.scheduledAt': verification.inspectionScheduledAt, 'inspection.notes': verification.adminNotes } });
   }
   const action = input.status === 'approved' ? 'verification_approved' : input.status === 'rejected' ? 'verification_rejected' : input.status === 'factory_inspection_scheduled' ? 'factory_inspection_scheduled' : input.status === 'reverification_required' ? 'reverification_requested' : 'status_changed';
-  await supplierRepository.createAuditLog({ verificationId: verification._id, sellerId: verification.sellerId, actorId: admin.id, action, fromStatus: previousStatus, toStatus: input.status, notes: verification.adminNotes, metadata: { inspectionScheduledAt: verification.inspectionScheduledAt } });
+  await supplierRepository.createAuditLog({ verificationId: verification._id, sellerId: verification.sellerId, actorId: admin.id, action, fromStatus: previousStatus, toStatus: input.status, notes: [sellerFeedback, internalNote].filter(Boolean).join(' · '), metadata: { inspectionScheduledAt: verification.inspectionScheduledAt, hasInternalNote: Boolean(internalNote) } });
   const Notification = (await import('../models/Notification.js')).default;
-  await Notification.create({ userId: verification.userId, notificationType: input.status === 'approved' ? 'verification_approved' : 'verification_under_review', title: `Verification ${input.status.replaceAll('_', ' ')}`, description: verification.adminNotes || 'Your verification status has changed.', data: { verificationId, status: input.status } });
+  await Notification.create({ userId: verification.userId, notificationType: input.status === 'approved' ? 'verification_approved' : 'verification_under_review', title: `Verification ${input.status.replaceAll('_', ' ')}`, description: sellerFeedback || 'Your verification status has changed.', data: { verificationId, status: input.status, feedback: sellerFeedback || undefined } });
   return { verification, timeline: await supplierRepository.listVerificationAudit(verification._id) };
 }
 
@@ -408,6 +417,6 @@ export async function reviewVerificationDocument(admin, documentId, input) {
   await supplierRepository.createAuditLog({ verificationId: verification._id, sellerId: verification.sellerId, actorId: admin.id, action: input.status === 'verified' ? 'document_approved' : input.status === 'needs_update' ? 'document_needs_update' : input.status === 'rejected' ? 'document_rejected' : 'information_requested', fromStatus: previousStatus, toStatus: input.status, notes: input.notes || input.reason, metadata: { documentId } });
   const Notification = (await import('../models/Notification.js')).default;
   const notificationType = input.status === 'verified' ? 'document_verified' : input.status === 'under_review' ? 'verification_under_review' : input.status === 'needs_update' ? 'verification_needs_update' : 'document_rejected';
-  await Notification.create({ userId: verification.userId, notificationType, title: input.status === 'verified' ? 'Document verified' : input.status === 'under_review' ? 'Verification review started' : 'Verification document needs attention', description: input.notes || input.reason || `Your ${document.name} status changed to ${input.status}.`, data: { verificationId: verification._id, documentId, status: input.status } });
+  await Notification.create({ userId: verification.userId, notificationType, title: input.status === 'verified' ? 'Document verified' : input.status === 'under_review' ? 'Verification review started' : 'Verification document needs attention', description: ['rejected', 'needs_update'].includes(input.status) ? String(input.reason || 'This document needs attention.') : `Your ${document.name} status changed to ${input.status}.`, data: { verificationId: verification._id, documentId, status: input.status, feedback: input.reason || undefined } });
   return { verification, document, verificationCenter: summary };
 }

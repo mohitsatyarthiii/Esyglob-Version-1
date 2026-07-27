@@ -25,10 +25,12 @@ import {
 } from '../api/account'
 import AppShell from '../components/AppShell'
 import { PageHead } from '../components/PageHead'
+import { useConfirm } from '../components/EnterpriseUX'
 
 const PAGE_SIZE = 12
 
 export default function MarketInsightsPage() {
+  const confirm = useConfirm()
   const abortRef = useRef(null)
   const previewAbortRef = useRef(null)
   const [query, setQuery] = useState('')
@@ -214,7 +216,7 @@ export default function MarketInsightsPage() {
       return
     }
 
-    if (!window.confirm(`Permanently delete "${report.title || 'this report'}" and its stored PDF?`)) return
+    if (!await confirm({ title: 'Delete market report?', message: `"${report.title || 'This report'}" and its stored PDF will be permanently deleted.`, confirmLabel: 'Delete report' })) return
 
     const previous = [...reports]
     setBusyReportId(id)

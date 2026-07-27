@@ -129,7 +129,7 @@ export default function AuthPage({ mode }) {
 }
 
 function Field({ icon, label, action, onChange, ...props }) {
-  return <label className="field"><span>{label}</span><div className="field__control">{icon}<input {...props} onChange={(event) => onChange(event.target.value)} />{action}</div></label>
+  return <label className="field"><span>{label}</span><div className="field__control">{icon}<input required {...props} onChange={(event) => onChange(event.target.value)} />{action}</div></label>
 }
 
 function passwordStrength(password) {

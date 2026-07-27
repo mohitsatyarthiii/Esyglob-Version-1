@@ -6,15 +6,20 @@ import CurrencyProvider from './preferences/CurrencyProvider'
 import './index.css'
 import App from './App'
 import AppErrorBoundary from './components/AppErrorBoundary'
+import { ConfirmProvider, GlobalFormUX, NavigationUX, ToastProvider } from './components/EnterpriseUX'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <AppErrorBoundary>
-        <AuthProvider>
-          <CurrencyProvider><App /></CurrencyProvider>
-        </AuthProvider>
-      </AppErrorBoundary>
+      <ToastProvider>
+        <ConfirmProvider>
+          <AppErrorBoundary>
+            <AuthProvider>
+              <CurrencyProvider><GlobalFormUX /><NavigationUX /><App /></CurrencyProvider>
+            </AuthProvider>
+          </AppErrorBoundary>
+        </ConfirmProvider>
+      </ToastProvider>
     </BrowserRouter>
   </StrictMode>,
 )

@@ -1,12 +1,11 @@
 [build]
-  base = "Esyglob-web"
+  base = "admin-panel"
   command = "npm run build"
   publish = "dist"
 
 [build.environment]
   NODE_VERSION = "22"
   VITE_API_BASE_URL = "/api"
-  VITE_REALTIME_URL = "/"
 
 [[redirects]]
   from = "/api/*"
@@ -15,15 +14,14 @@
   force = true
 
 [[redirects]]
-  from = "/socket.io/*"
-  to = "https://api.esyglob.in/socket.io/:splat"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/assets/*"
@@ -34,5 +32,6 @@
   for = "/*"
   [headers.values]
     X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(self), microphone=(self), geolocation=(self)"

@@ -8,10 +8,13 @@ import { PageHead } from '../components/PageHead'
 import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
+import { useConfirm, useToast } from '../components/EnterpriseUX'
 
 const types = ['commercial_invoice', 'packing_list', 'bill_of_lading', 'certificate_of_origin', 'purchase_order', 'technical_specification', 'inspection_certificate', 'other']
 
 export default function DocumentsPage() {
+  const confirm = useConfirm()
+  const toast = useToast()
   const query = useAsyncData(useCallback(() => fetchDocuments(), []))
   const [open, setOpen] = useState(false)
   const [files, setFiles] = useState([])
@@ -25,13 +28,14 @@ export default function DocumentsPage() {
     try {
       const file = files[0]
       await createDocument({ ...form, name: form.name || file.filename, fileUrl: file.url, fileType: file.type, status: 'draft' })
+      toast.success('Document saved to your trade workspace.')
       setOpen(false); setFiles([]); setForm({ name: '', type: 'other', category: 'other' }); await query.reload()
     } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
   async function remove(item) {
-    if (!window.confirm(`Archive ${item.name || 'this document'}?`)) return
+    if (!await confirm({ title: 'Archive document?', message: `${item.name || 'This document'} will be removed from your active document workspace.`, confirmLabel: 'Archive document' })) return
     setError('')
-    try { await archiveDocument(resolveId(item)); await query.reload() } catch (next) { setError(next.message) }
+    try { await archiveDocument(resolveId(item)); toast.success('Document archived.'); await query.reload() } catch (next) { setError(next.message) }
   }
   const documents = query.data || []
   return <AppShell><div className="container module-page">
