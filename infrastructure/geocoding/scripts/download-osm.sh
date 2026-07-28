@@ -1,11 +1,15 @@
 #!/usr/bin/env sh
 set -eu
+# shellcheck source=common.sh
 . "$(dirname "$0")/common.sh"
 
 load_env
 require_command curl
+require_command md5sum
 validate_https_url "${OSM_PBF_URL:-}" OSM_PBF_URL
+validate_https_url "${OSM_PBF_CHECKSUM_URL:-}" OSM_PBF_CHECKSUM_URL
 validate_filename "${OSM_PBF_FILE:-}" OSM_PBF_FILE
+require_free_disk "${MIN_FREE_DISK_GB:-12}"
 
 mkdir -p data
 target="data/$OSM_PBF_FILE"
@@ -28,29 +32,14 @@ else
   mv -- "$partial" "$target"
 fi
 
-if [ -n "${OSM_PBF_CHECKSUM_URL:-}" ]; then
-  validate_https_url "$OSM_PBF_CHECKSUM_URL" OSM_PBF_CHECKSUM_URL
-  checksum_file="$target.checksum"
-  curl --fail --location --retry 5 --output "$checksum_file" "$OSM_PBF_CHECKSUM_URL"
-  expected=$(awk 'NR == 1 { print $1 }' "$checksum_file")
-  case "${OSM_PBF_CHECKSUM_ALGORITHM:-md5}" in
-    sha256)
-      require_command sha256sum
-      actual=$(sha256sum "$target" | awk '{print $1}')
-      ;;
-    md5)
-      require_command md5sum
-      actual=$(md5sum "$target" | awk '{print $1}')
-      ;;
-    *)
-      die "OSM_PBF_CHECKSUM_ALGORITHM must be md5 or sha256."
-      ;;
-  esac
-  [ "$actual" = "$expected" ] ||
-    die "Checksum mismatch for $target (expected $expected, got $actual)."
-  log "Checksum verified for $target."
-else
-  log "WARNING: OSM_PBF_CHECKSUM_URL is not configured; checksum verification was skipped."
-fi
+checksum_file="$target.md5"
+curl --fail --location --retry 5 --output "$checksum_file" "$OSM_PBF_CHECKSUM_URL"
+expected=$(awk 'NR == 1 { print tolower($1) }' "$checksum_file")
+printf '%s' "$expected" | grep -Eq '^[0-9a-f]{32}$' ||
+  die "The OSM checksum response is not a valid MD5 value."
+actual=$(md5sum "$target" | awk '{ print tolower($1) }')
+[ "$actual" = "$expected" ] ||
+  die "Checksum mismatch for $target (expected $expected, got $actual)."
+log "Checksum verified for $target."
 
 log "OSM extract is ready: $target"

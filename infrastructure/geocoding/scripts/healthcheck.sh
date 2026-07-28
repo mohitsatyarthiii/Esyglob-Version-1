@@ -1,42 +1,66 @@
 #!/usr/bin/env sh
 set -eu
+# shellcheck source=common.sh
 . "$(dirname "$0")/common.sh"
 
-[ -n "${GEOCODING_ENV_FILE:-}" ] || [ ! -f "$ROOT_DIR/.active-env" ] ||
+if [ -z "${GEOCODING_ENV_FILE:-}" ] && [ -f "$ROOT_DIR/.active-env" ]; then
   GEOCODING_ENV_FILE=$(cat "$ROOT_DIR/.active-env")
-export GEOCODING_ENV_FILE
+  export GEOCODING_ENV_FILE
+fi
 load_env
 validate_env
-require_command docker
-require_command curl
+preflight
 
-base="http://${GEOCODER_BIND_IP}"
-nominatim="${base}:${NOMINATIM_PORT}"
-photon="${base}:${PHOTON_PORT}"
+nominatim="http://${GEOCODER_BIND_IP}:${NOMINATIM_PORT}"
+photon="http://${GEOCODER_BIND_IP}:${PHOTON_PORT}"
+
+for service in nominatim photon gateway; do
+  id=$(service_container_id "$service" || true)
+  [ -n "$id" ] || fail_service "$service" "$service container does not exist."
+  [ "$(docker inspect --format '{{.State.Running}}' "$id")" = "true" ] ||
+    fail_service "$service" "$service is not running."
+done
 
 log "Checking PostgreSQL and PostGIS."
-compose exec -T nominatim pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
-postgis_version=$(compose exec -T nominatim psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -Atc "SELECT PostGIS_Lib_Version();" | tr -d '\r')
-[ -n "$postgis_version" ] || die "PostGIS version query returned no result."
+compose exec -T nominatim pg_isready -U nominatim -d nominatim >/dev/null ||
+  fail_service nominatim "PostgreSQL is not ready."
+postgis_version=$(compose exec -T nominatim psql -U nominatim -d nominatim \
+  -Atc "SELECT PostGIS_Lib_Version();" | tr -d '\r') ||
+  fail_service nominatim "PostGIS version query failed."
+[ -n "$postgis_version" ] ||
+  fail_service nominatim "PostGIS version query returned no result."
 
-log "Checking Nominatim status, search, and reverse geocoding."
-curl --fail --silent --show-error --max-time 10 "$nominatim/status" | grep -q 'OK'
-curl --fail --silent --show-error --max-time 10 \
-  "$nominatim/search?q=New%20Delhi&format=jsonv2&limit=1" | grep -q '"place_id"'
-curl --fail --silent --show-error --max-time 10 \
-  "$nominatim/reverse?lat=28.6139&lon=77.2090&format=jsonv2" | grep -q '"place_id"'
+check_http() {
+  service=$1
+  label=$2
+  url=$3
+  pattern=$4
+  attempts=${HEALTH_RETRIES:-12}
+  while [ "$attempts" -gt 0 ]; do
+    if response=$(curl --fail --silent --show-error --max-time 15 "$url" 2>/dev/null) &&
+       printf '%s' "$response" | grep -q "$pattern"; then
+      log "$label passed."
+      return
+    fi
+    attempts=$((attempts - 1))
+    [ "$attempts" -gt 0 ] || fail_service "$service" "$label failed: $url"
+    sleep "${HEALTH_RETRY_DELAY_SECONDS:-5}"
+  done
+}
 
-log "Checking Photon autocomplete and reverse geocoding."
-curl --fail --silent --show-error --max-time 10 \
-  "$photon/api?q=New%20Delhi&limit=1" | grep -q '"features"'
-curl --fail --silent --show-error --max-time 10 \
-  "$photon/reverse?lat=28.6139&lon=77.2090" | grep -q '"features"'
+check_http nominatim "Nominatim status" "$nominatim/status" "OK"
+check_http nominatim "Nominatim search" \
+  "$nominatim/search?q=New%20Delhi&format=jsonv2&limit=1" '"place_id"'
+check_http nominatim "Nominatim reverse" \
+  "$nominatim/reverse?lat=28.6139&lon=77.2090&format=jsonv2" '"place_id"'
+check_http photon "Photon search" "$photon/api?q=New%20Delhi&limit=1" '"features"'
+check_http photon "Photon reverse" \
+  "$photon/reverse?lat=28.6139&lon=77.2090" '"features"'
 
 if [ -n "${BACKEND_HEALTH_URL:-}" ]; then
   validate_https_url "$BACKEND_HEALTH_URL" BACKEND_HEALTH_URL
-  log "Checking the backend address API."
-  curl --fail --silent --show-error --max-time 10 "$BACKEND_HEALTH_URL" >/dev/null
+  curl --fail --silent --show-error --max-time 15 "$BACKEND_HEALTH_URL" >/dev/null ||
+    die "Backend health endpoint failed: $BACKEND_HEALTH_URL"
 fi
 
 compose ps

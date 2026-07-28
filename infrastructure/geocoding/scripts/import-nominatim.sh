@@ -1,55 +1,48 @@
 #!/usr/bin/env sh
 set -eu
+# shellcheck source=common.sh
 . "$(dirname "$0")/common.sh"
 
 load_env
 validate_env
-require_command docker
-require_command curl
+preflight
 validate_filename "${OSM_PBF_FILE:-}" OSM_PBF_FILE
+require_free_disk "${MIN_FREE_DISK_GB:-12}"
 
 database_volume="${COMPOSE_PROJECT_NAME}_nominatim_db"
-if volume_has_file "$database_volume" PG_VERSION; then
-  log "Existing Nominatim/PostGIS import detected in $database_volume."
-  if [ "${ALLOW_EXISTING_IMPORT:-0}" != "1" ]; then
-    die "Refusing to overwrite it. Set ALLOW_EXISTING_IMPORT=1 only to validate/start the existing import."
-  fi
+if volume_has_file "$database_volume" import-finished; then
+  log "Completed Nominatim import already exists; validating it without overwriting data."
+elif volume_has_file "$database_volume" PG_VERSION; then
+  die "An incomplete Nominatim database exists in $database_volume (PG_VERSION exists but import-finished does not). Preserve it for diagnosis, then use a new COMPOSE_PROJECT_NAME to retry safely."
 else
-  [ -f "data/$OSM_PBF_FILE" ] || ./scripts/download-osm.sh
+  [ -f "$ROOT_DIR/data/$OSM_PBF_FILE" ] || "$ROOT_DIR/scripts/download-osm.sh"
 fi
 
-log "Starting the pinned Nominatim image. Initial imports can take many hours."
-compose up -d nominatim
-compose logs --follow --no-log-prefix nominatim &
-logs_pid=$!
-trap 'kill "$logs_pid" >/dev/null 2>&1 || true' EXIT INT TERM
+log "Starting the pinned Nominatim image. The first India import can take many hours."
+compose up -d --no-deps nominatim
+nominatim_id=$(service_container_id nominatim || true)
+[ -n "$nominatim_id" ] || fail_service nominatim "Nominatim container was not created."
+docker update --restart=no "$nominatim_id" >/dev/null ||
+  fail_service nominatim "Could not disable restart loops during import."
+enable_temporary_egress nominatim
+trap 'disable_temporary_egress nominatim' EXIT INT TERM
+wait_for_service_healthy nominatim "${IMPORT_TIMEOUT_SECONDS:-86400}"
 
-timeout_seconds="${IMPORT_TIMEOUT_SECONDS:-172800}"
-started=$(date +%s)
-until compose exec -T nominatim curl --fail --silent --max-time 5 \
-  http://127.0.0.1:8080/status >/dev/null 2>&1; do
-  now=$(date +%s)
-  if [ $((now - started)) -ge "$timeout_seconds" ]; then
-    compose logs --tail 200 nominatim >&2
-    die "Nominatim did not become ready within ${timeout_seconds}s."
-  fi
-  running=$(compose ps --status running --services | grep -c '^nominatim$' || true)
-  [ "$running" -eq 1 ] || {
-    compose logs --tail 200 nominatim >&2
-    die "Nominatim stopped during import."
-  }
-  sleep 30
-done
-
-kill "$logs_pid" >/dev/null 2>&1 || true
-trap - EXIT INT TERM
-
-compose exec -T nominatim pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+compose exec -T nominatim pg_isready -U nominatim -d nominatim >/dev/null ||
+  fail_service nominatim "PostgreSQL readiness validation failed."
 compose exec -T nominatim sudo -u nominatim nominatim admin \
-  --project-dir /nominatim --check-database
-compose exec -T nominatim psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  --project-dir /nominatim --check-database >/dev/null ||
+  fail_service nominatim "Nominatim database integrity validation failed."
+compose exec -T nominatim psql -U nominatim -d nominatim \
   -v ON_ERROR_STOP=1 -Atc \
   "SELECT extversion FROM pg_extension WHERE extname = 'postgis';" |
-  grep -Eq '^[0-9]+\.[0-9]+' || die "PostGIS extension validation failed."
+  grep -Eq '^[0-9]+\.[0-9]+' ||
+  fail_service nominatim "PostGIS extension validation failed."
 
+volume_has_file "$database_volume" import-finished ||
+  fail_service nominatim "Nominatim became healthy but its import-finished marker is absent."
+disable_temporary_egress nominatim
+trap - EXIT INT TERM
+docker update --restart=unless-stopped "$nominatim_id" >/dev/null ||
+  fail_service nominatim "Import succeeded but the reboot restart policy could not be restored."
 log "Nominatim import and PostGIS validation completed successfully."
