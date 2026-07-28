@@ -12,109 +12,138 @@ x-service-defaults: &service-defaults
       max-file: "5"
 
 services:
-  # The maintained Nominatim image includes PostgreSQL 16 + PostGIS. Database
-  # port 5432 is not published and is reachable only inside this container.
   nominatim:
     <<: *service-defaults
     image: ${NOMINATIM_IMAGE:-mediagis/nominatim:5.3.2-2026-04-20T06-30}
-    shm_size: 8gb
+    shm_size: 2gb
+
     environment:
       PBF_PATH: /nominatim/data/${OSM_PBF_FILE}
       NOMINATIM_PASSWORD: ${POSTGRES_PASSWORD}
-      THREADS: ${NOMINATIM_THREADS:-8}
+
+      THREADS: ${NOMINATIM_THREADS:-2}
       IMPORT_STYLE: ${NOMINATIM_IMPORT_STYLE:-address}
       UPDATE_MODE: none
       FREEZE: "false"
       IMPORT_WIKIPEDIA: "false"
       WARMUP_ON_STARTUP: "true"
-      GUNICORN_WORKERS: ${NOMINATIM_API_WORKERS:-4}
-      POSTGRES_SHARED_BUFFERS: 4GB
-      POSTGRES_MAINTENANCE_WORK_MEM: 6GB
-      POSTGRES_AUTOVACUUM_WORK_MEM: 1GB
-      POSTGRES_WORK_MEM: 32MB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 20GB
+
+      GUNICORN_WORKERS: ${NOMINATIM_API_WORKERS:-2}
+
+      POSTGRES_SHARED_BUFFERS: 2GB
+      POSTGRES_MAINTENANCE_WORK_MEM: 2GB
+      POSTGRES_AUTOVACUUM_WORK_MEM: 512MB
+      POSTGRES_WORK_MEM: 16MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 5GB
       POSTGRES_SYNCHRONOUS_COMMIT: "off"
-      POSTGRES_MAX_WAL_SIZE: 8GB
+      POSTGRES_MAX_WAL_SIZE: 2GB
       POSTGRES_CHECKPOINT_TIMEOUT: 30min
       POSTGRES_CHECKPOINT_COMPLETION_TARGET: "0.9"
-      POSTGRES_MAX_CONNECTIONS: "100"
+      POSTGRES_MAX_CONNECTIONS: "50"
+
     volumes:
       - nominatim_db:/var/lib/postgresql/16/main
       - nominatim_flatnode:/nominatim/flatnode
       - ./data:/nominatim/data:ro
+
     expose:
       - "8080"
+
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent --max-time 5 http://127.0.0.1:8080/status >/dev/null"]
       interval: 20s
       timeout: 8s
       retries: 15
       start_period: 48h
+
     networks:
       - geocoding
-    mem_limit: 20g
-    cpus: 7
+
+    mem_limit: 6g
+    cpus: 1.8
 
   photon:
     <<: *service-defaults
+
     image: ${PHOTON_JAVA_IMAGE:-eclipse-temurin:21.0.8_9-jre-jammy}
+
     user: "10002:10002"
     working_dir: /photon
+
     command:
       - java
       - -XX:+ExitOnOutOfMemoryError
       - -XX:+UseG1GC
-      - -Xms${PHOTON_HEAP:-8g}
-      - -Xmx${PHOTON_HEAP:-8g}
+      - -Xms1g
+      - -Xmx1g
       - -jar
       - /opt/photon/photon.jar
       - serve
+
     volumes:
       - photon_app:/opt/photon:ro
       - photon_data:/photon
+
     expose:
       - "2322"
+
     healthcheck:
       test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/2322'"]
       interval: 20s
       timeout: 8s
       retries: 20
       start_period: 10m
+
     networks:
       - geocoding
-    mem_limit: 10g
-    cpus: 4
 
-  # Stable localhost-only facade. Blue/green updates reload this gateway after
-  # the candidate engines pass validation, avoiding an externally visible gap.
+    mem_limit: 1g
+    cpus: 0.2
+
   gateway:
     <<: *service-defaults
+
     image: ${NGINX_IMAGE:-nginx:1.28.0-alpine3.21}
-    profiles: ["gateway"]
+
+    profiles:
+      - gateway
+
     read_only: true
+
     tmpfs:
       - /var/cache/nginx:size=32m,mode=0755
       - /var/run:size=1m,mode=0755
       - /tmp:size=8m,mode=1777
+
     volumes:
       - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+
     ports:
       - "${GEOCODER_BIND_IP:-127.0.0.1}:${NOMINATIM_PORT:-8088}:8088"
       - "${GEOCODER_BIND_IP:-127.0.0.1}:${PHOTON_PORT:-2322}:2322"
+
     depends_on:
       nominatim:
         condition: service_healthy
       photon:
         condition: service_healthy
+
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -T 5 -O /dev/null http://127.0.0.1:8088/status && wget -q -T 5 -O /dev/null 'http://127.0.0.1:2322/api?q=Delhi&limit=1'"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -T 5 -O /dev/null http://127.0.0.1:8088/status && wget -q -T 5 -O /dev/null 'http://127.0.0.1:2322/api?q=Delhi&limit=1'"
+        ]
+
       interval: 20s
       timeout: 10s
       retries: 6
+
     networks:
       - geocoding
+
     mem_limit: 256m
-    cpus: 1
+    cpus: 0.2
 
 networks:
   geocoding:
@@ -126,9 +155,12 @@ networks:
 volumes:
   nominatim_db:
     name: ${COMPOSE_PROJECT_NAME:-esyglob-geocoding}_nominatim_db
+
   nominatim_flatnode:
     name: ${COMPOSE_PROJECT_NAME:-esyglob-geocoding}_nominatim_flatnode
+
   photon_app:
     name: ${COMPOSE_PROJECT_NAME:-esyglob-geocoding}_photon_app
+
   photon_data:
     name: ${COMPOSE_PROJECT_NAME:-esyglob-geocoding}_photon_data
