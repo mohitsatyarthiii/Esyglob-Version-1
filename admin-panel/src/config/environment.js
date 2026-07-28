@@ -6,8 +6,8 @@ function normalizeApiBaseUrl(value) {
   if (!candidate) throw new Error(`${API_BASE_URL_KEY} is required.`)
 
   if (candidate.startsWith('/')) {
-    if (!candidate.startsWith('/api') || candidate.includes('?') || candidate.includes('#')) {
-      throw new Error(`${API_BASE_URL_KEY} must be an API path such as /api.`)
+    if (candidate !== '/api') {
+      throw new Error(`${API_BASE_URL_KEY} must be exactly /api.`)
     }
     return candidate
   }
@@ -24,6 +24,9 @@ function normalizeApiBaseUrl(value) {
   }
   if (url.username || url.password || url.search || url.hash) {
     throw new Error(`${API_BASE_URL_KEY} cannot contain credentials, a query, or a fragment.`)
+  }
+  if (import.meta.env.PROD) {
+    throw new Error(`${API_BASE_URL_KEY} must be /api in production so Netlify can use its secure same-origin proxy.`)
   }
 
   return candidate

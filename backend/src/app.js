@@ -76,7 +76,12 @@ app.use((req, res, next) => {
 // CORS configuration
 app.use(cors({
   origin(origin, callback) {
-    return callback(null, isCorsOriginAllowed(origin));
+    if (isCorsOriginAllowed(origin)) return callback(null, true);
+
+    const error = new Error('Origin is not allowed by the API CORS policy');
+    error.statusCode = 403;
+    error.code = 'CORS_ORIGIN_DENIED';
+    return callback(error);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
