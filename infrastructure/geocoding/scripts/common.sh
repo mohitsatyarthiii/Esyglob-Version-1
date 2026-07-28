@@ -18,7 +18,7 @@ require_command() {
 }
 
 load_env() {
-  ENV_FILE=${GEOCODING_ENV_FILE:-.env}
+  ENV_FILE=${GEOCODING_ENV_FILE:-"$ROOT_DIR/.env"}
   [ -f "$ENV_FILE" ] || die "Missing $ENV_FILE. Copy .env.example to .env and configure it."
   set -a
   # shellcheck disable=SC1091
