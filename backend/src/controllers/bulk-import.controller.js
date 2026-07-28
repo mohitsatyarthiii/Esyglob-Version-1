@@ -21,7 +21,7 @@ export async function previewBulkUpload(req, res, next) {
     const requestedProductStatus = req.body.status || 'draft';
 
     if (!file) {
-      return res.status(422).json({ error: 'Upload a CSV, XLSX, or XLS file' });
+      return res.status(422).json({ error: 'Upload a CSV, XLSX, XLS, or JSON file' });
     }
 
     const result = await bulkImportService.previewBulkUpload(
@@ -104,7 +104,7 @@ export async function getImportHistory(req, res, next) {
 export async function downloadTemplate(req, res) {
   const type = req.query.type || 'csv';
 
-  if (!['csv', 'xlsx', 'xls'].includes(type)) {
+  if (!['csv', 'xlsx', 'xls', 'json'].includes(type)) {
     return res.status(400).json({ error: 'Invalid template type' });
   }
 

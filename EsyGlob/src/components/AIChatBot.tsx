@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { config } from '../config/env';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,6 @@ const QUICK_ACTIONS = [
 
 // ─── API Config ─────────────────────────────────────────────────────────────
 
-const API_BASE = 'https://api.esyglob.com/api';
 let AUTH_TOKEN = '';
 
 export function setAIChatToken(token: string) {
@@ -74,7 +74,7 @@ async function* streamAIResponse(
   const chunkQueue: SSEChunk[] = [];
 
   const promise = new Promise<void>((resolve, reject) => {
-    xhr.open('POST', `${API_BASE}/ai/chat/stream`);
+    xhr.open('POST', `${config.apiBaseUrl}/ai/chat/stream`);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
 

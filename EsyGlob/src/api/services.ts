@@ -12,6 +12,7 @@ export type ServiceField = {
   options?: string[];
   placeholder?: string;
   step?: string;
+  showWhen?: Record<string, string>;
 };
 
 export type ServiceCatalogItem = {
@@ -68,6 +69,8 @@ export type ServiceRequest = {
   paymentStatus?: 'pending' | 'processing' | 'paid' | 'refunded' | 'failed' | 'cancelled';
   paymentId?: string | Record<string, unknown>;
   invoiceId?: string | Record<string, unknown>;
+  bookingId?: string | Record<string, unknown>;
+  provider?: { key?: string; name?: string; serviceName?: string; referenceNumber?: string; trackingNumber?: string; trackingUrl?: string; eta?: string };
   assignedTeam?: string;
   assignedExecutive?: string;
   createdAt?: string;
@@ -76,6 +79,8 @@ export type ServiceRequest = {
 };
 
 export type ServicePricing = { currency: string; baseCost: number; additionalCharges: number; taxAmount: number; gstRate: number; gstAmount: number; discount: number; platformFee: number; totalPayable: number };
+export type ServiceProviderOption = { quoteId: string; providerKey: string; providerName: string; serviceCode: string; serviceName: string; currency: string; price: number; estimatedDeliveryAt?: string; estimatedDeliveryText?: string; trackingAvailable: boolean; insuranceAvailable: boolean; pickupAvailable: boolean; features?: string[]; recommended?: boolean; fastest?: boolean; bestPrice?: boolean; pricing: ServicePricing };
+export type ServiceProviderSearchResult = { routeType: 'domestic' | 'international'; expiresAt: string; providers: ServiceProviderOption[] };
 export type ServicePaymentSession = { razorpayOrderId: string; amount: number; currency: string; paymentId: string; keyId: string; requestNumber?: string };
 
 export type ShippingOrder = ServiceRequest & {
@@ -118,9 +123,9 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     role: 'both',
     icon: 'truck-fast-outline',
     image: 'https://images.unsplash.com/photo-1494412651409-8963ce7935a7?auto=format&fit=crop&w=1200&q=80',
-    shortDescription: 'Plan international shipments, carrier booking, tracking, and customs handoff.',
-    description: 'A managed logistics service for creating shipment records, reviewing packages, booking draft shipments, and tracking international delivery progress.',
-    startingPrice: 'Quote based',
+    shortDescription: 'Compare live serviceable couriers, book securely, and track delivery.',
+    description: 'Provider-based logistics booking with live rates from Shiprocket and Delhivery in India, or DHL and FedEx internationally.',
+    startingPrice: 'Live provider rates',
     duration: '2-7 business days',
     availability: 'Available',
     status: 'Popular',
@@ -132,17 +137,41 @@ export const servicesCatalog: ServiceCatalogItem[] = [
       { question: 'Is tracking included?', answer: 'Tracking appears once the carrier and booking are assigned.' },
     ],
     terms: ['Rates depend on route, cargo, carrier availability, and customs requirements.'],
-    endpoint: '/shipping',
+    endpoint: '/service-requests',
     fields: [
-      { key: 'type', label: 'Shipping type', type: 'select', required: true, options: ['ocean_fcl', 'ocean_lcl', 'air_freight', 'air_express', 'express_courier'], step: 'Shipment type and packages' },
-      { key: 'packageDescription', label: 'Package description', type: 'text', step: 'Shipment type and packages' },
-      { key: 'quantity', label: 'Quantity', type: 'number', required: true, step: 'Shipment type and packages' },
-      { key: 'weight', label: 'Weight (kg)', type: 'number', step: 'Shipment type and packages' },
-      { key: 'pickupAddress', label: 'Pickup address', type: 'textarea', required: true, step: 'Pickup and delivery' },
-      { key: 'deliveryAddress', label: 'Delivery address', type: 'textarea', required: true, step: 'Pickup and delivery' },
-      { key: 'specialInstructions', label: 'Special instructions', type: 'textarea', step: 'Insurance and instructions' },
+      { key: 'pickupContactName', label: 'Pickup contact name', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'pickupPhone', label: 'Pickup phone', type: 'phone', required: true, step: 'Pickup information' },
+      { key: 'pickupEmail', label: 'Pickup email', type: 'email', step: 'Pickup information' },
+      { key: 'pickupLine1', label: 'Pickup address', type: 'textarea', required: true, step: 'Pickup information' },
+      { key: 'pickupCity', label: 'Pickup city', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'pickupState', label: 'Pickup state', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'pickupPostalCode', label: 'Pickup postal code', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'pickupCountry', label: 'Pickup country', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'pickupCountryCode', label: 'Pickup country code', type: 'text', required: true, step: 'Pickup information' },
+      { key: 'destinationContactName', label: 'Recipient name', type: 'text', required: true, step: 'Destination information' },
+      { key: 'destinationPhone', label: 'Recipient phone', type: 'phone', required: true, step: 'Destination information' },
+      { key: 'destinationEmail', label: 'Recipient email', type: 'email', step: 'Destination information' },
+      { key: 'destinationLine1', label: 'Destination address', type: 'textarea', required: true, step: 'Destination information' },
+      { key: 'destinationCity', label: 'Destination city', type: 'text', required: true, step: 'Destination information' },
+      { key: 'destinationState', label: 'Destination state', type: 'text', required: true, step: 'Destination information' },
+      { key: 'destinationPostalCode', label: 'Destination postal code', type: 'text', required: true, step: 'Destination information' },
+      { key: 'destinationCountry', label: 'Destination country', type: 'text', required: true, step: 'Destination information' },
+      { key: 'destinationCountryCode', label: 'Destination country code', type: 'text', required: true, step: 'Destination information' },
+      { key: 'shipmentDescription', label: 'Contents description', type: 'text', required: true, step: 'Shipment details' },
+      { key: 'quantity', label: 'Package quantity', type: 'number', required: true, step: 'Shipment details' },
+      { key: 'weightKg', label: 'Total weight (kg)', type: 'number', required: true, step: 'Shipment details' },
+      { key: 'lengthCm', label: 'Length (cm)', type: 'number', step: 'Shipment details' },
+      { key: 'widthCm', label: 'Width (cm)', type: 'number', step: 'Shipment details' },
+      { key: 'heightCm', label: 'Height (cm)', type: 'number', step: 'Shipment details' },
+      { key: 'declaredValue', label: 'Declared value', type: 'number', required: true, step: 'Shipment details' },
+      { key: 'currency', label: 'Currency', type: 'select', required: true, options: ['INR', 'USD', 'EUR', 'GBP'], step: 'Shipment details' },
+      { key: 'contents', label: 'Contents type', type: 'select', required: true, options: ['non_documents', 'documents'], step: 'Shipment details' },
+      { key: 'countryOfOrigin', label: 'Country of origin code', type: 'text', required: true, step: 'Shipment details', showWhen: { contents: 'non_documents' } },
+      { key: 'hsCode', label: 'HS code', type: 'text', step: 'Shipment details', showWhen: { contents: 'non_documents' } },
+      { key: 'incoterm', label: 'Incoterm', type: 'select', options: ['DAP', 'DDP', 'EXW', 'FCA', 'CPT', 'CIP'], step: 'Shipment details', showWhen: { contents: 'non_documents' } },
+      { key: 'insuranceRequested', label: 'Carrier value protection', type: 'select', options: ['no', 'yes'], step: 'Shipment details' },
     ],
-    workflowSteps: ['Shipment type and packages', 'Pickup and delivery', 'Insurance and instructions'],
+    workflowSteps: ['Pickup information', 'Destination information', 'Shipment details'],
     keywords: ['freight', 'logistics', 'cargo', 'shipment', 'tracking'],
   },
   {
@@ -166,19 +195,22 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     endpoint: '/customs',
     fields: [
       { key: 'type', label: 'Clearance type', type: 'select', required: true, options: ['import', 'export'], step: 'Shipment details' },
-      { key: 'carrier', label: 'Carrier', type: 'select', options: ['DHL', 'FedEx', 'Maersk', 'MSC', 'CMA CGM'], step: 'Shipment details' },
       { key: 'trackingNumber', label: 'Tracking number', type: 'text', step: 'Shipment details' },
       { key: 'originCountry', label: 'Origin country', type: 'text', required: true, step: 'Route details' },
       { key: 'destinationCountry', label: 'Destination country', type: 'text', required: true, step: 'Route details' },
       { key: 'portOfLoading', label: 'Port of loading', type: 'text', step: 'Route details' },
       { key: 'portOfDischarge', label: 'Port of discharge', type: 'text', step: 'Route details' },
-      { key: 'productName', label: 'Product name', type: 'text', step: 'Products and values' },
-      { key: 'hsCode', label: 'HS code', type: 'text', step: 'Products and values' },
-      { key: 'quantity', label: 'Quantity', type: 'number', step: 'Products and values' },
+      { key: 'productName', label: 'Product name', type: 'text', required: true, step: 'Products and values' },
+      { key: 'hsCode', label: 'HS code', type: 'text', required: true, step: 'Products and values' },
+      { key: 'quantity', label: 'Quantity', type: 'number', required: true, step: 'Products and values' },
       { key: 'unit', label: 'Unit', type: 'select', options: ['pieces', 'kg', 'sets', 'meters'], step: 'Products and values' },
-      { key: 'unitValue', label: 'Unit value', type: 'number', step: 'Products and values' },
+      { key: 'unitValue', label: 'Declared value', type: 'number', required: true, step: 'Products and values' },
+      { key: 'currency', label: 'Currency', type: 'select', required: true, options: ['INR', 'USD', 'EUR', 'GBP'], step: 'Products and values' },
+      { key: 'commercialInvoice', label: 'Commercial invoice reference', type: 'text', required: true, step: 'Documents' },
+      { key: 'packingList', label: 'Packing list reference', type: 'text', required: true, step: 'Documents' },
+      { key: 'importerExporterDetails', label: 'Importer / exporter details', type: 'textarea', required: true, step: 'Documents' },
     ],
-    workflowSteps: ['Shipment details', 'Route details', 'Products and values'],
+    workflowSteps: ['Shipment details', 'Route details', 'Products and values', 'Documents'],
     keywords: ['customs', 'brokerage', 'hs code', 'duty', 'clearance'],
   },
   {
@@ -201,13 +233,13 @@ export const servicesCatalog: ServiceCatalogItem[] = [
     terms: ['Storage and fulfillment fees depend on warehouse, item profile, and service usage.'],
     endpoint: '/warehousing',
     fields: [
-      { key: 'warehouseId', label: 'Warehouse ID', type: 'text', required: true, step: 'Warehouse' },
-      { key: 'sku', label: 'SKU', type: 'text', required: true, step: 'Inventory' },
-      { key: 'productName', label: 'Product name', type: 'text', step: 'Inventory' },
-      { key: 'quantity', label: 'Quantity', type: 'number', required: true, step: 'Inventory' },
-      { key: 'unitValue', label: 'Unit value', type: 'number', step: 'Inventory' },
-      { key: 'storageType', label: 'Storage type', type: 'select', options: ['standard', 'climate_controlled', 'cold_storage', 'hazardous', 'high_value'], step: 'Storage details' },
-      { key: 'notes', label: 'Notes', type: 'textarea', step: 'Storage details' },
+      { key: 'warehouseLocation', label: 'Warehouse country or city', type: 'text', required: true, step: 'Warehouse' },
+      { key: 'storageDurationDays', label: 'Storage duration (days)', type: 'number', required: true, step: 'Warehouse' },
+      { key: 'estimatedVolumeM3', label: 'Estimated volume (m³)', type: 'number', required: true, step: 'Inventory' },
+      { key: 'palletCount', label: 'Pallet count', type: 'number', step: 'Inventory' },
+      { key: 'inventoryType', label: 'Inventory type', type: 'text', required: true, step: 'Inventory' },
+      { key: 'temperatureRequirement', label: 'Temperature requirement', type: 'select', options: ['ambient', 'chilled', 'frozen', 'controlled'], step: 'Storage details' },
+      { key: 'notes', label: 'Fulfillment requirements', type: 'textarea', step: 'Storage details' },
     ],
     workflowSteps: ['Warehouse', 'Inventory', 'Storage details'],
     keywords: ['warehouse', 'inventory', 'storage', 'fulfillment'],
@@ -513,7 +545,7 @@ export async function fetchShipments(params: { status?: string; type?: string; p
   };
 }
 
-export async function createServiceBooking(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted = false) {
+export async function createServiceBooking(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted = false, providerQuoteId = '') {
   const normalizedRole = role === 'seller' ? 'seller' : 'buyer';
 
   if (service.key === 'seller-verification') {
@@ -535,10 +567,10 @@ export async function createServiceBooking(service: ServiceCatalogItem, role: st
     });
   }
 
-  return createGenericServiceRequest(service, normalizedRole, values, termsAccepted);
+  return createGenericServiceRequest(service, normalizedRole, values, termsAccepted, providerQuoteId);
 }
 
-async function createGenericServiceRequest(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted: boolean) {
+async function createGenericServiceRequest(service: ServiceCatalogItem, role: string, values: Record<string, string>, termsAccepted: boolean, providerQuoteId = '') {
   const documents = values.documentUrl
     ? [{ name: values.documentName || 'Document', url: values.documentUrl }]
     : [];
@@ -559,6 +591,7 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
       details,
       priority: 'normal',
       requirements: values,
+      providerQuoteId: providerQuoteId || undefined,
       documents,
       termsAccepted,
     },
@@ -569,6 +602,18 @@ async function createGenericServiceRequest(service: ServiceCatalogItem, role: st
 
 export async function fetchServiceQuote(serviceKey: string, requirements: Record<string, string>): Promise<ServicePricing> {
   return unwrapData<ServicePricing>(await apiRequest(`/service-requests/quote/${serviceKey}`, { method: 'POST', body: { requirements } }));
+}
+
+export async function searchServiceProviders(serviceKey: string, input: Record<string, unknown>): Promise<ServiceProviderSearchResult> {
+  return unwrapData<ServiceProviderSearchResult>(await apiRequest(`/service-requests/providers/search/${serviceKey}`, { method: 'POST', body: input }));
+}
+
+export async function fetchServiceBooking(requestId: string) {
+  return unwrapData(await apiRequest(`/service-requests/${requestId}/booking`));
+}
+
+export async function syncServiceTracking(requestId: string) {
+  return unwrapData(await apiRequest(`/service-requests/${requestId}/tracking/sync`, { method: 'POST' }));
 }
 
 export async function initiateServicePayment(requestId: string): Promise<ServicePaymentSession> {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,25 +15,35 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import RazorpayCheckout from 'react-native-razorpay';
-import { createServiceBooking, fetchServiceQuote, getServiceByKey, initiateServicePayment, ServiceField, servicePaymentFailureStatus, updateServicePaymentStatus, verifyServicePayment } from '../api/services';
+import { createServiceBooking, fetchServiceQuote, getServiceByKey, initiateServicePayment, searchServiceProviders, ServiceField, ServiceProviderOption, ServiceProviderSearchResult, servicePaymentFailureStatus, updateServicePaymentStatus, verifyServicePayment } from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { RootStackParamList } from '../../App';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
 import { uploadFiles } from '../api/marketplace';
+import { useToast } from '../components/ToastProvider';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
+import { fetchAddresses, fetchProfileSettings, ProfileSettings, StandardizedLocation } from '../api/account';
 
 function ServiceBookingScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RootStackParamList, 'ServiceBooking'>>();
   const queryClient = useQueryClient();
-  const { activeRole } = useAuth();
+  const { activeRole, user } = useAuth();
+  const toast = useToast();
   const service = getServiceByKey(route.params.serviceKey);
+  const isShipping = service?.key === 'shipping';
   const [values, setValues] = useState<Record<string, string>>(() =>
-    ({ ...initialValues(service?.fields ?? []), tier: 'standard' })
+    ({ ...initialValues(service?.fields ?? []), quantity: '1', weightKg: '1', declaredValue: '0', currency: 'INR', contents: 'non_documents', pickupCountry: 'India', pickupCountryCode: 'IN', destinationCountry: 'India', destinationCountryCode: 'IN', countryOfOrigin: 'IN', incoterm: 'DAP', insuranceRequested: 'no', dangerousGoods: 'no' })
   );
   const [step, setStep] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [pendingRequestId, setPendingRequestId] = useState('');
+  const [providerResult, setProviderResult] = useState<ServiceProviderSearchResult | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<ServiceProviderOption | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const fieldRefs = useRef<Record<string, TextInput | null>>({});
+  const scrollRef = useRef<ScrollView | null>(null);
   const steps = useMemo(() => groupFieldsByWorkflow(service), [service]);
   const currentFields = steps[step] ?? [];
   const totalSteps = steps.length;
@@ -41,8 +51,48 @@ function ServiceBookingScreen() {
   const quote = useQuery({
     queryKey: ['service-quote', service?.key, values],
     queryFn: () => fetchServiceQuote(service!.key, values),
-    enabled: Boolean(service && isLastStep),
+    enabled: Boolean(service && isLastStep && !isShipping),
   });
+  const providerSearch = useMutation({
+    mutationFn: () => searchServiceProviders(service!.key, providerInput(values)),
+    onSuccess: result => {
+      setProviderResult(result);
+      setSelectedProvider(result.providers.find(item => item.recommended) ?? result.providers[0] ?? null);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    let current = true;
+    Promise.all([
+      fetchProfileSettings().catch(() => ({} as ProfileSettings)),
+      fetchAddresses().catch(() => []),
+    ]).then(([profile, addresses]) => {
+      if (!current) return;
+      const address = addresses.find(item => item.isDefault) ?? addresses[0] ?? {};
+      const fullName = profile.fullName || user?.fullName || user?.name || '';
+      setValues(formValues => ({
+        ...formValues,
+        companyName: formValues.companyName || profile.companyName || '',
+        contactName: formValues.contactName || fullName,
+        contactEmail: formValues.contactEmail || profile.email || user?.email || '',
+        contactPhone: formValues.contactPhone || profile.phone || user?.phone || '',
+        pickupContactName: formValues.pickupContactName || address.fullName || fullName,
+        pickupPhone: formValues.pickupPhone || address.phone || profile.phone || user?.phone || '',
+        pickupEmail: formValues.pickupEmail || profile.email || user?.email || '',
+        pickupLine1: formValues.pickupLine1 || address.line1 || address.street || profile.address || '',
+        pickupCity: formValues.pickupCity || address.city || profile.city || '',
+        pickupState: formValues.pickupState || address.state || '',
+        pickupPostalCode: formValues.pickupPostalCode || address.postalCode || address.pincode || '',
+        pickupCountry: address.country || formValues.pickupCountry || profile.country || '',
+        pickupCountryCode: address.countryCode || formValues.pickupCountryCode,
+        pickupLatitude: address.latitude == null ? formValues.pickupLatitude : String(address.latitude),
+        pickupLongitude: address.longitude == null ? formValues.pickupLongitude : String(address.longitude),
+        pickupPlaceId: address.placeId || formValues.pickupPlaceId,
+      }));
+    });
+    return () => { current = false; };
+  }, [user]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -51,7 +101,7 @@ function ServiceBookingScreen() {
       let requestId = pendingRequestId;
       let request: any;
       if (!requestId) {
-        const booking: any = await createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values, true);
+        const booking: any = await createServiceBooking(service, activeRole === 'seller' ? 'seller' : 'buyer', values, true, selectedProvider?.quoteId);
         request = booking?.request ?? booking;
         requestId = request?._id ?? request?.id;
         if (requestId) setPendingRequestId(requestId);
@@ -71,9 +121,10 @@ function ServiceBookingScreen() {
       queryClient.invalidateQueries({ queryKey: ['service-activity'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       navigation.replace('ServiceBookingSuccess', { request: data });
+      toast.success('Payment completed and provider booking submitted.');
     },
     onError: (error: Error) => {
-      Alert.alert('Error', error.message);
+      toast.error(error.message);
     },
   });
 
@@ -89,17 +140,36 @@ function ServiceBookingScreen() {
     );
   }
 
-  const missingRequired = currentFields.fields.some(
-    field => field.required && !values[field.key]?.trim()
-  );
-
   const submit = () => {
-    const missing = service.fields.filter(field => field.required && !values[field.key]?.trim());
+    const missing = service.fields.filter(field => isFieldVisible(field, values) && field.required && !values[field.key]?.trim());
     if (missing.length) {
-      Alert.alert('Missing Details', `Please complete "${missing[0].label}" to continue.`);
+      setFieldErrors(Object.fromEntries(missing.map(field => [field.key, `${field.label} is required.`])));
+      const missingStep = steps.findIndex(group => group.fields.some(field => field.key === missing[0].key));
+      if (missingStep >= 0) setStep(missingStep);
+      toast.warning(`Please complete "${missing[0].label}" to continue.`);
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+        fieldRefs.current[missing[0].key]?.focus();
+      }, 180);
+      return;
+    }
+    if (isShipping && !selectedProvider) {
+      toast.warning('Search live providers and select an available service before payment.');
       return;
     }
     mutation.mutate();
+  };
+
+  const advance = () => {
+    const missing = currentFields.fields.filter(field => isFieldVisible(field, values) && field.required && !values[field.key]?.trim());
+    if (missing.length) {
+      setFieldErrors(current => ({ ...current, ...Object.fromEntries(missing.map(field => [field.key, `${field.label} is required.`])) }));
+      toast.warning(`Please complete "${missing[0].label}" to continue.`);
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      fieldRefs.current[missing[0].key]?.focus();
+      return;
+    }
+    setStep(current => current + 1);
   };
 
   const uploadDocument = async () => {
@@ -181,6 +251,7 @@ function ServiceBookingScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -193,12 +264,19 @@ function ServiceBookingScreen() {
 
         {/* Form Card */}
         <View style={styles.formCard}>
-          {currentFields.fields.map(field => (
+          {currentFields.fields.filter(field => isFieldVisible(field, values)).map(field => (
             <FieldInput
               key={field.key}
               field={field}
               value={values[field.key] ?? ''}
-              onChange={value => setValues(current => ({ ...current, [field.key]: value }))}
+              error={fieldErrors[field.key]}
+              inputRef={input => { fieldRefs.current[field.key] = input; }}
+              countryCode={field.key.startsWith('pickup') ? values.pickupCountryCode : field.key.startsWith('destination') ? values.destinationCountryCode : ''}
+              onAddressSelect={location => applyLocation(field.key, location, setValues, setProviderResult, setSelectedProvider)}
+              onChange={value => {
+                setValues(current => ({ ...current, [field.key]: value }));
+                setFieldErrors(current => ({ ...current, [field.key]: '' }));
+              }}
             />
           ))}
 
@@ -241,16 +319,25 @@ function ServiceBookingScreen() {
           </View>
         </View>
 
-        {isLastStep && <View style={styles.priceCard}>
-          <Text style={styles.priceTitle}>Service tier</Text>
-          <View style={styles.optionsRow}>
-            {['basic', 'standard', 'premium', 'enterprise'].map(tier => {
-              const selected = values.tier === tier;
-              return <Pressable key={tier} disabled={Boolean(pendingRequestId)} onPress={() => setValues(current => ({ ...current, tier }))} style={[styles.optionChip, selected && styles.optionChipActive]}><Text style={[styles.optionText, selected && styles.optionTextActive]}>{tier}</Text></Pressable>;
-            })}
-          </View>
-          <Text style={styles.tierHint}>{values.tier === 'basic' ? 'Core delivery · 5–7 days · standard support' : values.tier === 'standard' ? 'Priority delivery · 3–5 days · enhanced reporting' : values.tier === 'premium' ? 'Expedited delivery · dedicated specialist' : 'Custom SLA · account manager · advanced compliance'}</Text>
-          <View style={styles.priceDivider} />
+        {isLastStep && isShipping && <View style={styles.priceCard}>
+          <Text style={styles.priceTitle}>Live providers</Text>
+          {!providerResult ? <Pressable disabled={providerSearch.isPending} onPress={() => providerSearch.mutate()} style={styles.providerSearchBtn}>{providerSearch.isPending ? <ActivityIndicator color="#fff" /> : <><Icon name="magnify" size={18} color="#fff" /><Text style={styles.providerSearchText}>Search available providers</Text></>}</Pressable> : <>
+            <Text style={styles.tierHint}>{providerResult.routeType === 'domestic' ? 'Domestic India route' : 'International route'} · quotes expire {new Date(providerResult.expiresAt).toLocaleTimeString()}</Text>
+            {providerResult.providers.map(option => <Pressable key={option.quoteId} disabled={Boolean(pendingRequestId)} onPress={() => setSelectedProvider(option)} style={[styles.providerCard, selectedProvider?.quoteId === option.quoteId && styles.providerCardActive]}>
+              <View style={styles.providerHead}><View style={[styles.providerLogo, providerLogoStyle(option.providerKey)]}><Text style={[styles.providerLogoText, providerLogoTextStyle(option.providerKey)]}>{providerMark(option.providerKey)}</Text></View><View style={styles.flexOne}><Text style={styles.providerName}>{option.providerName}</Text><Text style={styles.providerService}>Service level · {option.serviceName}</Text></View>{selectedProvider?.quoteId === option.quoteId && <Icon name="check-circle" size={22} color="#16A34A" />}</View>
+              <View style={styles.providerBadges}>{option.recommended && <Text style={styles.providerBadge}>Recommended</Text>}{option.fastest && <Text style={styles.providerBadge}>Fastest</Text>}{option.bestPrice && <Text style={styles.providerBadge}>Best price</Text>}</View>
+              <Text style={styles.providerPrice}>{option.currency} {option.price.toFixed(2)}</Text>
+              <Text style={styles.providerService}>{option.estimatedDeliveryText || 'ETA after booking'} · Tracking {option.trackingAvailable ? 'included' : 'unavailable'} · Insurance {option.insuranceAvailable ? 'available' : 'not listed'}</Text>
+              {option.features?.map(feature => <View key={feature} style={styles.providerFeature}><Icon name="check-circle-outline" size={13} color="#067647" /><Text style={styles.providerFeatureText}>{feature}</Text></View>)}
+            </Pressable>)}
+            <Pressable disabled={providerSearch.isPending || Boolean(pendingRequestId)} onPress={() => providerSearch.mutate()}><Text style={styles.refreshRates}>Refresh live rates</Text></Pressable>
+          </>}
+          {selectedProvider ? <><View style={styles.priceDivider} /><Text style={styles.priceTitle}>Pricing summary</Text><PriceRow label="Provider price" value={selectedProvider.pricing.baseCost} currency={selectedProvider.pricing.currency} /><PriceRow label="Platform fee" value={selectedProvider.pricing.platformFee} currency={selectedProvider.pricing.currency} /><PriceRow label={`GST (${selectedProvider.pricing.gstRate}%)`} value={selectedProvider.pricing.gstAmount} currency={selectedProvider.pricing.currency} /><View style={styles.priceDivider} /><PriceRow label="Total payable" value={selectedProvider.pricing.totalPayable} currency={selectedProvider.pricing.currency} total /></> : null}
+          <Pressable onPress={() => setTermsAccepted(current => !current)} style={styles.termsRow}><Icon name={termsAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'} size={21} color={termsAccepted ? '#2563EB' : '#64748b'} /><Text style={styles.termsText}>I accept the provider booking, cancellation and secure payment terms.</Text></Pressable>
+        </View>}
+
+        {isLastStep && !isShipping && <View style={styles.priceCard}>
+          <Text style={styles.priceTitle}>Managed service pricing</Text>
           <Text style={styles.priceTitle}>Pricing summary</Text>
           {quote.isLoading ? <ActivityIndicator color="#2563EB" /> : quote.data ? <>
             <PriceRow label="Base service cost" value={quote.data.baseCost} currency={quote.data.currency} />
@@ -276,7 +363,7 @@ function ServiceBookingScreen() {
           </View>
         )}
 
-        <View style={{ height: 120 }} />
+        <View style={styles.footerSpacer} />
       </ScrollView>
 
       {/* Footer */}
@@ -291,12 +378,12 @@ function ServiceBookingScreen() {
           </Pressable>
         )}
         <Pressable
-          disabled={mutation.isPending || missingRequired || (isLastStep && (!quote.data || !termsAccepted))}
-          onPress={() => isLastStep ? submit() : setStep(current => current + 1)}
+          disabled={mutation.isPending}
+          onPress={() => isLastStep ? submit() : advance()}
           style={[
             styles.continueBtn,
             step === 0 && styles.continueBtnFull,
-            (mutation.isPending || missingRequired) && styles.continueBtnDisabled,
+            mutation.isPending && styles.continueBtnDisabled,
           ]}
         >
           {mutation.isPending ? (
@@ -334,7 +421,7 @@ function Header({ title }: { title: string }) {
 }
 
 // Field Input Component
-function FieldInput({ field, value, onChange }: { field: ServiceField; value: string; onChange: (value: string) => void }) {
+function FieldInput({ field, value, error, inputRef, onChange, onAddressSelect, countryCode }: { field: ServiceField; value: string; error?: string; inputRef?: (input: TextInput | null) => void; onChange: (value: string) => void; onAddressSelect?: (location: StandardizedLocation) => void; countryCode?: string }) {
   if (field.type === 'select' && field.options?.length) {
     return (
       <View style={styles.fieldWrap}>
@@ -342,7 +429,7 @@ function FieldInput({ field, value, onChange }: { field: ServiceField; value: st
           {field.label}
           {field.required && <Text style={styles.required}> *</Text>}
         </Text>
-        <View style={styles.optionsRow}>
+        <View style={[styles.optionsRow, error && styles.optionsError]}>
           {field.options.map(option => {
             const selected = value === option;
             return (
@@ -358,6 +445,17 @@ function FieldInput({ field, value, onChange }: { field: ServiceField; value: st
             );
           })}
         </View>
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+      </View>
+    );
+  }
+
+  if (/(?:Line1|Address|warehouseLocation)$/.test(field.key)) {
+    return (
+      <View style={styles.fieldWrap}>
+        <Text style={styles.fieldLabel}>{field.label}{field.required && <Text style={styles.required}> *</Text>}</Text>
+        <AddressAutocompleteInput value={value} onChangeText={onChange} onSelect={onAddressSelect} countryCodes={countryCode} inputRef={inputRef} error={Boolean(error)} />
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
       </View>
     );
   }
@@ -369,19 +467,108 @@ function FieldInput({ field, value, onChange }: { field: ServiceField; value: st
         {field.required && <Text style={styles.required}> *</Text>}
       </Text>
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChange}
         placeholder={field.placeholder ?? `Enter ${field.label.toLowerCase()}`}
         placeholderTextColor="#94a3b8"
         keyboardType={field.type === 'number' ? 'numeric' : field.type === 'email' ? 'email-address' : field.type === 'phone' ? 'phone-pad' : 'default'}
         multiline={field.type === 'textarea'}
-        style={[styles.input, field.type === 'textarea' && styles.textarea]}
+        style={[styles.input, field.type === 'textarea' && styles.textarea, error && styles.inputError]}
       />
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   );
 }
 
 // Helpers
+function isFieldVisible(field: ServiceField, values: Record<string, string>) {
+  return !field.showWhen || Object.entries(field.showWhen).every(([key, value]) => values[key] === value);
+}
+
+function applyLocation(
+  fieldKey: string,
+  location: StandardizedLocation,
+  setValues: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  setProviderResult: React.Dispatch<React.SetStateAction<ServiceProviderSearchResult | null>>,
+  setSelectedProvider: React.Dispatch<React.SetStateAction<ServiceProviderOption | null>>,
+) {
+  const prefix = fieldKey.startsWith('pickup') ? 'pickup' : fieldKey.startsWith('destination') ? 'destination' : '';
+  if (!prefix) {
+    setValues(current => ({ ...current, [fieldKey]: location.formattedAddress || location.line1 || '' }));
+    return;
+  }
+  setValues(current => ({
+    ...current,
+    [`${prefix}Line1`]: location.line1 || location.formattedAddress || current[`${prefix}Line1`],
+    [`${prefix}City`]: location.city || current[`${prefix}City`],
+    [`${prefix}District`]: location.district || current[`${prefix}District`],
+    [`${prefix}State`]: location.state || current[`${prefix}State`],
+    [`${prefix}PostalCode`]: location.postalCode || current[`${prefix}PostalCode`],
+    [`${prefix}Country`]: location.country || current[`${prefix}Country`],
+    [`${prefix}CountryCode`]: location.countryCode || current[`${prefix}CountryCode`],
+    [`${prefix}Latitude`]: location.latitude == null ? '' : String(location.latitude),
+    [`${prefix}Longitude`]: location.longitude == null ? '' : String(location.longitude),
+    [`${prefix}PlaceId`]: location.placeId || '',
+  }));
+  setProviderResult(null);
+  setSelectedProvider(null);
+}
+
+function providerInput(values: Record<string, string>) {
+  const address = (prefix: 'pickup' | 'destination') => ({
+    contactName: values[`${prefix}ContactName`],
+    phone: values[`${prefix}Phone`],
+    email: values[`${prefix}Email`] || '',
+    line1: values[`${prefix}Line1`],
+    line2: values[`${prefix}Line2`] || '',
+    city: values[`${prefix}City`],
+    state: values[`${prefix}State`],
+    postalCode: values[`${prefix}PostalCode`],
+    country: values[`${prefix}Country`],
+    countryCode: String(values[`${prefix}CountryCode`] || '').toUpperCase(),
+    latitude: optionalNumber(values[`${prefix}Latitude`]),
+    longitude: optionalNumber(values[`${prefix}Longitude`]),
+    placeId: values[`${prefix}PlaceId`] || undefined,
+  });
+  const optionalNumber = (value?: string) => value ? Number(value) : undefined;
+  return {
+    pickup: address('pickup'),
+    destination: address('destination'),
+    shipment: {
+      description: values.shipmentDescription,
+      quantity: Number(values.quantity),
+      weightKg: Number(values.weightKg),
+      lengthCm: optionalNumber(values.lengthCm),
+      widthCm: optionalNumber(values.widthCm),
+      heightCm: optionalNumber(values.heightCm),
+      declaredValue: Number(values.declaredValue || 0),
+      currency: values.currency,
+      contents: values.contents,
+      countryOfOrigin: values.countryOfOrigin?.toUpperCase(),
+      hsCode: values.hsCode || undefined,
+      incoterm: values.incoterm || 'DAP',
+      insuranceRequested: values.insuranceRequested === 'yes',
+      dangerousGoods: values.dangerousGoods === 'yes',
+      dangerousGoodsDescription: values.dangerousGoodsDescription || undefined,
+    },
+  };
+}
+
+function providerMark(key: ServiceProviderOption['providerKey']) {
+  return ({ dhl: 'DHL', fedex: 'FedEx', shiprocket: 'SR', delhivery: 'D' } as Record<string, string>)[key] ?? key.toUpperCase();
+}
+
+function providerLogoStyle(key: ServiceProviderOption['providerKey']) {
+  const colors: Record<string, string> = { dhl: '#FFCC00', fedex: '#FFFFFF', shiprocket: '#F0EAFF', delhivery: '#E31837' };
+  return { backgroundColor: colors[key] ?? '#EFF6FF' };
+}
+
+function providerLogoTextStyle(key: ServiceProviderOption['providerKey']) {
+  const colors: Record<string, string> = { dhl: '#D40511', fedex: '#4D148C', shiprocket: '#5B2AA8', delhivery: '#FFFFFF' };
+  return { color: colors[key] ?? '#2563EB' };
+}
+
 function initialValues(fields: ServiceField[]) {
   return fields.reduce<Record<string, string>>((acc, field) => {
     acc[field.key] = field.options?.[0] ?? '';
@@ -414,6 +601,8 @@ function groupFieldsByWorkflow(service?: { fields: ServiceField[]; workflowSteps
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
+  flexOne: { flex: 1 },
+  footerSpacer: { height: 120 },
   priceCard: { backgroundColor: '#f8fafc', borderColor: '#e2e8f0', borderRadius: 14, borderWidth: 1, marginTop: 16, padding: 16 },
   priceTitle: { color: '#0f172a', fontSize: 16, fontWeight: '800', marginBottom: 12 },
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 5 },
@@ -422,6 +611,21 @@ const styles = StyleSheet.create({
   priceTotal: { color: '#0f172a', fontSize: 15, fontWeight: '900' },
   priceDivider: { backgroundColor: '#e2e8f0', height: 1, marginVertical: 8 },
   tierHint: { color: '#64748b', fontSize: 12, lineHeight: 18, marginTop: 10 },
+  providerSearchBtn: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 11, flexDirection: 'row', gap: 7, justifyContent: 'center', minHeight: 48 },
+  providerSearchText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  providerCard: { backgroundColor: '#fff', borderColor: '#E2E8F0', borderRadius: 13, borderWidth: 1, gap: 8, marginTop: 10, padding: 13 },
+  providerCardActive: { borderColor: '#2563EB', borderWidth: 2 },
+  providerHead: { alignItems: 'center', flexDirection: 'row', gap: 9 },
+  providerLogo: { alignItems: 'center', backgroundColor: '#EFF6FF', borderRadius: 10, height: 40, justifyContent: 'center', width: 40 },
+  providerLogoText: { fontSize: 10, fontWeight: '900', letterSpacing: -0.3 },
+  providerName: { color: '#0F172A', fontSize: 14, fontWeight: '900' },
+  providerService: { color: '#64748B', fontSize: 11, lineHeight: 17 },
+  providerPrice: { color: '#0F172A', fontSize: 18, fontWeight: '900' },
+  providerBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  providerBadge: { backgroundColor: '#ECFDF3', borderRadius: 20, color: '#067647', fontSize: 9, fontWeight: '800', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
+  providerFeature: { alignItems: 'center', flexDirection: 'row', gap: 5 },
+  providerFeatureText: { color: '#475467', fontSize: 10 },
+  refreshRates: { color: '#2563EB', fontSize: 12, fontWeight: '800', paddingTop: 12, textAlign: 'center' },
   termsRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 9, marginTop: 16 },
   termsText: { color: '#334155', flex: 1, fontSize: 12, lineHeight: 18 },
 
@@ -577,6 +781,9 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     textAlignVertical: 'top',
   },
+  inputError: { borderColor: '#D92D20', borderWidth: 1.5 },
+  optionsError: { borderColor: '#D92D20', borderRadius: 10, borderWidth: 1, padding: 5 },
+  fieldError: { color: '#B42318', fontSize: 11, fontWeight: '700', marginTop: 5 },
 
   // Options
   optionsRow: {

@@ -1,0 +1,69 @@
+import { z } from 'zod';
+
+const addressSchema = z.object({
+  contactName: z.string().trim().min(2).max(120),
+  phone: z.string().trim().min(6).max(30),
+  email: z.string().trim().email().optional().or(z.literal('')),
+  line1: z.string().trim().min(5).max(240),
+  line2: z.string().trim().max(240).optional().default(''),
+  city: z.string().trim().min(2).max(120),
+  state: z.string().trim().min(2).max(120),
+  postalCode: z.string().trim().min(3).max(20),
+  country: z.string().trim().min(2).max(80),
+  countryCode: z.string().trim().length(2).transform(value => value.toUpperCase()),
+  placeId: z.string().trim().max(180).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+});
+
+const shipmentSchema = z.object({
+  description: z.string().trim().min(2).max(240),
+  quantity: z.coerce.number().int().min(1).max(9999),
+  weightKg: z.coerce.number().positive().max(100000),
+  lengthCm: z.coerce.number().positive().max(1000).optional(),
+  widthCm: z.coerce.number().positive().max(1000).optional(),
+  heightCm: z.coerce.number().positive().max(1000).optional(),
+  declaredValue: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
+  currency: z.string().trim().length(3).transform(value => value.toUpperCase()).default('INR'),
+  contents: z.enum(['documents', 'non_documents']).default('non_documents'),
+  dangerousGoods: z.boolean().optional().default(false),
+  dangerousGoodsDescription: z.string().trim().max(500).optional(),
+  insuranceRequested: z.boolean().optional().default(false),
+  incoterm: z.enum(['DAP', 'DDP', 'EXW', 'FCA', 'CPT', 'CIP']).optional().default('DAP'),
+  hsCode: z.string().trim().max(18).optional(),
+  countryOfOrigin: z.string().trim().length(2).transform(value => value.toUpperCase()).optional(),
+}).superRefine((value, context) => {
+  if (value.contents === 'non_documents' && !value.countryOfOrigin) {
+    context.addIssue({ code: 'custom', path: ['countryOfOrigin'], message: 'Country of origin is required for non-document shipments' });
+  }
+  if (value.dangerousGoods) {
+    context.addIssue({
+      code: 'custom',
+      path: ['dangerousGoods'],
+      message: 'Dangerous-goods booking requires carrier-specific classification and is not enabled in this workflow',
+    });
+  }
+});
+
+export const providerSearchSchema = z.object({
+  pickup: addressSchema,
+  destination: addressSchema,
+  shipment: shipmentSchema,
+  pickupDate: z.coerce.date().optional(),
+});
+
+export const providerSelectionSchema = z.object({
+  providerQuoteId: z.string().trim().min(12),
+});
+
+export function parseProviderSearch(input) {
+  const result = providerSearchSchema.safeParse(input);
+  if (!result.success) {
+    const error = new Error(result.error.issues[0]?.message || 'Invalid provider search');
+    error.statusCode = 422;
+    error.code = 'INVALID_PROVIDER_SEARCH';
+    error.fieldErrors = Object.fromEntries(result.error.issues.map(issue => [issue.path.join('.'), issue.message]));
+    throw error;
+  }
+  return result.data;
+}

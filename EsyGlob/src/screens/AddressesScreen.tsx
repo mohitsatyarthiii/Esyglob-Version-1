@@ -25,6 +25,7 @@ import {
   updateAddress,
 } from '../api/account';
 import { ErrorState, LoadingState } from '../components/StateViews';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import { getId } from '../utils/format';
 
 // ─── Palette ────────────────────────────────────────────
@@ -367,13 +368,28 @@ function AddressForm({
 
         <View style={styles.formCard}>
           <Text style={styles.formSectionTitle}>Address Details</Text>
-          <FormField
-            label="Street Address"
-            icon="map-marker-outline"
-            value={form.line1 ?? (form as any).street}
-            onChangeText={line1 => setForm({ ...form, line1 })}
-            placeholder="House/Flat No., Street"
-          />
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Find Street Address</Text>
+            <AddressAutocompleteInput
+              value={form.line1 ?? form.address ?? form.street ?? ''}
+              onChangeText={line1 => setForm({ ...form, line1, address: line1 })}
+              onSelect={location => setForm({
+                ...form,
+                line1: location.line1 || location.formattedAddress,
+                address: location.line1 || location.formattedAddress,
+                city: location.city,
+                district: location.district,
+                state: location.state,
+                country: location.country,
+                countryCode: location.countryCode,
+                pincode: location.postalCode,
+                postalCode: location.postalCode,
+                placeId: location.placeId,
+                latitude: location.latitude,
+                longitude: location.longitude,
+              })}
+            />
+          </View>
           <FormField
             label="Address Line 2 (Optional)"
             icon="map-marker-outline"

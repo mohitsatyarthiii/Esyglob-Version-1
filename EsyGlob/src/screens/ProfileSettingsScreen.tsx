@@ -17,6 +17,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fetchProfileSettings, ProfileSettings, updateProfileSettings } from '../api/account';
 import { uploadFiles } from '../api/marketplace';
 import { useAuth } from '../auth/AuthContext';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RemoteImage from '../components/RemoteImage';
 import { ErrorState, LoadingState } from '../components/StateViews';
 
@@ -274,14 +275,23 @@ function ProfileSettingsScreen() {
               placeholder="Mumbai"
               icon="city"
             />
-            <InputField
-              label="Address"
-              value={form.address}
-              onChangeText={v => updateField('address', v)}
-              multiline
-              placeholder="Street address..."
-              icon="map-marker-outline"
-            />
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>Address</Text>
+              <AddressAutocompleteInput
+                value={form.address ?? ''}
+                onChangeText={v => updateField('address', v)}
+                onSelect={location => {
+                  setForm(prev => ({
+                    ...prev,
+                    address: location.line1 || location.formattedAddress,
+                    city: location.city || prev.city,
+                    country: location.country || prev.country,
+                  }));
+                  setHasChanges(true);
+                }}
+                placeholder="Start typing your business address"
+              />
+            </View>
             <InputField
               label="Company Description"
               value={form.companyDescription}

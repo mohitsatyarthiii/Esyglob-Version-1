@@ -18,6 +18,15 @@ export async function fetchLocation() { return unwrapData(await apiRequest('/loc
 export async function updateLocation(input) { return unwrapData(await apiRequest('/location', { method: 'PUT', body: input })) }
 export async function updateLocationAddress(input) { return unwrapData(await apiRequest('/location/address', { method: 'PATCH', body: input })) }
 export async function toggleLocationTracking(isActive) { return unwrapData(await apiRequest('/location/toggle', { method: 'PUT', body: { isActive } })) }
+export async function searchAddressSuggestions(input, sessionToken, countryCodes = '') {
+  return unwrapData(await apiRequest('/location/autocomplete/search', { query: { input, sessionToken, countryCodes }, cache: false })) || {}
+}
+export async function resolveAddressSuggestion(placeId, sessionToken) {
+  return unwrapData(await apiRequest('/location/autocomplete/resolve', { query: { placeId, sessionToken }, cache: false })) || {}
+}
+export async function reverseAddressCoordinates(latitude, longitude) {
+  return unwrapData(await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude }, cache: false })) || {}
+}
 
 export async function fetchWallet(role) { return unwrapData(await apiRequest('/wallet', { query: { role }, cache: false })) || {} }
 export async function addPaymentMethod(input) { return unwrapData(await apiRequest('/wallet/payment-methods', { method: 'POST', body: input })) }
@@ -166,3 +175,32 @@ export async function updateSellerProduct(id, input) {
   return data.product || data
 }
 export async function deleteSellerProduct(id) { return unwrapData(await apiRequest(`/products/${id}`, { method: 'DELETE' })) }
+export async function previewBulkSellerProducts(file, status = 'draft') {
+  const body = new FormData()
+  body.append('file', file)
+  body.append('status', status)
+  return unwrapData(await apiRequest('/products/bulk/import/preview', {
+    method: 'POST',
+    body,
+    timeoutMs: 120_000,
+    cache: false,
+  })) || {}
+}
+export async function executeBulkSellerProducts(importId) {
+  return unwrapData(await apiRequest('/products/bulk/import/execute', {
+    method: 'POST',
+    body: { importId },
+    timeoutMs: 120_000,
+    cache: false,
+  })) || {}
+}
+export async function fetchBulkSellerProductHistory(limit = 10) {
+  const data = unwrapData(await apiRequest('/products/bulk/import/history', {
+    query: { limit },
+    cache: false,
+  })) || {}
+  return normalizeList(data, ['imports', 'items'])
+}
+export function bulkSellerProductTemplateUrl(type = 'xlsx') {
+  return buildApiUrl('/products/bulk/import/template', { type })
+}

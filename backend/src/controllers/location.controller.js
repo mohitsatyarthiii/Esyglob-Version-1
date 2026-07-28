@@ -1,7 +1,36 @@
 import LocationService from '../services/location.service.js';
+import AddressAutocompleteService from '../services/address-autocomplete.service.js';
 import { z } from 'zod';
 
 class LocationController {
+  static async autocomplete(req, res) {
+    try {
+      return res.json(await AddressAutocompleteService.search(req.query));
+    } catch (error) {
+      return res.status(error.statusCode || error.response?.status || 502).json({ error: error.message });
+    }
+  }
+
+  static async resolveAddress(req, res) {
+    try {
+      return res.json(await AddressAutocompleteService.resolve(req.query));
+    } catch (error) {
+      return res.status(error.statusCode || error.response?.status || 502).json({ error: error.message });
+    }
+  }
+
+  static async reverseAddress(req, res) {
+    try {
+      return res.json(await AddressAutocompleteService.reverse(req.query));
+    } catch (error) {
+      return res.status(error.statusCode || error.response?.status || 502).json({ error: error.message });
+    }
+  }
+
+  static async autocompleteCapabilities(req, res) {
+    return res.json(AddressAutocompleteService.capabilities());
+  }
+
   /**
    * GET - Get current location
    */

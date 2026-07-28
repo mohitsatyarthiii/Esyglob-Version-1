@@ -12,6 +12,7 @@ export type ProfileSettings = {
   avatarUrl?: string;
   country?: string;
   city?: string;
+  district?: string;
   address?: string;
   businessType?: string;
   companyDescription?: string;
@@ -48,13 +49,46 @@ export type AddressBookItem = {
   line1?: string;
   line2?: string;
   street?: string;
+  address?: string;
   city?: string;
+  district?: string;
   state?: string;
   country?: string;
   pincode?: string;
   postalCode?: string;
   addressType?: string;
   isDefault?: boolean;
+  countryCode?: string;
+  placeId?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type StandardizedLocation = {
+  placeId?: string;
+  formattedAddress: string;
+  line1?: string;
+  city?: string;
+  district?: string;
+  street?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  countryCode?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+export type AddressSuggestion = {
+  placeId: string;
+  label: string;
+  primaryText: string;
+  secondaryText?: string;
+  city?: string;
+  district?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
 };
 
 // ─── Location Types ────────────────────────────────────────────────────
@@ -270,14 +304,37 @@ export async function fetchAddresses() {
   return normalizeList<AddressBookItem>(payload, ['addresses', 'items']);
 }
 
+export async function searchAddressSuggestions(input: string, sessionToken: string, countryCodes = '') {
+  const payload = await apiRequest('/location/autocomplete/search', { query: { input, sessionToken, countryCodes } });
+  return unwrapData<{ suggestions?: AddressSuggestion[] }>(payload).suggestions ?? [];
+}
+
+export async function resolveAddressSuggestion(placeId: string, sessionToken: string) {
+  const payload = await apiRequest('/location/autocomplete/resolve', { query: { placeId, sessionToken } });
+  return unwrapData<{ location?: StandardizedLocation }>(payload).location;
+}
+
+export async function reverseAddressCoordinates(latitude: number, longitude: number) {
+  const payload = await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude } });
+  return unwrapData<{ location?: StandardizedLocation }>(payload).location;
+}
+
 export async function createAddress(input: AddressBookItem) {
-  const payload = await apiRequest('/addresses', { method: 'POST', body: input });
+  const payload = await apiRequest('/addresses', { method: 'POST', body: normalizeAddressInput(input) });
   return unwrapData(payload);
 }
 
 export async function updateAddress(addressId: string, input: AddressBookItem) {
-  const payload = await apiRequest(`/addresses/${addressId}`, { method: 'PUT', body: input });
+  const payload = await apiRequest(`/addresses/${addressId}`, { method: 'PUT', body: normalizeAddressInput(input) });
   return unwrapData(payload);
+}
+
+function normalizeAddressInput(input: AddressBookItem) {
+  return {
+    ...input,
+    address: input.address || input.line1 || input.street || '',
+    postalCode: input.postalCode || input.pincode || '',
+  };
 }
 
 export async function setDefaultAddress(addressId: string) {

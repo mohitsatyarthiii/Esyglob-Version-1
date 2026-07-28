@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   addPaymentMethod, fetchWallet, managePaymentMethod, removePaymentMethod, requestWithdrawal,
 } from '../api/account'
+import { fetchServiceRequests } from '../api/services'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { Money, StatusBadge } from '../components/TradeUI'
@@ -15,6 +16,7 @@ import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
 import { useConfirm, useToast } from '../components/EnterpriseUX'
+import ProviderBrand from '../components/ProviderBrand'
 
 export default function WalletPage() {
   const confirm = useConfirm()
@@ -28,18 +30,39 @@ export default function WalletPage() {
   const [error, setError] = useState('')
   const [methodBusy, setMethodBusy] = useState('')
   const query = useAsyncData(useCallback(() => fetchWallet(role), [role]))
+  const serviceQuery = useAsyncData(useCallback(() => fetchServiceRequests({ role, limit: 100 }), [role]))
   const data = query.data || {}
   const summary = data.summary || {}
   const methods = data.paymentMethods || []
-  const activity = useMemo(() => [
-    ...(data.transactions || []).map(item => ({ ...item, section: 'transaction' })),
-    ...(data.withdrawals || []).map(item => ({ ...item, section: 'withdrawal', direction: 'debit' })),
-    ...(data.payments || []).map(item => ({ ...item, section: 'payment', direction: 'debit' })),
-  ].filter(item => filter === 'all' || item.direction === filter)
+  const activity = useMemo(() => {
+    const services = serviceQuery.data || []
+    const serviceById = new Map(services.map(item => [resolveId(item), item]))
+    const paymentEntityIds = new Set((data.payments || []).map(item => resolveId(item.entityId)).filter(Boolean))
+    const servicePayments = services.filter(item => item.paymentStatus === 'paid' && !paymentEntityIds.has(resolveId(item))).map(item => ({
+      _id: `service-${resolveId(item)}`,
+      amount: item.pricing?.totalPayable,
+      currency: item.pricing?.currency,
+      createdAt: item.updatedAt || item.createdAt,
+      description: item.serviceTitle,
+      direction: 'debit',
+      providerKey: item.provider?.key,
+      reference: item.requestNumber,
+      section: 'service_payment',
+      status: 'completed',
+    }))
+    return [
+      ...(data.transactions || []).map(item => ({ ...item, section: 'transaction' })),
+      ...(data.withdrawals || []).map(item => ({ ...item, section: 'withdrawal', direction: 'debit' })),
+      ...(data.payments || []).map(item => {
+        const service = serviceById.get(resolveId(item.entityId))
+        return { ...item, section: 'payment', direction: 'debit', providerKey: service?.provider?.key }
+      }),
+      ...servicePayments,
+    ].filter(item => filter === 'all' || item.direction === filter)
     .filter(item => !search || [item.description, item.type, item.reference, item.status]
       .some(value => String(value || '').toLowerCase().includes(search.toLowerCase())))
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
-  [data.payments, data.transactions, data.withdrawals, filter, search])
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  }, [data.payments, data.transactions, data.withdrawals, filter, search, serviceQuery.data])
 
   async function manage(method, action) {
     const key = `${resolveId(method)}:${action}`
@@ -101,7 +124,7 @@ export default function WalletPage() {
       <section className="module-panel">
         <div className="compact-heading"><h2>Wallet activity</h2><div className="ledger-filters"><UnifiedSearchInput compact suggestions={false} value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search ledger" /><select value={filter} onChange={event => setFilter(event.target.value)}><option value="all">All activity</option><option value="credit">Credits</option><option value="debit">Debits</option></select></div></div>
         {activity.length ? <div className="wallet-ledger">{activity.map((item, index) => <article key={resolveId(item) || index}>
-          <i className={item.direction === 'credit' ? 'credit' : 'debit'}>{item.direction === 'credit' ? <ArrowDownLeft /> : <ArrowUpRight />}</i>
+          <i className={item.direction === 'credit' ? 'credit' : 'debit'}>{item.providerKey ? <ProviderBrand providerKey={item.providerKey} compact /> : item.direction === 'credit' ? <ArrowDownLeft /> : <ArrowUpRight />}</i>
           <div><b>{item.description || String(item.type || item.section).replaceAll('_', ' ')}</b><p>{item.reference || item.transactionNumber || item.paymentId || item.withdrawalNumber || 'Wallet activity'}</p></div>
           <time>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : ''}</time><StatusBadge status={item.status || item.paymentStatus || 'completed'} />
           <strong className={item.direction === 'credit' ? 'credit' : 'debit'}>{item.direction === 'credit' ? '+' : '−'}<Money value={item.amount || item.totalAmount} currency={item.currency} /></strong>

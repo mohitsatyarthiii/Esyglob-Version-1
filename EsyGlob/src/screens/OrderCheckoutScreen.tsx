@@ -30,7 +30,7 @@ import { ErrorState, LoadingState } from '../components/StateViews';
 import { getId } from '../utils/format';
 import { useCurrency } from '../currency/CurrencyContext';
 import { createAddress, deleteAddress, fetchAddresses, setDefaultAddress, updateAddress, AddressBookItem } from '../api/account';
-import { useLocationTracking } from '../hooks/useLocationTracking';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import { firstImage } from '../utils/images';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -136,7 +136,6 @@ function getOptionLabel(option: LogisticsOption): string {
 function OrderCheckoutScreen() {
   const { formatPrice, selectedCurrency } = useCurrency();
   const queryClient = useQueryClient();
-  const { getCurrentPositionOnce } = useLocationTracking();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { mode, productId, chatId, quotationId } = route.params as RouteParams;
@@ -159,7 +158,6 @@ function OrderCheckoutScreen() {
   const [selectedAddressId, setSelectedAddressId] = useState<string | undefined>();
   const [landmark, setLandmark] = useState('');
   const [addressErrors, setAddressErrors] = useState<Record<string, string>>({});
-  const [detectingLocation, setDetectingLocation] = useState(false);
   const [pendingOrderId, setPendingOrderId] = useState('');
 
   const addresses = useQuery({ queryKey: ['addresses'], queryFn: fetchAddresses });
@@ -195,21 +193,6 @@ function OrderCheckoutScreen() {
     const saved = (editingAddressId ? await updateAddress(editingAddressId, input) : await createAddress(input)) as AddressBookItem;
     await queryClient.invalidateQueries({ queryKey: ['addresses'] });
     setEditingAddressId(undefined); setSelectedAddressId(saved._id ?? saved.id); setAddressPickerOpen(false);
-  };
-
-  const detectLocation = async () => {
-    setDetectingLocation(true);
-    try {
-      const coords = await getCurrentPositionOnce();
-      if (!coords) return;
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${coords.latitude}&lon=${coords.longitude}`, { headers: { Accept: 'application/json', 'User-Agent': 'EsyGlob-Mobile/1.0' } });
-      if (!response.ok) throw new Error('Address lookup failed');
-      const result = await response.json(); const value = result.address ?? {};
-      setAddress([value.house_number, value.road].filter(Boolean).join(' ') || result.display_name || '');
-      setLandmark(value.suburb ?? value.neighbourhood ?? ''); setCity(value.city ?? value.town ?? value.village ?? '');
-      setState(value.state ?? ''); setCountry(value.country ?? ''); setPostalCode(value.postcode ?? '');
-    } catch (error) { Alert.alert('Location unavailable', error instanceof Error ? error.message : 'Please enter your address manually.'); }
-    finally { setDetectingLocation(false); }
   };
 
   // ── Queries ────────────────────────────────────────────────────────────
@@ -410,14 +393,28 @@ function OrderCheckoutScreen() {
         <View style={styles.card}>
           <View style={styles.sectionHeaderRow}><View><Text style={styles.sectionTitle}>Shipping Address</Text><Text style={styles.sectionHint}>Choose a saved address or enter a new one</Text></View><Pressable onPress={() => setAddressPickerOpen(true)} style={styles.manageButton}><Icon name="book-open-outline" size={16} color="#2563EB" /><Text style={styles.manageButtonText}>Saved</Text></Pressable></View>
           {selectedAddressId ? <View style={styles.selectedAddressBanner}><Icon name="check-circle" size={18} color="#059669" /><Text style={styles.selectedAddressText}>Saved delivery address selected</Text></View> : null}
-          <Pressable onPress={detectLocation} disabled={detectingLocation} style={styles.locationButton}>{detectingLocation ? <ActivityIndicator size="small" color="#2563EB" /> : <Icon name="crosshairs-gps" size={18} color="#2563EB" />}<Text style={styles.locationButtonText}>{detectingLocation ? 'Detecting address…' : 'Use Current Location'}</Text></Pressable>
           <Field label="Full Name *" value={fullName} onChangeText={setFullName} />
           <InlineError value={addressErrors.fullName} />
           <Field label="Company" value={company} onChangeText={setCompany} />
           <Field label="Email *" value={email} onChangeText={setEmail} keyboardType="email-address" />
           <Field label="Phone *" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
           <InlineError value={addressErrors.phone} />
-          <Field label="Address *" value={address} onChangeText={setAddress} multiline />
+          <Text style={styles.label}>Address *</Text>
+          <AddressAutocompleteInput
+            value={address}
+            onChangeText={setAddress}
+            error={Boolean(addressErrors.address)}
+            placeholder="Search any delivery address"
+            onSelect={location => {
+              setAddress(location.line1 || location.street || location.formattedAddress);
+              setLandmark(location.district || '');
+              setCity(location.city || '');
+              setState(location.state || '');
+              setCountry(location.country || '');
+              setPostalCode(location.postalCode || '');
+              setAddressErrors({});
+            }}
+          />
           <InlineError value={addressErrors.address} />
           <Field label="Landmark / Area" value={landmark} onChangeText={setLandmark} />
           <View style={styles.row}>

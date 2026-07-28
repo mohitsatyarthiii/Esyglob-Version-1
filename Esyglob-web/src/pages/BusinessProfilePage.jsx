@@ -33,6 +33,7 @@ import {
 } from '../api/verification'
 import { uploadFiles } from '../api/trade'
 import AppShell from '../components/AppShell'
+import AddressAutocomplete from '../components/AddressAutocomplete'
 import { SafeImage } from '../components/MarketplaceCards'
 
 const sections = [
@@ -284,7 +285,7 @@ function ListField({ label, value, onChange }) {
   useEffect(() => setDraft(serialized), [serialized])
   return <label><span>{label}</span><input value={draft} placeholder="Separate multiple values with commas" onChange={(event) => setDraft(event.target.value)} onBlur={() => onChange(split(draft))} /></label>
 }
-function AddressFields({ value, onChange }) { return <div className="business-form-grid">{['street', 'city', 'state', 'country', 'pincode'].map((key) => <Field label={formatStatus(key)} value={value?.[key]} onChange={(next) => onChange({ ...value, [key]: next })} key={key} />)}</div> }
+function AddressFields({ value, onChange }) { return <div className="business-form-grid"><label className="wide"><span>Find address</span><AddressAutocomplete value={value?.street || ''} onChange={street => onChange({ ...value, street })} onSelect={location => onChange({ ...value, street: location.line1 || location.formattedAddress, district: location.district, city: location.city, state: location.state, country: location.country, pincode: location.postalCode, countryCode: location.countryCode, placeId: location.placeId, latitude: location.latitude, longitude: location.longitude })} /></label>{['district', 'city', 'state', 'country', 'pincode'].map((key) => <Field label={formatStatus(key)} value={value?.[key]} onChange={(next) => onChange({ ...value, [key]: next })} key={key} />)}</div> }
 function TrustState({ label, status }) { const verified = ['verified', 'approved'].includes(String(status).toLowerCase()); return <span className={verified ? 'verified' : ''}>{verified ? <Check /> : <Clock3 />}<small>{label}</small><b>{verified ? 'Verified' : formatStatus(status)}</b></span> }
 
 function MediaGroup({ title, icon: Icon, values = [], upload, remove, busy, single, accept = 'image/*' }) {

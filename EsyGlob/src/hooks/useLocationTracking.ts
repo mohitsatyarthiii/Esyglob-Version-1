@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus, PermissionsAndroid, Platform } from 'react-native';
 import Geolocation, { GeoError, GeoPosition } from 'react-native-geolocation-service';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCurrentLocation, updateCurrentLocation, updateLocationAddress } from '../api/account';
+import { getCurrentLocation, reverseAddressCoordinates, updateCurrentLocation, updateLocationAddress } from '../api/account';
 import { useAuth } from '../auth/AuthContext';
 
 export type TrackedCoordinates = { latitude: number; longitude: number; accuracy?: number; altitude?: number; speed?: number; heading?: number };
@@ -19,12 +19,9 @@ function coordinates(position: GeoPosition): TrackedCoordinates {
 }
 
 async function reverseGeocode(value: TrackedCoordinates) {
-  const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${value.latitude}&lon=${value.longitude}`, { headers: { Accept: 'application/json', 'User-Agent': 'EsyGlob-Mobile/1.0 (support@esyglob.com)' } });
-  if (!response.ok) return;
-  const result = await response.json();
-  const address = result?.address;
+  const address = await reverseAddressCoordinates(value.latitude, value.longitude);
   if (!address) return;
-  await updateLocationAddress({ formatted: result.display_name ?? '', street: [address.house_number, address.road].filter(Boolean).join(' '), city: address.city ?? address.town ?? address.village ?? '', state: address.state ?? '', country: address.country ?? '', postalCode: address.postcode ?? '' });
+  await updateLocationAddress({ formatted: address.formattedAddress ?? '', street: address.street ?? address.line1 ?? '', city: address.city ?? '', state: address.state ?? '', country: address.country ?? '', postalCode: address.postalCode ?? '' });
 }
 
 export function useLocationTracking() {

@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fetchFactoryProfile, saveFactoryProfile, uploadFiles } from '../api/marketplace';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RemoteImage from '../components/RemoteImage';
 import { ErrorState, LoadingState } from '../components/StateViews';
 
@@ -445,12 +446,22 @@ function SellerFactoryScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Factory Address</Text>
           <View style={styles.card}>
-            <InputField
-              label="Street Address"
-              value={form.street}
-              onChangeText={v => updateField('street', v)}
-              placeholder="e.g. Plot 42, Industrial Area"
-            />
+            <View style={styles.fieldWrap}>
+              <Text style={styles.label}>Street Address</Text>
+              <AddressAutocompleteInput
+                value={form.street}
+                onChangeText={v => updateField('street', v)}
+                onSelect={location => setForm(prev => ({
+                  ...prev,
+                  street: location.line1 || location.formattedAddress,
+                  city: location.city || prev.city,
+                  state: location.state || prev.state,
+                  country: location.country || prev.country,
+                  pincode: location.postalCode || prev.pincode,
+                }))}
+                placeholder="Start typing the factory address"
+              />
+            </View>
             <View style={styles.row}>
               <View style={styles.halfField}>
                 <InputField

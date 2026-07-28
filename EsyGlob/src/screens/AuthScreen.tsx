@@ -64,7 +64,8 @@ function getPasswordStrength(password: string) {
   const results = checks.map(c => ({ ...c, passed: c.test(password) }));
   const score = results.filter(r => r.passed).length;
   
-  let label = 'Weak', color = '#EF4444', width = '20%';
+  let label = 'Weak', color = '#EF4444';
+  let width: `${number}%` = '20%';
   if (score >= 5) { label = 'Strong'; color = '#10B981'; width = '100%'; }
   else if (score >= 4) { label = 'Good'; color = '#3B82F6'; width = '80%'; }
   else if (score >= 3) { label = 'Fair'; color = '#F59E0B'; width = '60%'; }

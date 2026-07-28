@@ -7,6 +7,7 @@ import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import useAsyncData from '../hooks/useAsyncData'
 import { TradeSkeleton } from './RfqsPage'
+import AddressAutocomplete from '../components/AddressAutocomplete'
 
 const interests = ['Agriculture', 'Steel', 'Electronics', 'Textiles', 'Food', 'Chemicals', 'Industrial Machinery', 'Construction', 'Packaging']
 const countries = ['India', 'China', 'United Arab Emirates', 'United States', 'Germany', 'Vietnam', 'Bangladesh', 'Turkey']
@@ -30,7 +31,7 @@ export default function BuyerOnboardingPage() {
     fullName: '', email: '', phone: '', companyName: '', designation: '',
     businessInterests: [], productCategories: [], expectedOrderQuantity: '',
     sourcingCountries: [], paymentMethods: [], shippingMethods: [],
-    country: '', state: '', city: '', address: '', postalCode: '',
+    country: '', countryCode: '', state: '', city: '', address: '', postalCode: '', placeId: '', latitude: undefined, longitude: undefined,
   })
   useEffect(() => {
     if (!profileQuery.data) return
@@ -62,7 +63,7 @@ export default function BuyerOnboardingPage() {
       await createAddress({
         fullName: form.fullName, phone: form.phone, companyName: form.companyName,
         address: form.address, line1: form.address, city: form.city, state: form.state,
-        country: form.country, postalCode: form.postalCode, pincode: form.postalCode, isDefault: true,
+        country: form.country, countryCode: form.countryCode, postalCode: form.postalCode, pincode: form.postalCode, placeId: form.placeId, latitude: form.latitude, longitude: form.longitude, isDefault: true,
       })
       await completeBuyerOnboarding(form)
       await refresh()
@@ -79,7 +80,7 @@ export default function BuyerOnboardingPage() {
       {step === 0 && <div className="form-grid"><Field label="Full name" name="fullName" form={form} setForm={setForm} required /><Field label="Phone number" name="phone" form={form} setForm={setForm} required /><Field label="Company (optional)" name="companyName" form={form} setForm={setForm} /><Field label="Designation" name="designation" form={form} setForm={setForm} /></div>}
       {step === 1 && <ChoiceGroup title="Industries you source from" values={interests} selected={form.businessInterests} onToggle={value => toggle('businessInterests', value)} />}
       {step === 2 && <><ChoiceGroup title="Preferred product categories" values={interests} selected={form.productCategories} onToggle={value => toggle('productCategories', value)} /><label>Expected order quantity<input value={form.expectedOrderQuantity} onChange={event => setForm({ ...form, expectedOrderQuantity: event.target.value })} placeholder="For example: 500–2,000 units monthly" /></label><ChoiceGroup title="Preferred sourcing countries" values={countries} selected={form.sourcingCountries} onToggle={value => toggle('sourcingCountries', value)} /><ChoiceGroup title="Payment methods" values={payments} selected={form.paymentMethods} onToggle={value => toggle('paymentMethods', value)} /><ChoiceGroup title="Shipping methods" values={shipping} selected={form.shippingMethods} onToggle={value => toggle('shippingMethods', value)} /></>}
-      {step === 3 && <div className="form-grid"><Field label="Country" name="country" form={form} setForm={setForm} required /><Field label="State" name="state" form={form} setForm={setForm} required /><Field label="City" name="city" form={form} setForm={setForm} required /><Field label="Postal code" name="postalCode" form={form} setForm={setForm} required /><label className="field-wide">Complete address<textarea value={form.address} onChange={event => setForm({ ...form, address: event.target.value })} required /></label></div>}
+      {step === 3 && <div className="form-grid"><label className="field-wide">Find delivery address<AddressAutocomplete value={form.address} onChange={address => setForm(current => ({ ...current, address }))} onSelect={location => setForm(current => ({ ...current, address: location.line1 || location.formattedAddress, country: location.country, countryCode: location.countryCode, state: location.state, city: location.city, district: location.district, postalCode: location.postalCode, placeId: location.placeId, latitude: location.latitude, longitude: location.longitude }))} /></label><Field label="Country" name="country" form={form} setForm={setForm} required /><Field label="State" name="state" form={form} setForm={setForm} required /><Field label="City" name="city" form={form} setForm={setForm} required /><Field label="Postal code" name="postalCode" form={form} setForm={setForm} required /></div>}
       {error && <p className="action-error">{error}</p>}<footer><button className="button button--secondary" disabled={!step || busy} onClick={() => { setStep(current => current - 1); setError('') }}><ArrowLeft /> Back</button><button className="button button--primary" disabled={busy} onClick={next}>{busy ? 'Completing…' : step === 3 ? 'Complete onboarding' : 'Continue'} <ArrowRight /></button></footer>
     </section>
   </div></AppShell>

@@ -56,6 +56,18 @@ const uploadMultipleFiles = multer({
  */
 export const uploadSingle = uploadSingleFile.single('file');
 
+const bulkProductUpload = multer({
+  storage,
+  fileFilter(req, file, cb) {
+    const extension = file.originalname?.split('.').pop()?.toLowerCase();
+    const allowed = ['csv', 'xlsx', 'xls', 'json'].includes(extension);
+    cb(allowed ? null : new Error('Unsupported bulk product file type'), allowed);
+  },
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+});
+
+export const uploadBulkProductFile = bulkProductUpload.single('file');
+
 /**
  * Single-file middleware factory for endpoints that use a non-default field name.
  */

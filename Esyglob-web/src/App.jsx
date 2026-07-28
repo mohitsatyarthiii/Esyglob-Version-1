@@ -47,6 +47,7 @@ const DocumentsPage = lazy(() => import('./pages/DocumentsPage'))
 const BuyerOnboardingPage = lazy(() => import('./pages/BuyerOnboardingPage'))
 const SellerProductsPage = lazy(() => import('./pages/SellerProductsPage'))
 const SellerProductFormPage = lazy(() => import('./pages/SellerProductFormPage'))
+const SellerProductBulkUploadPage = lazy(() => import('./pages/SellerProductBulkUploadPage'))
 const AIChatPage = lazy(() => import('./pages/AIChatPage'))
 const MarketInsightsPage = lazy(() => import('./pages/MarketInsightsPage'))
 const TradeCalculatorPage = lazy(() => import('./pages/TradeCalculatorPage'))
@@ -116,6 +117,7 @@ export default function App() {
       <Route path="/buyer/onboarding" element={<BuyerOnboardingPage />} />
       <Route path="/seller/products" element={<SellerProductsPage />} />
       <Route path="/seller/products/new" element={<SellerProductFormPage />} />
+      <Route path="/seller/products/bulk" element={<SellerProductBulkUploadPage />} />
       <Route path="/seller/products/:productId/edit" element={<SellerProductFormPage />} />
       <Route path="/ai-chat" element={<AIErrorBoundary><AIChatPage /></AIErrorBoundary>} />
       <Route path="/market-insights" element={<MarketInsightsPage />} />

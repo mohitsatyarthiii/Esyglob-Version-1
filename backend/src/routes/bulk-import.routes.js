@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as bulkImportController from '../controllers/bulk-import.controller.js';
 import { authenticate, requireAuth, requireRole } from '../middlewares/auth.middleware.js';
-import { uploadSingle } from '../middlewares/upload.middleware.js';
+import { uploadBulkProductFile } from '../middlewares/upload.middleware.js';
 
 const router = Router();
 
@@ -11,7 +11,7 @@ router.post(
   authenticate,
   requireAuth,
   requireRole('seller'),
-  uploadSingle,
+  uploadBulkProductFile,
   bulkImportController.previewBulkUpload
 );
 

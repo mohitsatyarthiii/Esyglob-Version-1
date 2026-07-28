@@ -16,7 +16,7 @@ export const resources = {
     title: 'Sellers', description: 'Supplier and manufacturer business accounts.', icon: Store,
     search: 'Search company or business contact',
     columns: [['Company', 'companyName'], ['Type', 'companyType'], ['Country', 'country'], ['Status', (row) => row.status || (row.isVerified ? 'verified' : 'pending')], ['Updated', 'updatedAt']],
-    fields: [['companyName', 'Company name'], ['companyType', 'Business type', 'select', ['manufacturer', 'wholesaler', 'distributor', 'trader', 'exporter', 'other']], ['businessEmail', 'Business email'], ['businessPhone', 'Business phone'], ['country', 'Country'], ['city', 'City'], ['isVerified', 'Verified', 'boolean']],
+    fields: [['companyName', 'Company name'], ['companyType', 'Business type', 'select', ['manufacturer', 'wholesaler', 'distributor', 'trader', 'exporter', 'other']], ['businessEmail', 'Business email'], ['businessPhone', 'Business phone'], ['address', 'Business address', 'address'], ['country', 'Country'], ['city', 'City'], ['isVerified', 'Verified', 'boolean']],
   },
   verifications: {
     title: 'Seller verification', description: 'Review business evidence, factories and trust signals.', icon: BadgeCheck,

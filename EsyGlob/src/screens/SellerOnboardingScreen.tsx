@@ -20,6 +20,7 @@ import {
   saveSellerOnboarding,
   uploadSellerDocument,
 } from '../api/marketplace';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import { ErrorState, LoadingState } from '../components/StateViews';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
@@ -468,12 +469,25 @@ function SellerOnboardingScreen() {
           {/* Step 2: Address */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Business Address</Text>
-            <InputField
-              label="Street Address"
-              value={form.street}
-              onChangeText={v => updateField('street', v)}
-              placeholder="Plot 42, Industrial Area"
-            />
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>Street Address</Text>
+              <AddressAutocompleteInput
+                value={form.street}
+                onChangeText={v => updateField('street', v)}
+                onSelect={location => {
+                  userEdited.current = true;
+                  setForm(prev => ({
+                    ...prev,
+                    street: location.line1 || location.formattedAddress,
+                    city: location.city || prev.city,
+                    state: location.state || prev.state,
+                    country: location.country || prev.country,
+                    pincode: location.postalCode || prev.pincode,
+                  }));
+                }}
+                placeholder="Start typing the business address"
+              />
+            </View>
             <View style={styles.row}>
               <View style={styles.half}>
                 <InputField

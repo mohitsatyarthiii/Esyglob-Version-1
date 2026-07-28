@@ -7,9 +7,6 @@ import {
   Text,
   View,
   StatusBar,
-  ScrollView,
-  Dimensions,
-  Platform,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -19,8 +16,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fetchAggregatedServiceActivity } from '../api/services';
 import { useAuth } from '../auth/AuthContext';
 import { SERVICE_HUBS } from '../services/serviceHubs';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Design System ──────────────────────────────────────────────────────────
 
@@ -249,7 +244,7 @@ const getDefaultHubDetails = (hub: typeof SERVICE_HUBS[0]) => ({
     { icon: 'account-check', label: 'Providers', value: '100+' },
     { icon: 'star', label: 'Rating', value: '4.5/5' },
   ],
-  features: hub.items.slice(0, 4).map((item, i) => ({
+  features: hub.items.slice(0, 4).map(item => ({
     icon: item.icon || 'circle-small',
     title: item.title,
     desc: 'Professional trade service with verified providers',
@@ -277,8 +272,13 @@ function QuickStats({ totals }: { totals: any }) {
           </View>
         ))}
       </View>
+
     </View>
   );
+}
+
+function ProviderMark({ name, background, color }: { name: string; background: string; color: string }) {
+  return <View style={[cardStyles.providerMark, { backgroundColor: background }]}><Text style={[cardStyles.providerMarkText, { color }]}>{name}</Text></View>;
 }
 
 const quickStyles = StyleSheet.create({
@@ -326,11 +326,6 @@ function ServiceHubCard({
   const hasPending = counts.pending > 0;
   const details = HUB_DETAILS[hub.key] || getDefaultHubDetails(hub);
 
-  const borderColors = [
-    '#2563EB', '#7C3AED', '#059669', '#F97316', '#0891B2', '#4F46E5', '#DC2626', '#CA8A04', '#0D9488', '#9333EA',
-  ];
-  const borderColor = borderColors[Math.abs(hub.key.split('').reduce((s, c) => s + c.charCodeAt(0), 0)) % borderColors.length];
-
   return (
     <Pressable
       onPress={() => hub.key === 'assurance' ? navigation.navigate('TradeAssurance') : navigation.navigate('ServiceHub', { hubKey: hub.key })}
@@ -363,6 +358,16 @@ function ServiceHubCard({
           </View>
         )}
       </View>
+
+      {hub.key === 'logistics' ? <View style={cardStyles.providerRow}>
+        <Text style={cardStyles.providerLabel}>Live shipping integrations</Text>
+        <View style={cardStyles.providerMarks}>
+          <ProviderMark name="DHL" background="#FFCC00" color="#D40511" />
+          <ProviderMark name="FedEx" background="#FFFFFF" color="#4D148C" />
+          <ProviderMark name="Shiprocket" background="#F0EAFF" color="#5B2AA8" />
+          <ProviderMark name="Delhivery" background="#E31837" color="#FFFFFF" />
+        </View>
+      </View> : null}
 
       {/* ── Stats Row ── */}
       {details.stats.length > 0 && (
@@ -497,6 +502,11 @@ const cardStyles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+  providerRow: { gap: 7, paddingHorizontal: 16, paddingBottom: 13 },
+  providerLabel: { color: D.textTertiary, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  providerMarks: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  providerMark: { alignItems: 'center', borderColor: D.border, borderRadius: 6, borderWidth: 1, justifyContent: 'center', minHeight: 26, paddingHorizontal: 8 },
+  providerMarkText: { fontSize: 9, fontWeight: '900' },
 
   // Stats Row
   statsRow: {

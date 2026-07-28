@@ -179,6 +179,13 @@ export function GlobalFormUX() {
         const invalidFields = [...form.querySelectorAll(selector)].filter((field) => !field.disabled && !field.validity.valid)
         invalidFields.forEach(showError)
         const first = invalidFields[0]
+        window.dispatchEvent(new CustomEvent('esyglob:toast', {
+          detail: {
+            type: 'warning',
+            title: 'Required information missing',
+            message: `Please correct ${invalidFields.length === 1 ? 'the highlighted field' : `${invalidFields.length} highlighted fields`}.`,
+          },
+        }))
         first?.scrollIntoView({ behavior: 'smooth', block: 'center' })
         window.setTimeout(() => first?.focus({ preventScroll: true }), 250)
         return

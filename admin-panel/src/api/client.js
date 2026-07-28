@@ -71,5 +71,8 @@ export const updateResource = (resource, id, body) => client.patch(`/admin/${res
 export const deleteResource = (resource, id) => client.delete(`/admin/${resource}/${id}`).then(({ data }) => data.data)
 export const runResourceAction = (resource, id, body) => client.post(`/admin/${resource}/${id}/actions`, body).then(({ data }) => data.data)
 export const reviewVerificationDocument = (verificationId, documentId, body) => client.post(`/admin/verifications/${verificationId}/documents/${documentId}/review`, body).then(({ data }) => data.data)
+export const searchAddressSuggestions = (input) => client.get('/location/autocomplete/search', { params: { input } }).then(({ data }) => data.suggestions || [])
+export const resolveAddressSuggestion = (placeId) => client.get('/location/autocomplete/resolve', { params: { placeId } }).then(({ data }) => data.location)
+export const reverseAddressCoordinates = (latitude, longitude) => client.get('/location/autocomplete/reverse', { params: { latitude, longitude } }).then(({ data }) => data.location)
 
 export default client

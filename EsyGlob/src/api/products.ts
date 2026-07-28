@@ -7,6 +7,8 @@ export type ProductQuery = {
   category?: string;
   subcategory?: string;
   seller?: string;
+  brand?: string;
+  exclude?: string;
   sort?: 'latest' | 'rating' | 'price_asc' | 'price_desc' | string;
   minPrice?: number | string;
   maxPrice?: number | string;
@@ -24,6 +26,8 @@ export async function fetchProducts(params: ProductQuery = {}): Promise<ProductL
       category: params.category,
       subcategory: params.subcategory,
       seller: params.seller,
+      brand: params.brand,
+      exclude: params.exclude,
       sort: params.sort,
       minPrice: params.minPrice,
       maxPrice: params.maxPrice,

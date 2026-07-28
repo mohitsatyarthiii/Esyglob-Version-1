@@ -8,6 +8,11 @@ const router = Router();
 router.use(authenticate);
 router.use(requireAuth);
 
+router.get('/autocomplete/capabilities', LocationController.autocompleteCapabilities);
+router.get('/autocomplete/search', LocationController.autocomplete);
+router.get('/autocomplete/resolve', LocationController.resolveAddress);
+router.get('/autocomplete/reverse', LocationController.reverseAddress);
+
 // GET - Get current location
 router.get('/', LocationController.getCurrent);
 

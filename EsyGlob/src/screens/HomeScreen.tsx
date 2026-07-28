@@ -243,7 +243,7 @@ function HomeScreen() {
           setActiveAIChatId('buyer', chunk.chatId);
         }
         if (chunk.type === 'error') {
-          full = chunk.message ?? 'AI response failed.';
+          full = typeof chunk.message === 'string' ? chunk.message : 'AI response failed.';
         }
       });
     } catch (e: any) { 
@@ -443,7 +443,6 @@ function HomeScreen() {
             data={productFeed}
             keyExtractor={(item: Product) => getId(item) || Math.random().toString()}
             numColumns={2}
-            estimatedItemSize={280}
             contentContainerStyle={styles.gridContent}
             refreshControl={<RefreshControl refreshing={products.isRefetching && !products.isFetchingNextPage} onRefresh={() => products.refetch()} tintColor={D.primary} />}
             onEndReachedThreshold={0.4}
@@ -466,7 +465,6 @@ function HomeScreen() {
           <FlashList
             data={manufacturers}
             keyExtractor={(item: SellerSummary) => getStableKey(item)}
-            estimatedItemSize={350}
             contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 100 }}
             refreshControl={<RefreshControl refreshing={sellers.isRefetching} onRefresh={refreshAll} tintColor={D.primary} />}
             ListHeaderComponent={<SectionHeader title="Verified Manufacturers" />}

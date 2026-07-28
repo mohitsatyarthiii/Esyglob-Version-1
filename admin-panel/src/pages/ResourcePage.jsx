@@ -5,7 +5,7 @@ import {
   Save, ShieldCheck, Trash2, XCircle, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import {
   apiUrl, createResource, deleteResource, getResource, listResource, reviewVerificationDocument,
@@ -14,7 +14,10 @@ import {
 import ConfirmDialog from '../components/ConfirmDialog'
 import DataTable from '../components/DataTable'
 import Drawer from '../components/Drawer'
+import ProviderBrand from '../components/ProviderBrand'
+import AdminAddressAutocomplete from '../components/AdminAddressAutocomplete'
 import { resources } from '../config/resources'
+import { getProviderKey } from '../utils/providers'
 
 export default function ResourcePage({ resource }) {
   const config = resources[resource]
@@ -69,9 +72,9 @@ function RecordDrawer({ resource, config, record, open, creating, loading, close
       if (creating && config.required?.includes(name)) field = field.refine((value) => value !== undefined && value !== null && value !== '', `${label} is required.`)
       shape[name] = field
     })
-    return z.object(shape)
+    return z.object(shape).passthrough()
   }, [config.fields, config.required, creating])
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) })
+  const { control, register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm({ resolver: zodResolver(schema) })
   useEffect(() => {
     const source = creating ? {} : record || {}
     const defaults = {}
@@ -98,7 +101,7 @@ function RecordDrawer({ resource, config, record, open, creating, loading, close
       {!creating && <RecordSummary resource={resource} record={record} />}
       {submitError && <p className="action-error">{submitError}</p>}
       {!creating && !config.readOnly && <ActionCenter resource={resource} record={record} completed={refreshed} />}
-      {config.fields.length > 0 && <section><header><h3>{creating ? 'Record details' : 'Editable fields'}</h3><p>Changes apply immediately and are written to the admin activity log.</p></header><div className="drawer-form-grid">{config.fields.map(([name, label, type = 'text', options]) => <Field key={name} name={name} label={label} type={type} options={options} register={register} error={readField(errors, name)?.message} />)}</div></section>}
+      {config.fields.length > 0 && <section><header><h3>{creating ? 'Record details' : 'Editable fields'}</h3><p>Changes apply immediately and are written to the admin activity log.</p></header><div className="drawer-form-grid">{config.fields.map(([name, label, type = 'text', options]) => <Field key={name} name={name} label={label} type={type} options={options} register={register} control={control} setValue={setValue} error={readField(errors, name)?.message} />)}</div></section>}
       {!creating && <RelatedPanels resource={resource} record={record} refreshed={refreshed} />}
     </form>}
   </Drawer>
@@ -127,20 +130,34 @@ function ActionCenter({ resource, record, completed }) {
   return <section className="action-center"><header><h3><ShieldCheck /> Operational actions</h3><p>Permission-checked actions with immutable audit history.</p></header><div className="action-buttons">{actions.map(([action, label, tone]) => <button type="button" className={tone || ''} key={action} onClick={() => { setSelected(action); setError('') }}>{label}</button>)}</div>{selected && <div className="action-form"><b>{humanize(selected)}</b>{requiresReason(selected) && <label>Reason<textarea value={form.reason} onChange={(event) => setForm({ ...form, reason: event.target.value })} placeholder="Required reason shown in the audit trail" /></label>}{['add_note', 'update_tracking'].includes(selected) && <label>{selected === 'update_tracking' ? 'Tracking note' : 'Internal note'}<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>}{selected === 'update_status' && <label>Order status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="">Select status</option>{['pending', 'confirmed', 'processing', 'production', 'ready_to_ship', 'shipped', 'delivered', 'completed', 'cancelled', 'refunded', 'disputed'].map((value) => <option key={value} value={value}>{humanize(value)}</option>)}</select></label>}{['refund'].includes(selected) && <><label>Refund amount<input type="number" min="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Leave blank for full refund" /></label><label>Manual reference<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></label></>}{['mark_paid', 'update_tracking'].includes(selected) && <label>{selected === 'update_tracking' ? 'Tracking number' : 'Transaction reference'}<input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} /></label>}{['reorder'].includes(selected) && <label>Sort order<input type="number" min="0" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: event.target.value })} /></label>}{error && <p className="action-error">{error}</p>}<footer><button type="button" onClick={() => setSelected('')}>Cancel</button><button type="button" className="primary" disabled={busy || !actionReady(selected, form)} onClick={submit}>{busy ? 'Processing…' : 'Confirm action'}</button></footer></div>}</section>
 }
 
-function Field({ name, label, type, options, register, error }) {
+function Field({ name, label, type, options, register, control, setValue, error }) {
   if (type === 'boolean') return <label className="toggle-field"><span><b>{label}</b><small>Enable or disable this setting.</small></span><input type="checkbox" {...register(name)} /><i /></label>
+  if (type === 'address') return <label className="wide"><span>{label}</span><Controller name={name} control={control} render={({ field }) => <AdminAddressAutocomplete value={field.value} onChange={field.onChange} onSelect={location => {
+    if (!location) return
+    field.onChange(location.formattedAddress)
+    setValue('city', location.city || '', { shouldDirty: true })
+    setValue('country', location.country || '', { shouldDirty: true })
+    setValue('state', location.state || '', { shouldDirty: true })
+    setValue('postalCode', location.postalCode || '', { shouldDirty: true })
+    setValue('district', location.district || '', { shouldDirty: true })
+    setValue('latitude', location.latitude, { shouldDirty: true })
+    setValue('longitude', location.longitude, { shouldDirty: true })
+    setValue('placeId', location.placeId || '', { shouldDirty: true })
+  }} />} />{error && <small className="field-error">{error}</small>}</label>
   return <label className={type === 'textarea' ? 'wide' : ''}><span>{label}</span>{type === 'select' ? <select {...register(name)}>{options.map((option) => <option value={option} key={option}>{option.replaceAll('_', ' ')}</option>)}</select> : type === 'textarea' ? <textarea rows="4" {...register(name)} /> : <input type={type} {...register(name)} />}{error && <small className="field-error">{error}</small>}</label>
 }
 
 function RecordSummary({ resource, record }) {
   const images = resource === 'products' ? record?.images : resource === 'sellers' ? [record?.companyLogo, ...(record?.companyPhotos || [])] : []
-  return <section className="record-summary">{images?.filter(Boolean).length > 0 && <div className="record-media">{images.filter(Boolean).slice(0, 4).map((source) => <img src={source} key={source} alt="" />)}</div>}<dl>{Object.entries(record || {}).filter(([key, value]) => ['string', 'number', 'boolean'].includes(typeof value) && !key.startsWith('_') && !['description', 'adminNotes'].includes(key)).slice(0, 14).map(([key, value]) => <div key={key}><dt>{humanize(key)}</dt><dd>{String(value)}</dd></div>)}</dl></section>
+  const providerKey = getProviderKey(record)
+  return <section className="record-summary">{providerKey && <div className="admin-provider-heading"><ProviderBrand providerKey={providerKey} /><span><small>Logistics provider</small><b>{humanize(providerKey)}</b></span></div>}{images?.filter(Boolean).length > 0 && <div className="record-media">{images.filter(Boolean).slice(0, 4).map((source) => <img src={source} key={source} alt="" />)}</div>}<dl>{Object.entries(record || {}).filter(([key, value]) => ['string', 'number', 'boolean'].includes(typeof value) && !key.startsWith('_') && !['description', 'adminNotes'].includes(key)).slice(0, 14).map(([key, value]) => <div key={key}><dt>{humanize(key)}</dt><dd>{String(value)}</dd></div>)}</dl></section>
 }
 
 function RelatedPanels({ resource, record, refreshed }) {
   if (resource === 'verifications') return <VerificationPanels record={record} refreshed={refreshed} />
   if (resource === 'categories') return <NestedCategoryManager record={record} refreshed={refreshed} />
   if (resource === 'payments') return <><DetailJson title="Gateway response" value={record?.gatewayResponse} /><Timeline items={paymentTimeline(record)} /></>
+  if (resource === 'orders' && getProviderKey(record)) return <><section><header><h3>Provider booking</h3></header><div className="admin-provider-detail"><ProviderBrand providerKey={getProviderKey(record)} /><dl className="detail-list"><div><dt>Provider</dt><dd>{humanize(getProviderKey(record))}</dd></div><div><dt>Service</dt><dd>{record?.provider?.serviceName || record?.checkout?.logisticsSnapshot?.label || record?.shippingMethod || 'Carrier service'}</dd></div><div><dt>Tracking number</dt><dd>{record?.provider?.trackingNumber || record?.trackingNumber || 'Pending'}</dd></div><div><dt>ETA</dt><dd>{formatDate(record?.provider?.eta || record?.estimatedDeliveryDate)}</dd></div></dl></div></section><Timeline items={record?.timeline || record?.statusHistory || record?.history} /></>
   if (resource === 'coupons') return <><section><header><h3>Campaign analytics</h3></header><dl className="detail-list"><div><dt>Redemptions</dt><dd>{record?.redemptionCount || 0}</dd></div><div><dt>Discount distributed</dt><dd>{record?.currency || ''} {record?.totalDiscountDistributed || 0}</dd></div><div><dt>Usage limit</dt><dd>{record?.usageLimit || 'Unlimited'}</dd></div><div><dt>Per-user limit</dt><dd>{record?.perUserUsageLimit || 1}</dd></div></dl></section><HistoryList title="Redemption history" items={record?.redemptions} /></>
   if (resource === 'gift-cards') return <><section><header><h3>Balance and redemption status</h3></header><dl className="detail-list"><div><dt>Original balance</dt><dd>{record?.currency} {record?.originalBalance || 0}</dd></div><div><dt>Available balance</dt><dd>{record?.currency} {record?.balance || 0}</dd></div><div><dt>Redeem status</dt><dd>{humanize(record?.status)}</dd></div><div><dt>Expiry</dt><dd>{formatDate(record?.expiresAt)}</dd></div></dl></section><HistoryList title="Gift card transactions" items={record?.transactions} /></>
   if (resource === 'users') return <><section><header><h3>Login and account activity</h3></header><dl className="detail-list"><div><dt>Last login</dt><dd>{formatDate(record?.lastLoginAt)}</dd></div><div><dt>Onboarding</dt><dd>{record?.hasCompletedOnboarding ? 'Completed' : 'Incomplete'}</dd></div><div><dt>Admin role</dt><dd>{record?.metadata?.adminRole || 'Not assigned'}</dd></div><div><dt>Seller verification</dt><dd>{humanize(record?.verification?.status || 'not submitted')}</dd></div><div><dt>Verification feedback</dt><dd>{record?.verification?.sellerFeedback || record?.verification?.rejectionReason || '—'}</dd></div></dl></section><Timeline items={record?.activity} /></>

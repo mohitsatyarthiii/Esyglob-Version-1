@@ -205,7 +205,7 @@ const productSchema = new mongoose.Schema(
     },
     productAttributes: { type: mongoose.Schema.Types.Mixed, default: {} },
     seo: {
-      title: { type: String, trim: true, maxlength: 80 },
+      title: { type: String, trim: true, maxlength: 160 },
       description: { type: String, trim: true, maxlength: 180 },
       keywords: [String],
     },

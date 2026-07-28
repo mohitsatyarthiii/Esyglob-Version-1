@@ -28,7 +28,7 @@ export const productSchema = z.object({
   sampleAvailable: z.boolean().optional().default(false),
   sampleLeadTime: z.object({ value: z.coerce.number().min(0).optional().default(0), unit: z.enum(['days','weeks']).optional().default('days') }).optional().default({}),
   productAttributes: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().default({}),
-  seo: z.object({ title: z.string().trim().max(80).optional().default(''), description: z.string().trim().max(180).optional().default(''), keywords: z.array(z.string().trim()).optional().default([]) }).optional().default({}),
+  seo: z.object({ title: z.string().trim().max(160).optional().default(''), description: z.string().trim().max(180).optional().default(''), keywords: z.array(z.string().trim()).optional().default([]) }).optional().default({}),
   visibility: z.enum(['public','private','unlisted']).optional().default('public'),
   orderType: z.enum(['inquiry_only', 'rfq_only', 'direct_order_enabled']).optional().default('inquiry_only'),
   directOrderEnabled: z.boolean().optional(),

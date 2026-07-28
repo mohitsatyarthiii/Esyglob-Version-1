@@ -739,7 +739,7 @@ function ProductDetailsScreen() {
   const totalOrders = product.totalOrders || 0;
 
   // Build comprehensive product details rows
-  const productDetailsRows = [
+  const productDetailsRows: Array<[string, unknown]> = [
     ['Category', typeof product.category === 'object' ? product.category?.name : product.category],
     ['Subcategory', typeof product.subcategory === 'object' ? product.subcategory?.name : product.subcategory],
     ['Brand', product.brand],
@@ -759,7 +759,7 @@ function ProductDetailsScreen() {
     ['Direct Order', product.directOrderEnabled ? 'Enabled' : 'Disabled'],
   ];
 
-  const shippingRows = [
+  const shippingRows: Array<[string, unknown]> = [
     ['Lead Time', product.leadTime ? `${product.leadTime.value} ${product.leadTime.unit}` : null],
     ['Delivery Time', product.deliveryTime ? `${product.deliveryTime.value} ${product.deliveryTime.unit}` : null],
     ['Shipping Methods', product.shipping?.methods?.join(', ')],
@@ -775,7 +775,7 @@ function ProductDetailsScreen() {
     ['Custom Packaging', product.packaging?.customizationAvailable ? 'Available' : 'Not Available'],
   ];
 
-  const manufacturingRows = [
+  const manufacturingRows: Array<[string, unknown]> = [
     ['Process Type', product.manufacturingDetails?.processType],
     ['Capacity', product.manufacturingDetails?.capacity],
     ['Automation Level', product.manufacturingDetails?.automationLevel],
@@ -989,12 +989,12 @@ function ProductDetailsScreen() {
 
         {/* Specifications */}
         {product.specifications && Object.keys(product.specifications).length > 0 && (
-          <InfoCard title="Specifications" rows={Object.entries(product.specifications).map(([key, value]) => [key.replace(/_/g, ' '), value])} />
+          <InfoCard title="Specifications" rows={Object.entries(product.specifications).map(([key, value]): [string, unknown] => [key.replace(/_/g, ' '), value])} />
         )}
 
         {/* Variants */}
         {product.variants && product.variants.length > 0 && (
-          <InfoCard title="Variants" rows={product.variants.map((v: any, i: number) => [
+          <InfoCard title="Variants" rows={product.variants.map((v: any, i: number): [string, unknown] => [
             `Variant ${i + 1}`,
             `${v.name || ''} ${v.sku ? `(SKU: ${v.sku})` : ''} - ${v.price ? formatPrice(v.price, product.currency) : ''}`
           ])} />
@@ -1010,7 +1010,7 @@ function ProductDetailsScreen() {
 
         {/* Certifications */}
         {product.certifications && product.certifications.length > 0 && (
-          <InfoCard title="Certifications" rows={product.certifications.map((c: any) => [
+          <InfoCard title="Certifications" rows={product.certifications.map((c: any): [string, unknown] => [
             c.name,
             `${c.issuer || ''}${c.validUntil ? ` (Valid until: ${new Date(c.validUntil).toLocaleDateString()})` : ''}`
           ])} />

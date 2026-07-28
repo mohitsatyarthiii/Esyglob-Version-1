@@ -114,6 +114,7 @@ app.get('/api/health', (req, res) => {
 // ✅ PUBLIC ROUTES — No additional auth middleware
 // These already handle auth internally or are fully public
 // ============================================================
+app.use('/api/products/bulk', bulkImportRoutes);   // Protected seller bulk import + public templates
 app.use('/api/products', productRoutes);           // Public listing + protected CRUD
 app.use('/api/categories', categoryRoutes);        // Public
 app.use('/api/hs-codes', hsCodeRoutes);            // Public classification search
@@ -127,7 +128,6 @@ app.use('/api/marketplace', marketplaceHomeRoutes); // Public homepage proof
 // PROTECTED ROUTES — Add auth middleware here if not in route files
 // ============================================================
 app.use('/api/auth', authRoutes);
-app.use('/api/products/bulk', bulkImportRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/ai-chat', aiChatRoutes);
 app.use('/api/messenger/contacts', contactRoutes);

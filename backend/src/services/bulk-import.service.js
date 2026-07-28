@@ -16,11 +16,13 @@ const ALLOWED_TYPES = new Set([
   'application/csv',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/json',
+  'text/json',
 ]);
 
 function isAllowedFile(file) {
   const extension = file.originalname?.split('.').pop()?.toLowerCase();
-  return ALLOWED_TYPES.has(file.mimetype) || ['csv', 'xlsx', 'xls'].includes(extension);
+  return ALLOWED_TYPES.has(file.mimetype) || ['csv', 'xlsx', 'xls', 'json'].includes(extension);
 }
 
 async function uploadImageUrls(urls, sellerId) {
@@ -61,17 +63,30 @@ function toProductPayload(row, seller, userId, importId) {
     countryOfOrigin: data.countryOfOrigin,
     stockQuantity: data.stockQuantity,
     specifications: data.specifications,
+    productAttributes: data.productAttributes,
+    certifications: data.certifications,
     leadTime: { value: data.leadTime || 0, unit: 'days' },
-    deliveryTime: { value: data.leadTime || 0, unit: 'days' },
+    deliveryTime: { value: data.deliveryTime || 0, unit: 'days' },
     videos: data.videos || [],
     tags: data.tags || [],
+    productType: data.productType,
+    paymentTerms: data.paymentTerms,
+    orderType: data.orderType,
+    directOrderEnabled: data.orderType === 'direct_order_enabled',
+    visibility: data.visibility,
+    sampleAvailable: data.sampleAvailable,
+    samplePrice: data.sampleAvailable ? data.samplePrice : null,
+    shipping: data.shipping,
+    warranty: data.warranty,
+    warrantyPeriod: data.warrantyPeriod,
+    seo: data.seo,
   };
 }
 
 // ─── Preview Upload ────────────────────────────────────────
 export async function previewBulkUpload(user, file, requestedProductStatus) {
   if (!isAllowedFile(file)) {
-    const error = new Error('Upload a CSV, XLSX, or XLS file');
+    const error = new Error('Upload a CSV, XLSX, XLS, or JSON file');
     error.statusCode = 422;
     throw error;
   }
@@ -98,10 +113,17 @@ export async function previewBulkUpload(user, file, requestedProductStatus) {
     throw error;
   }
 
-  const parsedRows = await parseBulkProductFile({
-    arrayBuffer: async () => file.buffer,
-    name: file.originalname,
-  });
+  let parsedRows;
+  try {
+    parsedRows = await parseBulkProductFile({
+      arrayBuffer: async () => file.buffer,
+      name: file.originalname,
+    });
+  } catch (cause) {
+    const error = new Error(`The uploaded file could not be read: ${cause.message}`);
+    error.statusCode = 422;
+    throw error;
+  }
 
   if (!parsedRows.length) {
     const error = new Error('No products found in uploaded file');
@@ -291,7 +313,34 @@ export function generateTemplate(type = 'csv') {
     'Product Images': 'https://example.com/image-1.jpg|https://example.com/image-2.jpg',
     'Product Videos': 'https://example.com/video.mp4',
     Tags: 'packaging machine|export ready|automatic',
+    'Product Type': 'Finished Product',
+    'Delivery Time': 28,
+    'Product Attributes': 'Color:Silver|Power:2.5 kW',
+    Certifications: 'ISO 9001|CE',
+    'Payment Terms': 'negotiable',
+    'Order Type': 'inquiry_only',
+    Visibility: 'public',
+    'Sample Available': 'yes',
+    'Sample Price': 5000,
+    'Shipping Available': 'yes',
+    'Origin Port': 'Nhava Sheva',
+    'Shipping Methods': 'Sea|Air',
+    'Shipping Countries': 'India|UAE|United States',
+    'Shipping Estimate': '7-14 business days',
+    Warranty: 'Manufacturer warranty',
+    'Warranty Period': '12 months',
+    'SEO Title': 'Industrial Automatic Packaging Machine for Export',
+    'SEO Description': 'Export-ready automatic packaging machine with configurable speed and carton support.',
+    'SEO Keywords': 'packaging machine|industrial automation',
   };
+
+  if (type === 'json') {
+    return {
+      buffer: Buffer.from(JSON.stringify({ products: [sampleRow] }, null, 2), 'utf8'),
+      contentType: 'application/json; charset=utf-8',
+      filename: 'esyglob-product-bulk-template.json',
+    };
+  }
 
   if (type === 'xlsx' || type === 'xls') {
     const worksheet = XLSX.utils.json_to_sheet([sampleRow], {

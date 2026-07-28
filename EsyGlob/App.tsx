@@ -49,6 +49,7 @@ import { logPerf } from './src/utils/performance';
 import { readJson, writeJson } from './src/storage/appStorage';
 import { RealtimeProvider } from './src/realtime';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
+import { ToastProvider } from './src/components/ToastProvider';
 import CurrencyProvider from './src/currency/CurrencyContext';
 import LocationScreen from './src/screens/LocationScreen';
 import HelpSupportScreen from './src/screens/HelpSupportScreen';
@@ -194,9 +195,11 @@ function App() {
 },
       }}
       onSuccess={warmMarketplaceQueries}>
-      <AuthProvider>
-        <SessionIsolatedRuntime isDarkMode={isDarkMode} />
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <SessionIsolatedRuntime isDarkMode={isDarkMode} />
+        </AuthProvider>
+      </ToastProvider>
       </PersistQueryClientProvider>
     </GestureHandlerRootView>
     </AppErrorBoundary>

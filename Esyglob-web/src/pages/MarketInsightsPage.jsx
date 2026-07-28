@@ -33,6 +33,7 @@ export default function MarketInsightsPage() {
   const confirm = useConfirm()
   const abortRef = useRef(null)
   const previewAbortRef = useRef(null)
+  const previewUrlRef = useRef('')
   const [query, setQuery] = useState('')
   const [reports, setReports] = useState([])
   const [pagination, setPagination] = useState({ page: 1, total: 0, hasMore: false })
@@ -79,30 +80,38 @@ export default function MarketInsightsPage() {
     }
   }, [])
 
-  useEffect(() => { loadReports() }, [loadReports])
+  useEffect(() => {
+    const timer = window.setTimeout(() => loadReports(), 0)
+    return () => window.clearTimeout(timer)
+  }, [loadReports])
   useEffect(() => () => { abortRef.current?.abort() }, [])
 
   // ==================== PREVIEW PDF ====================
   useEffect(() => {
     previewAbortRef.current?.abort()
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl('')
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    previewUrlRef.current = ''
+    queueMicrotask(() => setPreviewUrl(''))
 
     const id = reportId(selected)
     if (!id || !isValidObjectId(id)) {
-      setPreviewLoading(false)
+      queueMicrotask(() => setPreviewLoading(false))
       return undefined
     }
 
     const controller = new AbortController()
     previewAbortRef.current = controller
-    setPreviewLoading(true)
-    setError('')
+    queueMicrotask(() => {
+      setPreviewLoading(true)
+      setError('')
+    })
 
     fetchMarketReportPdf(id, false, controller.signal)
       .then(({ blob }) => {
         if (!controller.signal.aborted) {
-          setPreviewUrl(URL.createObjectURL(blob))
+          const nextUrl = URL.createObjectURL(blob)
+          previewUrlRef.current = nextUrl
+          setPreviewUrl(nextUrl)
         }
       })
       .catch(next => {
@@ -120,8 +129,8 @@ export default function MarketInsightsPage() {
 
   useEffect(() => () => {
     previewAbortRef.current?.abort()
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-  }, [previewUrl])
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+  }, [])
 
   // ==================== ESCAPE KEY ====================
   useEffect(() => {
