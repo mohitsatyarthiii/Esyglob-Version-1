@@ -1,0 +1,5 @@
+.env
+.active-env
+.active-project
+data/
+backups/
