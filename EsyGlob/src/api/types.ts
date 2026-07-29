@@ -9,6 +9,7 @@ export type CurrentUser = {
   phone?: string;
   roles?: UserRole[];
   activeRole?: UserRole;
+  primaryRole?: UserRole;
   sellerId?: string;
   buyerId?: string;
   profileImage?: string;

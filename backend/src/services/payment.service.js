@@ -1,5 +1,4 @@
 import PaymentRepository from '../repositories/payment.repository.js';
-import { ensurePendingOrderPayment } from '../lib/order-payments.js';
 import { markOrderPaymentSucceeded } from '../lib/order-lifecycle.js';
 import { recordOrderWalletEntries, recordSubscriptionWalletEntry } from '../lib/wallet-ledger.js';
 import { calculateOrderPlatformFee, getOrderBaseAmount, getPlatformFeeRate } from '../lib/platform-fees.js';
@@ -13,6 +12,7 @@ import { getMonthsIncluded, getPlanDetails, getPlanPrice } from '../lib/subscrip
 import { getPlan } from '../lib/subscription-plans.js';
 import Invoice from '../models/Invoice.js';
 import { commitOrderPromotions } from './promotion.service.js';
+import { resolveOrderPayableAmount } from '../lib/order-totals.js';
 
 // Initialize Razorpay
 let razorpay = null;
@@ -74,6 +74,9 @@ class PaymentService {
     if (order.status !== 'pending_payment' || order.paymentStatus === 'paid') {
       throw Object.assign(new Error(`Order status is ${order.status}, not pending_payment`), { statusCode: 400 });
     }
+    if (order.checkout?.addressRequired && !order.checkout?.shippingAddressProvided) {
+      throw Object.assign(new Error('Confirm the shipping address before payment'), { statusCode: 409 });
+    }
 
     // Calculate amounts
     const orderAmount = getOrderBaseAmount(order);
@@ -90,7 +93,7 @@ class PaymentService {
       await order.save();
     }
 
-    const amount = Number(order.totalPrice || order.totalAmount || orderAmount + platformFee || 0);
+    const amount = resolveOrderPayableAmount(order);
     const amountInPaise = Math.round(amount * 100);
 
     if (amountInPaise <= 0) {
@@ -137,6 +140,15 @@ class PaymentService {
         method: 'razorpay',
         paymentMethod: 'razorpay',
         gateway: 'razorpay',
+        amount,
+        orderAmount,
+        platformFeeRate: platformFee ? getPlatformFeeRate(orderAmount) : 0,
+        platformFee,
+        gatewayFee: Number(order.gatewayFee || 0),
+        netAmount: amount - platformFee - Number(order.gatewayFee || 0),
+        currency: order.currency || 'INR',
+        status: 'initiated',
+        paymentDate: new Date(),
       });
     }
 
@@ -227,6 +239,7 @@ class PaymentService {
       throw Object.assign(new Error('Order not found'), { statusCode: 404 });
     }
     if (order.agreement?.required && order.agreement.status !== 'completed') throw Object.assign(new Error('Agreement signatures are incomplete'), { statusCode: 409 });
+    if (order.checkout?.addressRequired && !order.checkout?.shippingAddressProvided) throw Object.assign(new Error('Confirm the shipping address before payment'), { statusCode: 409 });
     const legacyCheckout = ['direct_order', 'sample_order'].includes(order.orderSubType) && Boolean(order.shippingMethod) && order.tradeInformation?.termsAccepted === true;
     if (!order.checkout?.logisticsSelected && !legacyCheckout) throw Object.assign(new Error('Select a logistics plan before payment'), { statusCode: 409 });
     if ((!order.checkout?.termsAccepted || !order.checkout?.termsAcknowledgement) && !legacyCheckout) throw Object.assign(new Error('Digitally acknowledge the trade terms before payment'), { statusCode: 409 });
@@ -234,8 +247,15 @@ class PaymentService {
     if (paymentRecord.razorpayOrderId !== razorpayOrderId) {
       throw Object.assign(new Error('Payment order mismatch'), { statusCode: 400 });
     }
-    if (rzpPayment?.amount && Math.round(Number(paymentRecord.amount || 0) * 100) !== Number(rzpPayment.amount)) {
+    const expectedAmountInPaise = Math.round(resolveOrderPayableAmount(order) * 100);
+    if (Math.round(Number(paymentRecord.amount || 0) * 100) !== expectedAmountInPaise) {
+      throw Object.assign(new Error('Stored payment amount no longer matches the order total'), { statusCode: 409 });
+    }
+    if (rzpPayment?.amount && expectedAmountInPaise !== Number(rzpPayment.amount)) {
       throw Object.assign(new Error('Payment amount mismatch'), { statusCode: 400 });
+    }
+    if (rzpPayment?.currency && String(rzpPayment.currency).toUpperCase() !== String(paymentRecord.currency || order.currency || 'INR').toUpperCase()) {
+      throw Object.assign(new Error('Payment currency mismatch'), { statusCode: 400 });
     }
     paymentRecord = await PaymentRepository.claimForCompletion(paymentRecord._id);
     if (!paymentRecord) {

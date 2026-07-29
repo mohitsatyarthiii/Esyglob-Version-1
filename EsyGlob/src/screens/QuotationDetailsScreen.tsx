@@ -83,7 +83,7 @@ function QuotationDetailsScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const queryClient = useQueryClient();
-  const { activeRole } = useAuth();
+  const { activeRole, status } = useAuth();
   const { quotationId } = route.params as { quotationId: string };
   const [actionOpen, setActionOpen] = useState<ActionType>(null);
   const [actionText, setActionText] = useState('');
@@ -147,8 +147,19 @@ function QuotationDetailsScreen() {
   });
 
   const placeOrder = useMutation({
-    mutationFn: () => startQuotationOrder(quotationId),
-    onSuccess: (order: any) => navigation.navigate('OrderDetails', { orderId: order?._id ?? order?.id }),
+    mutationFn: async () => {
+      if (status !== 'authenticated') {
+        navigation.navigate('Auth', {
+          initialMode: 'login',
+          returnTo: { name: 'QuotationDetails', params: { quotationId } },
+        });
+        return null;
+      }
+      return startQuotationOrder(quotationId);
+    },
+    onSuccess: (order: any) => {
+      if (order) navigation.navigate('OrderDetails', { orderId: order?._id ?? order?.id });
+    },
     onError: (error: unknown) => Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to place order.'),
   });
 
@@ -214,7 +225,8 @@ function QuotationDetailsScreen() {
   const title = item.title ?? product?.name ?? rfq?.title ?? 'Quotation';
   const chatId = typeof item.chatId === 'string' ? item.chatId : item.chatId?._id;
   const nextProductId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
-  const canAccept = Boolean(nextProductId);
+  const canRespond = ['pending', 'submitted', 'negotiating', 'revised'].includes(String(item.status));
+  const canAccept = Boolean(nextProductId && canRespond);
   const statusCfg = getStatusConfig(item.status ?? 'submitted');
 
   const actionLabels: Record<string, string> = {
@@ -273,7 +285,7 @@ function QuotationDetailsScreen() {
         )}
 
         {/* Buyer Actions */}
-        {buyerView && (
+        {buyerView && canRespond && (
           <View style={styles.actionSection}>
             <Pressable
               disabled={accept.isPending || !canAccept}
@@ -346,14 +358,6 @@ function QuotationDetailsScreen() {
             <Pressable onPress={() => navigation.navigate('ChatDetails', { chatId, title })} style={styles.quickLink}>
               <Icon name="message-text" size={18} color={P.accent} />
               <Text style={styles.quickLinkText}>Chat</Text>
-            </Pressable>
-          )}
-          {nextProductId && item.status === 'final_quotation_signed' && !item.directOrderEnabled && (
-            <Pressable
-              onPress={() => navigation.navigate('OrderCheckout', { mode: 'trade', quotationId, productId: nextProductId })}
-              style={styles.quickLink}>
-              <Icon name="cart-arrow-right" size={18} color={P.accent} />
-              <Text style={styles.quickLinkText}>Create Order</Text>
             </Pressable>
           )}
         </View>

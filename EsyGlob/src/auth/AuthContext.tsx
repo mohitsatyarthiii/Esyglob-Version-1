@@ -28,6 +28,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function pickInitialRole(user: CurrentUser | null): UserRole | null {
   const mobileRoles = user?.roles?.filter(role => role === 'buyer' || role === 'seller') ?? [];
+  if ((user?.primaryRole === 'seller' || user?.sellerId) && mobileRoles.includes('seller')) {
+    return 'seller';
+  }
   return (user?.activeRole === 'buyer' || user?.activeRole === 'seller'
     ? user.activeRole
     : mobileRoles[0]) ?? null;

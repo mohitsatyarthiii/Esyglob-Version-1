@@ -187,6 +187,8 @@ const orderSchema = new mongoose.Schema({
   },
   previousStatus: String,
   checkout: {
+    addressRequired: { type: Boolean, default: false },
+    shippingAddressProvided: { type: Boolean, default: false },
     logisticsSelected: { type: Boolean, default: false },
     logisticsOption: String,
     logisticsSnapshot: mongoose.Schema.Types.Mixed,

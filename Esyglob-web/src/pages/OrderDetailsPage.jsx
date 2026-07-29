@@ -28,7 +28,31 @@ export default function OrderDetailsPage(){
 function BuyerCheckoutControls({order,busy,onAction}){
   const [logistics,setLogistics]=useState(order.checkout?.logisticsOption||'')
   const [acknowledgement,setAcknowledgement]=useState(order.checkout?.termsAcknowledgement||'')
+  const [address,setAddress]=useState({fullName:order.shippingAddress?.fullName||order.shippingAddress?.name||'',company:order.shippingAddress?.company||'',email:order.shippingAddress?.email||'',phone:order.shippingAddress?.phone||'',address:order.shippingAddress?.address||'',city:order.shippingAddress?.city||'',state:order.shippingAddress?.state||'',country:order.shippingAddress?.country||'',postalCode:order.shippingAddress?.postalCode||order.shippingAddress?.zipCode||''})
+  const addressComplete=['fullName','phone','address','city','state','country','postalCode'].every(field=>String(address[field]||'').trim())
+  const updateAddress=(field,value)=>setAddress(current=>({...current,[field]:value}))
   if(!['pending_approval','pending_payment','awaiting_payment'].includes(order.status)||(order.checkout?.logisticsSelected&&order.checkout?.termsAccepted&&order.status!=='pending_approval'))return null
-  return <section className="order-checkout-gates"><h3>Checkout requirements</h3><div className="checkout-logistics">{(order.logisticsOptions||[]).map(option=><button type="button" className={(logistics||order.checkout?.logisticsOption)===option.key?'active':''} key={option.key} onClick={()=>setLogistics(option.key)}><span><b>{option.label}</b><small>{option.eta} · {option.features?.join(' · ')}</small></span><strong><Money value={option.price} currency={option.currency}/></strong></button>)}</div><button className="button button--secondary button--full" disabled={busy||!logistics||order.checkout?.logisticsOption===logistics} onClick={()=>onAction(()=>buyerOrderAction(resolveId(order),{action:'select_logistics',logisticsOption:logistics}),'Logistics plan selected.')}><Truck/>Save logistics plan</button><label className="check-field"><input type="checkbox" checked={Boolean(order.checkout?.termsAccepted)} readOnly/> Trade terms digitally acknowledged</label>{!order.checkout?.termsAccepted&&<><textarea value={acknowledgement} onChange={event=>setAcknowledgement(event.target.value)} placeholder="Type your full name and acknowledgement of the trade terms"/><button className="button button--secondary button--full" disabled={busy||!acknowledgement.trim()} onClick={()=>onAction(()=>buyerOrderAction(resolveId(order),{action:'accept_terms',accepted:true,termsVersion:'trade-terms-v1',acknowledgement}),'Trade terms acknowledged.')}><ShieldCheck/>Accept and acknowledge terms</button></>}</section>
+  return <section className="order-checkout-gates">
+    <h3>Checkout requirements</h3>
+    {order.checkout?.addressRequired&&!order.checkout?.shippingAddressProvided&&<div className="checkout-address">
+      <h4>Delivery address</h4>
+      <div className="checkout-address-grid">
+        <input value={address.fullName} onChange={event=>updateAddress('fullName',event.target.value)} placeholder="Full name *"/>
+        <input value={address.company} onChange={event=>updateAddress('company',event.target.value)} placeholder="Company"/>
+        <input value={address.email} onChange={event=>updateAddress('email',event.target.value)} type="email" placeholder="Email"/>
+        <input value={address.phone} onChange={event=>updateAddress('phone',event.target.value)} placeholder="Phone *"/>
+        <input value={address.address} onChange={event=>updateAddress('address',event.target.value)} placeholder="Street address *"/>
+        <input value={address.city} onChange={event=>updateAddress('city',event.target.value)} placeholder="City *"/>
+        <input value={address.state} onChange={event=>updateAddress('state',event.target.value)} placeholder="State *"/>
+        <input value={address.country} onChange={event=>updateAddress('country',event.target.value)} placeholder="Country *"/>
+        <input value={address.postalCode} onChange={event=>updateAddress('postalCode',event.target.value)} placeholder="Postal code *"/>
+      </div>
+      <button className="button button--secondary button--full" disabled={busy||!addressComplete} onClick={()=>onAction(()=>buyerOrderAction(resolveId(order),{action:'update_shipping_address',shippingAddress:address}),'Delivery address confirmed.')}><MapPin/>Save delivery address</button>
+    </div>}
+    <div className="checkout-logistics">{(order.logisticsOptions||[]).map(option=><button type="button" className={(logistics||order.checkout?.logisticsOption)===option.key?'active':''} key={option.key} onClick={()=>setLogistics(option.key)}><span><b>{option.label}</b><small>{option.eta} · {option.features?.join(' · ')}</small></span><strong><Money value={option.price} currency={option.currency}/></strong></button>)}</div>
+    <button className="button button--secondary button--full" disabled={busy||!logistics||order.checkout?.logisticsOption===logistics} onClick={()=>onAction(()=>buyerOrderAction(resolveId(order),{action:'select_logistics',logisticsOption:logistics}),'Logistics plan selected.')}><Truck/>Save logistics plan</button>
+    <label className="check-field"><input type="checkbox" checked={Boolean(order.checkout?.termsAccepted)} readOnly/> Trade terms digitally acknowledged</label>
+    {!order.checkout?.termsAccepted&&<><textarea value={acknowledgement} onChange={event=>setAcknowledgement(event.target.value)} placeholder="Type your full name and acknowledgement of the trade terms"/><button className="button button--secondary button--full" disabled={busy||!acknowledgement.trim()} onClick={()=>onAction(()=>buyerOrderAction(resolveId(order),{action:'accept_terms',accepted:true,termsVersion:'trade-terms-v1',acknowledgement}),'Trade terms acknowledged.')}><ShieldCheck/>Accept and acknowledge terms</button></>}
+  </section>
 }
 function loadRazorpay(){if(window.Razorpay)return Promise.resolve();return new Promise((resolve,reject)=>{const existing=document.querySelector('script[data-esyglob-razorpay]');if(existing){existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',()=>reject(new Error('Payment checkout could not be loaded.')),{once:true});return}const script=document.createElement('script');script.src='https://checkout.razorpay.com/v1/checkout.js';script.async=true;script.dataset.esyglobRazorpay='true';script.onload=resolve;script.onerror=()=>reject(new Error('Payment checkout could not be loaded.'));document.body.appendChild(script)})}

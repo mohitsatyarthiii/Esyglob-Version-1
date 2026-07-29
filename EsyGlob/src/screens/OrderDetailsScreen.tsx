@@ -12,6 +12,7 @@ import { colors, radii, shadow, spacing } from '../theme';
 import { formatValue } from '../utils/display';
 import { firstImage } from '../utils/images';
 import { useCurrency } from '../currency/CurrencyContext';
+import { completeOrderPayment } from '../payments/razorpay';
 
 const sellerNextStatuses = ['confirmed', 'processing', 'production', 'ready_to_ship', 'shipped', 'delivered', 'completed'];
 const productionStages = ['raw_material_procured', 'manufacturing_started', 'manufacturing', 'quality_inspection', 'packaging', 'production_completed'];
@@ -26,6 +27,9 @@ function OrderDetailsScreen() {
   const { orderId } = route.params as { orderId: string };
   const [trackingNumber, setTrackingNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [shippingAddress, setShippingAddress] = useState({ fullName: '', phone: '', address: '', city: '', state: '', country: '', postalCode: '' });
+  const [logisticsOption, setLogisticsOption] = useState('');
+  const [acknowledgement, setAcknowledgement] = useState('');
   const order = useQuery({
     queryKey: ['order-details', orderId],
     queryFn: () => fetchOrderDetails(orderId),
@@ -49,13 +53,22 @@ function OrderDetailsScreen() {
     onError: error => Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to update production.'),
   });
   const buyerAction = useMutation({
-    mutationFn: (action: 'approve' | 'reject_changes' | 'cancel' | 'confirm_delivery') => buyerOrderAction(orderId, { action, notes }),
+    mutationFn: (input: Parameters<typeof buyerOrderAction>[1]) => buyerOrderAction(orderId, { ...input, notes: input.notes ?? notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order-details', orderId] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       Alert.alert('Order updated', 'Your response was added to the order timeline.');
     },
     onError: error => Alert.alert('Action failed', error instanceof Error ? error.message : 'Unable to update order.'),
+  });
+  const pay = useMutation({
+    mutationFn: () => completeOrderPayment(orderId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['order-details', orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['orders'] });
+      Alert.alert('Payment confirmed', 'Your payment was verified and the seller has been notified.');
+    },
+    onError: error => Alert.alert('Payment not completed', error instanceof Error ? error.message : 'Please retry payment.'),
   });
 
   const item = order.data;
@@ -74,6 +87,8 @@ function OrderDetailsScreen() {
   const image = firstImage(product?.image as string | undefined, product?.images as string[] | undefined);
   const selectedLogistics = asRecord(item.selectedLogistics);
   const shipping = asRecord(item.shippingAddress);
+  const checkout = asRecord(item.checkout);
+  const logisticsOptions = Array.isArray(item.logisticsOptions) ? item.logisticsOptions.map(asRecord).filter(Boolean) as Array<Record<string, unknown>> : [];
   const billing = asRecord(item.billingAddress);
   const seller = asRecord(item.sellerId);
   const buyer = asRecord(item.buyerId);
@@ -213,11 +228,33 @@ function OrderDetailsScreen() {
         {!canManage ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Buyer actions</Text>
+            {String(item.status) === 'pending_approval' && checkout?.addressRequired && !checkout?.shippingAddressProvided ? <>
+              <Text style={styles.actionSubheading}>Delivery address</Text>
+              {([
+                ['fullName', 'Full name'], ['phone', 'Phone'], ['address', 'Street address'],
+                ['city', 'City'], ['state', 'State'], ['country', 'Country'], ['postalCode', 'Postal code'],
+              ] as const).map(([field, placeholder]) => <TextInput key={field} value={shippingAddress[field]} onChangeText={value => setShippingAddress(current => ({ ...current, [field]: value }))} placeholder={`${placeholder} *`} placeholderTextColor={colors.muted} style={styles.input} />)}
+              <Pressable disabled={buyerAction.isPending || !Object.values(shippingAddress).every(value => value.trim())} onPress={() => buyerAction.mutate({ action: 'update_shipping_address', shippingAddress })} style={[styles.statusButton, (buyerAction.isPending || !Object.values(shippingAddress).every(value => value.trim())) && styles.disabled]}><Text style={styles.statusButtonText}>Save delivery address</Text></Pressable>
+            </> : null}
+            {String(item.status) === 'pending_approval' && !checkout?.logisticsSelected ? <>
+              <Text style={styles.actionSubheading}>Logistics plan</Text>
+              <View style={styles.checkoutOptions}>{logisticsOptions.map(option => {
+                const key = String(option.key ?? option.code ?? option.id ?? '');
+                return <Pressable key={key} onPress={() => setLogisticsOption(key)} style={[styles.checkoutOption, logisticsOption === key && styles.checkoutOptionActive]}><View><Text style={styles.checkoutOptionTitle}>{String(option.label ?? option.name ?? key)}</Text><Text style={styles.checkoutOptionMeta}>{String(option.eta ?? option.estimatedDelivery ?? '')}</Text></View><Text style={styles.checkoutOptionTitle}>{displayMoney(item.currency, option.price ?? option.amount)}</Text></Pressable>;
+              })}</View>
+              <Pressable disabled={buyerAction.isPending || !logisticsOption} onPress={() => buyerAction.mutate({ action: 'select_logistics', logisticsOption })} style={[styles.statusButton, (buyerAction.isPending || !logisticsOption) && styles.disabled]}><Text style={styles.statusButtonText}>Save logistics plan</Text></Pressable>
+            </> : null}
+            {String(item.status) === 'pending_approval' && !checkout?.termsAccepted ? <>
+              <Text style={styles.actionSubheading}>Trade terms</Text>
+              <TextInput value={acknowledgement} onChangeText={setAcknowledgement} placeholder="Type your full name to acknowledge the locked trade terms" placeholderTextColor={colors.muted} style={[styles.input, styles.multilineInput]} multiline />
+              <Pressable disabled={buyerAction.isPending || !acknowledgement.trim()} onPress={() => buyerAction.mutate({ action: 'accept_terms', accepted: true, termsVersion: 'trade-terms-v1', acknowledgement })} style={[styles.statusButton, (buyerAction.isPending || !acknowledgement.trim()) && styles.disabled]}><Text style={styles.statusButtonText}>Accept trade terms</Text></Pressable>
+            </> : null}
+            {['pending_payment', 'awaiting_payment'].includes(String(item.status)) && String(item.paymentStatus) !== 'paid' ? <Pressable disabled={pay.isPending} onPress={() => pay.mutate()} style={[styles.statusButton, pay.isPending && styles.disabled]}><Text style={styles.statusButtonText}>{pay.isPending ? 'Starting secure payment…' : 'Pay securely'}</Text></Pressable> : null}
             <TextInput value={notes} onChangeText={setNotes} placeholder="Add a note for the seller" placeholderTextColor={colors.muted} style={styles.input} />
             <View style={styles.statusGrid}>
-              {String(item.status) === 'pending_approval' ? <><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('approve')} style={styles.statusButton}><Text style={styles.statusButtonText}>Approve terms</Text></Pressable><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('reject_changes')} style={styles.productionButton}><Text style={styles.productionButtonText}>Reject changes</Text></Pressable></> : null}
-              {String(item.status) === 'delivered' ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('confirm_delivery')} style={styles.statusButton}><Text style={styles.statusButtonText}>Confirm delivery</Text></Pressable> : null}
-              {['pending', 'pending_approval', 'awaiting_payment', 'pending_payment', 'confirmed'].includes(String(item.status)) ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate('cancel')} style={styles.productionButton}><Text style={styles.productionButtonText}>Cancel order</Text></Pressable> : null}
+              {String(item.status) === 'pending_approval' && (item.tradeInformation as Record<string, unknown> | undefined)?.initiatedBy !== 'buyer' ? <><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate({ action: 'approve' })} style={styles.statusButton}><Text style={styles.statusButtonText}>Approve terms</Text></Pressable><Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate({ action: 'reject_changes' })} style={styles.productionButton}><Text style={styles.productionButtonText}>Reject changes</Text></Pressable></> : null}
+              {String(item.status) === 'delivered' ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate({ action: 'confirm_delivery' })} style={styles.statusButton}><Text style={styles.statusButtonText}>Confirm delivery</Text></Pressable> : null}
+              {['pending', 'pending_approval', 'awaiting_payment', 'pending_payment', 'confirmed'].includes(String(item.status)) ? <Pressable disabled={buyerAction.isPending} onPress={() => buyerAction.mutate({ action: 'cancel' })} style={styles.productionButton}><Text style={styles.productionButtonText}>Cancel order</Text></Pressable> : null}
             </View>
           </View>
         ) : null}
@@ -351,6 +388,12 @@ const styles = StyleSheet.create({
   dot: { backgroundColor: colors.primary, borderRadius: radii.pill, height: 10, marginTop: 5, width: 10 },
   timelineText: { color: colors.text, flex: 1, fontSize: 13, fontWeight: '800', lineHeight: 20 },
   input: { backgroundColor: colors.cardMuted, borderRadius: radii.md, color: colors.ink, fontSize: 14, fontWeight: '800', marginBottom: spacing.md, minHeight: 44, paddingHorizontal: spacing.md },
+  multilineInput: { minHeight: 84, paddingTop: spacing.md, textAlignVertical: 'top' },
+  checkoutOptions: { gap: spacing.sm, marginBottom: spacing.md },
+  checkoutOption: { alignItems: 'center', backgroundColor: colors.cardMuted, borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.md },
+  checkoutOptionActive: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
+  checkoutOptionTitle: { color: colors.ink, fontSize: 12, fontWeight: '900' },
+  checkoutOptionMeta: { color: colors.muted, fontSize: 10, marginTop: 3 },
   statusGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   statusButton: { backgroundColor: colors.ink, borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   disabled: { opacity: 0.55 },

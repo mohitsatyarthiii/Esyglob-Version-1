@@ -12,7 +12,7 @@ const steps = ['Quotation Accepted', 'Seller Finalizes', 'Seller Signature', 'Bu
 const id = value => String(value?._id || value || '')
 
 export default function FinalQuotationPanel({ quotationId }) {
-  const { user } = useAuth()
+  const { user, status } = useAuth()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -44,9 +44,9 @@ export default function FinalQuotationPanel({ quotationId }) {
   const completed = async message => { setSuccess(message); await load(true) }
   return <section className="container agreement-lifecycle-section" aria-labelledby="final-quotation-title">
     {success && <div className="workflow-success-banner" role="status"><CheckCircle2 /><span>{success}</span><button onClick={() => setSuccess('')} aria-label="Dismiss"><X /></button></div>}
-    <header><div><span className="eyebrow"><ShieldCheck /> Official commercial document</span><h2 id="final-quotation-title">Final Quotation</h2><p>{quotation.directOrderEnabled ? 'The Seller signature locks the final terms and immediately enables Place Order for the Buyer.' : 'The Seller signs first. The Buyer then reviews and signs to lock terms and enable Start Order.'}</p></div><span className={`agreement-state agreement-state--${document?.status || quotation.finalQuotation?.status || 'preparation'}`}>{label(document?.status || quotation.finalQuotation?.status || 'Seller preparation')}</span></header>
+    <header><div><span className="eyebrow"><ShieldCheck /> Official commercial document</span><h2 id="final-quotation-title">Final Quotation</h2><p>{quotation.directOrderEnabled ? 'The Seller signature locks the final terms and immediately enables Place Order for the Buyer.' : 'The Seller signs first. The Buyer then reviews and signs the locked commercial record; no buyer order action is enabled.'}</p></div><span className={`agreement-state agreement-state--${document?.status || quotation.finalQuotation?.status || 'preparation'}`}>{label(document?.status || quotation.finalQuotation?.status || 'Seller preparation')}</span></header>
     <FinalStepper quotation={quotation} document={document} />
-    {loading ? <Loading /> : error ? <div className="inline-error">{error}<button onClick={() => load()}>Retry</button></div> : quotation.status === 'buyer_accepted' && data.actorRole === 'seller' ? <FinalPreparation quotation={quotation} onComplete={completed} setError={setError} /> : quotation.status === 'buyer_accepted' ? <Waiting title="Seller is preparing the Final Quotation" copy="You will be notified after the Seller prepares and signs the final terms." /> : document ? <FinalDocument data={data} quotation={quotation} document={document} versions={versions} user={user} onComplete={completed} setError={setError} /> : <Waiting title="Final Quotation is being generated" copy="The signed commercial workflow will appear here automatically." />}
+    {loading ? <Loading /> : error ? <div className="inline-error">{error}<button onClick={() => load()}>Retry</button></div> : quotation.status === 'buyer_accepted' && data.actorRole === 'seller' ? <FinalPreparation quotation={quotation} onComplete={completed} setError={setError} /> : quotation.status === 'buyer_accepted' ? <Waiting title="Seller is preparing the Final Quotation" copy="You will be notified after the Seller prepares and signs the final terms." /> : document ? <FinalDocument data={data} quotation={quotation} document={document} versions={versions} user={user} authStatus={status} onComplete={completed} setError={setError} /> : <Waiting title="Final Quotation is being generated" copy="The signed commercial workflow will appear here automatically." />}
   </section>
 }
 
@@ -105,7 +105,7 @@ function FinalPreview({ quotation, form, total }) {
   </section>
 }
 
-function FinalDocument({ data, quotation, document, versions, user, onComplete, setError }) {
+function FinalDocument({ data, quotation, document, versions, user, authStatus, onComplete, setError }) {
   const navigate = useNavigate()
   const actorRole = data.actorRole
   const directOrderReady = document.status === 'completed' && quotation.directOrderEnabled
@@ -127,7 +127,7 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
     try {
       await signTradeDocument('quotation', id(quotation), document._id, { signerName: signerName.trim(), signatureValue, signatureType, termsAccepted: true, termsVersion: 'final-quotation-terms-v1' })
       setSignOpen(false)
-      await onComplete(actorRole === 'seller' ? quotation.directOrderEnabled ? 'Seller signature recorded. Place Order is now available to the Buyer.' : 'Seller signature recorded. The Buyer can now review and sign.' : 'Final Quotation fully signed. Start Order is now enabled.')
+      await onComplete(actorRole === 'seller' ? quotation.directOrderEnabled ? 'Seller signature recorded. Place Order is now available to the Buyer.' : 'Seller signature recorded. The Buyer can now review and sign.' : quotation.directOrderEnabled ? 'Final Quotation signed. Place Order is enabled.' : 'Final Quotation fully signed and locked.')
     } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
   async function requestChanges() {
@@ -150,6 +150,10 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
   }
   async function startCheckout() {
     if (busy) return
+    if (authStatus !== 'authenticated') {
+      navigate('/login', { state: { from: `/quotations/${id(quotation)}` } })
+      return
+    }
     if (data.order?._id) {
       navigate(`/orders/${id(data.order)}`)
       return
@@ -168,7 +172,7 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
     {actorRole === 'buyer' && document.status === 'awaiting_seller_signature' && <Waiting title="Seller signature pending" copy="Buyer review and signing opens automatically after the Seller signs this version." />}
     {actorRole === 'seller' && document.status === 'awaiting_buyer_signature' && <Waiting title="Buyer review in progress" copy="The Seller-signed document is locked. The Buyer can request changes or add the final signature." />}
     {directOrderReady && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Direct Order enabled from Seller Final Quotation</b><p>The Seller-signed commercial terms are locked. The Buyer can place the order immediately without another approval.</p></div>{actorRole === 'buyer' ? <button className="button button--primary" disabled={busy} onClick={startCheckout}><PackageCheck /> {busy ? 'Opening checkout…' : 'Place Order'}</button> : data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">Waiting for Buyer order</span>}</div>}
-    {signed && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Final Quotation fully signed and permanently locked</b><p>Both signatures are embedded in the official PDF. {actorRole === 'buyer' ? 'Checkout is available now.' : 'The Buyer can now start checkout.'}</p></div>{actorRole === 'buyer' ? <button className="button button--primary" disabled={busy} onClick={startCheckout}><PackageCheck /> {busy ? 'Opening checkout…' : 'Checkout / Start Order'}</button> : data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">Waiting for Buyer checkout</span>}</div>}
+    {signed && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Final Quotation fully signed and permanently locked</b><p>Both signatures are embedded in the official PDF. Direct ordering was not enabled for this quotation.</p></div>{actorRole === 'seller' && data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">No buyer order action</span>}</div>}
     {changesOpen && <ChangesModal busy={busy} reason={changeReason} setReason={setChangeReason} files={changeFiles} setFiles={setChangeFiles} close={() => setChangesOpen(false)} submit={requestChanges} />}
     {signOpen && <SignatureModal role={actorRole} busy={busy} signerName={signerName} setSignerName={setSignerName} signatureType={signatureType} setSignatureType={setSignatureType} signatureValue={signatureValue} setSignatureValue={setSignatureValue} close={() => setSignOpen(false)} submit={sign} />}
   </div>

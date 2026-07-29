@@ -47,11 +47,7 @@ class BuyerActivityController {
    */
   static async toggleSavedItem(req, res) {
     try {
-      console.log('[BuyerActivityController.toggleSavedItem] req.body:', JSON.stringify(req.body));
-
       const { itemType, itemId } = req.body;
-
-      console.log('[BuyerActivityController.toggleSavedItem] Destructured:', { itemType, itemId });
 
       const result = await BuyerActivityService.toggleSavedItem(
         req.user._id, itemType, itemId

@@ -68,7 +68,10 @@ import { BusinessVerificationServiceScreen, ConsultingServiceScreen, CustomsServ
 
 export type RootStackParamList = {
   MainTabs: undefined;
-  Auth: { initialMode?: 'login' | 'signup' | 'forgot' } | undefined;
+  Auth: {
+    initialMode?: 'login' | 'signup' | 'forgot';
+    returnTo?: { name: keyof RootStackParamList; params?: Record<string, unknown> };
+  } | undefined;
   AIChat: undefined;
   HelpSupport: { focus?: 'faq' | 'ticket' } | undefined;
   TradeAssurance: undefined;

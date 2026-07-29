@@ -14,7 +14,6 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import RazorpayCheckout from 'react-native-razorpay';
 import {
   calculateCheckoutQuote,
   createSampleOrder,
@@ -22,8 +21,6 @@ import {
   fetchChatDetails,
   fetchProductDetails,
   fetchQuotationDetails,
-  initiateOrderPayment,
-  verifyOrderPayment,
 } from '../api/marketplace';
 import { Product } from '../api/types';
 import { ErrorState, LoadingState } from '../components/StateViews';
@@ -32,6 +29,7 @@ import { useCurrency } from '../currency/CurrencyContext';
 import { createAddress, deleteAddress, fetchAddresses, setDefaultAddress, updateAddress, AddressBookItem } from '../api/account';
 import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import { firstImage } from '../utils/images';
+import { completeOrderPayment } from '../payments/razorpay';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -280,25 +278,7 @@ function OrderCheckoutScreen() {
         setPendingOrderId(orderId);
       }
 
-      const payment = await initiateOrderPayment(orderId);
-      if (!payment.keyId || !payment.razorpayOrderId || !payment.amount || !payment.paymentId) {
-        throw new Error('Payment gateway did not return a complete checkout session.');
-      }
-      const gateway = await RazorpayCheckout.open({
-        key: payment.keyId,
-        amount: payment.amount,
-        currency: payment.currency ?? 'INR',
-        name: 'EsyGlob',
-        description: `Payment for ${payment.orderNumber ?? 'order'}`,
-        order_id: payment.razorpayOrderId,
-        theme: { color: '#2563EB' },
-      });
-      await verifyOrderPayment({
-        paymentId: payment.paymentId,
-        razorpayPaymentId: gateway.razorpay_payment_id,
-        razorpayOrderId: gateway.razorpay_order_id,
-        razorpaySignature: gateway.razorpay_signature,
-      });
+      await completeOrderPayment(orderId);
       return orderId;
     },
     onSuccess: async (orderId: string) => {

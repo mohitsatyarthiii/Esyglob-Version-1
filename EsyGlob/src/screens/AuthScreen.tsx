@@ -141,11 +141,19 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
       } else if (mode === 'login') {
         await signIn({ email: email.trim(), password });
         onSuccess?.();
-        if (!onSuccess) navigation.goBack();
+        if (!onSuccess) {
+          const returnTo = route.params?.returnTo;
+          if (returnTo?.name) navigation.replace(returnTo.name, returnTo.params);
+          else navigation.goBack();
+        }
       } else {
         await signUp({ name: name.trim(), email: email.trim(), password, role, companyName: company.trim() || undefined });
         onSuccess?.();
-        if (!onSuccess) navigation.goBack();
+        if (!onSuccess) {
+          const returnTo = route.params?.returnTo;
+          if (returnTo?.name) navigation.replace(returnTo.name, returnTo.params);
+          else navigation.goBack();
+        }
       }
     } catch (e) {
       setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Error occurred' });

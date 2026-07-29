@@ -25,8 +25,6 @@ class BuyerActivityService {
 
     // Check if specific item is saved
     if (type && itemId) {
-      console.log('[BuyerActivityService.getSavedItems] Checking saved status:', { type, itemId });
-
       if (!['product', 'supplier'].includes(type) || !mongoose.Types.ObjectId.isValid(itemId)) {
         return { saved: false, items: [] };
       }
@@ -49,10 +47,7 @@ class BuyerActivityService {
    * Toggle saved item (save/unsave)
    */
   static async toggleSavedItem(userId, itemType, itemId) {
-    console.log('[BuyerActivityService.toggleSavedItem] Input:', { userId, itemType, itemId });
-
     if (!['product', 'supplier'].includes(itemType) || !itemId) {
-      console.error('[BuyerActivityService.toggleSavedItem] Validation failed:', { itemType, itemId });
       throw Object.assign(
         new Error('Valid item type and ID are required'),
         { statusCode: 422 }
@@ -60,13 +55,10 @@ class BuyerActivityService {
     }
 
     if (!mongoose.Types.ObjectId.isValid(itemId)) {
-      console.error('[BuyerActivityService.toggleSavedItem] Invalid ObjectId:', itemId);
       throw Object.assign(new Error('Invalid item ID'), { statusCode: 422 });
     }
 
     const target = await BuyerActivityRepository.resolveSavedTarget(itemType, itemId);
-    console.log('[BuyerActivityService.toggleSavedItem] Resolved target:', target);
-
     if (!target) {
       throw Object.assign(
         new Error(itemType === 'product' ? 'Product not found' : 'Supplier not found'),
@@ -75,7 +67,6 @@ class BuyerActivityService {
     }
 
     const result = await BuyerActivityRepository.toggleSaved(userId, itemType, target);
-    console.log('[BuyerActivityService.toggleSavedItem] Result:', result);
     return result;
   }
 }

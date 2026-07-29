@@ -42,7 +42,7 @@ export const LIFECYCLE_DEFINITIONS = Object.freeze({
     requested: { seller: { approve: 'pending_payment', reject: 'rejected' }, buyer: { cancel: 'cancelled' } },
     draft: { buyer: { validate: 'pending_approval', cancel: 'cancelled' }, seller: { submit: 'pending_approval' } },
     pending: { buyer: { validate: 'pending_approval', cancel: 'cancelled' }, seller: { submit: 'pending_approval' } },
-    pending_approval: { buyer: { select_logistics: 'pending_approval', accept_terms: 'pending_approval', approve: 'pending_payment', request_revision: 'pending_approval', reject_changes: 'rejected', cancel: 'cancelled' }, seller: { revise: 'pending_approval' } },
+    pending_approval: { buyer: { update_shipping_address: 'pending_approval', select_logistics: 'pending_approval', accept_terms: 'pending_approval', approve: 'pending_payment', request_revision: 'pending_approval', reject_changes: 'rejected', cancel: 'cancelled' }, seller: { revise: 'pending_approval' } },
     awaiting_payment: { buyer: { pay: 'payment_confirmed', cancel: 'cancelled' } },
     pending_payment: { buyer: { pay: 'payment_confirmed', cancel: 'cancelled' } },
     payment_confirmed: { seller: { confirm: 'confirmed' }, platform: { confirm: 'confirmed' } },
@@ -96,11 +96,14 @@ export function recordTransition(entity, { type, action, fromStatus, toStatus, a
 }
 
 export function lifecycleSnapshot(type, entity, actorRole) {
+  const actions = type === 'quotation' && entity.status === 'final_quotation_signed' && entity.directOrderEnabled
+    ? actorRole === 'buyer' ? [{ action: 'start_order', nextStatus: 'won' }] : []
+    : allowedActions(type, entity.status, actorRole);
   return {
     type,
     currentStatus: entity.status,
     previousStatus: entity.previousStatus || null,
-    allowedActions: allowedActions(type, entity.status, actorRole),
+    allowedActions: actions,
     timeline: entity.activityTimeline || entity.timeline || [],
     revisionHistory: entity.revisionHistory || [],
     approvalHistory: entity.approvalHistory || [],

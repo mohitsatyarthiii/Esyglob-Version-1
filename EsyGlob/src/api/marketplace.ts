@@ -756,7 +756,15 @@ export async function addOrderProductionUpdate(orderId: string, input: { stage: 
   return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;
 }
 
-export async function buyerOrderAction(orderId: string, input: { action: 'approve' | 'reject_changes' | 'cancel' | 'confirm_delivery'; notes?: string }): Promise<Order> {
+export async function buyerOrderAction(orderId: string, input: {
+  action: 'update_shipping_address' | 'select_logistics' | 'accept_terms' | 'approve' | 'reject_changes' | 'cancel' | 'confirm_delivery';
+  notes?: string;
+  logisticsOption?: string;
+  accepted?: boolean;
+  acknowledgement?: string;
+  termsVersion?: string;
+  shippingAddress?: Record<string, string>;
+}): Promise<Order> {
   const payload = await apiRequest(`/orders/${orderId}/buyer-action`, { method: 'POST', body: input });
   const data = unwrapData<{ order?: Order } | Order>(payload);
   return (data && typeof data === 'object' && 'order' in data ? data.order : data) as Order;

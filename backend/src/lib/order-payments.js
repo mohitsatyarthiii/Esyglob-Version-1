@@ -1,10 +1,16 @@
 import Payment from '../models/Payment.js';
+import { resolveOrderPayableAmount } from './order-totals.js';
+import { calculateOrderPlatformFee, getOrderBaseAmount, getPlatformFeeRate } from './platform-fees.js';
 
 /**
  * Ensure a pending payment record exists for an order
  */
 export async function ensurePendingOrderPayment(order, { userId, amount, currency = 'INR' } = {}) {
   if (!order?._id) return null;
+  const payableAmount = Number(amount) > 0 ? Number(amount) : resolveOrderPayableAmount(order);
+  const orderAmount = getOrderBaseAmount(order);
+  const platformFee = Number(order.platformFee ?? calculateOrderPlatformFee(order));
+  const gatewayFee = Number(order.gatewayFee || 0);
 
   // Check for existing pending payment
   let payment = await Payment.findOne({
@@ -16,11 +22,14 @@ export async function ensurePendingOrderPayment(order, { userId, amount, currenc
 
   if (payment) {
     // Update amount if changed
-    if (amount && payment.amount !== amount) {
-      payment.amount = amount;
-      payment.currency = currency;
-      await payment.save();
-    }
+    payment.amount = payableAmount;
+    payment.orderAmount = orderAmount;
+    payment.platformFeeRate = platformFee ? getPlatformFeeRate(orderAmount) : 0;
+    payment.platformFee = platformFee;
+    payment.gatewayFee = gatewayFee;
+    payment.netAmount = payableAmount - platformFee - gatewayFee;
+    payment.currency = currency || order.currency || 'INR';
+    await payment.save();
     return payment;
   }
 
@@ -32,8 +41,13 @@ export async function ensurePendingOrderPayment(order, { userId, amount, currenc
     type: 'order_payment',
     method: 'razorpay',
     paymentMethod: 'razorpay',
-    amount: amount || Number(order.totalPrice || order.totalAmount || 0),
-    currency,
+    amount: payableAmount,
+    orderAmount,
+    platformFeeRate: platformFee ? getPlatformFeeRate(orderAmount) : 0,
+    platformFee,
+    gatewayFee,
+    netAmount: payableAmount - platformFee - gatewayFee,
+    currency: currency || order.currency || 'INR',
     status: 'initiated',
     paymentDate: new Date(),
   });

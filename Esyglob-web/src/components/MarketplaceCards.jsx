@@ -1,5 +1,5 @@
 // components/ProductCards.jsx
-import { ArrowUpRight, Award, BadgeCheck, CheckCircle2, Heart, MapPin, Package, ShieldCheck, ShoppingBag, Star } from 'lucide-react';
+import { ArrowUpRight, Award, BadgeCheck, CheckCircle2, MapPin, Package, ShieldCheck, ShoppingBag, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { memo, useState } from 'react';
 import WishlistButton from './WishlistButton';
@@ -87,7 +87,6 @@ export const ProductCard = memo(function ProductCard({ product }) {
   const price = Math.max(0, Number(discountActive ? productDiscount.discountedPrice ?? computedDiscountPrice : originalPrice));
   const rating = Number(product.rating || product.averageRating || 0);
   const moq = product.moq || product.minimumOrderQuantity || 1;
-  const [saved, setSaved] = useState(false);
   const [imgError, setImgError] = useState(false);
   
   const isVerified = product.verified || product.isVerifiedSeller || product.sellerId?.isVerified || ['verified','approved'].includes(product.sellerId?.verificationStatus);
@@ -137,13 +136,7 @@ export const ProductCard = memo(function ProductCard({ product }) {
         </div>
 
         {/* Wishlist */}
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSaved(!saved); }}
-          className={`product-card-wishlist ${saved ? 'active' : ''}`}
-          aria-label={saved ? 'Remove from wishlist' : 'Add to wishlist'}
-        >
-          <Heart size={16} fill={saved ? 'currentColor' : 'none'} />
-        </button>
+        <WishlistButton itemId={id} type="product" className="product-card-wishlist" />
 
         {/* Verified Supplier Badge */}
         {isVerified && (
