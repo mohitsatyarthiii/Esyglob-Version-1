@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { BadgeCheck, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, ScanSearch, Send, Share2, ShieldCheck, Star, Store, Truck, X } from 'lucide-react'
+import { BadgeCheck, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, ScanSearch, Send, Share2, ShieldCheck, Store, Truck, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { fetchProductDetails, fetchProducts, startProductChat, submitProductEnquiry, trackRecentlyViewed } from '../api/marketplace'
@@ -61,6 +61,8 @@ export default function ProductDetailsPage() {
   
   const certifications = normalizeList(product.certifications || seller.certifications)
   const payments = normalizeList(product.paymentMethods || seller.paymentMethods || ['Secure platform payment'])
+  const ratingValue = Number(product.rating || product.averageRating || 0)
+  const reviewCount = Number(product.reviewCount || product.totalReviews || 0)
   
   return (
     <AppShell>
@@ -79,8 +81,8 @@ export default function ProductDetailsPage() {
             <h1>{product.name}</h1>
             
             <div className="rating-summary">
-              <span><Star /> {Number(product.rating || product.averageRating || 0).toFixed(1)}</span>
-              <a href="#reviews">{product.reviewCount || 0} reviews</a>
+              <span aria-label={`${ratingValue.toFixed(1)} out of 5`}><b>{ratingGlyphs(ratingValue)}</b> {ratingValue ? ratingValue.toFixed(1) : 'New'}</span>
+              <a href="#reviews">({reviewCount.toLocaleString()})</a>
               {(seller.isVerified || seller.verificationStatus === 'verified') && <i><ShieldCheck /> Verified supplier</i>}
             </div>
             
@@ -205,6 +207,11 @@ export default function ProductDetailsPage() {
       </div>
     </AppShell>
   )
+}
+
+function ratingGlyphs(value) {
+  const rounded = Math.max(0, Math.min(5, Math.round(Number(value) || 0)))
+  return `${'★'.repeat(rounded)}${'☆'.repeat(5 - rounded)}`
 }
 
 function ProductTradeActions({ disabled, onContact, onRfq, sellerId }) {
@@ -528,7 +535,7 @@ function ProductGallery({ product, images, selected, setSelected, setZoom, share
         <div className="thumbnail-strip">
           {images.map((image, index) => (
             <button key={image} className={selected === index ? 'active' : ''} onClick={() => setSelected(index)}>
-              <img src={image} alt={`${product.name} view ${index + 1}`} />
+              <img src={image} alt={`${product.name} view ${index + 1}`} loading="lazy" decoding="async" />
             </button>
           ))}
         </div>
@@ -539,20 +546,26 @@ function ProductGallery({ product, images, selected, setSelected, setZoom, share
 
 function MoqSelector({ tiers, quantity, setQuantity, currency, unit }) {
   if (!tiers.length) return null
+  const basePrice = Number(tiers[0]?.unitPrice || tiers[0]?.price || 0)
   return (
     <div className="product-moq-selector">
-      <header><b>Select quantity range</b><span>{quantity} units selected</span></header>
+      <header>
+        <div><span>Volume pricing</span><b>Choose a quantity tier</b></div>
+        <strong>{Number(quantity).toLocaleString()} {unit} selected</strong>
+      </header>
       <div>
         {tiers.map((tier, index) => {
           const min = Number(tier.minimumQuantity || tier.minQty || 1)
           const max = tier.maximumQuantity || tier.maxQty
           const next = Number(tiers[index + 1]?.minimumQuantity || tiers[index + 1]?.minQty || 0)
+          const tierPrice = Number(tier.unitPrice || tier.price || 0)
+          const savings = basePrice > tierPrice ? Math.round((basePrice - tierPrice) / basePrice * 100) : 0
           const active = quantity >= min && (!next || quantity < next)
           return (
             <button className={active ? 'active' : ''} onClick={() => setQuantity(min)} key={index}>
-              <b>{max ? `${min} - ${max}` : `${min}+`}</b>
-              <span><Money value={tier.unitPrice || tier.price} currency={currency} /></span>
-              <small>/ {unit}</small>
+              <span><Money value={tierPrice} currency={currency} /><small>/ {unit}</small></span>
+              <b>{max ? `${min.toLocaleString()} – ${Number(max).toLocaleString()}` : `${min.toLocaleString()}+`} {unit}</b>
+              <em>{savings ? `Save ${savings}% per unit` : 'Base tier price'}</em>
               {active && <Check />}
             </button>
           )

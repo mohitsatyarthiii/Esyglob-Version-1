@@ -7,6 +7,7 @@ import { SafeImage } from '../components/MarketplaceCards';
 import { fetchCategories } from '../api/marketplace';
 import useAsyncData from '../hooks/useAsyncData';
 import UnifiedSearchInput from '../components/UnifiedSearchInput';
+import { MarketplaceError } from '../components/MarketplaceFeedback';
 
 export default function CategoriesPage() {
   const query = useAsyncData(fetchCategories);
@@ -114,7 +115,9 @@ export default function CategoriesPage() {
               )}
             </div>
 
-            {query.loading ? (
+            {query.error ? (
+              <MarketplaceError error={query.error} onRetry={query.reload} title="Categories are temporarily unavailable." />
+            ) : query.loading ? (
               <div className="grid grid-cols-3 gap-3">
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} className="flex flex-col items-center animate-pulse">
@@ -159,7 +162,7 @@ export default function CategoriesPage() {
           <div className="flex gap-5 lg:gap-6">
             
             {/* Sidebar */}
-            <aside ref={sidebarRef} className="w-[220px] lg:w-[250px] flex-shrink-0 rounded-2xl border border-gray-200 bg-white overflow-hidden" style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+            <aside ref={sidebarRef} className="sticky top-24 w-[220px] self-start lg:w-[250px] flex-shrink-0 rounded-2xl border border-gray-200 bg-white overflow-hidden" style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
               <div className="p-3 lg:p-4">
                 <button
                   onClick={() => setSelectedId(null)}
@@ -227,7 +230,9 @@ export default function CategoriesPage() {
               </div>
 
               {/* Grid */}
-              {query.loading ? (
+              {query.error ? (
+                <MarketplaceError error={query.error} onRetry={query.reload} title="Categories are temporarily unavailable." />
+              ) : query.loading ? (
                 <div className="grid grid-cols-4 gap-4 lg:grid-cols-5 lg:gap-5">
                   {Array.from({ length: 10 }, (_, i) => (
                     <div key={i} className="flex flex-col items-center animate-pulse">

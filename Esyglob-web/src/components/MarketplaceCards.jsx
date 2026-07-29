@@ -1,14 +1,16 @@
 // components/ProductCards.jsx
-import { ArrowUpRight, Award, BadgeCheck, CheckCircle2, MapPin, Package, ShieldCheck, ShoppingBag, Star } from 'lucide-react';
+import { ArrowUpRight, Award, BadgeCheck, Boxes, ChevronLeft, ChevronRight, Clock3, Factory, MapPin, Package, ShieldCheck, Truck, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { memo, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import WishlistButton from './WishlistButton';
 import { resolveApiResourceUrl } from '../api/client';
 import { Money } from './TradeUI';
 
 // ─── SafeImage ──────────────────────────────────────────────────
 export const SafeImage = memo(function SafeImage({ src, alt, className = '' }) {
-  if (!src) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
     return (
       <div className={`flex items-center justify-center bg-gray-100 text-gray-400 ${className}`}>
         <Package size={24} />
@@ -16,13 +18,18 @@ export const SafeImage = memo(function SafeImage({ src, alt, className = '' }) {
     );
   }
   return (
-    <img
-      className={className}
-      src={resolveApiResourceUrl(src)}
-      alt={alt || ''}
-      loading="lazy"
-      decoding="async"
-    />
+    <span className={`relative block overflow-hidden bg-slate-100 ${className}`}>
+      {!loaded && <span className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100" aria-hidden="true" />}
+      <img
+        className={`h-full w-full ${className.includes('object-contain') ? 'object-contain' : 'object-cover'} transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        src={resolveApiResourceUrl(src)}
+        alt={alt || ''}
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+    </span>
   );
 });
 
@@ -77,7 +84,13 @@ export const CategoryBubble = memo(function CategoryBubble({ category }) {
 // ─── ProductCard ────────────────────────────────────────────────
 export const ProductCard = memo(function ProductCard({ product }) {
   const id = product._id || product.id;
-  const image = product.image || product.images?.[0];
+  const images = [...new Set([product.image, ...(product.images || [])].filter(Boolean))].slice(0, 6);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
+  const swipeStart = useRef(null);
+  const suppressImageLink = useRef(false);
+  const image = images[imageIndex];
   const originalPrice = Number(product.originalPrice || product.price || product.priceTiers?.[0]?.unitPrice || product.mrp || 0);
   const productDiscount = product.discount && typeof product.discount === 'object' ? product.discount : null;
   const discountActive = productDiscount?.status === 'active';
@@ -87,11 +100,10 @@ export const ProductCard = memo(function ProductCard({ product }) {
   const price = Math.max(0, Number(discountActive ? productDiscount.discountedPrice ?? computedDiscountPrice : originalPrice));
   const rating = Number(product.rating || product.averageRating || 0);
   const moq = product.moq || product.minimumOrderQuantity || 1;
-  const [imgError, setImgError] = useState(false);
   
   const isVerified = product.verified || product.isVerifiedSeller || product.sellerId?.isVerified || ['verified','approved'].includes(product.sellerId?.verificationStatus);
   const supplierName = product.sellerId?.companyName || product.supplierName || product.brand;
-  const supplierLocation = product.sellerId?.address?.country || product.sellerId?.country || product.country;
+  const supplierLocation = product.sellerId?.address?.country || product.sellerId?.country || product.countryOfOrigin || product.country;
   const isBestSeller = product.isBestSeller || product.badge === 'bestseller';
   const isNew = product.isNew || product.badge === 'new';
   const discount = discountActive
@@ -99,136 +111,176 @@ export const ProductCard = memo(function ProductCard({ product }) {
     : Number(product.discountPercentage || 0);
   const reviewCount = product.reviewCount || product.totalReviews || 0;
   const orderCount = product.orderCount || product.totalOrders || 0;
+  const leadTimeValue = product.leadTime?.value ?? product.leadTime;
+  const leadTimeUnit = product.leadTime?.unit || 'days';
+  const shippingLabel = product.shipping?.freeShipping
+    ? 'Free shipping'
+    : product.shipping?.available === false
+      ? ''
+      : product.shippingLabel || product.shipping?.method || 'Shipping available';
+  const manufacturer = String(product.sellerId?.companyType || product.supplierType || '').toLowerCase().includes('manufacturer');
+  const fastResponse = Number(product.sellerId?.responseRate || product.responseRate || 0) >= 80;
+
+  function showImage(nextIndex) {
+    setImageIndex((nextIndex + images.length) % images.length);
+    setImageLoaded(false);
+    setImgError(false);
+  }
+
+  function finishSwipe(event) {
+    if (swipeStart.current === null || images.length < 2) return;
+    const distance = event.clientX - swipeStart.current;
+    swipeStart.current = null;
+    if (Math.abs(distance) < 36) return;
+    suppressImageLink.current = true;
+    window.setTimeout(() => { suppressImageLink.current = false }, 250);
+    showImage(imageIndex + (distance < 0 ? 1 : -1));
+  }
 
   return (
-    <article className="product-card">
-      {/* Image Container */}
-      <div className="product-card-image">
-        <Link to={`/products/${id}`} className="product-card-image-link">
+    <article className="market-product-card group relative min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04)] transition duration-200 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_10px_26px_rgba(15,42,78,.10)] active:scale-[.995]">
+      <div
+        className="relative aspect-[4/3] touch-pan-y overflow-hidden bg-slate-100"
+        onPointerDown={(event) => { swipeStart.current = event.clientX }}
+        onPointerUp={finishSwipe}
+        onPointerCancel={() => { swipeStart.current = null }}
+      >
+        <Link to={`/products/${id}`} className="block h-full w-full" aria-label={`View ${product.name || 'product'}`} onClick={(event) => {
+          if (!suppressImageLink.current) return;
+          event.preventDefault();
+          suppressImageLink.current = false;
+        }}>
           {!imgError && image ? (
-            <img
-              src={image}
-              alt={product.name || 'Product'}
-              onError={() => setImgError(true)}
-              loading="lazy"
-            />
+            <>
+              {!imageLoaded && <span className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100" aria-hidden="true" />}
+              <img
+                key={image}
+                className={`h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                src={resolveApiResourceUrl(image)}
+                alt={`${product.name || 'Product'}${images.length > 1 ? `, image ${imageIndex + 1} of ${images.length}` : ''}`}
+                onLoad={() => setImageLoaded(true)}
+                onError={() => { setImgError(true); setImageLoaded(true) }}
+                loading="lazy"
+                decoding="async"
+              />
+            </>
           ) : (
-            <div className="product-card-image-fallback">
-              <Package size={40} />
-              <span>No Image</span>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-slate-400">
+              <Package size={28} />
+              <span className="text-[10px] font-semibold">Image unavailable</span>
             </div>
           )}
         </Link>
 
-        {/* Top Badges */}
-        <div className="product-card-badges">
+        <div className="absolute left-2.5 top-2.5 flex max-w-[70%] flex-wrap gap-1.5">
           {isBestSeller && (
-            <span className="badge badge-bestseller">
-              <Award size={10} /> Best Seller
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/90 px-2 py-1 text-[9px] font-bold text-white shadow-sm backdrop-blur">
+              <Award size={10} /> Bestseller
             </span>
           )}
-          {isNew && (
-            <span className="badge badge-new">New</span>
-          )}
-          {discount > 0 && (
-            <span className="badge badge-discount">-{discount}%</span>
-          )}
+          {isNew && <span className="rounded-full bg-blue-600 px-2 py-1 text-[9px] font-bold text-white shadow-sm">New</span>}
+          {discount > 0 && <span className="rounded-full bg-rose-600 px-2 py-1 text-[9px] font-bold text-white shadow-sm">-{Math.round(discount)}%</span>}
         </div>
 
-        {/* Wishlist */}
-        <WishlistButton itemId={id} type="product" className="product-card-wishlist" />
+        <WishlistButton itemId={id} type="product" className="product-card-wishlist !right-2.5 !top-2.5" />
 
-        {/* Verified Supplier Badge */}
-        {isVerified && (
-          <div className="product-card-verified">
-            <ShieldCheck size={12} />
-            <span>Verified</span>
+        {images.length > 1 && <>
+          <button type="button" className="absolute left-2 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-slate-700 opacity-100 shadow-md transition hover:bg-white sm:opacity-0 sm:group-hover:opacity-100" onClick={() => showImage(imageIndex - 1)} aria-label="Previous product image"><ChevronLeft size={15} /></button>
+          <button type="button" className="absolute right-2 top-1/2 z-10 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-slate-700 opacity-100 shadow-md transition hover:bg-white sm:opacity-0 sm:group-hover:opacity-100" onClick={() => showImage(imageIndex + 1)} aria-label="Next product image"><ChevronRight size={15} /></button>
+          <div className="absolute bottom-2 left-1/2 z-10 flex -translate-x-1/2 gap-1 rounded-full bg-slate-950/40 px-1.5 py-1 backdrop-blur" aria-label={`${images.length} product images`}>
+            {images.slice(0, 6).map((src, index) => <button type="button" key={src} className={`h-1 rounded-full transition-all ${imageIndex === index ? 'w-3 bg-white' : 'w-1 bg-white/60'}`} onClick={() => showImage(index)} aria-label={`Show image ${index + 1}`} />)}
           </div>
-        )}
+          <span className="absolute bottom-2 right-2 rounded bg-slate-950/65 px-1.5 py-0.5 text-[8px] font-bold text-white backdrop-blur">{imageIndex + 1}/{images.length}</span>
+        </>}
       </div>
 
-      {/* Content */}
-      <div className="product-card-content">
-        {/* Supplier Info */}
-        {supplierName && (
-          <div className="product-card-supplier">
-            <span className="supplier-name">
-              {supplierName}
-              {isVerified && <ShieldCheck size={11} className="verified-icon-small" />}
-            </span>
-            {supplierLocation && (
-              <span className="supplier-location">
-                <MapPin size={10} />
-                {supplierLocation}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Category */}
-        <span className="product-card-category">
-          {typeof product.category === 'object' ? product.category?.name : product.category || 'General'}
-        </span>
-
-        {/* Product Name */}
-        <Link to={`/products/${id}`} className="product-card-name">
-          {product.name || product.title || 'Unnamed Product'}
+      <div className="flex flex-col p-2.5 sm:p-3">
+        <Link to={`/products/${id}`} className="line-clamp-2 min-h-[2.35rem] text-[12px] font-semibold leading-[1.2rem] text-slate-800 transition hover:text-blue-700 sm:text-[13px]">
+          {product.name || product.title || 'Unnamed product'}
         </Link>
 
-        {/* Key Specs */}
-        {product.keySpecs && product.keySpecs.length > 0 && (
-          <div className="product-card-specs">
-            {product.keySpecs.slice(0, 3).map((spec, idx) => (
-              <span key={idx} className="spec-tag">
-                <CheckCircle2 size={10} />
-                {spec}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Rating & Orders */}
-        <div className="product-card-metrics">
-          {rating > 0 && (
-            <div className="metric rating-metric">
-              <Star size={12} fill="#f59e0b" color="#f59e0b" />
-              <span className="metric-value">{rating.toFixed(1)}</span>
-              {reviewCount > 0 && (
-                <span className="metric-count">({reviewCount})</span>
-              )}
-            </div>
-          )}
-          {orderCount > 0 && (
-            <div className="metric order-metric">
-              <ShoppingBag size={12} />
-              <span className="metric-value">{orderCount >= 1000 ? `${(orderCount/1000).toFixed(1)}k` : orderCount}</span>
-              <span className="metric-label">orders</span>
-            </div>
-          )}
+        <div className="mt-1 flex min-h-4 items-center gap-1.5 text-[9px]" aria-label={`${rating.toFixed(1)} out of 5 from ${reviewCount} reviews`}>
+          <span className="tracking-[-1px] text-amber-400">{ratingStars(rating)}</span>
+          <strong className="font-extrabold text-slate-700">{rating ? rating.toFixed(1) : 'New'}</strong>
+          {reviewCount > 0 && <span className="text-slate-400">({Number(reviewCount).toLocaleString()})</span>}
+          {orderCount > 0 && <span className="ml-auto hidden text-slate-400 sm:inline">{compactNumber(orderCount)} sold</span>}
         </div>
 
-        {/* Price Section */}
-        <div className="product-card-price-section">
-          <div className="price-main">
-            <div className="price-value">
-              <span className="price-amount">
+        <div className="mt-1.5">
+          <div className="flex flex-wrap items-baseline gap-x-1.5">
+            <strong className="text-[16px] font-extrabold tracking-tight text-slate-950 sm:text-[18px]">
                 {price ? <Money value={price} currency={product.currency} /> : '—'}
-              </span>
-            </div>
+            </strong>
             {originalPrice && originalPrice > price && (
-              <span className="price-original"><Money value={originalPrice} currency={product.currency} /></span>
+              <span className="text-[10px] text-slate-400 line-through"><Money value={originalPrice} currency={product.currency} /></span>
             )}
-            <span className="price-unit">/ {product.unit || 'piece'}</span>
           </div>
-          
-          {moq > 1 && (
-            <span className="price-moq">{moq} {product.unit || 'pcs'} (Min. Order)</span>
-          )}
+          <span className="block text-[9px] font-medium text-slate-500">per {product.unit || 'piece'}</span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1">
+          {isVerified && <ProductStatus icon={ShieldCheck} tone="emerald">Verified</ProductStatus>}
+          <ProductStatus icon={Boxes} tone="violet">MOQ {Number(moq).toLocaleString()}</ProductStatus>
+          {leadTimeValue && <ProductStatus icon={Clock3} tone="amber">{leadTimeValue} {leadTimeUnit}</ProductStatus>}
+          {shippingLabel && <ProductStatus icon={Truck} tone="blue">{shippingLabel}</ProductStatus>}
+          {manufacturer && <ProductStatus icon={Factory} tone="slate">Manufacturer</ProductStatus>}
+          {fastResponse && <ProductStatus icon={Zap} tone="rose">Fast response</ProductStatus>}
+        </div>
+
+        <div className="mt-2 flex min-w-0 items-center justify-between gap-2 border-t border-slate-100 pt-2">
+          <span className="min-w-0 truncate text-[9px] font-semibold text-slate-600">
+            {supplierName || 'Marketplace supplier'}
+            {isVerified && <BadgeCheck size={11} className="ml-1 inline text-blue-600" />}
+          </span>
+          {supplierLocation && <span className="inline-flex flex-shrink-0 items-center gap-1 text-[9px] text-slate-400">
+            <span aria-hidden="true">{countryFlag(supplierLocation)}</span>
+            <span className="max-w-[72px] truncate">{supplierLocation}</span>
+          </span>}
         </div>
       </div>
     </article>
   );
 });
+
+const statusTones = {
+  emerald: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+  violet: 'border-violet-100 bg-violet-50 text-violet-700',
+  amber: 'border-amber-100 bg-amber-50 text-amber-700',
+  blue: 'border-blue-100 bg-blue-50 text-blue-700',
+  slate: 'border-slate-200 bg-slate-50 text-slate-600',
+  rose: 'border-rose-100 bg-rose-50 text-rose-700',
+};
+
+function ProductStatus({ icon: Icon, tone, children }) {
+  return <span className={`inline-flex min-h-5 items-center gap-1 rounded border px-1.5 py-0.5 text-[8px] font-bold leading-none ${statusTones[tone] || statusTones.slate}`}>
+    <Icon size={10} strokeWidth={2.2} /> {children}
+  </span>;
+}
+
+function ratingStars(rating) {
+  const rounded = Math.max(0, Math.min(5, Math.round(Number(rating) || 0)));
+  return `${'★'.repeat(rounded)}${'☆'.repeat(5 - rounded)}`;
+}
+
+function compactNumber(value) {
+  const number = Number(value) || 0;
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}m`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(1)}k`;
+  return number.toLocaleString();
+}
+
+function countryFlag(country) {
+  const names = {
+    india: 'IN', china: 'CN', 'united states': 'US', usa: 'US', 'united arab emirates': 'AE',
+    uae: 'AE', vietnam: 'VN', turkey: 'TR', germany: 'DE', bangladesh: 'BD',
+    pakistan: 'PK', indonesia: 'ID', thailand: 'TH', japan: 'JP', korea: 'KR',
+    'south korea': 'KR', france: 'FR', italy: 'IT', brazil: 'BR', canada: 'CA',
+  };
+  const code = String(country || '').trim().length === 2
+    ? String(country).toUpperCase()
+    : names[String(country || '').trim().toLowerCase()];
+  return code?.replace(/./g, (letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))) || '🌐';
+}
 
 // ─── ManufacturerCard ───────────────────────────────────────────
 
@@ -378,7 +430,7 @@ export const ManufacturerCard = memo(function ManufacturerCard({ seller }) {
 export function SkeletonCards({ count = 4, variant = 'product' }) {
   if (variant === 'category') {
     return Array.from({ length: count }, (_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-3 animate-pulse">
+      <div key={i} className="market-skeleton flex items-center gap-3 rounded-lg border border-gray-100 bg-white p-3">
         <div className="h-14 w-14 flex-shrink-0 rounded-xl bg-gray-100" />
         <div className="flex-1 space-y-2">
           <div className="h-3 w-3/4 rounded-md bg-gray-100" />
@@ -390,7 +442,7 @@ export function SkeletonCards({ count = 4, variant = 'product' }) {
 
   if (variant === 'manufacturer') {
     return Array.from({ length: count }, (_, i) => (
-      <div key={i} className="rounded-2xl border border-gray-100 bg-white p-5 animate-pulse space-y-4">
+      <div key={i} className="market-skeleton space-y-4 rounded-lg border border-gray-100 bg-white p-5">
         <div className="flex items-center gap-3">
           <div className="h-12 w-12 rounded-xl bg-gray-100" />
           <div className="flex-1 space-y-1.5">
@@ -413,15 +465,15 @@ export function SkeletonCards({ count = 4, variant = 'product' }) {
 
   // Default: product skeleton
   return Array.from({ length: count }, (_, i) => (
-    <div key={i} className="rounded-2xl border border-gray-100 bg-white overflow-hidden animate-pulse">
-      <div className="aspect-square bg-gray-100" />
-      <div className="p-3 space-y-2">
-        <div className="h-2.5 w-16 rounded-md bg-gray-100" />
+    <div key={i} className="market-skeleton overflow-hidden rounded-lg border border-gray-100 bg-white">
+      <div className="aspect-[4/3] bg-gray-100" />
+      <div className="space-y-2 p-3">
         <div className="h-3 w-full rounded-md bg-gray-100" />
         <div className="h-3 w-3/4 rounded-md bg-gray-100" />
-        <div className="flex items-center justify-between pt-2 border-t border-gray-50">
-          <div className="h-5 w-20 rounded-md bg-gray-100" />
-          <div className="h-8 w-8 rounded-lg bg-gray-100" />
+        <div className="h-5 w-24 rounded-md bg-gray-100" />
+        <div className="flex gap-1">
+          <div className="h-5 w-16 rounded bg-gray-100" />
+          <div className="h-5 w-20 rounded bg-gray-100" />
         </div>
       </div>
     </div>

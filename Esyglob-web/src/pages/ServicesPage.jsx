@@ -5,7 +5,9 @@ import { fetchServiceRequests, servicesForRole } from '../api/services'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { PageHead } from '../components/PageHead'
-import ProviderBrand, { ProviderStrip } from '../components/ProviderBrand'
+import ProviderBrand from '../components/ProviderBrand'
+import { ServiceTrustGrid } from '../components/ServiceTrust'
+import TrustedPartners from '../components/TrustedPartners'
 import { Money, StatusBadge } from '../components/TradeUI'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
 import useAsyncData from '../hooks/useAsyncData'
@@ -41,18 +43,18 @@ export default function ServicesPage() {
     <div className="service-toolbar"><UnifiedSearchInput compact value={search} onChange={setSearch} onSubmit={setSearch} placeholder="Search logistics, finance, inspection…" /><div>{categories.map(item => <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>{item}</button>)}</div></div>
     <div className="service-catalog">{visible.map(item => {
       const Icon = icons[item.category] || Boxes
-      return <article key={item.key}>
-        <div className="service-card-icon"><Icon /></div>
-        <span>{item.category}</span>
+      return <article className={`service-accent service-accent--${item.key}`} key={item.key}>
+        <header className="service-card-heading"><div className="service-card-icon"><Icon /></div><span>{item.category}</span></header>
         <h2>{item.title}</h2>
         <p>{item.description}</p>
-        <ProviderStrip keys={item.providers} compact />
-        {item.key === 'warehousing' && <p className="provider-context">Managed warehousing and fulfillment coordination.</p>}
+        <TrustedPartners serviceKey={item.key} title="Supported Providers" compact />
+        <div className="service-card-assurance"><ShieldCheck /><span><b>Verified service workflow</b><small>Secure requirements and milestone tracking</small></span></div>
         <ul>{item.steps.map(step => <li key={step}><BadgeCheck /> {step}</li>)}</ul>
         <footer><div><small>Starting at</small><b>{item.startingPriceAmount !== null ? <><span>From </span><Money value={item.startingPriceAmount} currency={item.startingPriceCurrency} /></> : item.startingPrice}</b></div><Link to={`/services/${item.key}`}>View service <ArrowRight /></Link></footer>
       </article>
     })}</div>
     {!visible.length && <div className="empty-results"><Search /><h2>No matching services</h2><p>Try another service name or category.</p></div>}
+    <section className="services-trust-overview"><div><span>One coordinated network</span><h2>Professional support across every trade milestone</h2><p>Secure workflows, verified operations and service visibility from request through completion.</p></div><ServiceTrustGrid /></section>
     {authenticated && activity.data?.length > 0 && <section className="module-panel recent-services"><div className="compact-heading"><h2><Clock3 /> Recent bookings</h2><Link to="/services/requests">View all</Link></div>{activity.data.slice(0, 4).map(item => <Link key={resolveId(item)} to={`/services/requests/${resolveId(item)}`}>{item.provider?.key && <ProviderBrand providerKey={item.provider.key} compact />}<div><b>{item.serviceTitle}</b><small>{item.requestNumber} · {new Date(item.createdAt).toLocaleDateString()}</small></div><StatusBadge status={item.status} /><ArrowRight /></Link>)}</section>}
     {!authenticated && <section className="service-cta"><ShieldCheck /><div><h2>Ready to manage a trade service?</h2><p>Sign in to receive a live quote, book securely and track every milestone.</p></div><Link className="button button--primary" to="/login" state={{ from: '/services' }}>Login to continue</Link></section>}
   </div></AppShell>

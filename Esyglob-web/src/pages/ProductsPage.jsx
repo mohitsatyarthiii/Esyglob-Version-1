@@ -1,10 +1,11 @@
 // pages/ProductsPage.jsx
 import { ChevronDown, X, Package, Grid3X3, Filter, ArrowUpDown, Check, Star } from 'lucide-react';
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchProducts, fetchCategories } from '../api/marketplace';
 import AppShell from '../components/AppShell';
 import { ProductCard, SkeletonCards, SafeImage } from '../components/MarketplaceCards';
+import { MarketplaceError } from '../components/MarketplaceFeedback';
 import { PageHead } from '../components/PageHead';
 import UnifiedSearchInput from '../components/UnifiedSearchInput';
 import useAsyncData from '../hooks/useAsyncData';
@@ -31,7 +32,6 @@ export default function ProductsPage() {
   const [search, setSearch] = useState(params.get('q') || '');
   const [showFilters, setShowFilters] = useState(false);
   const [showSort, setShowSort] = useState(false);
-  const mainRef = useRef(null);
 
   const category = params.get('category') || '';
   const subcategory = params.get('subcategory') || '';
@@ -43,20 +43,13 @@ export default function ProductsPage() {
 
   const categoriesQuery = useAsyncData(fetchCategories);
 
-  const loader = useCallback(
-    () =>
-      fetchProducts({
-        q,
-        category,
-        subcategory,
-        sort,
-        limit: 40,
-        ...(priceRange && { priceRange }),
-        ...(verifiedOnly && { verifiedOnly: true }),
-        ...(minRating && { minRating: Number(minRating) }),
-      }),
-    [q, category, subcategory, sort, priceRange, verifiedOnly, minRating]
-  );
+  const productFilters = useMemo(() => ({
+    q, category, subcategory, sort, limit: 24,
+    ...(priceRange && { priceRange }),
+    ...(verifiedOnly && { verifiedOnly: true }),
+    ...(minRating && { minRating: Number(minRating) }),
+  }), [q, category, subcategory, sort, priceRange, verifiedOnly, minRating]);
+  const loader = useCallback(() => fetchProducts({ ...productFilters, page: 1 }), [productFilters]);
   const productsQuery = useAsyncData(loader);
 
   const categories = useMemo(() => categoriesQuery.data || [], [categoriesQuery.data]);
@@ -77,8 +70,8 @@ export default function ProductsPage() {
   }, [params, setParams]);
 
   useEffect(() => {
-    if (mainRef.current) mainRef.current.scrollTop = 0;
-  }, [params]);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [q, category, subcategory, sort, priceRange, verifiedOnly, minRating]);
 
   useEffect(() => {
     const next = search.trim();
@@ -100,9 +93,9 @@ export default function ProductsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto flex w-full max-w-[1400px] bg-gray-50">
+      <div className="mx-auto flex w-full max-w-[1536px] items-start bg-slate-50">
         {/* ─── Desktop Sidebar Filters ──────────────────────────── */}
-        <aside className="sticky top-0 hidden h-[calc(100vh-64px)] w-[240px] flex-shrink-0 overflow-y-auto border-r border-gray-200 bg-white scrollbar-hide lg:block xl:w-[260px]">
+        <aside className="sticky top-24 hidden max-h-[calc(100vh-7rem)] w-[240px] flex-shrink-0 overflow-y-auto rounded-br-2xl border border-l-0 border-slate-200 bg-white lg:block xl:w-[270px]">
           <div className="p-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Filters</h3>
@@ -208,8 +201,8 @@ export default function ProductsPage() {
         </aside>
 
         {/* ─── Main Content ─────────────────────────────────────── */}
-        <main ref={mainRef} className="h-[calc(100vh-64px)] flex-1 overflow-y-auto scrollbar-hide">
-          <div className="mx-auto w-full max-w-5xl px-3 py-4 pb-24 md:px-6 md:py-6 md:pb-8 lg:px-6 lg:py-6">
+        <main className="min-w-0 flex-1">
+          <div className="mx-auto w-full max-w-7xl px-2.5 py-4 pb-24 min-[390px]:px-3 md:px-6 md:py-7 md:pb-10 xl:px-8">
             {/* Page Header */}
             <PageHead
               eyebrow="Marketplace Catalog"
@@ -307,8 +300,10 @@ export default function ProductsPage() {
             )}
 
             {/* ─── Products Grid ────────────────────────────────── */}
-            {productsQuery.loading ? (
-              <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
+            {productsQuery.error ? (
+              <MarketplaceError error={productsQuery.error} onRetry={productsQuery.reload} title="Products are temporarily unavailable." />
+            ) : productsQuery.loading ? (
+              <div className="grid grid-cols-2 gap-2 min-[390px]:gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                 <SkeletonCards count={12} variant="product" />
               </div>
             ) : products.length > 0 ? (
@@ -316,10 +311,15 @@ export default function ProductsPage() {
                 <p className="mb-3 text-[10px] font-medium text-gray-400">
                   {productsQuery.data?.pagination?.total || products.length} products found
                 </p>
-                <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 lg:gap-4">
+                <div className="grid grid-cols-2 gap-2 min-[390px]:gap-2.5 sm:gap-4 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
                   {products.map((item) => (
                     <ProductCard key={item._id || item.id} product={item} />
                   ))}
+                  <AdditionalProductPages
+                    key={JSON.stringify(productFilters)}
+                    filters={productFilters}
+                    totalPages={productsQuery.data?.pagination?.totalPages || 1}
+                  />
                 </div>
               </>
             ) : (
@@ -503,6 +503,39 @@ function displayPriceRange(range, formatPrice) {
   if (range.min === 0) return `Under ${formatPrice(range.max, 'INR')}`
   if (range.max === null) return `Above ${formatPrice(range.min, 'INR')}`
   return `${formatPrice(range.min, 'INR')} - ${formatPrice(range.max, 'INR')}`
+}
+
+function AdditionalProductPages({ filters, totalPages }) {
+  const [pageCount, setPageCount] = useState(1);
+  const sentinel = useRef(null);
+
+  useEffect(() => {
+    if (pageCount >= totalPages || !sentinel.current) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setPageCount((current) => Math.min(totalPages, current + 1));
+      },
+      { rootMargin: '500px 0px' },
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [pageCount, totalPages]);
+
+  return <>
+    {Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+      <ProductBatch key={index + 2} page={index + 2} filters={filters} />
+    )}
+    {pageCount < totalPages && <div ref={sentinel} className="col-span-full flex min-h-24 items-center justify-center" aria-live="polite">
+      <span className="inline-flex items-center gap-2 text-[10px] font-bold text-slate-500"><span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" /> Loading more products</span>
+    </div>}
+  </>;
+}
+
+function ProductBatch({ page, filters }) {
+  const query = useAsyncData(useCallback(() => fetchProducts({ ...filters, page }), [filters, page]));
+  if (query.loading) return <SkeletonCards count={8} variant="product" />;
+  if (query.error) return <div className="col-span-full"><MarketplaceError error={query.error} onRetry={query.reload} title="More products could not be loaded." /></div>;
+  return query.data?.products?.map((product) => <ProductCard key={product._id || product.id} product={product} />);
 }
 
 function FilterChip({ label, onRemove }) {

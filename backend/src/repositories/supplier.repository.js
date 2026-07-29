@@ -28,6 +28,30 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
           },
           { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
           {
+            $lookup: {
+              from: 'products',
+              let: { supplierId: '$_id' },
+              as: 'products',
+              pipeline: [
+                {
+                  $match: {
+                    $expr: { $eq: ['$sellerId', '$$supplierId'] },
+                    status: { $in: ['active', 'published'] },
+                    visibility: { $ne: 'private' },
+                  },
+                },
+                { $sort: { totalOrders: -1, averageRating: -1, createdAt: -1 } },
+                { $limit: 4 },
+                {
+                  $project: {
+                    name: 1, slug: 1, images: 1, image: 1, price: 1, currency: 1,
+                    unit: 1, minimumOrderQuantity: 1, category: 1,
+                  },
+                },
+              ],
+            },
+          },
+          {
             $project: {
               userId: '$user',
               companyName: 1,
@@ -54,6 +78,7 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
               exportMarkets: 1,
               industries: 1,
               mainProducts: 1,
+              products: 1,
               tradeCapabilities: 1,
               createdAt: 1,
             },

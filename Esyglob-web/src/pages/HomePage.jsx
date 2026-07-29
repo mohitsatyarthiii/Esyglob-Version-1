@@ -6,6 +6,7 @@ import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { CategoryBubble, ProductCard, SkeletonCards } from '../components/MarketplaceCards'
 import MarketplaceSearch from '../components/MarketplaceSearch'
+import { MarketplaceError } from '../components/MarketplaceFeedback'
 import useAsyncData from '../hooks/useAsyncData'
 
 const featuredLoader = () => fetchProducts({ limit: 10, sort: 'latest', verifiedOnly: true })
@@ -51,15 +52,15 @@ export default function HomePage() {
 }
 
 function MarketplaceCategories({ query, ordered }) {
-  return <section className="home-list-section"><div className="container"><div className="home-list-heading"><h2>Categories</h2><Link to="/categories">See all</Link></div><div className="home-category-row">{query.loading ? <SkeletonCards count={8} variant="category" /> : ordered.slice(0, 14).map(item => <CategoryBubble key={item._id || item.slug} category={item} />)}</div></div></section>
+  return <section className="home-list-section"><div className="container"><div className="home-list-heading"><h2>Categories</h2><Link to="/categories">See all</Link></div>{query.error ? <MarketplaceError error={query.error} onRetry={query.reload} /> : <div className="home-category-row">{query.loading ? <SkeletonCards count={8} variant="category" /> : ordered.slice(0, 14).map(item => <CategoryBubble key={item._id || item.slug} category={item} />)}</div>}</div></section>
 }
 
 function FeaturedProducts({ query }) {
-  return <section className="home-list-section home-list-section--muted"><div className="container"><div className="home-list-heading"><h2>Featured products</h2><Link to="/products">View all</Link></div><div className="home-product-row">{query.loading ? <SkeletonCards count={5} variant="product" /> : query.data?.products?.map(item => <div key={item._id || item.id}><ProductCard product={item} /></div>)}</div></div></section>
+  return <section className="home-list-section home-list-section--muted"><div className="container"><div className="home-list-heading"><h2>Featured products</h2><Link to="/products">View all</Link></div>{query.error ? <MarketplaceError error={query.error} onRetry={query.reload} /> : <div className="home-product-row">{query.loading ? <SkeletonCards count={5} variant="product" /> : query.data?.products?.map(item => <div key={item._id || item.id}><ProductCard product={item} /></div>)}</div>}</div></section>
 }
 
 function AllProducts({ query }) {
-  return <section className="home-list-section home-reveal"><div className="container"><div className="home-list-heading"><h2>Trending products</h2><Link to="/products">Browse all</Link></div><div className="home-product-grid">{query.loading ? <SkeletonCards count={8} variant="product" /> : query.data?.products?.map(item => <ProductCard key={item._id || item.id} product={item} />)}</div></div></section>
+  return <section className="home-list-section home-reveal"><div className="container"><div className="home-list-heading"><h2>Trending products</h2><Link to="/products">Browse all</Link></div>{query.error ? <MarketplaceError error={query.error} onRetry={query.reload} /> : <div className="home-product-grid">{query.loading ? <SkeletonCards count={8} variant="product" /> : query.data?.products?.map(item => <ProductCard key={item._id || item.id} product={item} />)}</div>}</div></section>
 }
 
 function QuickAction({ icon, label, tone, to, onClick, state }) {

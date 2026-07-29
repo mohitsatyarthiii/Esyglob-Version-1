@@ -94,6 +94,9 @@ class ProductService {
       seller,
       minPrice,
       maxPrice,
+      priceRange,
+      verifiedOnly,
+      minRating,
       search,
       page: rawPage = 1,
       limit: rawLimit = 12,
@@ -144,6 +147,16 @@ class ProductService {
       if (Number.isFinite(parsedMinPrice)) filter.price.$gte = parsedMinPrice;
       if (Number.isFinite(parsedMaxPrice)) filter.price.$lte = parsedMaxPrice;
     }
+
+    if (!filter.price && priceRange) {
+      const bounds = String(priceRange).match(/[\d,]+/g)?.map((value) => Number(value.replaceAll(',', ''))) || [];
+      if (/^under/i.test(priceRange) && bounds[0]) filter.price = { $lte: bounds[0] };
+      else if (/^above/i.test(priceRange) && bounds[0]) filter.price = { $gte: bounds[0] };
+      else if (bounds.length >= 2) filter.price = { $gte: bounds[0], $lte: bounds[1] };
+    }
+
+    if (Number(minRating) > 0) filter.averageRating = { $gte: Math.min(5, Number(minRating)) };
+    if (String(verifiedOnly) === 'true') filter.isVerifiedSeller = true;
 
     if (search && search.trim()) {
       const searchTerm = search.trim().substring(0, 50);

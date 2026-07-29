@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom'
 import { fetchSellers } from '../api/marketplace'
 import AppShell from '../components/AppShell'
 import { SafeImage, SkeletonCards } from '../components/MarketplaceCards'
+import { MarketplaceError } from '../components/MarketplaceFeedback'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
 import useAsyncData from '../hooks/useAsyncData'
 
@@ -111,7 +112,20 @@ export default function SellersPage() {
 
   return <AppShell>
     <div className="min-h-screen bg-[#f8f9fa]">
-      <div className="sticky top-0 z-30 border-b border-gray-200 bg-white shadow-sm">
+      <section className="border-b border-slate-200 bg-gradient-to-br from-slate-950 via-[#10294b] to-blue-900 text-white">
+        <div className="mx-auto grid max-w-7xl gap-5 px-4 py-7 md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:px-6 md:py-9">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-[.16em] text-blue-300">Verified global supply network</span>
+            <h1 className="mt-2 max-w-3xl text-2xl font-extrabold tracking-tight text-white md:text-4xl">Find manufacturers built for serious B2B trade</h1>
+            <p className="mt-2 max-w-2xl text-xs leading-6 text-slate-300 md:text-sm">Compare business credentials, export capability, response performance and real product catalogs in one place.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-200">
+            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3"><ShieldCheck size={14} className="text-emerald-300" /> Verified profiles</span>
+            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3"><PackageCheck size={14} className="text-blue-300" /> Live catalogs</span>
+          </div>
+        </div>
+      </section>
+      <div className="relative z-20 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-3">
           <div className="seller-search-toolbar">
             <UnifiedSearchInput className="sellers-unified-search" value={input} onChange={setInput} onSubmit={handleSubmit} placeholder="Search manufacturers by product, industry or location" showSubmit />
@@ -149,7 +163,9 @@ export default function SellersPage() {
 
           <div className="min-w-0 flex-1">
             {!query.loading && <p className="mb-3 text-sm text-gray-500"><span className="font-bold text-gray-800">{sellers.length}</span> suppliers found</p>}
-            {query.loading
+            {query.error
+              ? <MarketplaceError error={query.error} onRetry={query.reload} title="Supplier profiles are temporarily unavailable." />
+              : query.loading
               ? <div className="space-y-3"><SkeletonCards count={3} variant="manufacturer" /></div>
               : sellers.length
                 ? <div className="flex flex-col gap-3">{sellers.map((seller) => <SellerListingCard key={seller._id || seller.id} seller={seller} />)}</div>
@@ -185,6 +201,8 @@ function SellerListingCard({ seller }) {
   const moq = seller.minimumOrderQuantity || seller.moq || seller.products?.find((product) => product.minimumOrderQuantity || product.moq)?.minimumOrderQuantity || seller.products?.find((product) => product.moq)?.moq
   const description = seller.companyDescription || seller.description || seller.about || `Explore sourcing and manufacturing capabilities from ${name}.`
   const categories = normalizeCategories(seller.businessCategories || seller.productCategories || seller.categories || seller.industries, seller.products)
+  const productPreviews = Array.isArray(seller.products) ? seller.products.filter((product) => product.images?.[0] || product.image).slice(0, 4) : []
+  const hasMedia = productPreviews.length > 0 || Boolean(facilityImage)
 
   return <article className="seller-list-card">
     <header className="seller-list-card__header">
@@ -205,7 +223,7 @@ function SellerListingCard({ seller }) {
       <button className={`seller-save-button ${saved ? 'saved' : ''}`} onClick={() => setSaved((value) => !value)} aria-label={saved ? 'Remove supplier from saved' : 'Save supplier'} aria-pressed={saved}><Heart /></button>
     </header>
 
-    <div className="seller-list-card__content">
+    <div className={`seller-list-card__content ${hasMedia ? '' : 'no-media'}`}>
       <div className="seller-list-card__details">
         <p className="seller-list-card__description">{description}</p>
         <div className="seller-category-chips" aria-label="Product categories">
@@ -221,12 +239,18 @@ function SellerListingCard({ seller }) {
         </div>
       </div>
 
-      <div className="seller-list-card__media">
-        {facilityImage
-          ? <SafeImage src={facilityImage} alt={`${name} facility`} className="h-full w-full object-cover" />
-          : <div className="seller-list-card__placeholder"><Factory /><span>Company facility</span></div>}
-        <span><Factory /> Manufacturing profile</span>
-      </div>
+      {hasMedia && <div className="seller-card-visuals">
+        {facilityImage && <Link className="seller-list-card__media" to={`/sellers/${id}`} aria-label={`View ${name} manufacturing profile`}>
+          <SafeImage src={facilityImage} alt={`${name} facility`} className="h-full w-full object-cover" />
+          <span><Factory /> Factory profile</span>
+        </Link>}
+        {productPreviews.length > 0 && <div className="seller-product-previews" aria-label={`Products from ${name}`}>
+          {productPreviews.map((product) => <Link key={product._id || product.slug} to={`/products/${product._id || product.slug}`} title={product.name}>
+            <SafeImage src={product.images?.[0] || product.image} alt={product.name} className="h-full w-full object-cover" />
+            <span>{product.name}</span>
+          </Link>)}
+        </div>}
+      </div>}
     </div>
 
     <footer className="seller-list-card__footer">

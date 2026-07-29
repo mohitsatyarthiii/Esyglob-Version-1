@@ -94,7 +94,8 @@ class ProductRepository {
     };
 
     const listQuery = Product.find(query)
-      .select('name images price unit minimumOrderQuantity category subcategory averageRating sellerId')
+      .select('name slug images price currency unit minimumOrderQuantity category subcategory averageRating reviewCount totalOrders sellerId leadTime deliveryTime shipping countryOfOrigin discount badge isBestSeller createdAt')
+      .populate('sellerId', 'companyName isVerified verificationStatus rating trustScore responseRate address country companyType')
       .sort(filter.$text ? { score: { $meta: 'textScore' }, [sort]: order } : { [sort]: order })
       .skip(skip)
       .limit(limit)
@@ -119,14 +120,25 @@ class ProductRepository {
       _id: product._id,
       name: product.name,
       image: product.images?.[0] || null,
+      images: product.images || [],
       price: product.price,
       unit: product.unit,
       moq: product.minimumOrderQuantity,
       category: product.category,
       subcategory: product.subcategory,
       rating: product.averageRating || 0,
+      reviewCount: product.reviewCount || 0,
+      totalOrders: product.totalOrders || 0,
       verified: true,
       sellerId: product.sellerId,
+      currency: product.currency,
+      leadTime: product.leadTime,
+      deliveryTime: product.deliveryTime,
+      shipping: product.shipping,
+      countryOfOrigin: product.countryOfOrigin,
+      discount: product.discount,
+      badge: product.badge,
+      isBestSeller: product.isBestSeller,
     }));
 
     const result = {

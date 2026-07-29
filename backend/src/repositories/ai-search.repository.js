@@ -20,6 +20,44 @@ const cache = new Map();
 const CACHE_TTL = 30000;
 const MAX_CACHE_ENTRIES = 250;
 
+function normalizedTokens(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+}
+
+export function productRelevance(product, terms) {
+  const fields = [
+    [product.name, 10],
+    [product.subcategory, 8],
+    [product.category, 7],
+    [product.tags?.join?.(' '), 6],
+    [product.specifications, 4],
+    [product.description, 2],
+  ];
+  const termList = [...new Set(terms.flatMap(normalizedTokens))];
+  const textScore = fields.reduce((total, [value, weight]) => {
+    const haystack = ` ${normalizedTokens(value).join(' ')} `;
+    return total + termList.reduce((score, term) => {
+      if (!haystack.includes(` ${term} `)) return score;
+      return score + weight;
+    }, 0);
+  }, 0);
+  const qualityTieBreak = Math.min(2.5, Number(product.averageRating || 0) * 0.3)
+    + Math.min(1.5, Math.log10(Number(product.totalOrders || 0) + 1) * 0.4)
+    + (product.sellerId?.isVerified ? 0.75 : 0);
+  return Math.round((textScore + qualityTieBreak) * 100) / 100;
+}
+
+export function rankVisualProducts(products, terms, limit = products.length) {
+  return products
+    .map((product) => ({ ...product, visualRelevanceScore: productRelevance(product, terms) }))
+    .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore)
+    .slice(0, limit);
+}
+
 function getCached(key) {
   const entry = cache.get(key);
   if (entry && Date.now() - entry.timestamp < CACHE_TTL) return entry.data;
@@ -125,7 +163,7 @@ class AISearchRepository {
         .select('name slug category subcategory price currency minimumOrderQuantity unit images averageRating totalOrders sellerId tags description specifications sampleAvailable samplePrice leadTime')
         .populate('sellerId', 'companyName isVerified rating trustScore address companyType')
         .sort({ averageRating: -1, totalOrders: -1, createdAt: -1 })
-        .limit(productLimit)
+        .limit(Math.min(productLimit * 4, 120))
         .lean()
         .exec(),
       Seller.find(sellerQuery)
@@ -143,7 +181,7 @@ class AISearchRepository {
         .exec(),
     ]);
 
-    const products = rawProducts;
+    const products = rankVisualProducts(rawProducts, terms, productLimit);
 
     // Get user-specific data
     let quotations = [];

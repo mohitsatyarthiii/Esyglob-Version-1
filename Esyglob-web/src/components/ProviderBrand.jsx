@@ -1,10 +1,17 @@
 import { useState } from 'react'
 
 const providers = {
-  dhl: { label: 'DHL', logo: '/dhl.webp' },
-  fedex: { label: 'FedEx', logo: '/fedex.png' },
-  shiprocket: { label: 'Shiprocket', logo: '/shiprocket.png' },
-  delhivery: { label: 'Delhivery', logo: '/delhivery.png' },
+  dhl: { label: 'DHL', logo: '/dhl.webp', type: 'Logistics' },
+  fedex: { label: 'FedEx', logo: '/fedx.png', type: 'Logistics' },
+  shiprocket: { label: 'Shiprocket', logo: '/shiprocket.png', type: 'Shipping technology' },
+  delhivery: { label: 'Delhivery', logo: '/delhivery.png', type: 'Logistics' },
+  asc: { label: 'ASC', logo: '/asc.png', type: 'Warehousing' },
+  maersk: { label: 'Maersk', logo: '/maersk.png', type: 'Ocean logistics' },
+  dpworld: { label: 'DP World', logo: '/dp-world.png', type: 'Trade logistics' },
+  sgs: { label: 'SGS', logo: '/sgs.png', type: 'Inspection' },
+  intertek: { label: 'Intertek', logo: '/intertek.png', type: 'Quality assurance' },
+  'bureau-veritas': { label: 'Bureau Veritas', logo: '/bureau-veritas.png', type: 'Testing and certification' },
+  'tuv-rheinland': { label: 'TÜV Rheinland', logo: '/tuv-rheinland.png', type: 'Certification' },
 }
 
 const providerKeys = Object.keys(providers)
@@ -23,16 +30,16 @@ export default function ProviderBrand({ providerKey, compact = false, name = fal
     aria-label={provider.label}
   >
     {provider.logo && !failed
-      ? <img src={provider.logo} alt={provider.label} onError={() => setFailed(true)} />
+      ? <img src={provider.logo} alt={provider.label} loading="lazy" decoding="async" onError={() => setFailed(true)} />
       : <b>{provider.label}</b>}
-    {name && <small>{provider.label}</small>}
+    {name && <span className="provider-logo__name">{provider.logo && !failed && <small>{provider.label}</small>}{provider.type && <em>{provider.type}</em>}</span>}
   </span>
 }
 
-export function ProviderStrip({ keys = providerKeys, label = 'Supported providers', compact = false }) {
+export function ProviderStrip({ keys = providerKeys, label = 'Supported providers', compact = false, named = false, className = '' }) {
   if (!keys.length) return null
-  return <div className={`provider-strip${compact ? ' is-compact' : ''}`}>
+  return <div className={`provider-strip${compact ? ' is-compact' : ''}${named ? ' is-named' : ''}${className ? ` ${className}` : ''}`}>
     <small>{label}</small>
-    <div>{keys.map(key => <ProviderBrand key={key} providerKey={key} compact={compact} />)}</div>
+    <div>{keys.map(key => <ProviderBrand key={key} providerKey={key} compact={compact} name={named} />)}</div>
   </div>
 }
