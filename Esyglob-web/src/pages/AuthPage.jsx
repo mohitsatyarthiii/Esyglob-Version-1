@@ -1,8 +1,6 @@
 import { ArrowLeft, ArrowRight, Building2, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { requestPasswordReset, resetPassword } from '../api/auth'
-import { ApiError } from '../api/client'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/auth-context'
 import Brand from '../components/Brand'
 
@@ -12,7 +10,6 @@ export default function AuthPage({ mode }) {
   const { status, signIn, signUp } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [searchParams] = useSearchParams()
   const [role, setRole] = useState('buyer')
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [showPassword, setShowPassword] = useState(false)
@@ -24,10 +21,8 @@ export default function AuthPage({ mode }) {
   if (status === 'authenticated' && mode !== 'signup' && !loading) return <Navigate replace to="/home" />
 
   const isSignup = mode === 'signup'
-  const isForgot = mode === 'forgot'
-  const isReset = mode === 'reset'
-  const title = isSignup ? 'Create your EsyGlob account' : isForgot ? 'Recover your account' : isReset ? 'Set a new password' : 'Welcome back'
-  const subtitle = isSignup ? 'Start sourcing or selling in the global marketplace.' : isForgot ? 'Enter your email to request recovery instructions.' : isReset ? 'Choose a strong password for your account.' : 'Sign in to continue to your marketplace.'
+  const title = isSignup ? 'Create your EsyGlob account' : 'Welcome back'
+  const subtitle = isSignup ? 'Start sourcing or selling in the global marketplace.' : 'Sign in to continue to your marketplace.'
 
   function update(key, value) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -36,10 +31,9 @@ export default function AuthPage({ mode }) {
 
   function validate() {
     if (!EMAIL_PATTERN.test(form.email.trim())) return 'Enter a valid business email address.'
-    if (isForgot) return ''
     if (isSignup && form.name.trim().length < 2) return 'Enter your full name.'
-    if (form.password.length < (isSignup || isReset ? 8 : 1)) return isSignup || isReset ? 'Password must be at least 8 characters.' : 'Enter your password.'
-    if ((isSignup || isReset) && form.password !== form.confirmPassword) return 'Passwords do not match.'
+    if (form.password.length < (isSignup ? 8 : 1)) return isSignup ? 'Password must be at least 8 characters.' : 'Enter your password.'
+    if (isSignup && form.password !== form.confirmPassword) return 'Passwords do not match.'
     return ''
   }
 
@@ -51,15 +45,7 @@ export default function AuthPage({ mode }) {
     setError('')
     setMessage('')
     try {
-      if (isForgot) {
-        await requestPasswordReset(form.email.trim())
-        setMessage('If an account exists, password recovery instructions have been prepared.')
-      } else if (isReset) {
-        const token = searchParams.get('token')
-        if (!token) throw new Error('This reset link is missing its security token.')
-        await resetPassword(token, form.password)
-        navigate('/login', { replace: true, state: { notice: 'Password reset. You can now sign in.' } })
-      } else if (isSignup) {
+      if (isSignup) {
         await signUp({ name: form.name.trim(), email: form.email.trim(), password: form.password, role })
         navigate(role === 'seller' ? '/seller/business-profile' : '/buyer/onboarding', { replace: true })
       } else {
@@ -70,11 +56,7 @@ export default function AuthPage({ mode }) {
         navigate(onboarding || location.state?.from || '/home', { replace: true })
       }
     } catch (nextError) {
-      if (nextError instanceof ApiError && nextError.status === 404 && (isForgot || isReset)) {
-        setError('Password recovery is not enabled on the current EsyGlob API. Please contact support for account access.')
-      } else {
-        setError(nextError.message || 'Something went wrong. Please try again.')
-      }
+      setError(nextError.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -107,20 +89,20 @@ export default function AuthPage({ mode }) {
                 <Field icon={<UserRound />} label="Full name" name="name" value={form.name} onChange={(value) => update('name', value)} placeholder="Your full name" autoComplete="name" />
               </>
             )}
-            {!isReset && <Field icon={<Mail />} label="Business email" name="email" type="email" value={form.email} onChange={(value) => update('email', value)} placeholder="name@company.com" autoComplete="email" />}
-            {!isForgot && <Field icon={<LockKeyhole />} label={isReset ? 'New password' : 'Password'} name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={(value) => update('password', value)} placeholder="Enter your password" autoComplete={isSignup || isReset ? 'new-password' : 'current-password'} action={<button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff /> : <Eye />}</button>} />}
-            {(isSignup || isReset) && (
+            <Field icon={<Mail />} label="Business email" name="email" type="email" value={form.email} onChange={(value) => update('email', value)} placeholder="name@company.com" autoComplete="email" />
+            <Field icon={<LockKeyhole />} label="Password" name="password" type={showPassword ? 'text' : 'password'} value={form.password} onChange={(value) => update('password', value)} placeholder="Enter your password" autoComplete={isSignup ? 'new-password' : 'current-password'} action={<button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff /> : <Eye />}</button>} />
+            {isSignup && (
               <>
                 <div className="password-strength"><span><i style={{ width: `${strength.score * 20}%` }} /></span><small>{strength.label} password</small></div>
                 <Field icon={<LockKeyhole />} label="Confirm password" name="confirmPassword" type="password" value={form.confirmPassword} onChange={(value) => update('confirmPassword', value)} placeholder="Repeat your password" autoComplete="new-password" />
               </>
             )}
-            {!isSignup && !isForgot && !isReset && <div className="form-row"><label className="checkbox"><input type="checkbox" /><span /> Keep me signed in</label><Link to="/forgot-password">Forgot password?</Link></div>}
+            {!isSignup && <div className="form-row"><label className="checkbox"><input type="checkbox" /><span /> Keep me signed in</label><Link to="/forgot-password">Forgot password?</Link></div>}
             {isSignup && <p className="terms">By creating an account, you agree to EsyGlob’s Terms of Service and Privacy Policy.</p>}
-            <button className="button button--primary button--full" disabled={loading} type="submit">{loading ? <span className="spinner" /> : <>{isSignup ? 'Create account' : isForgot ? 'Request recovery' : isReset ? 'Reset password' : 'Sign in'} <ArrowRight /></>}</button>
+            <button className="button button--primary button--full" disabled={loading} type="submit">{loading ? <span className="spinner" /> : <>{isSignup ? 'Create account' : 'Sign in'} <ArrowRight /></>}</button>
           </form>
           <div className="auth-switch">
-            {isSignup ? <>Already have an account? <Link to="/login">Sign in</Link></> : isForgot || isReset ? <><Link to="/login">Return to sign in</Link></> : <>New to EsyGlob? <Link to="/signup">Create an account</Link></>}
+            {isSignup ? <>Already have an account? <Link to="/login">Sign in</Link></> : <>New to EsyGlob? <Link to="/signup">Create an account</Link></>}
           </div>
         </div>
       </section>

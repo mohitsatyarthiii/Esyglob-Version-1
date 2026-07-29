@@ -40,6 +40,7 @@ export function errorHandler(err, req, res, _next) {
   return res.status(statusCode).json({
     error: message,
     code: err.code || (statusCode === 401 ? 'AUTHENTICATION_REQUIRED' : statusCode === 403 ? 'FORBIDDEN' : statusCode === 404 ? 'NOT_FOUND' : 'REQUEST_FAILED'),
+    retryAfter: err.retryAfter,
     requestId,
   });
 }

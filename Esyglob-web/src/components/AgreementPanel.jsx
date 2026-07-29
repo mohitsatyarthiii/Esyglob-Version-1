@@ -89,10 +89,6 @@ function FinalPreparation({ quotation, onComplete, setError }) {
   </form>
 }
 
-function LegacyFinalPreview({ quotation, form, total }) {
-  return <section className="live-agreement-preview"><header><div><i>E</i><span><b>ESYGLOB ENTERPRISE TRADE</b><small>Official Final Quotation</small></span></div><div><strong>{quotation.finalQuotation?.finalQuotationNumber}</strong><small>Quotation {quotation.quotationNumber}</small><em>Seller signature required</em></div></header><h4>Final Quotation</h4><table><thead><tr><th>Product</th><th>Quantity</th><th>Unit price</th><th>Total</th></tr></thead><tbody><tr><td>{quotation.productId?.name || quotation.rfqId?.title || 'Quoted product'}</td><td>{form.suppliedQuantity || '—'}</td><td><Money value={Number(form.unitPrice || 0)} currency={quotation.currency} /></td><td><Money value={total} currency={quotation.currency} /></td></tr></tbody></table><div className="live-terms-grid">{[['Production',form.productionTime],['Delivery',form.shippingEstimate || form.leadTime],['Shipping',form.shippingTerms],['Payment',form.paymentTerms],['Packaging',form.packaging],['Warranty',form.warranty]].map(([title,value]) => <span key={title}><small>{title}</small><b>{value || 'To be completed'}</b></span>)}</div>{form.notes && <p className="live-contract-notes"><b>Commercial Notes</b>{form.notes}</p>}<footer><span>Seller information verified</span><span>Two-party signature audit</span></footer></section>
-}
-
 function FinalPreview({ quotation, form, total }) {
   const terms = [['MOQ', form.minimumOrderQuantity], ['Lead time', form.leadTime], ['Shipping', form.shippingTerms], ['Payment', form.paymentTerms], ['Valid until', form.expiryDate]]
   return <section className="live-agreement-preview">
@@ -107,6 +103,7 @@ function FinalPreview({ quotation, form, total }) {
 
 function FinalDocument({ data, quotation, document, versions, user, authStatus, onComplete, setError }) {
   const navigate = useNavigate()
+  const previewFrameRef = useRef(null)
   const actorRole = data.actorRole
   const directOrderReady = document.status === 'completed' && quotation.directOrderEnabled
   const signed = document.status === 'completed' && !quotation.directOrderEnabled
@@ -120,7 +117,19 @@ function FinalDocument({ data, quotation, document, versions, user, authStatus, 
   const [signatureType, setSignatureType] = useState('typed')
   const [signerName, setSignerName] = useState(user?.fullName || user?.name || '')
   const [signatureValue, setSignatureValue] = useState('')
+  const [previewHeight, setPreviewHeight] = useState(720)
   const previewUrl = resolveApiResourceUrl(document.previewUrl)
+  useEffect(() => {
+    const previewOrigin = new URL(previewUrl, window.location.href).origin
+    const resizePreview = event => {
+      if (event.source !== previewFrameRef.current?.contentWindow || event.origin !== previewOrigin) return
+      if (event.data?.type !== 'esyglob:document-height' || event.data.documentId !== id(document)) return
+      const nextHeight = Math.ceil(Number(event.data.height))
+      if (Number.isFinite(nextHeight) && nextHeight >= 320) setPreviewHeight(nextHeight)
+    }
+    window.addEventListener('message', resizePreview)
+    return () => window.removeEventListener('message', resizePreview)
+  }, [document, previewUrl])
   async function sign() {
     if (!canSign || !termsAccepted || busy || !signerName.trim() || !signatureValue) return
     setBusy(true); setError('')
@@ -166,7 +175,7 @@ function FinalDocument({ data, quotation, document, versions, user, authStatus, 
   }
   return <div className="agreement-document">
     <div className="agreement-document-toolbar"><div><FileSignature /><span><small>{quotation.finalQuotation?.finalQuotationNumber}</small><b>{document.title}</b><em>Version {document.version || 1} · {label(document.status)}</em></span></div><div><Link className="button button--secondary" to={`/agreements?quotation=${id(quotation)}&role=${actorRole}`}>Agreements</Link><a className="button button--secondary" href={previewUrl} target="_blank" rel="noreferrer"><FileText /> Preview</a><a className="button button--secondary" href={`${previewUrl}?format=pdf`} target="_blank" rel="noreferrer"><Download /> Download</a><button type="button" className="button button--secondary" onClick={shareDocument}><Share2 /> Share</button><button type="button" className="button button--secondary" onClick={printDocument}><Printer /> Print</button></div></div>
-    <div className="agreement-preview"><iframe title="Final Quotation preview" src={previewUrl} /></div>
+    <div className="agreement-preview" style={{ height: previewHeight }}><iframe ref={previewFrameRef} title="Final Quotation preview" src={previewUrl} scrolling="no" /></div>
     <div className="final-quotation-version"><History /><span><b>Version history</b><small>{versions.map(item => `v${item.version} ${label(item.status)}`).join(' · ')}</small></span></div>
     {canSign && <div className="final-quotation-signing"><label className="final-quotation-consent"><input type="checkbox" checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} /><span><b>I have reviewed and accept this Final Quotation and its terms and conditions.</b><small>This acknowledgement is required and will be recorded with your electronic signature.</small></span></label><div className="final-quotation-actions">{actorRole === 'buyer' && <button type="button" className="button button--secondary" onClick={() => setChangesOpen(true)}><RefreshCw /> Request Changes</button>}<button type="button" className="button button--primary" disabled={!termsAccepted || busy} onClick={() => setSignOpen(true)}><Signature /> Add {label(actorRole)} Signature</button></div></div>}
     {actorRole === 'buyer' && document.status === 'awaiting_seller_signature' && <Waiting title="Seller signature pending" copy="Buyer review and signing opens automatically after the Seller signs this version." />}

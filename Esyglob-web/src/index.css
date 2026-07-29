@@ -5785,6 +5785,212 @@ svg {
   text-align: right;
 }
 
+.recovery-card {
+  width: min(520px, 100%);
+}
+
+.recovery-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+}
+
+.recovery-steps li {
+  align-items: center;
+  color: #94a3b8;
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 7px;
+  position: relative;
+}
+
+.recovery-steps li:not(:last-child)::after {
+  background: #dce4ee;
+  content: '';
+  height: 1px;
+  left: 32px;
+  position: absolute;
+  right: 8px;
+  top: 12px;
+}
+
+.recovery-steps i {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #dce4ee;
+  border-radius: 50%;
+  display: flex;
+  flex: 0 0 auto;
+  font-style: normal;
+  height: 25px;
+  justify-content: center;
+  position: relative;
+  width: 25px;
+  z-index: 1;
+}
+
+.recovery-steps li.active {
+  color: var(--blue);
+}
+
+.recovery-steps li.active i {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+.recovery-steps li.active:not(:last-child)::after {
+  background: #8db3ef;
+}
+
+.otp-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.otp-field > span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.otp-field input {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--navy);
+  font: 800 27px Manrope, sans-serif;
+  letter-spacing: .45em;
+  outline: 0;
+  padding: 14px 10px 14px 22px;
+  text-align: center;
+  width: 100%;
+}
+
+.otp-field input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(20, 94, 219, .1);
+}
+
+.recovery-expiry {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.recovery-resend {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--blue);
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  justify-content: center;
+  margin: 14px auto 0;
+}
+
+.recovery-resend:disabled {
+  color: #94a3b8;
+}
+
+.recovery-resend svg {
+  height: 15px;
+}
+
+.recovery-lock {
+  align-items: flex-start;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 11px;
+  color: #9a3412;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+}
+
+.recovery-lock svg {
+  flex: 0 0 auto;
+  height: 18px;
+}
+
+.recovery-lock span {
+  display: grid;
+  gap: 4px;
+}
+
+.recovery-lock b {
+  font-size: 12px;
+}
+
+.recovery-lock small {
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.password-policy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: -4px 0 18px;
+  padding: 0;
+}
+
+.password-policy li {
+  background: #eef2f6;
+  border-radius: 20px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+
+.password-policy li.done {
+  background: #e8f8f0;
+  color: #08734f;
+}
+
+.recovery-success {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.recovery-success > span {
+  align-items: center;
+  background: #dcfce7;
+  border-radius: 50%;
+  color: #047857;
+  display: flex;
+  height: 64px;
+  justify-content: center;
+  width: 64px;
+}
+
+.recovery-success > span svg {
+  height: 28px;
+}
+
+.recovery-success p {
+  color: var(--slate);
+  font-size: 13px;
+  margin: 18px 0;
+}
+
+.recovery-success small {
+  color: var(--muted);
+  margin-top: 13px;
+}
+
 .spinner {
   animation: spin .8s linear infinite;
   border: 2px solid rgba(255, 255, 255, .4);
@@ -5803,7 +6009,13 @@ svg {
 /* Shell */
 .site-shell {
   background: #fff;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+}
+
+.site-shell > main {
+  flex: 1 0 auto;
 }
 
 .utility-bar {
@@ -20856,10 +21068,14 @@ svg {
   border: 1px solid #dfe7f1;
   border-radius: 18px;
   box-shadow: 0 14px 38px rgba(15, 23, 42, .08);
-  margin-bottom: 34px;
+  margin-bottom: 48px;
   margin-top: 18px;
   overflow: hidden;
   padding: 0;
+}
+
+.quotation-detail-page {
+  padding-bottom: 24px;
 }
 
 .agreement-lifecycle-section>header {
@@ -21173,12 +21389,13 @@ svg {
   background: #eef2f7;
   border: 1px solid #dce4ed;
   border-radius: 13px;
-  height: 480px;
+  min-height: 480px;
   overflow: hidden;
 }
 
 .agreement-preview iframe {
   border: 0;
+  display: block;
   height: 100%;
   width: 100%;
 }
@@ -21573,7 +21790,7 @@ svg {
   }
 
   .agreement-preview {
-    height: 420px;
+    min-height: 420px;
   }
 }
 
@@ -21614,7 +21831,7 @@ svg {
   }
 
   .agreement-preview {
-    height: 360px;
+    min-height: 360px;
   }
 
   .agreement-signatures {

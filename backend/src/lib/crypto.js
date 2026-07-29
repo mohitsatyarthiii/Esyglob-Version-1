@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { config } from '../config/env.js';
 
 export function base64UrlEncode(input) {
@@ -17,27 +18,14 @@ export function sign(value) {
 }
 
 export async function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('base64url');
-
-  const hash = await new Promise((resolve, reject) => {
-    crypto.pbkdf2(
-      password,
-      salt,
-      config.hashIterations,
-      config.hashKeyLength,
-      config.hashDigest,
-      (error, derivedKey) => {
-        if (error) reject(error);
-        else resolve(derivedKey.toString('base64url'));
-      }
-    );
-  });
-
-  return `pbkdf2:${config.hashIterations}:${salt}:${hash}`;
+  return bcrypt.hash(password, 12);
 }
 
 export async function verifyPassword(password, storedHash) {
   if (!storedHash) return false;
+  if (/^\$2[aby]\$\d{2}\$/.test(storedHash)) {
+    return bcrypt.compare(password, storedHash);
+  }
 
   const [scheme, iterations, salt, hash] = storedHash.split(':');
 
@@ -75,9 +63,10 @@ export async function verifyPassword(password, storedHash) {
   );
 }
 
-export function createToken(userId) {
+export function createToken(userId, sessionVersion = 0) {
   const payload = {
     sub: String(userId),
+    ver: Number(sessionVersion || 0),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + config.sessionMaxAge,
   };

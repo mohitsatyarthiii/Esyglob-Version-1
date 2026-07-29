@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,17 +12,15 @@ import {
   Animated,
   LayoutAnimation,
   Image,
-  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { forgotPassword } from '../api/auth';
+import { forgotPassword, resetPassword, verifyPasswordResetOtp } from '../api/auth';
+import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
-const { width } = Dimensions.get('window');
-
-type Mode = 'login' | 'signup' | 'forgot';
+type Mode = 'login' | 'signup' | 'forgot' | 'otp' | 'reset' | 'success';
 type MobileRole = 'buyer' | 'seller';
 
 type Props = {
@@ -114,6 +112,12 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [otp, setOtp] = useState('');
+  const [countdown, setCountdown] = useState(0);
+  const [lockCountdown, setLockCountdown] = useState(0);
   const [secure, setSecure] = useState(true);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
@@ -121,12 +125,24 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
 
   const strength = useMemo(() => getPasswordStrength(password), [password]);
 
+  useEffect(() => {
+    if (!countdown && !lockCountdown) return;
+    const timer = setInterval(() => {
+      setCountdown(value => Math.max(0, value - 1));
+      setLockCountdown(value => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [countdown, lockCountdown]);
+
   const validate = () => {
-    if (!email.trim()) { setMsg({ type: 'error', text: 'Email required' }); return false; }
-    if (!/\S+@\S+\.\S+/.test(email)) { setMsg({ type: 'error', text: 'Invalid email' }); return false; }
-    if (mode !== 'forgot' && !password) { setMsg({ type: 'error', text: 'Password required' }); return false; }
+    if (['login', 'signup', 'forgot'].includes(mode) && !email.trim()) { setMsg({ type: 'error', text: 'Email required' }); return false; }
+    if (['login', 'signup', 'forgot'].includes(mode) && !/\S+@\S+\.\S+/.test(email)) { setMsg({ type: 'error', text: 'Invalid email' }); return false; }
+    if (mode === 'otp' && !/^\d{6}$/.test(otp)) { setMsg({ type: 'error', text: 'Enter the 6-digit code' }); return false; }
+    if (['login', 'signup', 'reset'].includes(mode) && !password) { setMsg({ type: 'error', text: 'Password required' }); return false; }
     if (mode === 'signup' && password.length < 8) { setMsg({ type: 'error', text: 'Min 8 characters' }); return false; }
     if (mode === 'signup' && !name.trim()) { setMsg({ type: 'error', text: 'Name required' }); return false; }
+    if (mode === 'reset' && (password.length < 12 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[^A-Za-z0-9]/.test(password))) { setMsg({ type: 'error', text: 'Use 12+ characters with upper/lowercase, a number, and symbol' }); return false; }
+    if (mode === 'reset' && password !== confirmPassword) { setMsg({ type: 'error', text: 'Passwords do not match' }); return false; }
     return true;
   };
 
@@ -136,8 +152,17 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
     setLoading(true);
     try {
       if (mode === 'forgot') {
-        await forgotPassword({ email: email.trim() });
-        setMsg({ type: 'success', text: 'Reset link sent' });
+        const result = await forgotPassword(email.trim());
+        setChallengeId(result.challengeId);
+        setCountdown(result.resendAfterSeconds || 60);
+        switchMode('otp');
+      } else if (mode === 'otp') {
+        const result = await verifyPasswordResetOtp(challengeId, otp);
+        setResetToken(result.resetToken);
+        switchMode('reset');
+      } else if (mode === 'reset') {
+        await resetPassword(challengeId, resetToken, password, confirmPassword);
+        switchMode('success');
       } else if (mode === 'login') {
         await signIn({ email: email.trim(), password });
         onSuccess?.();
@@ -156,6 +181,10 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
         }
       }
     } catch (e) {
+      if (e instanceof ApiError && typeof e.details === 'object' && e.details && 'retryAfter' in e.details) {
+        const retryAfter = Number((e.details as { retryAfter?: unknown }).retryAfter || 0);
+        if (retryAfter) setLockCountdown(retryAfter);
+      }
       setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Error occurred' });
     } finally {
       setLoading(false);
@@ -174,6 +203,23 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
 
   const isLogin = mode === 'login';
   const isSignup = mode === 'signup';
+  const isRecovery = ['forgot', 'otp', 'reset', 'success'].includes(mode);
+
+  const resend = async () => {
+    if (loading || countdown || lockCountdown) return;
+    setLoading(true);
+    setMsg(null);
+    try {
+      const result = await forgotPassword(email.trim(), challengeId);
+      setChallengeId(result.challengeId);
+      setOtp('');
+      setCountdown(result.resendAfterSeconds || 60);
+    } catch (e) {
+      setMsg({ type: 'error', text: e instanceof Error ? e.message : 'Unable to resend code' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={S.root}>
@@ -181,7 +227,7 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[S.scroll, { paddingTop: insets.top + 16, paddingBottom: 24 }]}
+          contentContainerStyle={[S.scroll, S.scrollBottom, { paddingTop: insets.top + 16 }]}
         >
           {/* Header */}
           <View style={S.header}>
@@ -196,10 +242,10 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
             />
             
             <Text style={S.title}>
-              {isLogin ? 'Welcome back' : isSignup ? 'Create account' : 'Reset password'}
+              {isLogin ? 'Welcome back' : isSignup ? 'Create account' : mode === 'forgot' ? 'Recover account' : mode === 'otp' ? 'Verify your email' : mode === 'reset' ? 'Create new password' : 'Password updated'}
             </Text>
             <Text style={S.subtitle}>
-              {isLogin ? 'Sign in to continue' : isSignup ? 'Join EsyGlob today' : 'We\'ll send you a reset link'}
+              {isLogin ? 'Sign in to continue' : isSignup ? 'Join EsyGlob today' : mode === 'forgot' ? 'We\'ll email a secure verification code' : mode === 'otp' ? 'Enter the 6-digit code from your email' : mode === 'reset' ? 'Choose a strong, unique password' : 'You can now sign in securely'}
             </Text>
           </View>
 
@@ -228,15 +274,15 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
                 </>
               )}
 
-              <Field label="Email" value={email} onChangeText={setEmail} placeholder="john@example.com" keyboard="email-address" />
+              {['login', 'signup', 'forgot'].includes(mode) && <Field label="Email" value={email} onChangeText={setEmail} placeholder="john@example.com" keyboard="email-address" />}
 
-              {mode !== 'forgot' && (
+              {['login', 'signup', 'reset'].includes(mode) && (
                 <View>
                   <Field
                     label="Password"
                     value={password}
                     onChangeText={setPassword}
-                    placeholder={isLogin ? 'Your password' : 'Create password'}
+                    placeholder={isLogin ? 'Your password' : mode === 'reset' ? 'New password' : 'Create password'}
                     secure={secure}
                     suffix={
                       <Pressable onPress={() => setSecure(!secure)} style={S.eyeBtn}>
@@ -244,7 +290,7 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
                       </Pressable>
                     }
                   />
-                  {isSignup && password.length > 0 && (
+                  {(isSignup || mode === 'reset') && password.length > 0 && (
                     <View style={S.strengthWrap}>
                       <View style={S.strengthBar}>
                         <View style={[S.strengthFill, { backgroundColor: strength.color, width: strength.width }]} />
@@ -260,8 +306,15 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
                       </View>
                     </View>
                   )}
+                  {mode === 'reset' && <Field label="Confirm password" value={confirmPassword} onChangeText={setConfirmPassword} placeholder="Repeat new password" secure />}
                 </View>
               )}
+
+              {mode === 'otp' && <View><Field label="6-digit verification code" value={otp} onChangeText={value => setOtp(value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" keyboard="number-pad" /><Text style={S.securityHint}>Expires in 10 minutes. Three incorrect attempts invalidate this code.</Text></View>}
+
+              {lockCountdown > 0 && <View style={S.lockNotice}><Icon name="shield-lock-outline" size={18} color="#9A3412" /><Text style={S.lockText}>Reset temporarily unavailable. Try again in {formatDuration(lockCountdown)}. Normal sign-in is still available.</Text></View>}
+
+              {mode === 'success' && <View style={S.successPanel}><Icon name="check-circle" size={52} color={C.success} /><Text style={S.successTitle}>Password updated successfully</Text><Text style={S.successCopy}>All pending verification codes are now invalid.</Text></View>}
 
               {/* Links */}
               <View style={S.links}>
@@ -270,7 +323,7 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
                     <Text style={S.link}>Forgot password?</Text>
                   </Pressable>
                 )}
-                {mode === 'forgot' && (
+                {isRecovery && mode !== 'success' && (
                   <Pressable onPress={() => switchMode('login')}>
                     <Text style={S.link}>Back to sign in</Text>
                   </Pressable>
@@ -281,23 +334,27 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
               {msg && (
                 <View style={[S.msg, msg.type === 'success' ? S.msgSuccess : S.msgError]}>
                   <Icon name={msg.type === 'success' ? 'check-circle' : 'alert-circle'} size={14} color={msg.type === 'success' ? C.success : C.error} />
-                  <Text style={[S.msgText, { color: msg.type === 'success' ? '#065F46' : '#991B1B' }]}>{msg.text}</Text>
+                  <Text style={[S.msgText, msg.type === 'success' ? S.msgTextSuccess : S.msgTextError]}>{msg.text}</Text>
                 </View>
               )}
 
               {/* Submit */}
-              <Pressable onPress={submit} disabled={loading} style={[S.btn, loading && S.btnDisabled]}>
+              {mode !== 'success' && <Pressable onPress={submit} disabled={loading || lockCountdown > 0} style={[S.btn, (loading || lockCountdown > 0) && S.btnDisabled]}>
                 {loading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <Text style={S.btnText}>
-                    {isLogin ? 'Sign in' : isSignup ? 'Create account' : 'Send reset link'}
+                    {isLogin ? 'Sign in' : isSignup ? 'Create account' : mode === 'forgot' ? 'Send verification code' : mode === 'otp' ? 'Verify code' : 'Update password'}
                   </Text>
                 )}
-              </Pressable>
+              </Pressable>}
+
+              {mode === 'otp' && <Pressable onPress={resend} disabled={loading || countdown > 0 || lockCountdown > 0} style={S.resendBtn}><Icon name="refresh" size={15} color={countdown ? C.textMuted : C.primary} /><Text style={[S.resendText, countdown > 0 && { color: C.textMuted }]}>{countdown > 0 ? `Resend in ${formatDuration(countdown)}` : 'Resend a new code'}</Text></Pressable>}
+
+              {mode === 'success' && <Pressable onPress={() => switchMode('login')} style={S.btn}><Text style={S.btnText}>Return to sign in</Text></Pressable>}
 
               {/* Switch */}
-              {mode !== 'forgot' && (
+              {!isRecovery && (
                 <Pressable style={S.switchRow} onPress={() => switchMode(isLogin ? 'signup' : 'login')}>
                   <Text style={S.switchText}>
                     {isLogin ? "Don't have an account? " : 'Already a member? '}
@@ -309,7 +366,7 @@ function AuthScreen({ initialMode = 'signup', onClose, onSuccess }: Props) {
           </View>
 
           {/* Social */}
-          {mode !== 'forgot' && (
+          {!isRecovery && (
             <View style={S.socialSection}>
               <View style={S.divider}>
                 <View style={S.divLine} />
@@ -339,6 +396,7 @@ const S = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1 },
   scroll: { flexGrow: 1, paddingHorizontal: 20 },
+  scrollBottom: { paddingBottom: 24 },
 
   // Header
   header: { alignItems: 'center', marginBottom: 24, marginTop: 16 },
@@ -458,6 +516,24 @@ const S = StyleSheet.create({
   msgSuccess: { backgroundColor: C.successBg },
   msgError: { backgroundColor: C.errorBg },
   msgText: { fontSize: 11, fontWeight: '500', flex: 1 },
+  msgTextSuccess: { color: '#065F46' },
+  msgTextError: { color: '#991B1B' },
+  securityHint: { fontSize: 10, lineHeight: 15, color: C.textMuted, marginTop: -6, marginBottom: 14 },
+  lockNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#FFF7ED',
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  lockText: { flex: 1, color: '#9A3412', fontSize: 10, lineHeight: 15, fontWeight: '600' },
+  successPanel: { alignItems: 'center', paddingVertical: 12, marginBottom: 18 },
+  successTitle: { color: C.text, fontSize: 17, fontWeight: '700', marginTop: 12 },
+  successCopy: { color: C.textSecondary, fontSize: 11, marginTop: 6, textAlign: 'center' },
 
   // Button
   btn: {
@@ -473,6 +549,8 @@ const S = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { fontSize: 14, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
+  resendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14 },
+  resendText: { color: C.primary, fontSize: 11, fontWeight: '700' },
 
   // Switch
   switchRow: { alignItems: 'center', marginTop: 14 },
@@ -501,5 +579,12 @@ const S = StyleSheet.create({
     elevation: 1,
   },
 });
+
+function formatDuration(seconds: number) {
+  if (seconds >= 3600) {
+    return `${Math.floor(seconds / 3600)}h ${Math.ceil((seconds % 3600) / 60)}m`;
+  }
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
 
 export default AuthScreen;

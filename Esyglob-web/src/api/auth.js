@@ -32,10 +32,20 @@ export function logout() {
   return apiRequest('/auth/logout', { method: 'POST' })
 }
 
-export function requestPasswordReset(email) {
-  return apiRequest('/auth/forgot-password', { method: 'POST', body: { email } })
+export function requestPasswordReset(email, challengeId) {
+  return apiRequest(challengeId ? '/auth/forgot-password/resend' : '/auth/forgot-password', {
+    method: 'POST',
+    body: { email, ...(challengeId ? { challengeId } : {}) },
+  })
 }
 
-export function resetPassword(token, password) {
-  return apiRequest('/auth/reset-password', { method: 'POST', body: { token, password } })
+export function verifyPasswordResetOtp(challengeId, otp) {
+  return apiRequest('/auth/forgot-password/verify', { method: 'POST', body: { challengeId, otp } })
+}
+
+export function resetPassword(challengeId, resetToken, password, confirmPassword) {
+  return apiRequest('/auth/reset-password', {
+    method: 'POST',
+    body: { challengeId, resetToken, password, confirmPassword },
+  })
 }

@@ -16,7 +16,19 @@ export type SignupInput = {
   phone?: string;
 };
 
-export type ForgotPasswordInput = {   };
+export type PasswordResetRequest = {
+  message: string;
+  challengeId: string;
+  expiresInSeconds: number;
+  resendAfterSeconds: number;
+};
+
+export type PasswordResetVerification = {
+  message: string;
+  challengeId: string;
+  resetToken: string;
+  expiresInSeconds: number;
+};
 
 export async function getCurrentUser() {
   const payload = await apiRequest('/auth/me');
@@ -59,9 +71,23 @@ export async function logout() {
   }
 }
 
-export async function forgotPassword(input: ForgotPasswordInput) {
-  return apiRequest('/auth/forgot-password', {
+export async function forgotPassword(email: string, challengeId?: string) {
+  return apiRequest<PasswordResetRequest>(challengeId ? '/auth/forgot-password/resend' : '/auth/forgot-password', {
     method: 'POST',
-    body: input,
+    body: { email, ...(challengeId ? { challengeId } : {}) },
+  });
+}
+
+export async function verifyPasswordResetOtp(challengeId: string, otp: string) {
+  return apiRequest<PasswordResetVerification>('/auth/forgot-password/verify', {
+    method: 'POST',
+    body: { challengeId, otp },
+  });
+}
+
+export async function resetPassword(challengeId: string, resetToken: string, password: string, confirmPassword: string) {
+  return apiRequest<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: { challengeId, resetToken, password, confirmPassword },
   });
 }

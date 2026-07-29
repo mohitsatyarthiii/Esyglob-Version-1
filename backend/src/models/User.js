@@ -65,6 +65,14 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: {
       type: Date,
     },
+    passwordChangedAt: {
+      type: Date,
+    },
+    sessionVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     metadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},

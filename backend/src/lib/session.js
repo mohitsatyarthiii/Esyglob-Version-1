@@ -5,8 +5,8 @@ import User from '../models/User.js';
 import mongoose from 'mongoose';
 import { normalizeRole, normalizeRoles } from './constants.js';
 
-export function setSessionCookie(res, userId) {
-  const token = createToken(userId);
+export function setSessionCookie(res, userId, sessionVersion = 0) {
+  const token = createToken(userId, sessionVersion);
 
   res.cookie(config.sessionCookie, token, {
     httpOnly: true,
@@ -61,6 +61,7 @@ export async function getCurrentUser(req) {
     .exec();
 
   if (!user || !user.isActive || user.isBanned) return null;
+  if (Number(payload.ver || 0) !== Number(user.sessionVersion || 0)) return null;
 
   req.currentUser = serializeUser(user);
   return req.currentUser;
@@ -100,6 +101,7 @@ export function serializeUser(user) {
     isActive: user.isActive,
     isBanned: user.isBanned,
     hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+    sessionVersion: Number(user.sessionVersion || 0),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };

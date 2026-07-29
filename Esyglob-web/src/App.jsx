@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './auth/auth-context'
 import ProtectedRoute from './auth/ProtectedRoute'
 import SplashScreen from './pages/SplashScreen'
@@ -8,6 +8,7 @@ import './App.css'
 
 const WelcomePage = lazy(() => import('./pages/WelcomePage'))
 const AuthPage = lazy(() => import('./pages/AuthPage'))
+const PasswordRecoveryPage = lazy(() => import('./pages/PasswordRecoveryPage'))
 const HomePage = lazy(() => import('./pages/HomePage'))
 const CategoriesPage = lazy(() => import('./pages/CategoriesPage'))
 const CategoryDetailsPage = lazy(() => import('./pages/CategoryDetailsPage'))
@@ -32,12 +33,6 @@ const RfqCreatePage = lazy(() => import('./pages/RfqCreatePage'))
 const RfqDetailsPage = lazy(() => import('./pages/RfqDetailsPage'))
 const QuotationsPage = lazy(() => import('./pages/QuotationsPage'))
 const QuotationDetailsPage = lazy(() => import('./pages/QuotationDetailsPage'))
-const FinalQuotationPanel = lazy(() => import('./components/AgreementPanel'))
-
-function QuotationDetailsRoute() {
-  const { quotationId } = useParams()
-  return <><QuotationDetailsPage /><FinalQuotationPanel quotationId={quotationId} /></>
-}
 const QuotationComparePage = lazy(() => import('./pages/QuotationComparePage'))
 const AgreementsPage = lazy(() => import('./pages/AgreementsPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
@@ -79,8 +74,8 @@ export default function App() {
     <Route path="/welcome" element={<WelcomePage />} />
     <Route path="/login" element={<AuthPage mode="login" />} />
     <Route path="/signup" element={<AuthPage mode="signup" />} />
-    <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
-    <Route path="/reset-password" element={<AuthPage mode="reset" />} />
+    <Route path="/forgot-password" element={<PasswordRecoveryPage />} />
+    <Route path="/reset-password" element={<PasswordRecoveryPage />} />
     <Route path="/home" element={<HomePage />} />
     <Route path="/categories" element={<CategoriesPage />} />
     <Route path="/categories/:categoryId" element={<CategoryDetailsPage />} />
@@ -108,7 +103,7 @@ export default function App() {
       <Route path="/rfqs/:rfqId" element={<RfqDetailsPage />} />
       <Route path="/quotations" element={<QuotationsPage />} />
       <Route path="/quotations/compare" element={<QuotationComparePage />} />
-      <Route path="/quotations/:quotationId" element={<QuotationDetailsRoute />} />
+      <Route path="/quotations/:quotationId" element={<QuotationDetailsPage />} />
       <Route path="/agreements" element={<AgreementsPage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/orders" element={<OrdersPage />} />
