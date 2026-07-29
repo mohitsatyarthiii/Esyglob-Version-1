@@ -1,12 +1,22 @@
-import { readFileSync } from 'node:fs';
-
-const metadata = JSON.parse(
-  readFileSync(new URL('../../../shared/currency-metadata.json', import.meta.url), 'utf8')
-);
-
 export const DEFAULT_CURRENCY = 'INR';
-export const CURRENCY_METADATA = Object.freeze(metadata.map(item => Object.freeze(item)));
-export const CURRENCY_CODES = Object.freeze(CURRENCY_METADATA.map(item => item.code));
+
+// The frontend metadata file lives at the repository root and is intentionally
+// not a backend runtime dependency: production VPS deployments commonly publish
+// only /backend. Node's ICU currency list provides authoritative ISO-4217
+// validation without filesystem coupling or a duplicated metadata table.
+const isoCurrencies = typeof Intl.supportedValuesOf === 'function'
+  ? Intl.supportedValuesOf('currency')
+  : [];
+
+export const CURRENCY_CODES = Object.freeze([...new Set([
+  DEFAULT_CURRENCY,
+  ...isoCurrencies,
+])].sort((left, right) => {
+  if (left === DEFAULT_CURRENCY) return -1;
+  if (right === DEFAULT_CURRENCY) return 1;
+  return left.localeCompare(right);
+}));
+
 const supported = new Set(CURRENCY_CODES);
 
 export function normalizeCurrency(value, { required = true } = {}) {
