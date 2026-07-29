@@ -29,7 +29,8 @@ import { LoadingState } from '../components/StateViews';
 import { firstImage } from '../utils/images';
 import AuthScreen from './AuthScreen';
 import {
-  CURRENCIES,
+  CURRENCY_META,
+  CURRENCY_OPTIONS,
   CurrencyCode,
   useCurrency,
 } from '../currency/CurrencyContext';
@@ -128,6 +129,9 @@ const NAV: Record<string, string> = {
 
 // ─── Currency Data ─────────────────────────────────────
 function getCurrencyData(code: string): CurrencyData {
+  const shared = CURRENCY_META[code] || CURRENCY_META.INR;
+  return { ...shared, country: '', flag: shared.flag };
+  /* Historical fallback table retained only as a migration comment.
   const map: Record<string, CurrencyData> = {
     USD: {
       code: 'USD',
@@ -244,6 +248,7 @@ function getCurrencyData(code: string): CurrencyData {
       flag: '🌐',
     }
   );
+  */
 }
 
 // ─── Section Templates ─────────────────────────────────
@@ -381,7 +386,7 @@ function CurrencyDropdown({
 }) {
   const [show, setShow] = useState(false);
   const [q, setQ] = useState('');
-  const all = useMemo(() => CURRENCIES.map(getCurrencyData), []);
+  const all = CURRENCY_OPTIONS.map(item => ({ ...item, country: `(${item.code})` }));
   const curr = getCurrencyData(selected);
   const filtered = useMemo(() => {
     if (!q.trim()) return all;
@@ -389,8 +394,7 @@ function CurrencyDropdown({
     return all.filter(
       c =>
         c.code.toLowerCase().includes(lq) ||
-        c.name.toLowerCase().includes(lq) ||
-        c.country.toLowerCase().includes(lq),
+        c.name.toLowerCase().includes(lq),
     );
   }, [all, q]);
 

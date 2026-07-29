@@ -20,6 +20,7 @@ import {
 } from '../lib/rfq-helpers.js';
 import { validateNoContactInfo } from '../lib/contact-moderation.js';
 import { USER_ROLES } from '../lib/constants.js';
+import { normalizeCurrency } from '../lib/currency-metadata.js';
 import { assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
 
 // ─── Seller Access Check ───────────────────────────────────
@@ -253,6 +254,20 @@ export async function createRfq(session, body) {
     status: requestStatus,
   } = body;
 
+  let linkedProduct = null;
+  if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+    const Product = (await import('../models/Product.js')).default;
+    linkedProduct = await Product.findById(productId).select('name category subcategory currency unit').lean();
+  }
+  const simplifiedProduct = clean(body.productName || items?.[0]?.name);
+  const resolvedTitle = clean(title || simplifiedProduct || linkedProduct?.name);
+  const resolvedDescription = clean(description || body.notes) || `Buyer requested a quotation for ${resolvedTitle}.`;
+  const resolvedCategory = clean(category || linkedProduct?.category) || 'General';
+  const resolvedSubcategory = clean(subcategory || linkedProduct?.subcategory);
+  const resolvedUnit = VALID_UNITS.includes(unit) ? unit : VALID_UNITS.includes(items?.[0]?.unit) ? items[0].unit : linkedProduct?.unit || 'pcs';
+  const resolvedQuantity = Number(quantity || items?.[0]?.quantity);
+  const resolvedCurrency = normalizeCurrency(currency || linkedProduct?.currency || 'INR');
+
   let targetSeller = null;
   if (requestedSellerId) {
     targetSeller = await rfqRepository.findSellerById(requestedSellerId);
@@ -273,8 +288,8 @@ export async function createRfq(session, body) {
   }
 
   const moderation = validateNoContactInfo({
-    title,
-    description,
+    title: resolvedTitle,
+    description: resolvedDescription,
     specifications,
     items: Array.isArray(items)
       ? items.map((item) => ({
@@ -293,9 +308,9 @@ export async function createRfq(session, body) {
     throw error;
   }
 
-  if (!title || !description || !category || !quantity || !deliveryCountry) {
-    const error = new Error('Missing required fields');
-    error.statusCode = 400;
+  if (!resolvedTitle || !Number.isFinite(resolvedQuantity) || resolvedQuantity <= 0 || !deliveryCountry || !deliveryTimeline) {
+    const error = new Error('Product, valid quantity, unit, delivery location, and timeline are required');
+    error.statusCode = 422;
     throw error;
   }
 
@@ -313,10 +328,10 @@ export async function createRfq(session, body) {
     rfqType:
       rfqType ||
       (items?.length > 1 ? 'multi_product' : productId ? 'product' : 'custom'),
-    title,
-    description,
-    category,
-    subcategory: subcategory || '',
+    title: resolvedTitle,
+    description: resolvedDescription,
+    category: resolvedCategory,
+    subcategory: resolvedSubcategory,
     specifications: specifications || '',
     items:
       Array.isArray(items) && items.length
@@ -324,20 +339,20 @@ export async function createRfq(session, body) {
         : [
             {
               productId: productId || undefined,
-              name: title,
-              category,
-              subcategory: subcategory || '',
-              quantity,
-              unit,
+              name: resolvedTitle,
+              category: resolvedCategory,
+              subcategory: resolvedSubcategory,
+              quantity: resolvedQuantity,
+              unit: resolvedUnit,
               targetPrice,
               specifications: specifications || description,
             },
           ],
-    quantity,
+    quantity: resolvedQuantity,
     minimumOrderQuantity,
-    unit,
+    unit: resolvedUnit,
     targetPrice,
-    currency,
+    currency: resolvedCurrency,
     deliveryCountry,
     deliveryPort,
     deliveryTimeline,
@@ -354,7 +369,7 @@ export async function createRfq(session, body) {
     visibility: targetSeller ? 'private' : (visibility || 'public'),
     status: requestStatus === 'draft' ? 'draft' : 'submitted',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-    activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: title, actorId: session.userId, actorRole: 'buyer' }],
+    activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: resolvedTitle, actorId: session.userId, actorRole: 'buyer' }],
   });
 
   if (targetSeller && rfq.status === 'submitted') {
@@ -374,7 +389,7 @@ export async function createRfq(session, body) {
       chatId: chat._id,
       senderId: session.userId,
       receiverId: targetSeller.userId,
-      content: `Private RFQ: ${title}\nQuantity: ${quantity} ${unit || 'pcs'}\nDestination: ${deliveryCountry}\n\n${description}`,
+      content: `Private RFQ: ${resolvedTitle}\nQuantity: ${resolvedQuantity} ${resolvedUnit}\nDestination: ${deliveryCountry}\n\n${resolvedDescription}`,
       messageType: 'rfq',
       rfqDetails: {
         rfqId: rfq._id,

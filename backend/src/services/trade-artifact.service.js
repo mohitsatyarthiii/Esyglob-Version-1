@@ -224,15 +224,16 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
     const previousStatus = context.entity.status;
     context.entity.finalQuotation.status = 'signed';
     context.entity.finalQuotation.sellerSignedAt ||= document.signatures.find(signature => signature.signerRole === 'seller')?.signedAt || new Date();
-    context.entity.finalQuotation.buyerSignedAt = new Date();
+    context.entity.finalQuotation.buyerSignedAt = context.actorRole === 'buyer' ? new Date() : undefined;
     context.entity.finalQuotation.lockedAt = new Date();
     context.entity.previousStatus = previousStatus;
     context.entity.status = 'final_quotation_signed';
-    context.entity.approvalHistory.push({ action: 'final_quotation_signed', previousStatus, newStatus: 'final_quotation_signed', actorId: context.userId, actorRole: 'buyer', notes: `Buyer signed Final Quotation version ${document.version}` });
-    context.entity.activityTimeline.push({ action: 'final_quotation_signed', status: 'final_quotation_signed', message: 'Buyer signed the Final Quotation; commercial terms are locked', actorId: context.userId, actorRole: 'buyer', metadata: { documentId: document._id, version: document.version } });
-    context.entity.activityTimeline.push({ action: 'order_enabled', status: 'final_quotation_signed', message: 'Start Order is now enabled', actorId: context.userId, actorRole: 'buyer', metadata: { documentId: document._id, orderEnabled: true } });
+    const directActivation = context.actorRole === 'seller' && context.entity.directOrderEnabled;
+    context.entity.approvalHistory.push({ action: directActivation ? 'direct_order_activated' : 'final_quotation_signed', previousStatus, newStatus: 'final_quotation_signed', actorId: context.userId, actorRole: context.actorRole, notes: directActivation ? `Seller activated Direct Order with Final Quotation version ${document.version}` : `Buyer signed Final Quotation version ${document.version}` });
+    context.entity.activityTimeline.push({ action: directActivation ? 'direct_order_activated' : 'final_quotation_signed', status: 'final_quotation_signed', message: directActivation ? 'Seller signed the Final Quotation; Place Order is now available to the Buyer' : 'Buyer signed the Final Quotation; commercial terms are locked', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, version: document.version, directOrderEnabled: directActivation } });
+    context.entity.activityTimeline.push({ action: 'order_enabled', status: 'final_quotation_signed', message: directActivation ? 'Direct Order checkout is enabled without another approval step' : 'Start Order is now enabled', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, orderEnabled: true, directOrderEnabled: directActivation } });
   }
-  if (isFinalQuotation && id(context.entity.finalQuotation?.documentId) === id(document._id) && context.actorRole === 'seller') {
+  if (isFinalQuotation && id(context.entity.finalQuotation?.documentId) === id(document._id) && context.actorRole === 'seller' && document.status !== 'completed') {
     context.entity.finalQuotation.status = 'awaiting_buyer_signature';
     context.entity.finalQuotation.sellerSignedAt = new Date();
     context.entity.approvalHistory.push({ action: 'seller_signed_final_quotation', previousStatus: context.entity.status, newStatus: context.entity.status, actorId: context.userId, actorRole: 'seller', notes: `Seller signed Final Quotation version ${document.version}` });

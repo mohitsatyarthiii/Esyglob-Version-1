@@ -44,7 +44,7 @@ export default function FinalQuotationPanel({ quotationId }) {
   const completed = async message => { setSuccess(message); await load(true) }
   return <section className="container agreement-lifecycle-section" aria-labelledby="final-quotation-title">
     {success && <div className="workflow-success-banner" role="status"><CheckCircle2 /><span>{success}</span><button onClick={() => setSuccess('')} aria-label="Dismiss"><X /></button></div>}
-    <header><div><span className="eyebrow"><ShieldCheck /> Official commercial document</span><h2 id="final-quotation-title">Final Quotation</h2><p>The Seller prepares and signs first. The Buyer then reviews and signs to lock terms and enable Start Order.</p></div><span className={`agreement-state agreement-state--${document?.status || quotation.finalQuotation?.status || 'preparation'}`}>{label(document?.status || quotation.finalQuotation?.status || 'Seller preparation')}</span></header>
+    <header><div><span className="eyebrow"><ShieldCheck /> Official commercial document</span><h2 id="final-quotation-title">Final Quotation</h2><p>{quotation.directOrderEnabled ? 'The Seller signature locks the final terms and immediately enables Place Order for the Buyer.' : 'The Seller signs first. The Buyer then reviews and signs to lock terms and enable Start Order.'}</p></div><span className={`agreement-state agreement-state--${document?.status || quotation.finalQuotation?.status || 'preparation'}`}>{label(document?.status || quotation.finalQuotation?.status || 'Seller preparation')}</span></header>
     <FinalStepper quotation={quotation} document={document} />
     {loading ? <Loading /> : error ? <div className="inline-error">{error}<button onClick={() => load()}>Retry</button></div> : quotation.status === 'buyer_accepted' && data.actorRole === 'seller' ? <FinalPreparation quotation={quotation} onComplete={completed} setError={setError} /> : quotation.status === 'buyer_accepted' ? <Waiting title="Seller is preparing the Final Quotation" copy="You will be notified after the Seller prepares and signs the final terms." /> : document ? <FinalDocument data={data} quotation={quotation} document={document} versions={versions} user={user} onComplete={completed} setError={setError} /> : <Waiting title="Final Quotation is being generated" copy="The signed commercial workflow will appear here automatically." />}
   </section>
@@ -53,6 +53,11 @@ export default function FinalQuotationPanel({ quotationId }) {
 function FinalStepper({ quotation, document }) {
   const signed = document?.status === 'completed' || quotation.status === 'final_quotation_signed' || quotation.status === 'won'
   const sellerSigned = document?.signatures?.some(item => item.signerRole === 'seller')
+  if (quotation.directOrderEnabled) {
+    const directSteps = ['Quotation Accepted', 'Seller Finalizes', 'Seller Signature', 'Direct Order Enabled']
+    const directCount = signed ? directSteps.length : document ? 2 : quotation.status === 'buyer_accepted' ? 1 : 0
+    return <ol className="agreement-stepper">{directSteps.map((step, index) => <li className={index < directCount ? 'done' : index === directCount ? 'current' : ''} key={step}><i>{index < directCount ? <Check /> : index + 1}</i><span>{step}</span></li>)}</ol>
+  }
   const count = signed ? 6 : sellerSigned ? 4 : document ? 2 : quotation.status === 'buyer_accepted' ? 1 : 0
   return <ol className="agreement-stepper">{steps.map((step, index) => <li className={index < count ? 'done' : index === count ? 'current' : ''} key={step}><i>{index < count ? <Check /> : index + 1}</i><span>{step}</span></li>)}</ol>
 }
@@ -60,7 +65,7 @@ function FinalStepper({ quotation, document }) {
 function FinalPreparation({ quotation, onComplete, setError }) {
   const [busy, setBusy] = useState(false)
   const [attachments, setAttachments] = useState(quotation.attachments || [])
-  const [form, setForm] = useState({ suppliedQuantity: quotation.suppliedQuantity || '', unitPrice: quotation.unitPrice || '', productionTime: quotation.productionTime || '', leadTime: quotation.leadTime || '', shippingEstimate: quotation.shippingEstimate || '', shippingTerms: quotation.shippingTerms || '', paymentTerms: quotation.paymentTerms || '', packaging: typeof quotation.packaging === 'string' ? quotation.packaging : quotation.packaging?.details || '', warranty: quotation.warranty || '', notes: quotation.notes || quotation.sellerMessage || '', specialClauses: (quotation.specialClauses || []).join('\n') })
+  const [form, setForm] = useState({ suppliedQuantity: quotation.suppliedQuantity || '', minimumOrderQuantity: quotation.minimumOrderQuantity || 1, unitPrice: quotation.unitPrice || '', leadTime: quotation.leadTime || '', shippingTerms: quotation.shippingTerms || '', paymentTerms: quotation.paymentTerms || '', expiryDate: quotation.expiryDate ? String(quotation.expiryDate).slice(0, 10) : '', notes: quotation.notes || quotation.sellerMessage || '', enableDirectOrder: Boolean(quotation.directOrderEnabled) })
   const total = Number(form.unitPrice || 0) * Number(form.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }))
   async function submit(event) {
@@ -68,30 +73,43 @@ function FinalPreparation({ quotation, onComplete, setError }) {
     if (busy) return
     setBusy(true); setError('')
     try {
-      await updateQuotation(id(quotation), { action: 'confirm', suppliedQuantity: Number(form.suppliedQuantity), unitPrice: Number(form.unitPrice), totalPrice: total, productionTime: Number(form.productionTime || 0), leadTime: Number(form.leadTime || 0), shippingEstimate: form.shippingEstimate, shippingTerms: form.shippingTerms, paymentTerms: form.paymentTerms, packaging: { details: form.packaging }, warranty: form.warranty, notes: form.notes, specialClauses: form.specialClauses, attachments, reason: 'Seller prepared the Final Quotation' })
-      await onComplete('Final Quotation generated. Add your Seller signature to send it to the Buyer.')
+      await updateQuotation(id(quotation), { action: 'confirm', suppliedQuantity: Number(form.suppliedQuantity), minimumOrderQuantity: Number(form.minimumOrderQuantity), unitPrice: Number(form.unitPrice), totalPrice: total, leadTime: Number(form.leadTime || 0), shippingTerms: form.shippingTerms, paymentTerms: form.paymentTerms, expiryDate: form.expiryDate || undefined, notes: form.notes, attachments, enableDirectOrder: form.enableDirectOrder, reason: 'Seller prepared the Final Quotation' })
+      await onComplete(form.enableDirectOrder ? 'Final Quotation generated. Your Seller signature will activate Place Order for the Buyer.' : 'Final Quotation generated. Add your Seller signature to send it to the Buyer.')
     } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
   return <form className="agreement-preparation" onSubmit={submit}>
     <div className="agreement-section-heading"><span><PenLine /></span><div><h3>Prepare the Final Quotation</h3><p>Product, RFQ and negotiation history are linked automatically. Complete the final execution terms.</p></div></div>
     <FinalPreview quotation={quotation} form={form} total={total} />
-    <div className="agreement-form-grid">{[['suppliedQuantity','Final quantity','number'],['unitPrice','Final unit price','number'],['productionTime','Production timeline (days)','number'],['leadTime','Lead time (days)','number'],['shippingEstimate','Delivery timeline','text'],['shippingTerms','Shipping method','text'],['paymentTerms','Payment terms','text'],['packaging','Packaging details','text'],['warranty','Warranty','text']].map(([key,title,type]) => <label key={key}>{title}<input type={type} min={type === 'number' ? 0 : undefined} value={form[key] || ''} onChange={event => update(key, event.target.value)} required={['suppliedQuantity','unitPrice','paymentTerms'].includes(key)} /></label>)}</div>
+    <div className="agreement-form-grid">{[['unitPrice','Unit price','number'],['minimumOrderQuantity','MOQ','number'],['suppliedQuantity','Available quantity','number'],['leadTime','Lead time (days)','number'],['shippingTerms','Shipping method','text'],['paymentTerms','Payment terms','text'],['expiryDate','Valid until','date']].map(([key,title,type]) => <label key={key}>{title}<input type={type} min={type === 'number' ? 0 : undefined} value={form[key] || ''} onChange={event => update(key, event.target.value)} required={['suppliedQuantity','minimumOrderQuantity','unitPrice','leadTime','paymentTerms'].includes(key)} /></label>)}</div>
     <label>Commercial notes<textarea rows="3" value={form.notes} onChange={event => update('notes', event.target.value)} /></label>
-    <label>Special conditions <small>One condition per line</small><textarea rows="4" value={form.specialClauses} onChange={event => update('specialClauses', event.target.value)} /></label>
     <AttachmentUploader folder="final-quotations" value={attachments} onChange={setAttachments} />
+    <label className="final-quotation-consent"><input type="checkbox" checked={form.enableDirectOrder} onChange={event => update('enableDirectOrder', event.target.checked)} /><span><b>Enable Direct Order</b><small>After your Seller signature, the Buyer can select Place Order immediately. No duplicate quotation or additional approval is created.</small></span></label>
     <div className="agreement-total"><span>Final Quotation value</span><b><Money value={total} currency={quotation.currency} /></b></div>
     <button className="button button--primary" disabled={busy}><FileSignature /> {busy ? 'Generating Final Quotation…' : 'Generate Final Quotation'}</button>
   </form>
 }
 
-function FinalPreview({ quotation, form, total }) {
+function LegacyFinalPreview({ quotation, form, total }) {
   return <section className="live-agreement-preview"><header><div><i>E</i><span><b>ESYGLOB ENTERPRISE TRADE</b><small>Official Final Quotation</small></span></div><div><strong>{quotation.finalQuotation?.finalQuotationNumber}</strong><small>Quotation {quotation.quotationNumber}</small><em>Seller signature required</em></div></header><h4>Final Quotation</h4><table><thead><tr><th>Product</th><th>Quantity</th><th>Unit price</th><th>Total</th></tr></thead><tbody><tr><td>{quotation.productId?.name || quotation.rfqId?.title || 'Quoted product'}</td><td>{form.suppliedQuantity || '—'}</td><td><Money value={Number(form.unitPrice || 0)} currency={quotation.currency} /></td><td><Money value={total} currency={quotation.currency} /></td></tr></tbody></table><div className="live-terms-grid">{[['Production',form.productionTime],['Delivery',form.shippingEstimate || form.leadTime],['Shipping',form.shippingTerms],['Payment',form.paymentTerms],['Packaging',form.packaging],['Warranty',form.warranty]].map(([title,value]) => <span key={title}><small>{title}</small><b>{value || 'To be completed'}</b></span>)}</div>{form.notes && <p className="live-contract-notes"><b>Commercial Notes</b>{form.notes}</p>}<footer><span>Seller information verified</span><span>Two-party signature audit</span></footer></section>
+}
+
+function FinalPreview({ quotation, form, total }) {
+  const terms = [['MOQ', form.minimumOrderQuantity], ['Lead time', form.leadTime], ['Shipping', form.shippingTerms], ['Payment', form.paymentTerms], ['Valid until', form.expiryDate]]
+  return <section className="live-agreement-preview">
+    <header><div><i>E</i><span><b>ESYGLOB ENTERPRISE TRADE</b><small>Official Final Quotation</small></span></div><div><strong>{quotation.finalQuotation?.finalQuotationNumber}</strong><small>Quotation {quotation.quotationNumber}</small><em>Seller signature required</em></div></header>
+    <h4>Final Quotation</h4>
+    <table><thead><tr><th>Product</th><th>Available quantity</th><th>Unit price</th><th>Total</th></tr></thead><tbody><tr><td>{quotation.productId?.name || quotation.rfqId?.title || 'Quoted product'}</td><td>{form.suppliedQuantity || '—'}</td><td><Money value={Number(form.unitPrice || 0)} currency={quotation.currency} /></td><td><Money value={total} currency={quotation.currency} /></td></tr></tbody></table>
+    <div className="live-terms-grid">{terms.map(([title, value]) => <span key={title}><small>{title}</small><b>{value || 'To be completed'}</b></span>)}</div>
+    {form.notes && <p className="live-contract-notes"><b>Commercial Notes</b>{form.notes}</p>}
+    <footer><span>Seller information verified</span><span>{form.enableDirectOrder ? 'Seller signature activates Direct Order' : 'Two-party signature audit'}</span></footer>
+  </section>
 }
 
 function FinalDocument({ data, quotation, document, versions, user, onComplete, setError }) {
   const navigate = useNavigate()
   const actorRole = data.actorRole
-  const signed = document.status === 'completed'
+  const directOrderReady = document.status === 'completed' && quotation.directOrderEnabled
+  const signed = document.status === 'completed' && !quotation.directOrderEnabled
   const canSign = !signed && ((actorRole === 'seller' && document.status === 'awaiting_seller_signature') || (actorRole === 'buyer' && document.status === 'awaiting_buyer_signature'))
   const [busy, setBusy] = useState(false)
   const [signOpen, setSignOpen] = useState(false)
@@ -109,7 +127,7 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
     try {
       await signTradeDocument('quotation', id(quotation), document._id, { signerName: signerName.trim(), signatureValue, signatureType, termsAccepted: true, termsVersion: 'final-quotation-terms-v1' })
       setSignOpen(false)
-      await onComplete(actorRole === 'seller' ? 'Seller signature recorded. The Buyer can now review and sign.' : 'Final Quotation fully signed. Start Order is now enabled.')
+      await onComplete(actorRole === 'seller' ? quotation.directOrderEnabled ? 'Seller signature recorded. Place Order is now available to the Buyer.' : 'Seller signature recorded. The Buyer can now review and sign.' : 'Final Quotation fully signed. Start Order is now enabled.')
     } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
   async function requestChanges() {
@@ -149,6 +167,7 @@ function FinalDocument({ data, quotation, document, versions, user, onComplete, 
     {canSign && <div className="final-quotation-signing"><label className="final-quotation-consent"><input type="checkbox" checked={termsAccepted} onChange={event => setTermsAccepted(event.target.checked)} /><span><b>I have reviewed and accept this Final Quotation and its terms and conditions.</b><small>This acknowledgement is required and will be recorded with your electronic signature.</small></span></label><div className="final-quotation-actions">{actorRole === 'buyer' && <button type="button" className="button button--secondary" onClick={() => setChangesOpen(true)}><RefreshCw /> Request Changes</button>}<button type="button" className="button button--primary" disabled={!termsAccepted || busy} onClick={() => setSignOpen(true)}><Signature /> Add {label(actorRole)} Signature</button></div></div>}
     {actorRole === 'buyer' && document.status === 'awaiting_seller_signature' && <Waiting title="Seller signature pending" copy="Buyer review and signing opens automatically after the Seller signs this version." />}
     {actorRole === 'seller' && document.status === 'awaiting_buyer_signature' && <Waiting title="Buyer review in progress" copy="The Seller-signed document is locked. The Buyer can request changes or add the final signature." />}
+    {directOrderReady && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Direct Order enabled from Seller Final Quotation</b><p>The Seller-signed commercial terms are locked. The Buyer can place the order immediately without another approval.</p></div>{actorRole === 'buyer' ? <button className="button button--primary" disabled={busy} onClick={startCheckout}><PackageCheck /> {busy ? 'Opening checkout…' : 'Place Order'}</button> : data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">Waiting for Buyer order</span>}</div>}
     {signed && <div className="agreement-active-banner"><CheckCircle2 /><div><b>Final Quotation fully signed and permanently locked</b><p>Both signatures are embedded in the official PDF. {actorRole === 'buyer' ? 'Checkout is available now.' : 'The Buyer can now start checkout.'}</p></div>{actorRole === 'buyer' ? <button className="button button--primary" disabled={busy} onClick={startCheckout}><PackageCheck /> {busy ? 'Opening checkout…' : 'Checkout / Start Order'}</button> : data.order?._id ? <Link className="button button--primary" to={`/orders/${id(data.order)}?role=seller`}><PackageCheck /> Open Order</Link> : <span className="agreement-state agreement-state--awaiting_buyer_signature">Waiting for Buyer checkout</span>}</div>}
     {changesOpen && <ChangesModal busy={busy} reason={changeReason} setReason={setChangeReason} files={changeFiles} setFiles={setChangeFiles} close={() => setChangesOpen(false)} submit={requestChanges} />}
     {signOpen && <SignatureModal role={actorRole} busy={busy} signerName={signerName} setSignerName={setSignerName} signatureType={signatureType} setSignatureType={setSignatureType} signatureValue={signatureValue} setSignatureValue={setSignatureValue} close={() => setSignOpen(false)} submit={sign} />}

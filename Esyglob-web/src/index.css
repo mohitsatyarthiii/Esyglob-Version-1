@@ -16730,6 +16730,7 @@ svg {
 .locale-selector__trigger > svg { width: 13px; transition: transform .2s ease; }
 .locale-selector.open .locale-selector__trigger > svg { transform: rotate(180deg); }
 .locale-flag { width: 21px; height: 14px; border: 1px solid rgb(15 23 42 / 12%); border-radius: 3px; object-fit: cover; box-shadow: 0 1px 2px rgb(15 23 42 / 10%); }
+.locale-flag--emoji { display: inline-grid; place-items: center; width: 23px; height: 18px; border: 0; background: transparent; box-shadow: none; font-size: 18px; line-height: 1; }
 .locale-selector__popover { position: absolute; z-index: 80; top: calc(100% + .55rem); right: 0; width: min(320px, calc(100vw - 2rem)); padding: .55rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 18px 45px rgb(15 23 42 / 18%); }
 .locale-selector__search { display: flex; align-items: center; gap: .45rem; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 9px; }
 .locale-selector__search svg { width: 15px; color: #667085; }

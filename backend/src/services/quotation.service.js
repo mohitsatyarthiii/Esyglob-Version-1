@@ -10,6 +10,7 @@ import {
 } from '../lib/rfq-helpers.js';
 import { validateNoContactInfo } from '../lib/contact-moderation.js';
 import { USER_ROLES } from '../lib/constants.js';
+import { normalizeCurrency } from '../lib/currency-metadata.js';
 import { getIO } from '../lib/socket.js';
 import { allowedActions, assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
 import { createTradeDocument } from './trade-artifact.service.js';
@@ -161,6 +162,7 @@ export async function createQuotation(session, body) {
     expiryDate,
     attachments,
     sellerMessage,
+    enableDirectOrder,
   } = body;
 
   const moderation = validateNoContactInfo({
@@ -185,6 +187,19 @@ export async function createQuotation(session, body) {
     error.statusCode = 400;
     throw error;
   }
+  const numericUnitPrice = Number(unitPrice || 0);
+  const numericMoq = Number(minimumOrderQuantity || 0);
+  const numericAvailableQuantity = Number(suppliedQuantity || 0);
+  const numericLeadTime = Number(leadTime || 0);
+  if (!saveAsDraft && (
+    !Number.isFinite(numericUnitPrice) || numericUnitPrice <= 0 ||
+    !Number.isFinite(numericMoq) || numericMoq <= 0 ||
+    !Number.isFinite(numericAvailableQuantity) || numericAvailableQuantity <= 0 ||
+    !Number.isFinite(numericLeadTime) || numericLeadTime <= 0
+  )) {
+    throw Object.assign(new Error('Unit price, MOQ, available quantity, and lead time must be valid positive numbers'), { statusCode: 422 });
+  }
+  const resolvedCurrency = normalizeCurrency(currency || 'INR');
 
   if (!mongoose.Types.ObjectId.isValid(rfqId)) {
     const error = new Error('RFQ not found');
@@ -234,12 +249,12 @@ export async function createQuotation(session, body) {
     productId: rfq.productId || null,
     sellerId: seller._id,
     userId: session.userId,
-    unitPrice: Number(unitPrice || 0),
+    unitPrice: numericUnitPrice,
     totalPrice:
       totalPrice || Number(unitPrice || 0) * (suppliedQuantity || minimumOrderQuantity || 1),
-    currency: currency || 'INR',
+    currency: resolvedCurrency,
     minimumOrderQuantity: Number(minimumOrderQuantity || 1),
-    suppliedQuantity,
+    suppliedQuantity: Number(suppliedQuantity || minimumOrderQuantity || 1),
     leadTime: Number(leadTime || 1),
     leadTimeUnit: leadTimeUnit || 'days',
     productionTime: Number(productionTime || leadTime || 0),
@@ -265,6 +280,7 @@ export async function createQuotation(session, body) {
       expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     attachments: attachments || [],
     sellerMessage,
+    directOrderEnabled: enableDirectOrder === true || body.directOrderEnabled === true,
     status: saveAsDraft ? 'draft' : 'submitted',
     activityTimeline: [{ action: saveAsDraft ? 'draft_saved' : 'quotation_sent', status: saveAsDraft ? 'draft' : 'submitted', message: sellerMessage || notes || 'Quotation prepared', actorId: session.userId, actorRole: 'seller' }],
     negotiationHistory: [
@@ -406,6 +422,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     expiryDate,
     attachments,
     sellerMessage,
+    enableDirectOrder,
   } = body;
 
   if (
@@ -480,6 +497,9 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     customizationDetails,
     notes,
     sellerMessage,
+    directOrderEnabled: enableDirectOrder === undefined
+      ? existingQuotation.directOrderEnabled
+      : enableDirectOrder === true || body.directOrderEnabled === true,
     expiryDate: expiryDate || existingQuotation.expiryDate,
     attachments: attachments || existingQuotation.attachments || [],
     status:
@@ -645,12 +665,20 @@ export async function updateQuotation(session, quotationId, body) {
     if (quotation.userId.toString() !== session.userId) { const error = new Error('Only the seller can confirm the final quotation'); error.statusCode = 403; throw error; }
     const nextStatus = assertTransition({ type: 'quotation', status: quotation.status, action, actorRole: 'seller' });
     const previousStatus = quotation.status;
-    const finalFields = ['suppliedQuantity','unitPrice','totalPrice','packaging','shippingEstimate','leadTime','leadTimeUnit','productionTime','productionTimeUnit','paymentTerms','warranty','notes','specialClauses','attachments','shippingTerms'];
+    if (body.enableDirectOrder !== undefined || body.directOrderEnabled !== undefined) {
+      quotation.directOrderEnabled = body.enableDirectOrder === true || body.directOrderEnabled === true;
+    }
+    quotation.directOrderEnabledAt = quotation.directOrderEnabled ? new Date() : undefined;
+    const finalFields = ['suppliedQuantity','minimumOrderQuantity','unitPrice','totalPrice','packaging','shippingEstimate','leadTime','leadTimeUnit','productionTime','productionTimeUnit','paymentTerms','warranty','notes','specialClauses','attachments','shippingTerms','expiryDate'];
     for (const field of finalFields) if (body[field] !== undefined) quotation[field] = field === 'specialClauses' && !Array.isArray(body[field]) ? String(body[field]).split('\n').map(value => value.trim()).filter(Boolean) : body[field];
+    if ([quotation.unitPrice, quotation.minimumOrderQuantity, quotation.suppliedQuantity, quotation.leadTime].some(value => !Number.isFinite(Number(value)) || Number(value) <= 0)) {
+      throw Object.assign(new Error('Final Quotation requires valid Unit Price, MOQ, Available Quantity, and Lead Time'), { statusCode: 422 });
+    }
     quotation.totalPrice = Number(body.totalPrice || (Number(quotation.unitPrice || 0) * Number(quotation.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)));
     recordTransition(quotation, { type: 'quotation', action, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed the accepted commercial terms' });
     quotation.finalQuotation = { ...(quotation.finalQuotation?.toObject?.() || quotation.finalQuotation || {}), finalQuotationNumber: quotation.finalQuotation?.finalQuotationNumber || `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'awaiting_seller_signature', preparedAt: new Date(), sellerSignedAt: null, buyerSignedAt: null, lockedAt: null };
     quotation.approvalHistory.push({ action: 'final_quotation_prepared', previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller prepared the Final Quotation' });
+    if (quotation.directOrderEnabled) quotation.activityTimeline.push({ action: 'direct_order_enabled', status: nextStatus, message: 'Seller enabled buyer checkout directly from this Final Quotation', actorId: session.userId, actorRole: 'seller' });
     const { finalRfq, document } = await createFinalQuotationDocument(quotation, session.userId, reason);
     const updated = await quotationRepository.findQuotationByIdLean(quotationId);
     await publishQuotationContext({ quotation: updated, rfq: finalRfq, actorId: session.userId, receiverId: finalRfq?.buyerId, content: `Final Quotation ${updated.finalQuotation?.finalQuotationNumber} was generated. The Seller signature is required before Buyer review.` });
@@ -1030,8 +1058,8 @@ async function createFinalQuotationDocument(quotation, sellerUserId, reason) {
     documentType: 'quotation',
     title: `Final Quotation ${quotation.finalQuotation.finalQuotationNumber}`,
     requiresSellerSignature: true,
-    requiresBuyerSignature: true,
-    metadata: { isFinalQuotation: true, finalQuotationNumber: quotation.finalQuotation.finalQuotationNumber },
+    requiresBuyerSignature: !quotation.directOrderEnabled,
+    metadata: { isFinalQuotation: true, finalQuotationNumber: quotation.finalQuotation.finalQuotationNumber, directOrderEnabled: Boolean(quotation.directOrderEnabled) },
     notes: reason || 'Seller prepared the Final Quotation',
     content,
   });

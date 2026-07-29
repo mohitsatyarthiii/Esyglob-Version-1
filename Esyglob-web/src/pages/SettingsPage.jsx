@@ -3,7 +3,36 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { changePassword } from '../api/account'
 import AppShell from '../components/AppShell'
+import CurrencySelector from '../components/CurrencySelector'
 import { PageHead } from '../components/PageHead'
-import { CURRENCIES, useCurrency } from '../preferences/currency-context'
+import { useCurrency } from '../preferences/currency-context'
 
-export default function SettingsPage(){const {selectedCurrency,setCurrency,refreshRates,loading,error:lastError}=useCurrency();const [password,setPassword]=useState({currentPassword:'',newPassword:''});const [busy,setBusy]=useState('');const [message,setMessage]=useState('');async function passwordSave(e){e.preventDefault();setBusy('password');setMessage('');try{await changePassword(password);setPassword({currentPassword:'',newPassword:''});setMessage('Password updated successfully.')}catch(error){setMessage(error.message)}finally{setBusy('')}}return <AppShell><div className="container module-page"><PageHead eyebrow="Account controls" title="Settings and security" description="Manage marketplace preferences, regional display and account security." /><div className="settings-grid"><section className="module-panel"><h2><Globe2/> Currency</h2><p>Prices are converted using the same cached exchange-rate infrastructure as the mobile app.</p><label>Preferred currency<select value={selectedCurrency} onChange={(e)=>setCurrency(e.target.value)}>{CURRENCIES.map(item=><option key={item}>{item}</option>)}</select></label><button className="button button--secondary" onClick={()=>refreshRates(true)} disabled={loading}><RefreshCw/> {loading?'Refreshing…':'Refresh exchange rates'}</button>{lastError&&<small className="action-error">{lastError}</small>}</section><section className="module-panel"><h2><MapPin/> Location and addresses</h2><p>Control your marketplace region, shipping country and saved trade destinations.</p><div className="settings-links"><Link to="/location"><MapPin/> Location and region</Link><Link to="/addresses"><Globe2/> Address book</Link></div></section><section className="module-panel"><h2><Bell/> Communication</h2><p>Review synchronized RFQ, quotation, message and order notifications.</p><div className="settings-links"><Link to="/notifications"><Bell/> Notification center</Link><Link to="/messages"><ShieldCheck/> Buyer-seller messages</Link></div></section><form className="module-panel" onSubmit={passwordSave}><h2><KeyRound/> Change password</h2><label>Current password<input type="password" value={password.currentPassword} onChange={(e)=>setPassword({...password,currentPassword:e.target.value})} required/></label><label>New password<input type="password" minLength="8" value={password.newPassword} onChange={(e)=>setPassword({...password,newPassword:e.target.value})} required/></label>{message&&<p className={message.includes('successfully')?'action-success':'action-error'}>{message}</p>}<button className="button button--primary" disabled={Boolean(busy)}><Save/> Update password</button></form></div></div></AppShell>}
+export default function SettingsPage() {
+  const { refreshRates, loading, error: lastError } = useCurrency()
+  const [password, setPassword] = useState({ currentPassword: '', newPassword: '' })
+  const [busy, setBusy] = useState('')
+  const [message, setMessage] = useState('')
+  async function passwordSave(event) {
+    event.preventDefault()
+    setBusy('password')
+    setMessage('')
+    try {
+      await changePassword(password)
+      setPassword({ currentPassword: '', newPassword: '' })
+      setMessage('Password updated successfully.')
+    } catch (error) {
+      setMessage(error.message)
+    } finally {
+      setBusy('')
+    }
+  }
+  return <AppShell><div className="container module-page">
+    <PageHead eyebrow="Account controls" title="Settings and security" description="Manage marketplace preferences, regional display and account security." />
+    <div className="settings-grid">
+      <section className="module-panel"><h2><Globe2 /> Currency</h2><p>Choose by official currency name, code and matching flag. This preference is synchronized with your profile and mobile app.</p><CurrencySelector className="settings-currency-selector" /><button className="button button--secondary" onClick={() => refreshRates(true)} disabled={loading}><RefreshCw /> {loading ? 'Refreshing…' : 'Refresh exchange rates'}</button>{lastError && <small className="action-error">{lastError}</small>}</section>
+      <section className="module-panel"><h2><MapPin /> Location and addresses</h2><p>Control your marketplace region, shipping country and saved trade destinations.</p><div className="settings-links"><Link to="/location"><MapPin /> Location and region</Link><Link to="/addresses"><Globe2 /> Address book</Link></div></section>
+      <section className="module-panel"><h2><Bell /> Communication</h2><p>Review synchronized RFQ, quotation, message and order notifications.</p><div className="settings-links"><Link to="/notifications"><Bell /> Notification center</Link><Link to="/messages"><ShieldCheck /> Buyer-seller messages</Link></div></section>
+      <form className="module-panel" onSubmit={passwordSave}><h2><KeyRound /> Change password</h2><label>Current password<input type="password" value={password.currentPassword} onChange={(event) => setPassword({ ...password, currentPassword: event.target.value })} required /></label><label>New password<input type="password" minLength="8" value={password.newPassword} onChange={(event) => setPassword({ ...password, newPassword: event.target.value })} required /></label>{message && <p className={message.includes('successfully') ? 'action-success' : 'action-error'}>{message}</p>}<button className="button button--primary" disabled={Boolean(busy)}><Save /> Update password</button></form>
+    </div>
+  </div></AppShell>
+}

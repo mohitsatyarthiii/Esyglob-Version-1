@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Languages, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useCurrency } from '../preferences/currency-context'
+import { CURRENCY_META, CURRENCY_OPTIONS, currencyLabel, useCurrency } from '../preferences/currency-context'
 
 const LANGUAGE_KEY = 'esyglob.language'
 const languages = [
@@ -12,15 +12,6 @@ const languages = [
   { code: 'ar-AE', short: 'AR', name: 'العربية (UAE)', country: 'ae' },
   { code: 'en-GB', short: 'EN', name: 'English (United Kingdom)', country: 'gb' },
 ]
-const currencies = [
-  { code: 'INR', name: 'Indian Rupee', country: 'in' },
-  { code: 'USD', name: 'US Dollar', country: 'us' },
-  { code: 'CNY', name: 'Chinese Yuan', country: 'cn' },
-  { code: 'EUR', name: 'Euro', country: 'de' },
-  { code: 'JPY', name: 'Japanese Yen', country: 'jp' },
-  { code: 'AED', name: 'UAE Dirham', country: 'ae' },
-  { code: 'GBP', name: 'British Pound', country: 'gb' },
-]
 
 function storedLanguage() {
   try {
@@ -29,8 +20,10 @@ function storedLanguage() {
   } catch { return 'en-IN' }
 }
 
-function Flag({ country }) {
-  return <img className="locale-flag" src={`/flags/${country}.svg`} alt="" aria-hidden="true" />
+function Flag({ country, flag }) {
+  return flag
+    ? <span className="locale-flag locale-flag--emoji" aria-hidden="true">{flag}</span>
+    : <img className="locale-flag" src={`/flags/${country}.svg`} alt="" aria-hidden="true" />
 }
 
 export default function CurrencySelector({ className = 'header-currency' }) {
@@ -41,12 +34,11 @@ export default function CurrencySelector({ className = 'header-currency' }) {
   const [active, setActive] = useState(0)
   const root = useRef(null)
   const searchRef = useRef(null)
-  const currentLanguage = languages.find(item => item.code === language) || languages[0]
   const options = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
     return [
       ...languages.filter(item => !needle || `${item.name} ${item.code}`.toLocaleLowerCase().includes(needle)).map(item => ({ ...item, type: 'language' })),
-      ...currencies.filter(item => !needle || `${item.name} ${item.code}`.toLocaleLowerCase().includes(needle)).map(item => ({ ...item, type: 'currency' })),
+      ...CURRENCY_OPTIONS.filter(item => !needle || `${item.name} ${item.code}`.toLocaleLowerCase().includes(needle)).map(item => ({ ...item, type: 'currency' })),
     ]
   }, [query])
 
@@ -56,9 +48,9 @@ export default function CurrencySelector({ className = 'header-currency' }) {
     return () => document.removeEventListener('pointerdown', close)
   }, [])
   useEffect(() => {
-    if (!open) return
-    window.setTimeout(() => searchRef.current?.focus(), 0)
+    if (open) window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [open])
+  useEffect(() => { setActive(0) }, [query])
   useEffect(() => {
     document.documentElement.setAttribute('lang', language)
     document.documentElement.setAttribute('dir', language.startsWith('ar') ? 'rtl' : 'ltr')
@@ -70,7 +62,7 @@ export default function CurrencySelector({ className = 'header-currency' }) {
       setCurrency(item.code)
     } else {
       setLanguage(item.code)
-      try { localStorage.setItem(LANGUAGE_KEY, item.code) } catch { /* Persistence can be unavailable. */ }
+      try { localStorage.setItem(LANGUAGE_KEY, item.code) } catch { /* Storage can be unavailable. */ }
     }
     setOpen(false)
     setQuery('')
@@ -84,9 +76,9 @@ export default function CurrencySelector({ className = 'header-currency' }) {
   }
 
   return <div className={`${className} locale-selector ${open ? 'open' : ''}`} ref={root} onKeyDown={keyDown}>
-    <button type="button" className="locale-selector__trigger" onClick={() => { setActive(0); setOpen(value => !value) }} aria-expanded={open} aria-haspopup="listbox">
-      <Flag country={currentLanguage.country} />
-      <span>{currentLanguage.short} · {selectedCurrency}</span>
+    <button type="button" className="locale-selector__trigger" onClick={() => { setActive(0); setOpen(value => !value) }} aria-expanded={open} aria-haspopup="listbox" aria-label={`Currency: ${currencyLabel(selectedCurrency)}`}>
+      <Flag flag={CURRENCY_META[selectedCurrency].flag} />
+      <span>{selectedCurrency}</span>
       <ChevronDown />
     </button>
     {open && <div className="locale-selector__popover">
@@ -98,13 +90,15 @@ export default function CurrencySelector({ className = 'header-currency' }) {
           return <span className="locale-selector__item-wrap" key={`${item.type}-${item.code}`}>
             {heading && <small>{item.type === 'language' ? 'Language' : 'Currency'}</small>}
             <button type="button" role="option" aria-selected={selected} className={index === active ? 'active' : ''} onMouseEnter={() => setActive(index)} onClick={() => select(item)}>
-              <Flag country={item.country} /><span><b>{item.name}</b><small>{item.code}</small></span>{selected && <Check />}
+              <Flag country={item.country} flag={item.flag} />
+              <span><b>{item.type === 'currency' ? currencyLabel(item) : item.name}</b>{item.type === 'language' && <small>{item.code}</small>}</span>
+              {selected && <Check />}
             </button>
           </span>
         })}
         {!options.length && <p>No matching preference</p>}
       </div>
-      <small className="locale-selector__hint"><Languages /> Selection is saved on this device.</small>
+      <small className="locale-selector__hint"><Languages /> Currency is saved here and synced to your profile.</small>
     </div>}
   </div>
 }

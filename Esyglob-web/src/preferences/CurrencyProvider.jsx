@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchProfile, updatePreferredCurrency } from '../api/account'
 import { useAuth } from '../auth/auth-context'
-import { CURRENCIES, CURRENCY_META, CurrencyContext } from './currency-context'
+import { CURRENCIES, CURRENCY_META, CURRENCY_OPTIONS, CurrencyContext, DEFAULT_CURRENCY } from './currency-context'
 
 const RATE_URL = 'https://open.er-api.com/v6/latest/INR'
 const HOUR = 60 * 60_000
 const CURRENCY_KEY = 'esyglob.currency'
 const RATES_KEY = 'esyglob.currency.rates'
 const fallbackRates = { INR: 1 }
-const zeroDigitCurrencies = new Set(['JPY', 'KRW', 'VND'])
 
 function readString(key) { try { return window.localStorage.getItem(key) } catch { return null } }
 function writeString(key, value) { try { window.localStorage.setItem(key, value) } catch { /* Storage may be unavailable. */ } }
@@ -26,7 +25,7 @@ export default function CurrencyProvider({ children }) {
   const cached = useMemo(() => readJson(RATES_KEY, null), [])
   const [selectedCurrency, setSelected] = useState(() => {
     const stored = String(readString(CURRENCY_KEY) || '').toUpperCase()
-    return CURRENCIES.includes(stored) ? stored : 'INR'
+    return CURRENCIES.includes(stored) ? stored : DEFAULT_CURRENCY
   })
   const [rates, setRates] = useState(cached?.rates || fallbackRates)
   const [loading, setLoading] = useState(!cached)
@@ -107,7 +106,7 @@ export default function CurrencyProvider({ children }) {
     return Number(amount || 0) / source * target
   }, [rates, selectedCurrency])
   const formatPrice = useCallback((amount, fromCurrency = 'INR') => {
-    const digits = zeroDigitCurrencies.has(selectedCurrency) ? 0 : 2
+    const digits = CURRENCY_META[selectedCurrency].fractionDigits
     return new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: selectedCurrency,
@@ -119,6 +118,8 @@ export default function CurrencyProvider({ children }) {
     selectedCurrency,
     currencyCode: selectedCurrency,
     currencySymbol: CURRENCY_META[selectedCurrency].symbol,
+    currency: CURRENCY_META[selectedCurrency],
+    currencies: CURRENCY_OPTIONS,
     exchangeRate: rates[selectedCurrency] || 1,
     rates,
     exchangeRates: rates,

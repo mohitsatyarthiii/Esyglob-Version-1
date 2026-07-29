@@ -237,6 +237,12 @@ const quotationSchema = new mongoose.Schema(
       buyerSignedAt: Date,
       lockedAt: Date,
     },
+    directOrderEnabled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    directOrderEnabledAt: Date,
     approvalHistory: [{ action: String, previousStatus: String, newStatus: String, actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, actorRole: String, notes: String, documents: [mongoose.Schema.Types.Mixed], createdAt: { type: Date, default: Date.now } }],
     structuredNotes: { type: [tradeNoteSchema], default: [] },
     tradeDocuments: { type: [tradeDocumentSchema], default: [] },

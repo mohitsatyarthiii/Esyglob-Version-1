@@ -107,13 +107,16 @@ function RFQDetailsScreen() {
   const [quoteUploading, setQuoteUploading] = useState(false);
   const [quoteForm, setQuoteForm] = useState({
     suppliedQuantity: '',
+    minimumOrderQuantity: '1',
     unitPrice: '',
     currency: 'INR',
-    leadTime: '15 days',
+    leadTime: '15',
+    leadTimeUnit: 'days',
     paymentTerms: '30% advance, balance before dispatch',
-    incoterms: 'FOB',
-    shippingCost: '',
+    shippingTerms: '',
+    expiryDate: '',
     sellerMessage: '',
+    enableDirectOrder: false,
   });
 
   const rfq = useQuery({
@@ -168,13 +171,16 @@ function RFQDetailsScreen() {
         productId: productId ?? '',
         title: item.title ?? (item as any).productName ?? 'Quotation',
         suppliedQuantity: Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1) || 1,
+        minimumOrderQuantity: Number(quoteForm.minimumOrderQuantity) || 1,
         unitPrice: Number(quoteForm.unitPrice) || 0,
         currency: quoteForm.currency || (item as any).currency || 'INR',
-        leadTime: quoteForm.leadTime,
+        leadTime: Number(quoteForm.leadTime) || 1,
+        leadTimeUnit: quoteForm.leadTimeUnit,
         paymentTerms: quoteForm.paymentTerms,
-        incoterms: quoteForm.incoterms,
-        shippingCost: Number(quoteForm.shippingCost) || 0,
+        shippingTerms: quoteForm.shippingTerms || undefined,
+        expiryDate: quoteForm.expiryDate || undefined,
         sellerMessage: quoteForm.sellerMessage || 'Quotation submitted from mobile.',
+        enableDirectOrder: quoteForm.enableDirectOrder,
         attachments: quoteAttachments.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
       });
     },
@@ -400,17 +406,21 @@ function RFQDetailsScreen() {
             </View>
             <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
               <View style={styles.formRow}>
-                <FormField label="Quantity" value={quoteForm.suppliedQuantity || String(item.quantity ?? '')} onChangeText={v => setQuoteForm({ ...quoteForm, suppliedQuantity: v })} keyboardType="numeric" compact />
                 <FormField label={`Unit Price (${selectedCurrency})`} value={quoteForm.unitPrice} onChangeText={v => setQuoteForm({ ...quoteForm, unitPrice: v })} keyboardType="numeric" compact />
+                <FormField label="MOQ" value={quoteForm.minimumOrderQuantity} onChangeText={v => setQuoteForm({ ...quoteForm, minimumOrderQuantity: v })} keyboardType="numeric" compact />
               </View>
               <View style={styles.formRow}>
-                <FormField label="Currency" value={quoteForm.currency} onChangeText={v => setQuoteForm({ ...quoteForm, currency: v })} compact />
-                <FormField label="Shipping" value={quoteForm.shippingCost} onChangeText={v => setQuoteForm({ ...quoteForm, shippingCost: v })} keyboardType="numeric" compact />
+                <FormField label="Available Quantity" value={quoteForm.suppliedQuantity || String(item.quantity ?? '')} onChangeText={v => setQuoteForm({ ...quoteForm, suppliedQuantity: v })} keyboardType="numeric" compact />
+                <FormField label="Lead Time (days)" value={quoteForm.leadTime} onChangeText={v => setQuoteForm({ ...quoteForm, leadTime: v })} keyboardType="numeric" compact />
               </View>
-              <FormField label="Lead Time" value={quoteForm.leadTime} onChangeText={v => setQuoteForm({ ...quoteForm, leadTime: v })} />
+              <FormField label="Shipping Method" value={quoteForm.shippingTerms} onChangeText={v => setQuoteForm({ ...quoteForm, shippingTerms: v })} />
               <FormField label="Payment Terms" value={quoteForm.paymentTerms} onChangeText={v => setQuoteForm({ ...quoteForm, paymentTerms: v })} />
-              <FormField label="Incoterms" value={quoteForm.incoterms} onChangeText={v => setQuoteForm({ ...quoteForm, incoterms: v })} />
-              <FormField label="Message to Buyer" value={quoteForm.sellerMessage} onChangeText={v => setQuoteForm({ ...quoteForm, sellerMessage: v })} multiline />
+              <FormField label="Valid Until (YYYY-MM-DD)" value={quoteForm.expiryDate} onChangeText={v => setQuoteForm({ ...quoteForm, expiryDate: v })} />
+              <FormField label="Commercial Notes" value={quoteForm.sellerMessage} onChangeText={v => setQuoteForm({ ...quoteForm, sellerMessage: v })} multiline />
+              <Pressable onPress={() => setQuoteForm({ ...quoteForm, enableDirectOrder: !quoteForm.enableDirectOrder })} style={styles.checkRow}>
+                <Icon name={quoteForm.enableDirectOrder ? 'checkbox-marked' : 'checkbox-blank-outline'} size={21} color={quoteForm.enableDirectOrder ? P.primary : P.muted} />
+                <View style={{ flex: 1 }}><Text style={styles.checkTitle}>Enable Direct Order</Text><Text style={styles.checkDesc}>After you sign the Final Quotation, the buyer can place the order without another approval step.</Text></View>
+              </Pressable>
               <Text style={styles.formLabel}>Attachments</Text>
               {quoteAttachments.map((file, index) => <View key={`${file.url}-${index}`} style={styles.quoteAttachment}><Icon name={file.mimeType?.startsWith('image/') ? 'image-outline' : 'file-document-outline'} size={20} color={P.accent} /><Text numberOfLines={1} style={styles.quoteAttachmentName}>{file.name ?? `Attachment ${index + 1}`}</Text><Pressable onPress={() => setQuoteAttachments(current => current.filter((_, fileIndex) => fileIndex !== index))}><Icon name="close-circle" size={19} color={P.danger} /></Pressable></View>)}
               <View style={styles.quoteUploadActions}><Pressable disabled={quoteUploading} onPress={pickQuoteImages} style={styles.quoteUploadButton}><Icon name="image-plus" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Images</Text></Pressable><Pressable disabled={quoteUploading} onPress={pickQuoteDocuments} style={styles.quoteUploadButton}><Icon name="paperclip" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Files</Text></Pressable></View>
@@ -557,6 +567,9 @@ const styles = StyleSheet.create({
   sheetScroll: { paddingHorizontal: 16 },
 
   formRow: { flexDirection: 'row', gap: 10 },
+  checkRow: { alignItems: 'flex-start', backgroundColor: P.accentLight, borderRadius: 10, flexDirection: 'row', gap: 9, marginBottom: 12, padding: 12 },
+  checkTitle: { color: P.text, fontSize: 13, fontWeight: '700' },
+  checkDesc: { color: P.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 2 },
   formField: { marginBottom: 12 },
   formFieldCompact: { flex: 1 },
   formLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },

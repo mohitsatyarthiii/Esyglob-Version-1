@@ -1,27 +1,26 @@
 import { createContext, useContext } from 'react'
+import currencyMetadata from '../../../shared/currency-metadata.json'
+
+export const DEFAULT_CURRENCY = 'INR'
+export const CURRENCY_OPTIONS = Object.freeze(currencyMetadata.map(
+  item => Object.freeze({ ...item, flag: flagEmoji(item.flagCountryCode) }),
+))
+export const CURRENCIES = Object.freeze(CURRENCY_OPTIONS.map(({ code }) => code))
+export const CURRENCY_META = Object.freeze(Object.fromEntries(
+  CURRENCY_OPTIONS.map(item => [item.code, item]),
+))
+
+export function flagEmoji(countryCode) {
+  return String(countryCode || '').toUpperCase().replace(/[A-Z]/g, letter =>
+    String.fromCodePoint(127397 + letter.charCodeAt(0)))
+}
+
+export function currencyLabel(currency) {
+  const item = typeof currency === 'string' ? CURRENCY_META[currency] : currency
+  return item ? `${item.flag || flagEmoji(item.flagCountryCode)} ${item.name} (${item.code})` : ''
+}
 
 export const CurrencyContext = createContext(null)
-export const CURRENCY_OPTIONS = [
-  ['INR','₹','Indian Rupee','🇮🇳'], ['USD','$','US Dollar','🇺🇸'], ['EUR','€','Euro','🇪🇺'],
-  ['GBP','£','British Pound','🇬🇧'], ['AED','د.إ','UAE Dirham','🇦🇪'], ['SAR','﷼','Saudi Riyal','🇸🇦'],
-  ['QAR','﷼','Qatari Riyal','🇶🇦'], ['KWD','د.ك','Kuwaiti Dinar','🇰🇼'], ['BHD','د.ب','Bahraini Dinar','🇧🇭'],
-  ['OMR','﷼','Omani Rial','🇴🇲'], ['JPY','¥','Japanese Yen','🇯🇵'], ['CNY','¥','Chinese Yuan','🇨🇳'],
-  ['KRW','₩','South Korean Won','🇰🇷'], ['AUD','A$','Australian Dollar','🇦🇺'], ['CAD','CA$','Canadian Dollar','🇨🇦'],
-  ['NZD','NZ$','New Zealand Dollar','🇳🇿'], ['CHF','CHF','Swiss Franc','🇨🇭'], ['SGD','S$','Singapore Dollar','🇸🇬'],
-  ['MYR','RM','Malaysian Ringgit','🇲🇾'], ['THB','฿','Thai Baht','🇹🇭'], ['IDR','Rp','Indonesian Rupiah','🇮🇩'],
-  ['VND','₫','Vietnamese Dong','🇻🇳'], ['PHP','₱','Philippine Peso','🇵🇭'], ['ZAR','R','South African Rand','🇿🇦'],
-  ['BRL','R$','Brazilian Real','🇧🇷'], ['MXN','MX$','Mexican Peso','🇲🇽'], ['TRY','₺','Turkish Lira','🇹🇷'],
-  ['RUB','₽','Russian Ruble','🇷🇺'], ['EGP','E£','Egyptian Pound','🇪🇬'], ['PKR','₨','Pakistani Rupee','🇵🇰'],
-  ['BDT','৳','Bangladeshi Taka','🇧🇩'], ['NPR','रू','Nepalese Rupee','🇳🇵'], ['LKR','Rs','Sri Lankan Rupee','🇱🇰'],
-  ['HKD','HK$','Hong Kong Dollar','🇭🇰'], ['TWD','NT$','New Taiwan Dollar','🇹🇼'], ['PLN','zł','Polish Zloty','🇵🇱'],
-  ['SEK','kr','Swedish Krona','🇸🇪'], ['NOK','kr','Norwegian Krone','🇳🇴'], ['DKK','kr','Danish Krone','🇩🇰'],
-  ['CZK','Kč','Czech Koruna','🇨🇿'], ['HUF','Ft','Hungarian Forint','🇭🇺'], ['ILS','₪','Israeli Shekel','🇮🇱'],
-  ['KES','KSh','Kenyan Shilling','🇰🇪'], ['NGN','₦','Nigerian Naira','🇳🇬'], ['GHS','₵','Ghanaian Cedi','🇬🇭'],
-]
-export const CURRENCIES = CURRENCY_OPTIONS.map(([code]) => code)
-export const CURRENCY_META = Object.fromEntries(CURRENCY_OPTIONS.map(
-  ([code, symbol, name, flag]) => [code, { code, symbol, name, flag }],
-))
 
 export function useCurrency() {
   const value = useContext(CurrencyContext)

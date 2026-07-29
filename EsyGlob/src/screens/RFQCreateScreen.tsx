@@ -19,6 +19,7 @@ import { pick, types as documentTypes } from '@react-native-documents/picker';
 import { createProductEnquiry, createRFQ, createSellerRFQ, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { fetchCategories } from '../api/categories';
 import { getId } from '../utils/format';
+import { CURRENCY_OPTIONS } from '../currency/CurrencyContext';
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ function Dropdown({ label, value, options, onSelect, required, icon, loading }: 
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-function RFQCreateScreen() {
+function LegacyRFQCreateScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const queryClient = useQueryClient();
@@ -755,5 +756,147 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 });
+
+function RFQCreateScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const queryClient = useQueryClient();
+  const prefill = (route.params?.prefill ?? {}) as Record<string, any>;
+  const [form, setForm] = useState({
+    productName: String(prefill.productName ?? prefill.title ?? ''),
+    quantity: String(prefill.quantity ?? '1'),
+    unit: String(prefill.unit ?? 'pcs'),
+    targetPrice: String(prefill.targetPrice ?? ''),
+    currency: String(prefill.currency ?? 'INR'),
+    deliveryCountry: String(prefill.deliveryCountry ?? prefill.destinationCountry ?? 'India'),
+    deliveryTimeline: String(prefill.deliveryTimeline ?? 'flexible'),
+    notes: String(prefill.notes ?? ''),
+  });
+  const [uploadedFiles, setUploadedFiles] = useState<UploadAttachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+
+  const uploadSelected = async (files: Array<{ uri: string; name: string; type: string }>) => {
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const result = await uploadFiles('rfqs', files);
+      setUploadedFiles(current => [...current, ...(result.uploads ?? result.files ?? [])]);
+    } catch (error) {
+      Alert.alert('Upload failed', error instanceof Error ? error.message : 'Unable to upload files.');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const pickImages = async () => {
+    const result = await launchImageLibrary({ mediaType: 'photo', selectionLimit: 10, quality: 0.8 });
+    await uploadSelected((result.assets ?? []).filter(asset => asset.uri).map(asset => ({
+      uri: asset.uri as string,
+      name: asset.fileName ?? `rfq-${Date.now()}.jpg`,
+      type: asset.type ?? 'image/jpeg',
+    })));
+  };
+  const pickDocuments = async () => {
+    try {
+      const files = await pick({ allowMultiSelection: true, type: [documentTypes.allFiles] });
+      await uploadSelected(files.map(file => ({
+        uri: file.uri,
+        name: file.name ?? `rfq-${Date.now()}`,
+        type: file.type ?? 'application/octet-stream',
+      })));
+    } catch (error: any) {
+      if (error?.code !== 'OPERATION_CANCELED') Alert.alert('File selection failed', error?.message ?? 'Unable to select files.');
+    }
+  };
+
+  const submit = useMutation({
+    mutationFn: async () => {
+      const quantity = Number(form.quantity);
+      const attachments = uploadedFiles.map(file => ({
+        url: file.secure_url ?? file.url ?? file.location,
+        filename: file.name,
+        type: file.mimeType,
+      }));
+      const common = {
+        productId: prefill.productId || undefined,
+        productName: form.productName.trim(),
+        title: form.productName.trim(),
+        description: form.notes.trim() || `Quotation requested for ${form.productName.trim()}.`,
+        notes: form.notes.trim() || undefined,
+        quantity,
+        unit: form.unit.trim(),
+        targetPrice: Number(form.targetPrice) || undefined,
+        currency: form.currency,
+        deliveryCountry: form.deliveryCountry.trim(),
+        destinationCountry: form.deliveryCountry.trim(),
+        deliveryTimeline: form.deliveryTimeline,
+        attachments,
+        items: [{ name: form.productName.trim(), quantity, unit: form.unit.trim(), targetPrice: Number(form.targetPrice) || undefined }],
+      };
+      if (prefill.productId && prefill.sellerUserId) {
+        return createProductEnquiry({
+          ...common,
+          productId: String(prefill.productId),
+          sellerUserId: String(prefill.sellerUserId),
+          additionalNotes: common.notes,
+        });
+      }
+      const payload = {
+        ...common,
+        category: String(prefill.category ?? 'General'),
+        visibility: prefill.sellerId || prefill.sellerUserId ? 'private' : 'public',
+        sellerId: prefill.sellerId || undefined,
+        sellerUserId: prefill.sellerUserId || undefined,
+        rfqType: prefill.productId ? 'product' : 'custom',
+      };
+      return prefill.sellerId ? createSellerRFQ(payload) : createRFQ(payload);
+    },
+    onSuccess: async (result: any) => {
+      await queryClient.invalidateQueries({ queryKey: ['rfqs'] });
+      if (result?.chat) return navigation.replace('ChatDetails', { chatId: getId(result.chat), title: form.productName || 'RFQ Chat' });
+      const id = getId(result?.rfq ?? result);
+      if (id) navigation.replace('RFQDetails', { rfqId: id });
+      else navigation.goBack();
+    },
+    onError: (error: unknown) => Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to create RFQ.'),
+  });
+
+  const validateAndSubmit = () => {
+    const quantity = Number(form.quantity);
+    if (!form.productName.trim() || !Number.isFinite(quantity) || quantity <= 0 || !form.unit.trim() || !form.deliveryCountry.trim() || !form.deliveryTimeline) {
+      return Alert.alert('Missing fields', 'Product, valid quantity, unit, delivery location and timeline are required.');
+    }
+    if ([form.productName, form.notes].some(value => contactPattern.test(value))) {
+      return Alert.alert('Contact blocked', 'Do not include phone numbers, email addresses or links.');
+    }
+    submit.mutate();
+  };
+
+  return <View style={styles.screen}>
+    <StatusBar barStyle="dark-content" backgroundColor={P.surface} />
+    <View style={styles.header}>
+      <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}><Icon name="arrow-left" size={22} color={P.text} /></Pressable>
+      <View style={{ flex: 1 }}><Text style={styles.headerKicker}>{prefill.sellerId ? 'Private supplier request' : 'Buyer sourcing request'}</Text><Text style={styles.headerTitle}>Create RFQ</Text></View>
+      <Pressable onPress={validateAndSubmit} disabled={submit.isPending} style={styles.headerPublish}>{submit.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.headerPublishText}>Send</Text>}</Pressable>
+    </View>
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={styles.section}><Text style={styles.sectionKicker}>Essential details</Text><Text style={styles.sectionTitle}>Product requirement</Text><View style={styles.card}>
+        <InputField label="Product" required value={form.productName} onChangeText={value => update('productName', value)} placeholder="What do you need?" />
+        <View style={styles.row}><View style={styles.half}><InputField label="Quantity" required value={form.quantity} keyboardType="numeric" onChangeText={value => update('quantity', value)} /></View><View style={styles.half}><Dropdown label="Unit" required value={form.unit} options={UNITS} onSelect={value => update('unit', value)} /></View></View>
+        <View style={styles.row}><View style={styles.half}><Dropdown label="Currency" value={form.currency} options={CURRENCY_OPTIONS.map(item => item.code)} onSelect={value => update('currency', value)} /></View><View style={styles.half}><InputField label="Target price (optional)" value={form.targetPrice} keyboardType="numeric" onChangeText={value => update('targetPrice', value)} /></View></View>
+        <InputField label="Delivery location" required value={form.deliveryCountry} onChangeText={value => update('deliveryCountry', value)} placeholder="City, state, country" />
+        <Dropdown label="Timeline" required value={form.deliveryTimeline} options={TIMELINES} onSelect={value => update('deliveryTimeline', value)} />
+        <InputField label="Notes" value={form.notes} onChangeText={value => update('notes', value)} multiline placeholder="Specifications, quality or packaging notes" />
+      </View></View>
+      <View style={styles.section}><Text style={styles.sectionKicker}>Optional</Text><Text style={styles.sectionTitle}>Attachment</Text><View style={styles.card}>
+        {uploadedFiles.map((file, index) => <View key={`${file.url}-${index}`} style={styles.uploadRow}><Icon name="file-document-outline" size={22} color={P.primary} /><View style={styles.uploadBody}><Text numberOfLines={1} style={styles.uploadName}>{file.name ?? `Attachment ${index + 1}`}</Text></View><Pressable onPress={() => setUploadedFiles(current => current.filter((_, itemIndex) => itemIndex !== index))}><Icon name="close-circle" size={20} color={P.danger} /></Pressable></View>)}
+        <View style={styles.uploadActions}><Pressable disabled={uploading} onPress={pickImages} style={styles.uploadButton}><Icon name="image-plus" size={18} color={P.primary} /><Text style={styles.uploadButtonText}>Images</Text></Pressable><Pressable disabled={uploading} onPress={pickDocuments} style={styles.uploadButton}><Icon name="paperclip" size={18} color={P.primary} /><Text style={styles.uploadButtonText}>Files</Text></Pressable></View>
+        {uploading && <View style={styles.uploadProgress}><ActivityIndicator size="small" color={P.primary} /><Text style={styles.uploadStatus}>Uploading…</Text></View>}
+      </View></View>
+      <Pressable onPress={validateAndSubmit} disabled={submit.isPending || uploading} style={[styles.submitBtn, (submit.isPending || uploading) && styles.submitBtnDisabled]}>{submit.isPending ? <ActivityIndicator color="#FFF" /> : <><Icon name="send" size={18} color="#FFF" /><Text style={styles.submitBtnText}>{prefill.sellerId ? 'Send Private RFQ' : 'Publish RFQ'}</Text></>}</Pressable>
+      <View style={styles.bottomSpacer} />
+    </ScrollView>
+  </View>;
+}
 
 export default RFQCreateScreen;

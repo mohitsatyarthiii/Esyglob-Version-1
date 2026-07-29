@@ -536,6 +536,31 @@ export async function patchQuotation(
   ) as Quotation;
 }
 
+export async function fetchQuotationWorkspace(quotationId: string): Promise<any> {
+  const payload = await apiRequest(`/trade-workspace/trade/quotation/${quotationId}`);
+  return unwrapData(payload);
+}
+
+export async function signFinalQuotation(
+  quotationId: string,
+  documentId: string,
+  input: { signerName: string; signatureValue: string },
+): Promise<any> {
+  const payload = await apiRequest(`/trade-workspace/quotation/${quotationId}/documents/${documentId}/sign`, {
+    method: 'POST',
+    body: { ...input, signatureType: 'typed', termsAccepted: true, termsVersion: 'final-quotation-terms-v1' },
+  });
+  return unwrapData(payload);
+}
+
+export async function startQuotationOrder(quotationId: string): Promise<Order> {
+  const payload = await apiRequest('/orders/start', { method: 'POST', body: { quotationId } });
+  const data = unwrapData<{ order?: Order } | Order>(payload);
+  const order = data && typeof data === 'object' && 'order' in data ? data.order : data;
+  if (!order) throw new Error('Order was not returned.');
+  return order as Order;
+}
+
 // ─── Chat ───────────────────────────────────────────────────────────────────
 
 export async function fetchChats(
