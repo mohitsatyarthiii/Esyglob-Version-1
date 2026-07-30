@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { UPLOAD } from '../lib/constants.js';
+import { logImageSearch } from '../lib/image-search-logger.js';
 
 // Memory storage (files stored in buffer for Cloudinary upload)
 const storage = multer.memoryStorage();
@@ -109,21 +110,32 @@ export const upload = multer({
  * Handle multer errors
  */
 export function handleUploadError(err, req, res, next) {
+  const respond = (status, error, code) => {
+    if (req.originalUrl?.includes('/ai-search')) {
+      logImageSearch('warn', 'upload_validation_failed', {
+        requestId: req.id,
+        statusCode: status,
+        code,
+        error: err,
+      });
+    }
+    return res.status(status).json({ error, code, requestId: req.id });
+  };
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: 'File exceeds the 5MB limit' });
+      return respond(413, 'File exceeds the 5MB limit', 'IMAGE_TOO_LARGE');
     }
     if (err.code === 'LIMIT_FILE_COUNT') {
-      return res.status(422).json({ error: `Maximum ${UPLOAD.MAX_FILES_PER_UPLOAD} files per upload` });
+      return respond(422, `Maximum ${UPLOAD.MAX_FILES_PER_UPLOAD} files per upload`, 'TOO_MANY_FILES');
     }
     if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res.status(422).json({ error: 'Unexpected file field' });
+      return respond(422, 'Unexpected file field', 'UNEXPECTED_FILE_FIELD');
     }
-    return res.status(400).json({ error: err.message });
+    return respond(400, err.message, 'UPLOAD_VALIDATION_FAILED');
   }
 
   if (err.message?.includes('Unsupported file type') || err.message?.includes('Image search supports')) {
-    return res.status(415).json({ error: err.message });
+    return respond(415, err.message, 'UNSUPPORTED_IMAGE_TYPE');
   }
 
   next(err);

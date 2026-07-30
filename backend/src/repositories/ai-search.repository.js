@@ -247,7 +247,14 @@ class AISearchRepository {
       ...profile.categoryTerms,
       ...products.flatMap((product) => [product.category, product.subcategory]).filter(Boolean),
     ])];
-    const categories = await this.searchCategories(matchedCategoryTerms, 10);
+    const searchedCategories = await this.searchCategories(matchedCategoryTerms, 10);
+    const productCategoryNames = new Set(products
+      .map((product) => String(product.category || '').trim().toLowerCase())
+      .filter(Boolean));
+    const exactProductCategories = searchedCategories.filter((category) => (
+      productCategoryNames.has(String(category.name || '').trim().toLowerCase())
+    ));
+    const categories = exactProductCategories.length ? exactProductCategories : searchedCategories;
     const countries = [...new Set(suppliers.map((seller) => seller.address?.country).filter(Boolean))].slice(0, 12);
 
     return {

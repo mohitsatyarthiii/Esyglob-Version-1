@@ -17,9 +17,9 @@ router.use(rateLimiter({ windowMs: 60 * 1000, max: 30, keyPrefix: 'ai-search' })
 // POST - AI search
 router.post(
   '/',
-  requireSubscriptionFeature('aiRequests', { ai: true, aiFeature: 'search' }),
   uploadImageSearch,
   handleUploadError,
+  requireSubscriptionFeature('aiRequests', { ai: true, aiFeature: 'search' }),
   AISearchController.search
 );
 

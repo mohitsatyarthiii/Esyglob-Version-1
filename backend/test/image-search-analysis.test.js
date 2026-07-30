@@ -6,8 +6,9 @@ import {
   parseVisionAnalysis,
   rankProductsByVisualRelevance,
 } from '../src/lib/image-search.js';
+import { cloudinaryVisionUrl } from '../src/lib/ai-service.js';
 
-test('normalizes Qwen vision JSON into the stable image-search contract', () => {
+test('normalizes structured vision JSON into the stable image-search contract', () => {
   const analysis = parseVisionAnalysis(`\`\`\`json
   {
     "productName": " Stainless Steel Ball Valve ",
@@ -29,6 +30,15 @@ test('normalizes Qwen vision JSON into the stable image-search contract', () => 
 test('invalid or uncertain model output becomes an empty low-confidence analysis', () => {
   assert.deepEqual(parseVisionAnalysis('This might be a valve or a pump.'), normalizeVisionAnalysis(null));
   assert.equal(normalizeVisionAnalysis({ productName: '', confidence: -2 }).confidence, 0);
+});
+
+test('normalizes Cloudinary uploads to a bounded JPEG for the vision runtime', () => {
+  const result = cloudinaryVisionUrl('https://res.cloudinary.com/demo/image/upload/v1/catalog/product.webp');
+  assert.match(result, /\/image\/upload\/f_jpg,q_auto:good,w_1024,h_1024,c_limit\//);
+  assert.throws(
+    () => cloudinaryVisionUrl('https://example.com/product.webp'),
+    /uploaded through EsyGlob/
+  );
 });
 
 test('visual search profile combines identity and broader fallback evidence', () => {
@@ -81,4 +91,49 @@ test('structured visual ranking uses material and subcategory fields without pop
 
   assert.equal(ranked[0]._id, 'right-product');
   assert.equal(ranked.some((product) => product._id === 'wrong-popular'), false);
+});
+
+test('normalizes comma-delimited model keywords and removes unspecified search noise', () => {
+  const analysis = normalizeVisionAnalysis({
+    productName: 'Laptop',
+    category: 'Electronics',
+    subcategory: 'Computers',
+    material: 'Unspecified',
+    keywords: ['laptop, notebook computer, portable PC'],
+    alternateKeywords: [],
+    confidence: 0.9,
+  });
+  const profile = buildVisualSearchProfile(analysis);
+
+  assert.deepEqual(analysis.keywords, ['laptop', 'notebook computer', 'portable pc']);
+  assert.equal(profile.broadTerms.includes('unspecified'), false);
+});
+
+test('drops name-only accessory collisions when product classification is incompatible', () => {
+  const profile = buildVisualSearchProfile({
+    productName: 'Laptop',
+    category: 'Electronics',
+    subcategory: 'Computers and Peripherals',
+    industry: 'Technology',
+    keywords: ['notebook computer'],
+    alternateKeywords: ['portable computer'],
+    confidence: 0.95,
+  });
+  const ranked = rankProductsByVisualRelevance([
+    {
+      _id: 'actual-laptop',
+      name: 'Business laptop computer',
+      category: 'Computer Hardware & Software',
+      subcategory: 'Laptops',
+      tags: ['notebook computer'],
+    },
+    {
+      _id: 'laptop-bag',
+      name: 'Leather laptop school bag',
+      category: 'Leather Products',
+      subcategory: 'Leather Bags',
+    },
+  ], profile);
+
+  assert.deepEqual(ranked.map((product) => product._id), ['actual-laptop']);
 });

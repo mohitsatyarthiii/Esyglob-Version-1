@@ -1,6 +1,7 @@
 import AISearchService from '../services/ai-search.service.js';
 import UploadService from '../services/upload.service.js';
 import { imageSourceMetadata, logImageSearch } from '../lib/image-search-logger.js';
+import { refundUsage } from '../lib/subscription-access.js';
 
 function booleanValue(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -84,6 +85,20 @@ class AISearchController {
       return res.json({ ...result, requestId: req.id });
     } catch (error) {
       const statusCode = Number(error.statusCode) || 500;
+      if (req.subscriptionContext) {
+        try {
+          await refundUsage(req.user, 'aiRequests', 1, {
+            ai: true,
+            role: req.subscriptionContext.role,
+          });
+          logImageSearch('info', 'failed_search_usage_refunded', { requestId: req.id });
+        } catch (refundError) {
+          logImageSearch('error', 'failed_search_refund_failed', {
+            requestId: req.id,
+            error: refundError,
+          });
+        }
+      }
       logImageSearch('error', 'request_failed', {
         requestId: req.id,
         statusCode,

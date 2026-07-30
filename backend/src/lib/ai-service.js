@@ -1,6 +1,13 @@
 import axios from 'axios';
-import { parseVisionAnalysis, VISION_ANALYSIS_JSON_SCHEMA } from './image-search.js';
-import { imageSourceMetadata, logImageSearch } from './image-search-logger.js';
+import {
+  imageSourceMetadata,
+  logImageSearch,
+} from './image-search-logger.js';
+import {
+  parseVisionAnalysis,
+  VISION_ANALYSIS_JSON_SCHEMA,
+} from './image-search.js';
+import { getVisionProvider } from '../providers/vision.provider.js';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'ollama';
 const OLLAMA_FALLBACK_ENABLED = process.env.OLLAMA_FALLBACK_ENABLED === 'true';
 const AI_CHAT_FAST_MODE = process.env.AI_CHAT_FAST_MODE !== 'false';
@@ -72,7 +79,26 @@ function withTimeoutSignal(timeoutMs, externalSignal) {
   return externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal;
 }
 
-function cloudinaryVisionUrl(imageUrl) {
+async function unloadOllamaModel(model, requestId = '') {
+  try {
+    const response = await fetch(`${normalizeBaseUrl(OLLAMA_BASE_URL)}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(7_500),
+      body: JSON.stringify({ model, stream: false, keep_alive: 0 }),
+    });
+    logImageSearch(response.ok ? 'info' : 'warn', 'ollama_model_unloaded', {
+      requestId,
+      model,
+      statusCode: response.status,
+      success: response.ok,
+    });
+  } catch (error) {
+    logImageSearch('warn', 'ollama_model_unload_failed', { requestId, model, error });
+  }
+}
+
+export function cloudinaryVisionUrl(imageUrl) {
   const parsedUrl = new URL(imageUrl);
   if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
     throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), {
@@ -97,6 +123,19 @@ function cloudinaryVisionUrl(imageUrl) {
     '/image/upload/f_jpg,q_auto:good,w_1024,h_1024,c_limit/'
   );
   return parsedUrl.toString();
+}
+
+function hasCompleteVisionAnalysis(analysis) {
+  return Boolean(
+    analysis.productName
+    && analysis.category
+    && analysis.subcategory
+    && analysis.industry
+    && analysis.material
+    && analysis.keywords.length
+    && analysis.alternateKeywords.length
+    && analysis.confidence > 0
+  );
 }
 
 function extractJSON(content) {
@@ -189,15 +228,21 @@ const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.c
 const OLLAMA_API_URL = process.env.OLLAMA_API_URL || process.env.OLLAMA_BASE_URL || '';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || '';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || OLLAMA_API_URL;
-const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3-vl:2b';
+const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || process.env.QWEN_VISION_MODEL || '';
+const OLLAMA_VISION_FALLBACK_MODEL = process.env.OLLAMA_VISION_FALLBACK_MODEL || '';
 const IMAGE_DOWNLOAD_TIMEOUT_MS = Math.max(5_000, Number(process.env.IMAGE_SEARCH_DOWNLOAD_TIMEOUT_MS || 15_000));
-const QWEN_VISION_TIMEOUT_MS = Math.max(15_000, Number(process.env.QWEN_VISION_TIMEOUT_MS || 75_000));
+const QWEN_VISION_TIMEOUT_MS = Math.max(15_000, Number(process.env.QWEN_VISION_TIMEOUT_MS || 30_000));
+const OLLAMA_CLOUD_VISION_TIMEOUT_MS = Math.max(10_000, Number(process.env.OLLAMA_CLOUD_VISION_TIMEOUT_MS || 25_000));
 const GEMINI_VISION_TIMEOUT_MS = Math.max(10_000, Number(process.env.GEMINI_VISION_TIMEOUT_MS || 25_000));
+const QWEN_VISION_MAX_CONCURRENCY = Math.max(1, Number(process.env.QWEN_VISION_MAX_CONCURRENCY || 1));
+const QWEN_VISION_COOLDOWN_MS = Math.max(5_000, Number(process.env.QWEN_VISION_COOLDOWN_MS || 60_000));
 const AI_REQUEST_TIMEOUT = Number(process.env.AI_REQUEST_TIMEOUT || 30000);
 const MAX_RETRIES = Number(process.env.AI_MAX_RETRIES || 1);
 const CHAT_CONTEXT_MESSAGES = Number(process.env.AI_CHAT_CONTEXT_MESSAGES || 6);
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 const CLOUD_RACE_TIMEOUT = Number(process.env.AI_CLOUD_RACE_TIMEOUT || 4500);
+let qwenVisionInFlight = 0;
+let qwenVisionCooldownUntil = 0;
 
 class AIService {
   static getConfig() {
@@ -205,12 +250,16 @@ class AIService {
       provider: AI_PROVIDER,
       ollamaApiUrl: OLLAMA_BASE_URL,
       model: OLLAMA_MODEL,
-      visionModel: OLLAMA_VISION_MODEL,
+      visionProvider: 'huggingface',
+      visionModel: process.env.HF_IMAGE_MODEL || '',
+      visionFallbackModel: process.env.HF_IMAGE_FALLBACK_MODEL || '',
+      visionConfigured: Boolean(process.env.HF_API_KEY && process.env.HF_IMAGE_MODEL),
       isConfigured: geminiKeyManager.keys.length > 0 || deepseekKeyManager.keys.length > 0 || Boolean(OLLAMA_BASE_URL),
       availableProviders: {
         gemini: geminiKeyManager.keys.length,
         deepseek: deepseekKeyManager.keys.length,
         ollama: Boolean(OLLAMA_BASE_URL),
+        huggingfaceVision: Boolean(process.env.HF_API_KEY && process.env.HF_IMAGE_MODEL),
       },
     };
   }
@@ -263,7 +312,6 @@ class AIService {
   static async analyzeMarketplaceImage(imageUrl, options = {}) {
     const requestId = options.requestId || '';
     const visionUrl = cloudinaryVisionUrl(imageUrl);
-    const attempts = [];
     try {
       const downloadStartedAt = Date.now();
       const imageResponse = await fetch(visionUrl, {
@@ -310,39 +358,15 @@ class AIService {
         durationMs: Date.now() - downloadStartedAt,
       });
 
-      const qwenResult = await this.analyzeImageWithQwen(imageBuffer, mimeType, options);
-      attempts.push({
-        provider: qwenResult.provider,
-        model: qwenResult.model,
-        success: qwenResult.success,
-        statusCode: qwenResult.providerStatus,
-        durationMs: qwenResult.durationMs,
-        error: qwenResult.error,
+      const provider = getVisionProvider();
+      return provider.analyze({
+        imageBuffer,
+        mimeType,
+        requestId,
+        signal: options.signal,
       });
-      if (qwenResult.success) return { ...qwenResult, attempts };
-
-      const geminiResult = await this.analyzeImageWithGemini(imageBuffer, mimeType, options);
-      attempts.push({
-        provider: geminiResult.provider,
-        model: geminiResult.model,
-        success: geminiResult.success,
-        statusCode: geminiResult.providerStatus,
-        durationMs: geminiResult.durationMs,
-        error: geminiResult.error,
-      });
-      if (geminiResult.success) return { ...geminiResult, attempts };
-
-      return {
-        success: false,
-        analysis: parseVisionAnalysis(null),
-        content: '',
-        provider: 'none',
-        model: 'unavailable',
-        tokensUsed: 0,
-        attempts,
-      };
     } catch (error) {
-      logImageSearch('error', 'image_preprocessing_failed', {
+      logImageSearch('error', 'vision_pipeline_failed', {
         requestId,
         ...imageSourceMetadata(imageUrl),
         error,
@@ -364,6 +388,28 @@ class AIService {
         error: 'Qwen vision is not configured',
       };
     }
+    if (Date.now() < qwenVisionCooldownUntil) {
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'qwen',
+        model: OLLAMA_VISION_MODEL,
+        tokensUsed: 0,
+        durationMs: 0,
+        error: 'Qwen vision is cooling down after a provider timeout',
+      };
+    }
+    if (qwenVisionInFlight >= QWEN_VISION_MAX_CONCURRENCY) {
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'qwen',
+        model: OLLAMA_VISION_MODEL,
+        tokensUsed: 0,
+        durationMs: 0,
+        error: 'Qwen vision is busy; using the configured vision fallback',
+      };
+    }
     const prompt = `Act as a visual product classifier for a global B2B marketplace.
 Identify the main purchasable product or physical object in this image.
 Return one JSON object matching the provided schema.
@@ -376,6 +422,7 @@ Do not copy slogans, claims, certifications, or brand names into keywords.
 Never invent a brand, model, certification, or precise material.
 Confidence must reflect visual certainty from 0 to 1.
 Return JSON only with every required field present.`;
+    qwenVisionInFlight += 1;
     try {
       const response = await fetch(`${normalizeBaseUrl(OLLAMA_BASE_URL)}/api/chat`, {
         method: 'POST',
@@ -404,8 +451,9 @@ Return JSON only with every required field present.`;
       const data = await response.json();
       const content = data?.message?.content || data?.response || '';
       const analysis = parseVisionAnalysis(content);
-      const hasEvidence = Boolean(analysis.productName || analysis.category || analysis.subcategory || analysis.keywords.length);
-      if (!hasEvidence) throw new Error('Qwen vision returned no structured product evidence');
+      if (!hasCompleteVisionAnalysis(analysis)) {
+        throw new Error('Qwen vision returned incomplete structured product evidence');
+      }
       return {
         success: true,
         analysis,
@@ -417,6 +465,14 @@ Return JSON only with every required field present.`;
         providerStatus: response.status,
       };
     } catch (error) {
+      const providerUnhealthy = (
+        ['TimeoutError', 'AbortError'].includes(error.name)
+        || Number(error.providerStatus || 0) >= 500
+      );
+      if (providerUnhealthy) {
+        qwenVisionCooldownUntil = Date.now() + QWEN_VISION_COOLDOWN_MS;
+        await unloadOllamaModel(options.visionModel || OLLAMA_VISION_MODEL, options.requestId || '');
+      }
       logImageSearch('warn', 'ai_provider_failed', {
         requestId: options.requestId || '',
         provider: 'qwen',
@@ -435,6 +491,8 @@ Return JSON only with every required field present.`;
         providerStatus: error.providerStatus,
         error: error.message,
       };
+    } finally {
+      qwenVisionInFlight = Math.max(0, qwenVisionInFlight - 1);
     }
   }
 
@@ -483,8 +541,9 @@ Return JSON only with every required field present.`;
       const data = await response.json();
       const content = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
       const analysis = parseVisionAnalysis(content);
-      const hasEvidence = Boolean(analysis.productName || analysis.category || analysis.subcategory || analysis.keywords.length);
-      if (!hasEvidence) throw new Error('Gemini vision returned no structured product evidence');
+      if (!hasCompleteVisionAnalysis(analysis)) {
+        throw new Error('Gemini vision returned incomplete structured product evidence');
+      }
       geminiKeyManager.markSuccess(keyObj);
       return {
         success: true,
@@ -509,6 +568,86 @@ Return JSON only with every required field present.`;
         success: false,
         analysis: parseVisionAnalysis(null),
         provider: 'gemini',
+        model,
+        tokensUsed: 0,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error: error.message,
+      };
+    }
+  }
+
+  static async analyzeImageWithOllamaVisionFallback(imageBuffer, mimeType, options = {}) {
+    const startedAt = Date.now();
+    const model = options.ollamaVisionFallbackModel || OLLAMA_VISION_FALLBACK_MODEL;
+    if (!OLLAMA_BASE_URL || !model || process.env.OLLAMA_VISION_FALLBACK_ENABLED === 'false') {
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'ollama-vision-fallback',
+        model: model || 'unavailable',
+        tokensUsed: 0,
+        durationMs: 0,
+        error: 'Ollama vision fallback is not configured',
+      };
+    }
+    const prompt = `Identify the main physical product in this image.
+Return ONLY compact JSON using exactly these keys:
+{"productName":"","category":"","subcategory":"","industry":"","material":"","keywords":[],"alternateKeywords":[],"confidence":0.0}
+Use generic searchable product names, conventional procurement categories, and useful synonyms.
+Never use brand names, slogans, or marketing claims as keywords.`;
+    try {
+      const response = await fetch(`${normalizeBaseUrl(OLLAMA_BASE_URL)}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: withTimeoutSignal(options.ollamaCloudTimeout || OLLAMA_CLOUD_VISION_TIMEOUT_MS, options.signal),
+        body: JSON.stringify({
+          model,
+          stream: false,
+          think: false,
+          messages: [{
+            role: 'user',
+            content: prompt,
+            images: [imageBuffer.toString('base64')],
+          }],
+          options: { temperature: 0.05, num_predict: 350 },
+        }),
+      });
+      if (!response.ok) {
+        const providerBody = await response.text().catch(() => '');
+        throw Object.assign(new Error(`Ollama vision fallback HTTP ${response.status}: ${providerBody.slice(0, 300)}`), {
+          providerStatus: response.status,
+        });
+      }
+      const data = await response.json();
+      const content = data?.message?.content || data?.response || '';
+      const analysis = parseVisionAnalysis(content);
+      if (!hasCompleteVisionAnalysis(analysis)) {
+        throw new Error('Ollama vision fallback returned incomplete structured product evidence');
+      }
+      return {
+        success: true,
+        analysis,
+        content: JSON.stringify(analysis),
+        provider: 'ollama-vision-fallback',
+        model: data?.model || model,
+        tokensUsed: Number(data?.prompt_eval_count || 0) + Number(data?.eval_count || 0),
+        durationMs: Date.now() - startedAt,
+        providerStatus: response.status,
+      };
+    } catch (error) {
+      logImageSearch('warn', 'ai_provider_failed', {
+        requestId: options.requestId || '',
+        provider: 'ollama-vision-fallback',
+        model,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error,
+      });
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'ollama-vision-fallback',
         model,
         tokensUsed: 0,
         durationMs: Date.now() - startedAt,

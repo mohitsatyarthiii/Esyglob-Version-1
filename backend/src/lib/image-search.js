@@ -4,12 +4,16 @@ export const VISION_ANALYSIS_JSON_SCHEMA = {
   type: 'object',
   properties: {
     productName: { type: 'string' },
+    productType: { type: 'string' },
+    object: { type: 'string' },
     category: { type: 'string' },
     subcategory: { type: 'string' },
     industry: { type: 'string' },
     material: { type: 'string' },
     keywords: { type: 'array', items: { type: 'string' } },
     alternateKeywords: { type: 'array', items: { type: 'string' } },
+    caption: { type: 'string' },
+    labels: { type: 'array', items: { type: 'string' } },
     confidence: { type: 'number', minimum: 0, maximum: 1 },
   },
   required: ['productName', 'category', 'subcategory', 'industry', 'material', 'keywords', 'alternateKeywords', 'confidence'],
@@ -25,6 +29,7 @@ function cleanText(value, maxLength = 120) {
 function cleanKeywords(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value
+    .flatMap((item) => cleanText(item, 240).split(/[,;|]/))
     .map((item) => cleanText(item, 80).toLowerCase())
     .filter((item) => item.length > 1))]
     .slice(0, MAX_KEYWORDS);
@@ -35,12 +40,16 @@ export function normalizeVisionAnalysis(value) {
   const confidence = Number(source.confidence);
   return {
     productName: cleanText(source.productName),
+    productType: cleanText(source.productType),
+    object: cleanText(source.object),
     category: cleanText(source.category),
     subcategory: cleanText(source.subcategory),
     industry: cleanText(source.industry),
     material: cleanText(source.material),
     keywords: cleanKeywords(source.keywords),
     alternateKeywords: cleanKeywords(source.alternateKeywords),
+    caption: cleanText(source.caption, 300),
+    labels: cleanKeywords(source.labels),
     confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0,
   };
 }
@@ -60,7 +69,11 @@ export function parseVisionAnalysis(content) {
 }
 
 function unique(values, limit = 24) {
-  return [...new Set(values.map((value) => cleanText(value).toLowerCase()).filter(Boolean))].slice(0, limit);
+  const unusable = new Set(['unknown', 'unspecified', 'not visible', 'not applicable', 'n/a', 'none']);
+  return [...new Set(values
+    .map((value) => cleanText(value).toLowerCase())
+    .filter((value) => value && !unusable.has(value)))]
+    .slice(0, limit);
 }
 
 export function buildVisualSearchProfile(analysis, userQuery = '') {
@@ -75,6 +88,8 @@ export function buildVisualSearchProfile(analysis, userQuery = '') {
     .filter((term) => term.length > 2);
   const identityTerms = unique([
     normalized.productName,
+    normalized.productType,
+    normalized.object,
     normalized.subcategory,
     normalized.material,
     ...identityTokens,
@@ -83,12 +98,15 @@ export function buildVisualSearchProfile(analysis, userQuery = '') {
   ], 18);
   const broadTerms = unique([
     normalized.productName,
+    normalized.productType,
+    normalized.object,
     normalized.category,
     normalized.subcategory,
     normalized.industry,
     normalized.material,
     ...normalized.keywords,
     ...normalized.alternateKeywords,
+    ...normalized.labels,
     ...userTerms,
   ], 28);
   return {
@@ -104,6 +122,26 @@ export function buildVisualSearchProfile(analysis, userQuery = '') {
 function tokens(value) {
   const serialized = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value || '');
   return serialized.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').split(/\s+/).filter((token) => token.length > 1);
+}
+
+function classificationTokens(value) {
+  return new Set(tokens(value).map((token) => (
+    token.length > 4 && token.endsWith('s') ? token.slice(0, -1) : token
+  )));
+}
+
+function visualIdentityCompatible(product, analysis) {
+  const expected = classificationTokens([analysis.productName, analysis.subcategory]);
+  if (!expected.size) return false;
+  const actual = classificationTokens([product.name, product.subcategory, product.productType, product.tags]);
+  return [...expected].some((token) => actual.has(token));
+}
+
+function visualClassificationCompatible(product, analysis) {
+  const expected = classificationTokens([analysis.category, analysis.subcategory, analysis.industry]);
+  if (!expected.size) return true;
+  const actual = classificationTokens([product.category, product.subcategory, product.productType, product.tags]);
+  return [...expected].some((token) => actual.has(token));
 }
 
 function phraseMatch(value, phrase) {
@@ -145,7 +183,9 @@ export function productVisualRelevance(product, profileOrTerms) {
   broadScore += tokenScore(product.description, profile.broadTerms, 2.5);
   broadScore += Math.min(4, Number(product.atlasSearchScore || product.textSearchScore || 0));
   const identityConfidence = 0.35 + (analysis.confidence * 0.65);
-  const score = identityScore * identityConfidence + broadScore;
+  const classificationCompatible = visualClassificationCompatible(product, analysis);
+  const classificationFactor = classificationCompatible ? 1 : 0.12;
+  const score = (identityScore * identityConfidence + broadScore) * classificationFactor;
   if (score <= 0) return 0;
 
   const sellerTieBreak = product.sellerId?.isVerified ? 0.8 : 0;
@@ -155,17 +195,37 @@ export function productVisualRelevance(product, profileOrTerms) {
 }
 
 export function rankProductsByVisualRelevance(products, profileOrTerms, limit = products.length) {
-  const ranked = products
-    .map((product) => ({ ...product, visualRelevanceScore: productVisualRelevance(product, profileOrTerms) }))
+  const profile = Array.isArray(profileOrTerms)
+    ? buildVisualSearchProfile({ keywords: profileOrTerms, confidence: 1 })
+    : profileOrTerms;
+  let ranked = products
+    .map((product) => ({
+      ...product,
+      visualRelevanceScore: productVisualRelevance(product, profile),
+      visualIdentityCompatible: visualIdentityCompatible(product, profile.analysis),
+      visualClassificationCompatible: visualClassificationCompatible(product, profile.analysis),
+    }))
     .filter((product) => product.visualRelevanceScore > 0)
     .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore);
   if (!ranked.length) return [];
 
+  if (ranked.some((product) => product.visualIdentityCompatible && product.visualClassificationCompatible)) {
+    ranked = ranked.filter((product) => product.visualIdentityCompatible && product.visualClassificationCompatible);
+  } else if (ranked.some((product) => product.visualIdentityCompatible)) {
+    ranked = ranked.filter((product) => product.visualIdentityCompatible);
+  }
+
   // Remove incidental one-token matches relative to the strongest catalog fit.
   // A small absolute floor still allows broad category fallbacks when no exact
   // product-name match exists.
-  const relevanceFloor = Math.max(5, ranked[0].visualRelevanceScore * 0.08);
+  const relevanceFloor = Math.max(6, ranked[0].visualRelevanceScore * 0.15);
   return ranked
     .filter((product) => product.visualRelevanceScore >= relevanceFloor)
+    .map((product) => {
+      const result = { ...product };
+      delete result.visualIdentityCompatible;
+      delete result.visualClassificationCompatible;
+      return result;
+    })
     .slice(0, limit);
 }
