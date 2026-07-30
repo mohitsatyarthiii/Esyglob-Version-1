@@ -155,9 +155,17 @@ export function productVisualRelevance(product, profileOrTerms) {
 }
 
 export function rankProductsByVisualRelevance(products, profileOrTerms, limit = products.length) {
-  return products
+  const ranked = products
     .map((product) => ({ ...product, visualRelevanceScore: productVisualRelevance(product, profileOrTerms) }))
     .filter((product) => product.visualRelevanceScore > 0)
-    .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore)
+    .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore);
+  if (!ranked.length) return [];
+
+  // Remove incidental one-token matches relative to the strongest catalog fit.
+  // A small absolute floor still allows broad category fallbacks when no exact
+  // product-name match exists.
+  const relevanceFloor = Math.max(5, ranked[0].visualRelevanceScore * 0.08);
+  return ranked
+    .filter((product) => product.visualRelevanceScore >= relevanceFloor)
     .slice(0, limit);
 }

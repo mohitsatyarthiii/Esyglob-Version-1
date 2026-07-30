@@ -132,10 +132,37 @@ export async function trackRecentlyViewed(productId) {
   return unwrapData(await apiRequest('/buyer/recently-viewed', { method: 'POST', body: { productId } }))
 }
 
-export async function searchByImage(imageUrl, query = '', role = 'buyer') {
-  const payload = await apiRequest('/ai-search', { method: 'POST', body: { imageUrl, query: query.trim() || undefined, role, includeAI: true, forceAI: true } })
+export async function searchByImage(file, query = '', role = 'buyer') {
+  const form = new FormData()
+  form.append('file', file)
+  if (query.trim()) form.append('query', query.trim())
+  form.append('role', role)
+  form.append('includeAI', 'true')
+  form.append('forceAI', 'true')
+  const startedAt = performance.now()
+  console.info('[ImageSearch]', {
+    event: 'api_called',
+    endpoint: '/ai-search',
+    mimeType: file?.type,
+    sizeBytes: file?.size,
+    queryLength: query.trim().length,
+  })
+  const payload = await apiRequest('/ai-search', {
+    method: 'POST',
+    body: form,
+    timeoutMs: 120_000,
+  })
   const data = unwrapData(payload) || {}
   const results = data.results || {}
+  console.info('[ImageSearch]', {
+    event: 'response_received',
+    durationMs: Math.round(performance.now() - startedAt),
+    requestId: data.requestId || '',
+    productCount: (data.products || results.products || []).length,
+    sellerCount: (data.suppliers || data.sellers || results.suppliers || []).length,
+    categoryCount: (data.categories || results.categories || []).length,
+    status: data.imageSearch?.status,
+  })
   return {
     answer: data.answer || '',
     products: data.products || results.products || [],

@@ -12,6 +12,7 @@ import {
   productVisualRelevance,
   rankProductsByVisualRelevance,
 } from '../lib/image-search.js';
+import { logImageSearch } from '../lib/image-search-logger.js';
 
 const PUBLIC_SERVICE_KEYS = new Set([
   'shipping', 'trade-assurance', 'escrow', 'quality-inspection',
@@ -60,7 +61,7 @@ function mergeDocuments(...groups) {
   return [...documents.values()];
 }
 
-async function searchAtlasVisualProducts(profile, limit) {
+async function searchAtlasVisualProducts(profile, limit, requestId = '') {
   const index = process.env.MONGODB_ATLAS_PRODUCT_SEARCH_INDEX;
   if (!index || !profile.searchText) return [];
   try {
@@ -87,7 +88,12 @@ async function searchAtlasVisualProducts(profile, limit) {
     ]);
     return Product.populate(products, { path: 'sellerId', select: 'companyName isVerified verificationStatus rating trustScore address companyType responseRate' });
   } catch (error) {
-    console.warn('[AI-Search] Atlas product search unavailable, using indexed marketplace fallback:', error.message);
+    logImageSearch('warn', 'atlas_search_failed', {
+      requestId,
+      index,
+      fallback: 'mongodb_regex',
+      error,
+    });
     return [];
   }
 }
@@ -117,6 +123,10 @@ function sellerRelevance(seller, products, profile) {
     seller.productSubcategories, seller.industries, seller.mainProducts,
   ]).toLowerCase();
   const termMatches = profile.broadTerms.reduce((total, term) => total + (searchable.includes(String(term).toLowerCase()) ? 1 : 0), 0);
+  const strongPhraseMatch = profile.broadTerms.some((term) => (
+    String(term).trim().includes(' ') && searchable.includes(String(term).toLowerCase())
+  ));
+  if (!matchedProducts.length && termMatches < 2 && !strongPhraseMatch) return 0;
   return matchedProducts.length * 20 + termMatches * 3 + (seller.isVerified ? 2 : 0) + Math.min(1, Number(seller.trustScore || 0) / 100);
 }
 
@@ -166,7 +176,7 @@ class AISearchRepository {
    * Image-led marketplace retrieval. Vision identifies the object; this method
    * performs all product, seller and category discovery from stored records.
    */
-  static async searchVisualMarketplace({ analysis, userQuery = '' }) {
+  static async searchVisualMarketplace({ analysis, userQuery = '', requestId = '' }) {
     const productLimit = Math.min(Number(process.env.AI_MARKETPLACE_PRODUCT_LIMIT || 24), 60);
     const supplierLimit = Math.min(Number(process.env.AI_MARKETPLACE_SUPPLIER_LIMIT || 16), 40);
     const profile = buildVisualSearchProfile(analysis, userQuery);
@@ -180,13 +190,15 @@ class AISearchRepository {
 
     const candidateLimit = Math.min(productLimit * 4, 120);
     const [atlasCandidates, identityCandidates] = await Promise.all([
-      searchAtlasVisualProducts(profile, candidateLimit),
+      searchAtlasVisualProducts(profile, candidateLimit, requestId),
       searchRegexVisualProducts(profile.identityTerms, candidateLimit),
     ]);
 
     let candidates = mergeDocuments(atlasCandidates, identityCandidates);
+    let broaderCandidateCount = 0;
     if ((profile.analysis.confidence < 0.65 || candidates.length < productLimit * 2) && profile.broadTerms.length) {
       const broaderCandidates = await searchRegexVisualProducts(profile.broadTerms, candidateLimit);
+      broaderCandidateCount = broaderCandidates.length;
       candidates = mergeDocuments(candidates, broaderCandidates);
     }
 
@@ -231,7 +243,11 @@ class AISearchRepository {
       .filter((seller) => seller.visualRelevanceScore > 0)
       .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore)
       .slice(0, supplierLimit);
-    const categories = await this.searchCategories(profile.categoryTerms, 10);
+    const matchedCategoryTerms = [...new Set([
+      ...profile.categoryTerms,
+      ...products.flatMap((product) => [product.category, product.subcategory]).filter(Boolean),
+    ])];
+    const categories = await this.searchCategories(matchedCategoryTerms, 10);
     const countries = [...new Set(suppliers.map((seller) => seller.address?.country).filter(Boolean))].slice(0, 12);
 
     return {
@@ -246,6 +262,13 @@ class AISearchRepository {
       rfqs: [],
       quotations: [],
       orders: [],
+      diagnostics: {
+        candidateCount: candidates.length,
+        identityCandidateCount: identityCandidates.length,
+        broaderCandidateCount,
+        atlasCandidateCount: atlasCandidates.length,
+        retrievalMode: process.env.MONGODB_ATLAS_PRODUCT_SEARCH_INDEX ? 'atlas+mongodb' : 'mongodb_regex',
+      },
     };
   }
 

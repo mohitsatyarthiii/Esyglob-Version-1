@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { parseVisionAnalysis, VISION_ANALYSIS_JSON_SCHEMA } from './image-search.js';
+import { imageSourceMetadata, logImageSearch } from './image-search-logger.js';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'ollama';
 const OLLAMA_FALLBACK_ENABLED = process.env.OLLAMA_FALLBACK_ENABLED === 'true';
 const AI_CHAT_FAST_MODE = process.env.AI_CHAT_FAST_MODE !== 'false';
@@ -64,6 +65,38 @@ function debugLog(...args) {
 
 function normalizeBaseUrl(url) {
   return url?.replace(/\/+$/, '') || '';
+}
+
+function withTimeoutSignal(timeoutMs, externalSignal) {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return externalSignal ? AbortSignal.any([externalSignal, timeoutSignal]) : timeoutSignal;
+}
+
+function cloudinaryVisionUrl(imageUrl) {
+  const parsedUrl = new URL(imageUrl);
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
+    throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), {
+      statusCode: 400,
+      code: 'INVALID_IMAGE_SOURCE',
+      stage: 'image_validation',
+    });
+  }
+  if (!parsedUrl.pathname.includes('/image/upload/')) {
+    throw Object.assign(new Error('The uploaded asset is not a supported Cloudinary image'), {
+      statusCode: 400,
+      code: 'INVALID_IMAGE_ASSET',
+      stage: 'image_validation',
+    });
+  }
+
+  // The deployed Qwen/Ollama vision runner rejects some WebP payloads. Asking
+  // Cloudinary for a bounded JPEG keeps transport deterministic without changing
+  // the stored original.
+  parsedUrl.pathname = parsedUrl.pathname.replace(
+    '/image/upload/',
+    '/image/upload/f_jpg,q_auto:good,w_1024,h_1024,c_limit/'
+  );
+  return parsedUrl.toString();
 }
 
 function extractJSON(content) {
@@ -153,10 +186,13 @@ const GEMINI_MODEL = process.env.AI_MODEL_GEMINI || 'gemini-2.0-flash';
 const DEEPSEEK_MODEL = process.env.AI_MODEL_DEEPSEEK || 'deepseek-chat';
 const DEEPSEEK_REASONER_MODEL = process.env.AI_MODEL_DEEPSEEK_REASONER || 'deepseek-reasoner';
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || 'https://api.deepseek.com';
-const OLLAMA_API_URL = process.env.OLLAMA_API_URL || '';
+const OLLAMA_API_URL = process.env.OLLAMA_API_URL || process.env.OLLAMA_BASE_URL || '';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || '';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || OLLAMA_API_URL;
-const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen2.5vl:3b';
+const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || process.env.QWEN_VISION_MODEL || 'qwen3-vl:2b';
+const IMAGE_DOWNLOAD_TIMEOUT_MS = Math.max(5_000, Number(process.env.IMAGE_SEARCH_DOWNLOAD_TIMEOUT_MS || 15_000));
+const QWEN_VISION_TIMEOUT_MS = Math.max(15_000, Number(process.env.QWEN_VISION_TIMEOUT_MS || 75_000));
+const GEMINI_VISION_TIMEOUT_MS = Math.max(10_000, Number(process.env.GEMINI_VISION_TIMEOUT_MS || 25_000));
 const AI_REQUEST_TIMEOUT = Number(process.env.AI_REQUEST_TIMEOUT || 30000);
 const MAX_RETRIES = Number(process.env.AI_MAX_RETRIES || 1);
 const CHAT_CONTEXT_MESSAGES = Number(process.env.AI_CHAT_CONTEXT_MESSAGES || 6);
@@ -167,13 +203,14 @@ class AIService {
   static getConfig() {
     return {
       provider: AI_PROVIDER,
-      ollamaApiUrl: OLLAMA_API_URL,
+      ollamaApiUrl: OLLAMA_BASE_URL,
       model: OLLAMA_MODEL,
-      isConfigured: geminiKeyManager.keys.length > 0 || deepseekKeyManager.keys.length > 0 || Boolean(OLLAMA_API_URL),
+      visionModel: OLLAMA_VISION_MODEL,
+      isConfigured: geminiKeyManager.keys.length > 0 || deepseekKeyManager.keys.length > 0 || Boolean(OLLAMA_BASE_URL),
       availableProviders: {
         gemini: geminiKeyManager.keys.length,
         deepseek: deepseekKeyManager.keys.length,
-        ollama: Boolean(OLLAMA_API_URL),
+        ollama: Boolean(OLLAMA_BASE_URL),
       },
     };
   }
@@ -224,51 +261,130 @@ class AIService {
   }
 
   static async analyzeMarketplaceImage(imageUrl, options = {}) {
-    const parsedUrl = new URL(imageUrl);
-    if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
-      throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), { statusCode: 400 });
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.timeout || 18000);
+    const requestId = options.requestId || '';
+    const visionUrl = cloudinaryVisionUrl(imageUrl);
+    const attempts = [];
     try {
-      const imageResponse = await fetch(imageUrl, { redirect: 'error', signal: controller.signal });
+      const downloadStartedAt = Date.now();
+      const imageResponse = await fetch(visionUrl, {
+        redirect: 'error',
+        signal: withTimeoutSignal(options.downloadTimeout || IMAGE_DOWNLOAD_TIMEOUT_MS, options.signal),
+      });
       const contentType = imageResponse.headers.get('content-type') || '';
       const contentLength = Number(imageResponse.headers.get('content-length') || 0);
-      if (!imageResponse.ok || !contentType.startsWith('image/')) throw new Error('Uploaded image is unavailable');
-      if (contentLength > 5 * 1024 * 1024) throw new Error('Image exceeds the 5MB visual-search limit');
+      if (!imageResponse.ok || !contentType.startsWith('image/')) {
+        throw Object.assign(new Error(`Uploaded image is unavailable (HTTP ${imageResponse.status})`), {
+          statusCode: 422,
+          code: 'IMAGE_DOWNLOAD_FAILED',
+          stage: 'image_download',
+        });
+      }
+      if (contentLength > 5 * 1024 * 1024) {
+        throw Object.assign(new Error('Image exceeds the 5MB visual-search limit'), {
+          statusCode: 413,
+          code: 'IMAGE_TOO_LARGE',
+          stage: 'image_validation',
+        });
+      }
       const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-      if (imageBuffer.length > 5 * 1024 * 1024) throw new Error('Image exceeds the 5MB visual-search limit');
+      if (!imageBuffer.length) {
+        throw Object.assign(new Error('The uploaded image is empty'), {
+          statusCode: 422,
+          code: 'EMPTY_IMAGE',
+          stage: 'image_validation',
+        });
+      }
+      if (imageBuffer.length > 5 * 1024 * 1024) {
+        throw Object.assign(new Error('Image exceeds the 5MB visual-search limit'), {
+          statusCode: 413,
+          code: 'IMAGE_TOO_LARGE',
+          stage: 'image_validation',
+        });
+      }
       const mimeType = contentType.split(';')[0];
-      const qwenResult = await this.analyzeImageWithQwen(imageBuffer, mimeType, { ...options, signal: controller.signal });
-      if (qwenResult.success) return qwenResult;
+      logImageSearch('info', 'image_downloaded_for_ai', {
+        requestId,
+        ...imageSourceMetadata(imageUrl),
+        mimeType,
+        sizeBytes: imageBuffer.length,
+        durationMs: Date.now() - downloadStartedAt,
+      });
 
-      const geminiResult = await this.analyzeImageWithGemini(imageBuffer, mimeType, { ...options, signal: controller.signal });
-      if (geminiResult.success) return geminiResult;
+      const qwenResult = await this.analyzeImageWithQwen(imageBuffer, mimeType, options);
+      attempts.push({
+        provider: qwenResult.provider,
+        model: qwenResult.model,
+        success: qwenResult.success,
+        statusCode: qwenResult.providerStatus,
+        durationMs: qwenResult.durationMs,
+        error: qwenResult.error,
+      });
+      if (qwenResult.success) return { ...qwenResult, attempts };
 
-      return { success: false, analysis: parseVisionAnalysis(null), content: '', provider: 'none', model: 'unavailable', tokensUsed: 0 };
-    } finally {
-      clearTimeout(timeout);
+      const geminiResult = await this.analyzeImageWithGemini(imageBuffer, mimeType, options);
+      attempts.push({
+        provider: geminiResult.provider,
+        model: geminiResult.model,
+        success: geminiResult.success,
+        statusCode: geminiResult.providerStatus,
+        durationMs: geminiResult.durationMs,
+        error: geminiResult.error,
+      });
+      if (geminiResult.success) return { ...geminiResult, attempts };
+
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        content: '',
+        provider: 'none',
+        model: 'unavailable',
+        tokensUsed: 0,
+        attempts,
+      };
+    } catch (error) {
+      logImageSearch('error', 'image_preprocessing_failed', {
+        requestId,
+        ...imageSourceMetadata(imageUrl),
+        error,
+      });
+      throw error;
     }
   }
 
   static async analyzeImageWithQwen(imageBuffer, mimeType, options = {}) {
+    const startedAt = Date.now();
     if (!OLLAMA_BASE_URL || process.env.OLLAMA_ENABLED === 'false') {
-      return { success: false, analysis: parseVisionAnalysis(null), provider: 'qwen', model: OLLAMA_VISION_MODEL, tokensUsed: 0 };
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'qwen',
+        model: OLLAMA_VISION_MODEL,
+        tokensUsed: 0,
+        durationMs: 0,
+        error: 'Qwen vision is not configured',
+      };
     }
-    const prompt = `Identify only the main purchasable B2B product or object in this image.
+    const prompt = `Act as a visual product classifier for a global B2B marketplace.
+Identify the main purchasable product or physical object in this image.
 Return one JSON object matching the provided schema.
-Use empty strings or empty arrays when an attribute is not visible or cannot be inferred reliably.
-Never invent a brand, model, certification, material, or product name.
+Product name must be a generic searchable noun phrase, not just a brand or marketing text.
+Category, subcategory, and industry must be conventional procurement classifications.
+Material should describe the product or its primary packaging. Use "Unspecified" only when it cannot be determined.
+Keywords must contain product synonyms, physical attributes, and category terms useful for database search.
+Alternate keywords must contain broader buyer search phrases and common synonyms.
+Do not copy slogans, claims, certifications, or brand names into keywords.
+Never invent a brand, model, certification, or precise material.
 Confidence must reflect visual certainty from 0 to 1.
-Keep keywords short and useful for marketplace database retrieval.`;
+Return JSON only with every required field present.`;
     try {
       const response = await fetch(`${normalizeBaseUrl(OLLAMA_BASE_URL)}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: options.signal,
+        signal: withTimeoutSignal(options.qwenTimeout || QWEN_VISION_TIMEOUT_MS, options.signal),
         body: JSON.stringify({
           model: options.visionModel || OLLAMA_VISION_MODEL,
           stream: false,
+          think: false,
           format: VISION_ANALYSIS_JSON_SCHEMA,
           keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
           messages: [{
@@ -276,10 +392,15 @@ Keep keywords short and useful for marketplace database retrieval.`;
             content: prompt,
             images: [imageBuffer.toString('base64')],
           }],
-          options: { temperature: 0.05, num_predict: 240 },
+          options: { temperature: 0.05, num_predict: 220, num_ctx: 4096 },
         }),
       });
-      if (!response.ok) throw new Error(`Qwen vision HTTP ${response.status}`);
+      if (!response.ok) {
+        const providerBody = await response.text().catch(() => '');
+        throw Object.assign(new Error(`Qwen vision HTTP ${response.status}: ${providerBody.slice(0, 300)}`), {
+          providerStatus: response.status,
+        });
+      }
       const data = await response.json();
       const content = data?.message?.content || data?.response || '';
       const analysis = parseVisionAnalysis(content);
@@ -292,32 +413,73 @@ Keep keywords short and useful for marketplace database retrieval.`;
         provider: 'qwen',
         model: data?.model || options.visionModel || OLLAMA_VISION_MODEL,
         tokensUsed: Number(data?.prompt_eval_count || 0) + Number(data?.eval_count || 0),
+        durationMs: Date.now() - startedAt,
+        providerStatus: response.status,
       };
     } catch (error) {
-      debugLog('Qwen vision failed:', error.message);
-      return { success: false, analysis: parseVisionAnalysis(null), provider: 'qwen', model: OLLAMA_VISION_MODEL, tokensUsed: 0, error: error.message };
+      logImageSearch('warn', 'ai_provider_failed', {
+        requestId: options.requestId || '',
+        provider: 'qwen',
+        model: options.visionModel || OLLAMA_VISION_MODEL,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error,
+      });
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'qwen',
+        model: OLLAMA_VISION_MODEL,
+        tokensUsed: 0,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error: error.message,
+      };
     }
   }
 
   static async analyzeImageWithGemini(imageBuffer, mimeType, options = {}) {
+    const startedAt = Date.now();
     const keyObj = geminiKeyManager.getAvailableKey();
-    if (!keyObj) return { success: false, analysis: parseVisionAnalysis(null), provider: 'gemini', model: GEMINI_MODEL, tokensUsed: 0 };
+    if (!keyObj) {
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'gemini',
+        model: GEMINI_MODEL,
+        tokensUsed: 0,
+        durationMs: 0,
+        error: 'No Gemini key is currently available',
+      };
+    }
     const model = options.model || GEMINI_MODEL;
+    const geminiResponseSchema = { ...VISION_ANALYSIS_JSON_SCHEMA };
+    delete geminiResponseSchema.additionalProperties;
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(keyObj.key)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: options.signal,
+        signal: withTimeoutSignal(options.geminiTimeout || GEMINI_VISION_TIMEOUT_MS, options.signal),
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [
-            { text: 'Identify the main purchasable B2B product in this image. Return only JSON with productName, category, subcategory, industry, material, keywords, alternateKeywords, and confidence. Use empty values rather than guessing.' },
+            { text: 'Classify the main purchasable B2B product. Use a generic searchable product noun, conventional category/subcategory/industry, product synonyms instead of slogans or brand claims, and lower confidence when uncertain. Return only the required JSON.' },
             { inlineData: { mimeType, data: imageBuffer.toString('base64') } },
           ] }],
-          generationConfig: { temperature: 0.05, maxOutputTokens: 240, responseMimeType: 'application/json' },
+          generationConfig: {
+            temperature: 0.05,
+            maxOutputTokens: 240,
+            responseMimeType: 'application/json',
+            responseSchema: geminiResponseSchema,
+          },
         }),
       });
       if (response.status === 429) geminiKeyManager.markRateLimited(keyObj, 60);
-      if (!response.ok) throw new Error(`Gemini vision HTTP ${response.status}`);
+      if (!response.ok) {
+        const providerBody = await response.text().catch(() => '');
+        throw Object.assign(new Error(`Gemini vision HTTP ${response.status}: ${providerBody.slice(0, 300)}`), {
+          providerStatus: response.status,
+        });
+      }
       const data = await response.json();
       const content = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
       const analysis = parseVisionAnalysis(content);
@@ -331,10 +493,28 @@ Keep keywords short and useful for marketplace database retrieval.`;
         provider: 'gemini',
         model,
         tokensUsed: Number(data?.usageMetadata?.promptTokenCount || 0) + Number(data?.usageMetadata?.candidatesTokenCount || 0),
+        durationMs: Date.now() - startedAt,
+        providerStatus: response.status,
       };
     } catch (error) {
-      debugLog('Gemini vision failed:', error.message);
-      return { success: false, analysis: parseVisionAnalysis(null), provider: 'gemini', model, tokensUsed: 0, error: error.message };
+      logImageSearch('warn', 'ai_provider_failed', {
+        requestId: options.requestId || '',
+        provider: 'gemini',
+        model,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error,
+      });
+      return {
+        success: false,
+        analysis: parseVisionAnalysis(null),
+        provider: 'gemini',
+        model,
+        tokensUsed: 0,
+        durationMs: Date.now() - startedAt,
+        providerStatus: error.providerStatus,
+        error: error.message,
+      };
     }
   }
 

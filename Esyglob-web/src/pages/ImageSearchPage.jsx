@@ -2,7 +2,6 @@ import { Camera, ImagePlus, RefreshCw, Search, Sparkles, Upload, X } from 'lucid
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { searchByImage } from '../api/marketplace'
-import { uploadFiles } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { ProductCard } from '../components/MarketplaceCards'
@@ -38,6 +37,12 @@ export default function ImageSearchPage() {
       setState({ loading: false, error: 'Image must be smaller than 5MB.', data: null })
       return
     }
+    console.info('[ImageSearch]', {
+      event: 'image_selected',
+      mimeType: next.type,
+      sizeBytes: next.size,
+      source: next === location.state?.imageFile ? 'navigation' : 'picker_or_drop',
+    })
     setFile(next)
     setPreview(URL.createObjectURL(next))
     setState(EMPTY_STATE)
@@ -52,11 +57,8 @@ export default function ImageSearchPage() {
   }
 
   async function searchFile(nextFile, description = query) {
-    const uploads = await uploadFiles([nextFile], 'image-search')
-    const imageUrl = uploads[0]?.secure_url || uploads[0]?.url || uploads[0]?.location
-    if (!imageUrl) throw new Error('The secure image upload did not return a URL.')
-    const data = await searchByImage(imageUrl, description, role)
-    setPreview(imageUrl)
+    const data = await searchByImage(nextFile, description, role)
+    if (data.imageSearch?.imageUrl) setPreview(data.imageSearch.imageUrl)
     setState({ loading: false, error: '', data })
   }
 
@@ -70,6 +72,13 @@ export default function ImageSearchPage() {
     try {
       await searchFile(file)
     } catch (error) {
+      console.error('[ImageSearch]', {
+        event: 'search_failed',
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        requestId: error.requestId,
+      })
       setState({ loading: false, error: error.message, data: null })
     }
   }
@@ -82,7 +91,16 @@ export default function ImageSearchPage() {
       acceptFile(pending)
       if (!location.state?.autoSearch) return
       setState({ loading: true, error: '', data: null })
-      searchFile(pending, '').catch((error) => setState({ loading: false, error: error.message, data: null }))
+      searchFile(pending, '').catch((error) => {
+        console.error('[ImageSearch]', {
+          event: 'automatic_search_failed',
+          message: error.message,
+          code: error.code,
+          status: error.status,
+          requestId: error.requestId,
+        })
+        setState({ loading: false, error: error.message, data: null })
+      })
     }, 0)
     return () => window.clearTimeout(timer)
     // The navigation state is intentionally consumed only once.

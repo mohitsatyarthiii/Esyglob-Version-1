@@ -56,6 +56,20 @@ const uploadMultipleFiles = multer({
  */
 export const uploadSingle = uploadSingleFile.single('file');
 
+const imageSearchUpload = multer({
+  storage,
+  fileFilter(req, file, cb) {
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype);
+    cb(allowed ? null : new Error('Image search supports JPG, PNG, and WebP images only'), allowed);
+  },
+  limits: {
+    fileSize: UPLOAD.MAX_FILE_SIZE,
+    files: 1,
+  },
+});
+
+export const uploadImageSearch = imageSearchUpload.single('file');
+
 const bulkProductUpload = multer({
   storage,
   fileFilter(req, file, cb) {
@@ -108,7 +122,7 @@ export function handleUploadError(err, req, res, next) {
     return res.status(400).json({ error: err.message });
   }
 
-  if (err.message?.includes('Unsupported file type')) {
+  if (err.message?.includes('Unsupported file type') || err.message?.includes('Image search supports')) {
     return res.status(415).json({ error: err.message });
   }
 

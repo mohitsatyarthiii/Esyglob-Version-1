@@ -2,6 +2,7 @@ import AIService from '../lib/ai-service.js';
 import AISearchRepository from '../repositories/ai-search.repository.js';
 import { resolveSmartResponse } from '../lib/smart-intelligence.js';
 import { summarizeMarketplaceResults } from '../lib/ai-marketplace-context.js';
+import { imageSourceMetadata, logImageSearch } from '../lib/image-search-logger.js';
 
 class AISearchService {
   /**
@@ -28,15 +29,44 @@ class AISearchService {
   /**
    * Execute AI-powered marketplace search
    */
-  static async search({ query, imageUrl, role = 'general', includeAI = true, forceAI = false, userId = null }) {
+  static async search({
+    query,
+    imageUrl,
+    role = 'general',
+    includeAI = true,
+    forceAI = false,
+    userId = null,
+    requestId = '',
+  }) {
     if (!query && !imageUrl) {
       throw Object.assign(new Error('Query is required'), { statusCode: 400 });
     }
 
     let visualAnalysis = null;
     if (imageUrl) {
-      try { visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl); }
-      catch (error) { console.warn('[AI-Search] Visual analysis unavailable:', error.message); }
+      const aiStartedAt = Date.now();
+      logImageSearch('info', 'ai_analysis_started', {
+        requestId,
+        ...imageSourceMetadata(imageUrl),
+      });
+      visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl, { requestId });
+      logImageSearch(visualAnalysis.success ? 'info' : 'error', 'ai_analysis_completed', {
+        requestId,
+        success: visualAnalysis.success,
+        provider: visualAnalysis.provider,
+        model: visualAnalysis.model,
+        durationMs: Date.now() - aiStartedAt,
+        confidence: visualAnalysis.analysis?.confidence || 0,
+        attempts: visualAnalysis.attempts,
+      });
+      if (!visualAnalysis.success) {
+        throw Object.assign(new Error('The vision service could not analyze this image'), {
+          statusCode: 503,
+          code: 'IMAGE_ANALYSIS_UNAVAILABLE',
+          stage: 'ai_analysis',
+          retryable: true,
+        });
+      }
     }
     const effectiveQuery = visualAnalysis?.success
       ? [
@@ -54,10 +84,32 @@ class AISearchService {
     const filters = AIService.deriveSearchFilters(effectiveQuery || '');
 
     if (imageUrl) {
+      const searchStartedAt = Date.now();
+      logImageSearch('info', 'database_search_started', {
+        requestId,
+        confidence: visualAnalysis.analysis.confidence,
+        productName: visualAnalysis.analysis.productName,
+        category: visualAnalysis.analysis.category,
+        subcategory: visualAnalysis.analysis.subcategory,
+        industry: visualAnalysis.analysis.industry,
+        material: visualAnalysis.analysis.material,
+        keywords: visualAnalysis.analysis.keywords,
+        alternateKeywords: visualAnalysis.analysis.alternateKeywords,
+      });
       const results = await AISearchRepository.searchVisualMarketplace({
         analysis: visualAnalysis?.analysis,
         userQuery: query || '',
         userId,
+        requestId,
+      });
+      logImageSearch('info', 'database_search_completed', {
+        requestId,
+        durationMs: Date.now() - searchStartedAt,
+        productCount: results.products.length,
+        sellerCount: results.suppliers.length,
+        categoryCount: results.categories.length,
+        candidateCount: results.diagnostics?.candidateCount,
+        retrievalMode: results.diagnostics?.retrievalMode,
       });
       const productCount = results.products.length;
       const supplierCount = results.suppliers.length;

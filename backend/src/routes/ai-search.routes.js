@@ -3,6 +3,7 @@ import AISearchController from '../controllers/ai-search.controller.js';
 import { authenticate, requireAuth } from '../middlewares/auth.middleware.js';
 import { requireSubscriptionFeature } from '../lib/subscription-access.js';
 import { rateLimiter } from '../middlewares/rate-limit.middleware.js';
+import { handleUploadError, uploadImageSearch } from '../middlewares/upload.middleware.js';
 
 const router = Router();
 
@@ -14,6 +15,12 @@ router.use(requireAuth);
 router.use(rateLimiter({ windowMs: 60 * 1000, max: 30, keyPrefix: 'ai-search' }));
 
 // POST - AI search
-router.post('/', requireSubscriptionFeature('aiRequests',{ai:true,aiFeature:'search'}), AISearchController.search);
+router.post(
+  '/',
+  requireSubscriptionFeature('aiRequests', { ai: true, aiFeature: 'search' }),
+  uploadImageSearch,
+  handleUploadError,
+  AISearchController.search
+);
 
 export default router;
