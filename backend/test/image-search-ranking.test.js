@@ -28,7 +28,7 @@ test('visual search ranks product identity and material above unrelated populari
   const ranked = rankVisualProducts(candidates, ['cotton', 'canvas', 'tote', 'bag', 'beige']);
 
   assert.equal(ranked[0]._id, 'visual-match');
-  assert.ok(ranked[0].visualRelevanceScore > ranked[1].visualRelevanceScore);
+  assert.equal(ranked.some((product) => product._id === 'popular-unrelated'), false);
 });
 
 test('visual search gives product names more weight than incidental description matches', () => {

@@ -29,7 +29,7 @@ class AISearchService {
    * Execute AI-powered marketplace search
    */
   static async search({ query, imageUrl, role = 'general', includeAI = true, forceAI = false, userId = null }) {
-    if (!query) {
+    if (!query && !imageUrl) {
       throw Object.assign(new Error('Query is required'), { statusCode: 400 });
     }
 
@@ -38,10 +38,61 @@ class AISearchService {
       try { visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl); }
       catch (error) { console.warn('[AI-Search] Visual analysis unavailable:', error.message); }
     }
-    const effectiveQuery = visualAnalysis?.success ? `${visualAnalysis.content}. ${query}` : query;
+    const effectiveQuery = visualAnalysis?.success
+      ? [
+        visualAnalysis.analysis?.productName,
+        visualAnalysis.analysis?.category,
+        visualAnalysis.analysis?.subcategory,
+        visualAnalysis.analysis?.material,
+        ...(visualAnalysis.analysis?.keywords || []),
+        ...(visualAnalysis.analysis?.alternateKeywords || []),
+        query,
+      ].filter(Boolean).join(' ')
+      : query;
 
     // Derive search filters
-    const filters = AIService.deriveSearchFilters(effectiveQuery);
+    const filters = AIService.deriveSearchFilters(effectiveQuery || '');
+
+    if (imageUrl) {
+      const results = await AISearchRepository.searchVisualMarketplace({
+        analysis: visualAnalysis?.analysis,
+        userQuery: query || '',
+        userId,
+      });
+      const productCount = results.products.length;
+      const supplierCount = results.suppliers.length;
+      const answer = productCount
+        ? `Found ${productCount} relevant product ${productCount === 1 ? 'match' : 'matches'}${supplierCount ? ` from ${supplierCount} matching ${supplierCount === 1 ? 'supplier' : 'suppliers'}` : ''}.`
+        : visualAnalysis?.success
+          ? 'No close catalog match is currently available. Try another angle or a clearer product photo.'
+          : 'The image could not be identified reliably. Try a clearer photo with one product centered.';
+      return {
+        answer,
+        aiEnhanced: Boolean(visualAnalysis?.success),
+        provider: visualAnalysis?.provider || 'none',
+        model: visualAnalysis?.model || 'unavailable',
+        filters,
+        intent: 'product_search',
+        results,
+        products: results.products,
+        sellers: results.suppliers,
+        suppliers: results.suppliers,
+        manufacturers: results.manufacturers,
+        categories: results.categories,
+        services: [],
+        rfqs: [],
+        quotations: [],
+        imageSearch: {
+          imageUrl,
+          status: visualAnalysis?.success ? 'analyzed' : 'analysis_unavailable',
+          confidence: visualAnalysis?.analysis?.confidence || 0,
+        },
+        suggestions: productCount
+          ? ['Compare verified suppliers', 'Open matching product pages', 'Create an RFQ for bulk pricing']
+          : ['Use a clear product photo', 'Center one object in the frame', 'Add a short product description'],
+        tokensUsed: visualAnalysis?.tokensUsed || 0,
+      };
+    }
 
     // Get marketplace results
     const results = await AISearchRepository.searchMarketplace({

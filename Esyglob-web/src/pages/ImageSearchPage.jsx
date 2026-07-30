@@ -5,8 +5,9 @@ import { searchByImage } from '../api/marketplace'
 import { uploadFiles } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
-import { ManufacturerCard, ProductCard } from '../components/MarketplaceCards'
+import { ProductCard } from '../components/MarketplaceCards'
 import { PageHead } from '../components/PageHead'
+import SellerListingCard from '../components/SellerListingCard'
 
 const EMPTY_STATE = { loading: false, error: '', data: null }
 
@@ -140,8 +141,8 @@ export default function ImageSearchPage() {
         <section className="visual-analysis">
           <div><Sparkles /></div>
           <span>
-            <small>{data.imageSearch?.status === 'analyzed' ? 'VISUAL ANALYSIS COMPLETE' : 'MARKETPLACE SEARCH COMPLETE'}</small>
-            <h2>{data.imageSearch?.analysis || 'Intelligent marketplace recommendations'}</h2>
+            <small>{data.imageSearch?.status === 'analyzed' ? 'IMAGE SEARCH COMPLETE' : 'MARKETPLACE SEARCH COMPLETE'}</small>
+            <h2>Products and suppliers matched to your image</h2>
             <p>{data.answer}</p>
           </span>
           <button className="button button--secondary" onClick={clear}><RefreshCw /> New image</button>
@@ -155,7 +156,7 @@ export default function ImageSearchPage() {
           <div className="product-grid">{data.products.map((item) => <ProductCard key={item._id || item.id} product={item} />)}</div>
         </ResultSection>}
         {data.sellers?.length > 0 && <ResultSection title="Matching suppliers" count={`${data.sellers.length} matches`}>
-          <div className="manufacturer-grid">{data.sellers.map((item) => <ManufacturerCard key={item._id || item.id} seller={item} />)}</div>
+          <div className="visual-seller-list">{data.sellers.map((item) => <SellerListingCard key={item._id || item.id} seller={item} />)}</div>
         </ResultSection>}
         {!data.products?.length && !data.sellers?.length && <div className="empty-results">
           <Camera /><h2>No strong marketplace matches</h2><p>Retake the photo in good light with one product centered, or add a short description.</p>

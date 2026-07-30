@@ -39334,3 +39334,180 @@ button:disabled,
 .service-detail-page.service-accent .trusted-partners > header svg {
   color: var(--service-accent);
 }
+
+/* Final public experience consistency and responsive polish */
+.visual-seller-list {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+}
+
+.visual-seller-list > .seller-list-card {
+  min-width: 0;
+  width: 100%;
+}
+
+.auth-card {
+  background: transparent;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.auth-card .field__control {
+  background: #fff;
+  border-color: transparent;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .09);
+}
+
+.auth-card .field__control:hover {
+  box-shadow: 0 2px 7px rgba(15, 23, 42, .12);
+}
+
+.auth-card .field__control:focus-within {
+  border-color: transparent;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .18), 0 2px 8px rgba(15, 23, 42, .09);
+}
+
+.auth-card .field__control button {
+  border-radius: 8px;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.auth-card .field__control button:focus-visible,
+.auth-card .role-picker button:focus-visible,
+.auth-card .button:focus-visible,
+.auth-back:focus-visible,
+.checkbox input:focus-visible + span {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+:is(
+  .home-marketplace,
+  .search-page,
+  .visual-search-page,
+  .detail-page,
+  .services-page,
+  .service-detail-page,
+  .seller-list-card,
+  .seller-detail-page
+) {
+  min-width: 0;
+}
+
+:is(
+  .home-marketplace,
+  .search-page,
+  .visual-search-page,
+  .detail-page,
+  .services-page,
+  .service-detail-page,
+  .seller-detail-page
+) :is(img, video, iframe, object) {
+  max-width: 100%;
+}
+
+.visual-results .result-section,
+.visual-analysis > span,
+.search-page .result-section,
+.compact-heading {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .visual-seller-list {
+    gap: 10px;
+  }
+
+  .visual-results .compact-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 5px 12px;
+  }
+
+  .visual-results .compact-heading > span {
+    white-space: normal;
+  }
+
+  .visual-search-workspace,
+  .visual-search-workspace > *,
+  .visual-analysis,
+  .visual-analysis > span {
+    min-width: 0;
+  }
+
+  .visual-dropzone > div {
+    align-items: stretch;
+    width: min(100%, 250px);
+  }
+
+  .visual-dropzone > div .button,
+  .visual-search-workspace > aside > .button,
+  .service-detail-actions .button,
+  .service-detail-final-cta .button {
+    min-height: 44px;
+  }
+
+  .seller-save-button {
+    flex-basis: 42px;
+    height: 42px;
+    width: 42px;
+  }
+
+  .seller-card-action {
+    min-height: 44px;
+  }
+
+  .auth-panel {
+    overflow-x: clip;
+  }
+
+  .auth-card {
+    margin-inline: auto;
+    max-width: 480px;
+  }
+
+  .auth-card .button--full {
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 390px) {
+  .visual-search-page {
+    padding-inline: 10px;
+  }
+
+  .seller-list-card__header {
+    gap: 8px;
+  }
+
+  .seller-list-card__identity {
+    gap: 9px;
+  }
+
+  .seller-list-card__title > a {
+    max-width: calc(100vw - 148px);
+  }
+
+  .seller-metric {
+    padding-inline: 6px;
+  }
+
+  .seller-metric b {
+    font-size: 9px;
+  }
+
+  .auth-panel {
+    padding-inline: 15px;
+  }
+
+  .role-picker {
+    gap: 7px;
+  }
+
+  .role-picker button {
+    padding-inline: 10px;
+  }
+}

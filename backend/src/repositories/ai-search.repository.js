@@ -7,6 +7,11 @@ import Order from '../models/Order.js';
 import mongoose from 'mongoose';
 import { getSearchTerms, buildRegex, summarizeMarketplaceResults } from '../lib/ai-marketplace-context.js';
 import { listServices } from '../lib/services-catalog.js';
+import {
+  buildVisualSearchProfile,
+  productVisualRelevance,
+  rankProductsByVisualRelevance,
+} from '../lib/image-search.js';
 
 const PUBLIC_SERVICE_KEYS = new Set([
   'shipping', 'trade-assurance', 'escrow', 'quality-inspection',
@@ -20,42 +25,99 @@ const cache = new Map();
 const CACHE_TTL = 30000;
 const MAX_CACHE_ENTRIES = 250;
 
-function normalizedTokens(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-}
-
 export function productRelevance(product, terms) {
-  const fields = [
-    [product.name, 10],
-    [product.subcategory, 8],
-    [product.category, 7],
-    [product.tags?.join?.(' '), 6],
-    [product.specifications, 4],
-    [product.description, 2],
-  ];
-  const termList = [...new Set(terms.flatMap(normalizedTokens))];
-  const textScore = fields.reduce((total, [value, weight]) => {
-    const haystack = ` ${normalizedTokens(value).join(' ')} `;
-    return total + termList.reduce((score, term) => {
-      if (!haystack.includes(` ${term} `)) return score;
-      return score + weight;
-    }, 0);
-  }, 0);
-  const qualityTieBreak = Math.min(2.5, Number(product.averageRating || 0) * 0.3)
-    + Math.min(1.5, Math.log10(Number(product.totalOrders || 0) + 1) * 0.4)
-    + (product.sellerId?.isVerified ? 0.75 : 0);
-  return Math.round((textScore + qualityTieBreak) * 100) / 100;
+  return productVisualRelevance(product, terms);
 }
 
 export function rankVisualProducts(products, terms, limit = products.length) {
-  return products
-    .map((product) => ({ ...product, visualRelevanceScore: productRelevance(product, terms) }))
-    .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore)
-    .slice(0, limit);
+  return rankProductsByVisualRelevance(products, terms, limit);
+}
+
+const VISUAL_PRODUCT_FIELDS = 'name slug category subcategory productType brand price currency minimumOrderQuantity unit images averageRating reviewCount totalOrders sellerId tags description specifications productAttributes sampleAvailable samplePrice leadTime countryOfOrigin';
+
+function productConditions(regex) {
+  if (!regex) return [];
+  return [
+    { name: { $regex: regex, $options: 'i' } },
+    { description: { $regex: regex, $options: 'i' } },
+    { tags: { $regex: regex, $options: 'i' } },
+    { category: { $regex: regex, $options: 'i' } },
+    { subcategory: { $regex: regex, $options: 'i' } },
+    { productType: { $regex: regex, $options: 'i' } },
+    { brand: { $regex: regex, $options: 'i' } },
+    { 'seo.keywords': { $regex: regex, $options: 'i' } },
+    { 'productAttributes.material': { $regex: regex, $options: 'i' } },
+    { 'specifications.material': { $regex: regex, $options: 'i' } },
+  ];
+}
+
+function mergeDocuments(...groups) {
+  const documents = new Map();
+  groups.flat().filter(Boolean).forEach((document) => {
+    const id = String(document._id || document.id || '');
+    if (id && !documents.has(id)) documents.set(id, document);
+  });
+  return [...documents.values()];
+}
+
+async function searchAtlasVisualProducts(profile, limit) {
+  const index = process.env.MONGODB_ATLAS_PRODUCT_SEARCH_INDEX;
+  if (!index || !profile.searchText) return [];
+  try {
+    const should = [
+      { text: { query: profile.analysis.productName || profile.searchText, path: 'name', score: { boost: { value: 8 } } } },
+      ...(profile.broadTerms.length ? [
+        { text: { query: profile.broadTerms, path: ['category', 'subcategory'], score: { boost: { value: 5 } } } },
+        { text: { query: profile.broadTerms, path: ['tags', 'description', 'productType', 'brand'], score: { boost: { value: 2 } } } },
+      ] : []),
+    ];
+    const products = await Product.aggregate([
+      {
+        $search: {
+          index,
+          compound: {
+            should,
+            minimumShouldMatch: 1,
+          },
+        },
+      },
+      { $match: { status: { $in: ['active', 'published'] }, isVerifiedSeller: true, visibility: { $ne: 'private' } } },
+      { $addFields: { atlasSearchScore: { $meta: 'searchScore' } } },
+      { $limit: limit },
+    ]);
+    return Product.populate(products, { path: 'sellerId', select: 'companyName isVerified verificationStatus rating trustScore address companyType responseRate' });
+  } catch (error) {
+    console.warn('[AI-Search] Atlas product search unavailable, using indexed marketplace fallback:', error.message);
+    return [];
+  }
+}
+
+async function searchRegexVisualProducts(terms, limit) {
+  const regex = buildRegex(terms);
+  const conditions = productConditions(regex);
+  if (!conditions.length) return [];
+  return Product.find({
+    status: { $in: ['active', 'published'] },
+    isVerifiedSeller: true,
+    visibility: { $ne: 'private' },
+    $or: conditions,
+  })
+    .select(VISUAL_PRODUCT_FIELDS)
+    .populate('sellerId', 'companyName isVerified verificationStatus rating trustScore address companyType responseRate')
+    .limit(limit)
+    .lean()
+    .exec();
+}
+
+function sellerRelevance(seller, products, profile) {
+  const sellerId = String(seller._id || seller.id);
+  const matchedProducts = products.filter((product) => String(product.sellerId?._id || product.sellerId) === sellerId);
+  const searchable = JSON.stringify([
+    seller.companyName, seller.companyDescription, seller.companyType, seller.productCategories,
+    seller.productSubcategories, seller.industries, seller.mainProducts,
+  ]).toLowerCase();
+  const termMatches = profile.broadTerms.reduce((total, term) => total + (searchable.includes(String(term).toLowerCase()) ? 1 : 0), 0);
+  return matchedProducts.length * 20 + termMatches * 3 + (seller.isVerified ? 2 : 0) + Math.min(1, Number(seller.trustScore || 0) / 100);
 }
 
 function getCached(key) {
@@ -98,6 +160,93 @@ class AISearchRepository {
 
     if (cacheKey) setCached(cacheKey, results);
     return results;
+  }
+
+  /**
+   * Image-led marketplace retrieval. Vision identifies the object; this method
+   * performs all product, seller and category discovery from stored records.
+   */
+  static async searchVisualMarketplace({ analysis, userQuery = '' }) {
+    const productLimit = Math.min(Number(process.env.AI_MARKETPLACE_PRODUCT_LIMIT || 24), 60);
+    const supplierLimit = Math.min(Number(process.env.AI_MARKETPLACE_SUPPLIER_LIMIT || 16), 40);
+    const profile = buildVisualSearchProfile(analysis, userQuery);
+
+    if (!profile.identityTerms.length && !profile.broadTerms.length) {
+      return {
+        terms: [], products: [], suppliers: [], sellers: [], manufacturers: [],
+        categories: [], countries: [], services: [], rfqs: [], quotations: [], orders: [],
+      };
+    }
+
+    const candidateLimit = Math.min(productLimit * 4, 120);
+    const [atlasCandidates, identityCandidates] = await Promise.all([
+      searchAtlasVisualProducts(profile, candidateLimit),
+      searchRegexVisualProducts(profile.identityTerms, candidateLimit),
+    ]);
+
+    let candidates = mergeDocuments(atlasCandidates, identityCandidates);
+    if ((profile.analysis.confidence < 0.65 || candidates.length < productLimit * 2) && profile.broadTerms.length) {
+      const broaderCandidates = await searchRegexVisualProducts(profile.broadTerms, candidateLimit);
+      candidates = mergeDocuments(candidates, broaderCandidates);
+    }
+
+    const products = rankProductsByVisualRelevance(candidates, profile, productLimit);
+    const productSellerIds = [...new Set(products
+      .map((product) => product.sellerId?._id || product.sellerId)
+      .filter(Boolean)
+      .map(String))];
+    const sellerRegex = buildRegex(profile.broadTerms);
+    const sellerConditions = sellerRegex ? [
+      { companyName: { $regex: sellerRegex, $options: 'i' } },
+      { companyDescription: { $regex: sellerRegex, $options: 'i' } },
+      { productCategories: { $regex: sellerRegex, $options: 'i' } },
+      { productSubcategories: { $regex: sellerRegex, $options: 'i' } },
+      { industries: { $regex: sellerRegex, $options: 'i' } },
+      { mainProducts: { $regex: sellerRegex, $options: 'i' } },
+    ] : [];
+    const sellerOr = [
+      ...(productSellerIds.length ? [{ _id: { $in: productSellerIds } }] : []),
+      ...sellerConditions,
+    ];
+    const rawSellers = sellerOr.length
+      ? await Seller.find({
+        isActive: true,
+        isSuspended: { $ne: true },
+        $or: sellerOr,
+      })
+        .select('companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos address isVerified verificationStatus verificationLevel isTrustedSeller trustScore rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate totalProducts totalOrders yearsInBusiness yearEstablished productCategories productSubcategories industries mainProducts userId')
+        .populate('userId', 'fullName email')
+        .limit(Math.min(supplierLimit * 3, 60))
+        .lean()
+        .exec()
+      : [];
+    const suppliers = rawSellers
+      .map((seller) => ({
+        ...seller,
+        products: products
+          .filter((product) => String(product.sellerId?._id || product.sellerId) === String(seller._id))
+          .slice(0, 4),
+        visualRelevanceScore: sellerRelevance(seller, products, profile),
+      }))
+      .filter((seller) => seller.visualRelevanceScore > 0)
+      .sort((left, right) => right.visualRelevanceScore - left.visualRelevanceScore)
+      .slice(0, supplierLimit);
+    const categories = await this.searchCategories(profile.categoryTerms, 10);
+    const countries = [...new Set(suppliers.map((seller) => seller.address?.country).filter(Boolean))].slice(0, 12);
+
+    return {
+      terms: profile.broadTerms,
+      products,
+      suppliers,
+      sellers: suppliers,
+      manufacturers: suppliers.filter((seller) => seller.companyType === 'manufacturer'),
+      categories,
+      countries,
+      services: [],
+      rfqs: [],
+      quotations: [],
+      orders: [],
+    };
   }
 
   /**

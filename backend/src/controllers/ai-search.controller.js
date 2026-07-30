@@ -12,7 +12,7 @@ class AISearchController {
         return res.status(400).json({ error: 'Query is required' });
       }
 
-      const searchQuery = query?.trim() || (imageUrl ? 'Find visually similar products and suppliers for this uploaded image' : '');
+      const searchQuery = query?.trim() || '';
 
       const result = await AISearchService.search({
         query: searchQuery,
