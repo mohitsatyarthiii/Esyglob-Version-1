@@ -86,6 +86,7 @@ class GlobalSearchRepository {
                 companyName: 1,
                 isVerified: 1,
                 isTrustedSeller: 1,
+                badges: 1,
                 address: 1,
                 companyType: 1,
                 rating: 1,
@@ -139,7 +140,7 @@ class GlobalSearchRepository {
         { 'address.country': { $regex: regex, $options: 'i' } },
       ],
     })
-      .select('companyName companyType companyDescription address isVerified isTrustedSeller trustScore rating productCategories productSubcategories exportMarkets industries mainProducts logo logoUrl companyLogo')
+      .select('companyName companyType companyDescription address isVerified isTrustedSeller badges trustScore rating productCategories productSubcategories exportMarkets industries mainProducts logo logoUrl companyLogo')
       .sort({ isTrustedSeller: -1, isVerified: -1, trustScore: -1, rating: -1 })
       .limit(limit * 2)
       .lean();

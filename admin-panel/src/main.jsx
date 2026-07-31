@@ -10,7 +10,14 @@ import './index.css'
 
 const configuration = validateEnvironment()
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 30_000, retry: false, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: (failureCount, error) => failureCount < 2 && (!error?.status || error.status === 408 || error.status === 429 || error.status >= 500),
+      retryDelay: (attempt) => Math.min(1_000 * (2 ** attempt), 4_000),
+      refetchOnWindowFocus: false,
+    },
+  },
 })
 
 createRoot(document.getElementById('root')).render(

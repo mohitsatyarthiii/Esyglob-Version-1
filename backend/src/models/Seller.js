@@ -196,6 +196,16 @@ const sellerSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    badges: {
+      verifiedSeller: { type: Boolean, default: false },
+      premiumSeller: { type: Boolean, default: false },
+      trustedSupplier: { type: Boolean, default: false },
+      goldSupplier: { type: Boolean, default: false },
+      topRated: { type: Boolean, default: false },
+      manufacturer: { type: Boolean, default: false },
+      exporter: { type: Boolean, default: false },
+      fastResponse: { type: Boolean, default: false },
+    },
     onboardingDraftSavedAt: Date,
     onboardingSubmittedAt: Date,
     

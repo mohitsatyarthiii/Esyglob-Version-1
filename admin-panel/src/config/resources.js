@@ -38,7 +38,7 @@ export const resources = {
     required: ['name', 'slug'],
     bulkStatuses: ['active', 'inactive'],
     columns: [['Category', 'name'], ['Slug', 'slug'], ['Featured', (row) => row.metadata?.isFeatured ? 'yes' : 'no'], ['Status', (row) => row.isActive ? 'active' : 'inactive'], ['Updated', 'updatedAt']],
-    fields: [['name', 'Name'], ['slug', 'Slug'], ['description', 'Description', 'textarea'], ['image', 'Image URL'], ['icon', 'Icon'], ['metadata.title', 'SEO title'], ['metadata.keywords', 'SEO keywords'], ['metadata.sortOrder', 'Sort order', 'number'], ['metadata.isFeatured', 'Featured', 'boolean'], ['isActive', 'Active', 'boolean']],
+    fields: [['name', 'Name'], ['slug', 'Slug'], ['description', 'Description', 'textarea'], ['image', 'Category image', 'image-upload'], ['icon', 'Icon'], ['metadata.title', 'SEO title'], ['metadata.keywords', 'SEO keywords'], ['metadata.sortOrder', 'Sort order', 'number'], ['metadata.isFeatured', 'Featured', 'boolean'], ['isActive', 'Active', 'boolean']],
   },
   orders: {
     title: 'Orders', description: 'Trade orders, fulfillment and operational status.', icon: PackageCheck,

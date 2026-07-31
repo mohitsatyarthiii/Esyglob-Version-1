@@ -1,14 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckCircle2, Clock3, Download, ExternalLink, Eye, FileText, History, Image,
+  BadgeCheck, CheckCircle2, Clock3, Download, ExternalLink, Eye, FileText, History, Image,
   Save, ShieldCheck, Trash2, XCircle, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import {
-  apiUrl, createResource, deleteResource, getResource, listResource, reviewVerificationDocument,
+  createResource, deleteResource, fetchVerificationDocument, getResource, listResource, reviewVerificationDocument,
   runResourceAction, updateResource,
 } from '../api/client'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -16,6 +16,7 @@ import DataTable from '../components/DataTable'
 import Drawer from '../components/Drawer'
 import ProviderBrand from '../components/ProviderBrand'
 import AdminAddressAutocomplete from '../components/AdminAddressAutocomplete'
+import ImageUploader from '../components/ImageUploader'
 import { resources } from '../config/resources'
 import { getProviderKey } from '../utils/providers'
 
@@ -132,6 +133,7 @@ function ActionCenter({ resource, record, completed }) {
 
 function Field({ name, label, type, options, register, control, setValue, error }) {
   if (type === 'boolean') return <label className="toggle-field"><span><b>{label}</b><small>Enable or disable this setting.</small></span><input type="checkbox" {...register(name)} /><i /></label>
+  if (type === 'image-upload') return <div className="wide"><Controller name={name} control={control} render={({ field }) => <ImageUploader value={field.value || ''} onChange={field.onChange} folder="categories" label={label} />} />{error && <small className="field-error">{error}</small>}</div>
   if (type === 'address') return <label className="wide"><span>{label}</span><Controller name={name} control={control} render={({ field }) => <AdminAddressAutocomplete value={field.value} onChange={field.onChange} onSelect={location => {
     if (!location) return
     field.onChange(location.formattedAddress)
@@ -194,7 +196,19 @@ function NestedCategoryManager({ record, refreshed }) {
     setBusy(true); setError('')
     try { await deleteResource('subcategories', item._id); await refreshed('Subcategory deleted and logged.') } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
-  return <section className="nested-category-manager"><header><h3>Nested categories</h3><p>Create and maintain the taxonomy beneath this category.</p></header><div className="nested-editor"><input value={form.name} onChange={(event) => change('name', event.target.value)} placeholder="Subcategory name" /><input value={form.slug} onChange={(event) => change('slug', event.target.value)} placeholder="URL slug" /><input value={form.image} onChange={(event) => change('image', event.target.value)} placeholder="Media URL" /><textarea value={form.description} onChange={(event) => change('description', event.target.value)} placeholder="Description" /><label><input type="checkbox" checked={form.active} onChange={(event) => change('active', event.target.checked)} /> Active</label><div>{editing && <button type="button" onClick={() => { setEditing(null); setForm(empty) }}>Cancel edit</button>}<button type="button" className="primary" disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={save}>{editing ? 'Update subcategory' : 'Add subcategory'}</button></div></div>{error && <p className="action-error">{error}</p>}<div className="nested-list">{record?.children?.length ? record.children.map((item) => <article key={item._id}><span><b>{item.name}</b><small>{item.slug}</small></span><em className={`status status--${item.isActive ? 'active' : 'inactive'}`}>{item.isActive ? 'active' : 'inactive'}</em><button type="button" onClick={() => edit(item)}>Edit</button><button type="button" className="danger-outline" onClick={() => remove(item)}>Delete</button></article>) : <p>No subcategories yet.</p>}</div></section>
+  return <section className="nested-category-manager">
+    <header><h3>Nested categories</h3><p>Create and maintain the taxonomy beneath this category.</p></header>
+    <div className="nested-editor">
+      <input value={form.name} onChange={(event) => change('name', event.target.value)} placeholder="Subcategory name" />
+      <input value={form.slug} onChange={(event) => change('slug', event.target.value)} placeholder="URL slug" />
+      <div className="nested-image-field"><ImageUploader value={form.image} onChange={(value) => change('image', value)} folder="subcategories" label="Subcategory image" disabled={busy} /></div>
+      <textarea value={form.description} onChange={(event) => change('description', event.target.value)} placeholder="Description" />
+      <label><input type="checkbox" checked={form.active} onChange={(event) => change('active', event.target.checked)} /> Active</label>
+      <div>{editing && <button type="button" onClick={() => { setEditing(null); setForm(empty) }}>Cancel edit</button>}<button type="button" className="primary" disabled={busy || !form.name.trim() || !form.slug.trim()} onClick={save}>{editing ? 'Update subcategory' : 'Add subcategory'}</button></div>
+    </div>
+    {error && <p className="action-error">{error}</p>}
+    <div className="nested-list">{record?.children?.length ? record.children.map((item) => <article key={item._id}>{item.image && <img src={item.image} alt="" />}<span><b>{item.name}</b><small>{item.slug}</small></span><em className={`status status--${item.isActive ? 'active' : 'inactive'}`}>{item.isActive ? 'active' : 'inactive'}</em><button type="button" onClick={() => edit(item)}>Edit</button><button type="button" className="danger-outline" onClick={() => remove(item)}>Delete</button></article>) : <p>No subcategories yet.</p>}</div>
+  </section>
 }
 
 function VerificationPanels({ record, refreshed }) {
@@ -211,13 +225,56 @@ function VerificationPanels({ record, refreshed }) {
     ['IEC', seller.importExportCode || business.iecNumber], ['CIN', seller.cin || business.cin],
     ['MSME', seller.msmeNumber || business.msmeNumber], ['Business license', seller.businessRegistrationNumber || business.businessLicense],
     ['Business category', seller.primaryCategory || business.businessCategory],
-  ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ? String(value) : 'Not provided'}</dd></div>)}</dl></section>
+  ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatAdminValue(value)}</dd></div>)}</dl></section>
     <StructuredDetails title="Complete submitted application" value={{ businessInfo: record?.businessInfo, stepData: record?.stepData }} />
-    <section><header><h3>Factory and operations</h3></header><dl className="detail-list">{[['Factory name', factory.factoryName], ['Factory area', factory.factoryArea], ['Employees', factory.totalEmployees], ['Production lines', factory.productionLines], ['Monthly capacity', factory.monthlyCapacity], ['Factory status', factory.verificationStatus]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value ?? 'Not provided'}</dd></div>)}</dl></section>
+    <section><header><h3>Factory and operations</h3></header><dl className="detail-list">{[['Factory name', factory.factoryName || factory.name], ['Factory area', factory.factoryArea || factory.floorArea], ['Employees', factory.totalEmployees || factory.employeeCount], ['Production lines', factory.productionLines], ['Monthly capacity', factory.monthlyCapacity], ['Factory status', factory.verificationStatus]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{formatAdminValue(value)}</dd></div>)}</dl>{factory.images?.length > 0 && <div className="record-media">{factory.images.map((source) => <img src={source} alt="Factory evidence" key={source} />)}</div>}</section>
+    <SellerBadges verificationId={record?._id} seller={seller} refreshed={refreshed} />
     <DocumentReview verification={record} refreshed={refreshed} />
     <section><header><h3>Private internal notes</h3><p>Visible to administrators only; never included in seller notifications.</p></header><Timeline items={record?.internalNotes?.map((item) => ({ ...item, action: 'internal_note', notes: item.note, createdAt: item.createdAt, actorId: item.authorId }))} /></section>
     <section><header><h3><History /> Verification timeline</h3><p>Seller uploads, document decisions and application status changes.</p></header><Timeline items={record?.history} /></section>
   </>
+}
+
+const SELLER_BADGES = [
+  ['verifiedSeller', 'Verified Seller'], ['premiumSeller', 'Premium Seller'],
+  ['trustedSupplier', 'Trusted Supplier'], ['goldSupplier', 'Gold Supplier'],
+  ['topRated', 'Top Rated'], ['manufacturer', 'Manufacturer'],
+  ['exporter', 'Exporter'], ['fastResponse', 'Fast Response'],
+]
+
+function SellerBadges({ verificationId, seller, refreshed }) {
+  const [badges, setBadges] = useState(() => sellerBadgeState(seller))
+  const [saving, setSaving] = useState('')
+  const [error, setError] = useState('')
+  if (!seller?._id) return null
+  const toggle = async (key) => {
+    const previous = badges
+    const next = { ...badges, [key]: !badges[key] }
+    setBadges(next); setSaving(key); setError('')
+    try {
+      await updateResource('verifications', verificationId, { sellerBadges: next })
+      await refreshed(`${SELLER_BADGES.find(([value]) => value === key)?.[1]} ${next[key] ? 'enabled' : 'disabled'}.`)
+    } catch (nextError) {
+      setBadges(previous)
+      setError(nextError.message)
+    } finally { setSaving('') }
+  }
+  return <section className="seller-badge-manager"><header><h3><BadgeCheck /> Seller Badges</h3><p>Badge changes save immediately and are returned by the public seller APIs.</p></header><div>{SELLER_BADGES.map(([key, label]) => <label className="toggle-field" key={key}><span><b>{label}</b><small>{saving === key ? 'Saving…' : badges[key] ? 'Assigned' : 'Not assigned'}</small></span><input type="checkbox" checked={Boolean(badges[key])} disabled={Boolean(saving)} onChange={() => toggle(key)} /><i /></label>)}</div>{error && <p className="action-error">{error}</p>}</section>
+}
+
+function sellerBadgeState(seller = {}) {
+  const stored = seller.badges || {}
+  const plan = String(seller.subscriptionPlan || '').toLowerCase()
+  return {
+    verifiedSeller: stored.verifiedSeller ?? Boolean(seller.isVerified),
+    premiumSeller: stored.premiumSeller ?? Boolean(seller.isPremium || ['premium', 'gold', 'enterprise'].includes(plan)),
+    trustedSupplier: stored.trustedSupplier ?? Boolean(seller.isTrustedSeller || seller.trustedSellerBadge === 'active'),
+    goldSupplier: stored.goldSupplier ?? false,
+    topRated: stored.topRated ?? Number(seller.rating || 0) >= 4.5,
+    manufacturer: stored.manufacturer ?? seller.companyType === 'manufacturer',
+    exporter: stored.exporter ?? (seller.companyType === 'exporter' || Boolean(seller.exportMarkets?.length)),
+    fastResponse: stored.fastResponse ?? Number(seller.responseRate || 0) >= 80,
+  }
 }
 
 function DocumentReview({ verification, refreshed }) {
@@ -235,7 +292,8 @@ function DocumentReview({ verification, refreshed }) {
       await refreshed(`Document ${status.replaceAll('_', ' ')} and seller notified.`)
     } catch (next) { setError(next.message) } finally { setBusy(false) }
   }
-  return <section><header><h3><FileText /> Uploaded documents</h3><p>Review every file independently before approving the seller.</p></header><div className="verification-documents">{verification?.documents?.filter((item) => item.status !== 'archived').map((document) => <article key={document._id}><button type="button" className="document-preview" onClick={() => setPreview(document)}>{isImage(document) ? <img src={document.url} alt="" /> : <FileText />}</button><div><b>{document.name}</b><small>{humanize(document.type)} · {document.mimeType || fileType(document.name)}</small><small>{formatBytes(document.size)} · Uploaded {formatDate(document.uploadedAt)}</small>{document.rejectionReason && <p>{document.rejectionReason}</p>}</div><em className={`status status--${document.status}`}>{humanize(document.status)}</em><div className="document-actions"><button type="button" onClick={() => setPreview(document)}><Eye /> Preview</button><a href={document.url} target="_blank" rel="noreferrer"><ExternalLink /> Open</a><a href={apiUrl(`/suppliers/verification/documents/${document._id}`)}><Download /> Download</a><button type="button" onClick={() => setReviewing(document)}>Review</button></div></article>)}</div>
+  const documents = verification?.documents?.filter((item) => item.status !== 'archived') || []
+  return <section><header><h3><FileText /> Uploaded documents</h3><p>Review every file independently before approving the seller.</p></header><div className="verification-documents">{documents.length ? documents.map((document) => <article key={document._id}><button type="button" className="document-preview" disabled={!document.fileAvailable} onClick={() => setPreview(document)}>{isImage(document) && document.fileAvailable ? <img src={document.url} alt="" /> : <FileText />}</button><div><b>{document.name}</b><small>{humanize(document.type)} · {document.mimeType || fileType(document.name)}</small><small>{formatBytes(document.size)} · Uploaded {formatDate(document.uploadedAt)}</small>{!document.fileAvailable && <p>Original file is unavailable; metadata and review history remain preserved.</p>}{document.rejectionReason && <p>{document.rejectionReason}</p>}</div><em className={`status status--${document.status}`}>{humanize(document.status)}</em><div className="document-actions">{document.fileAvailable && <><button type="button" onClick={() => setPreview(document)}><Eye /> Preview</button><a href={document.url} target="_blank" rel="noreferrer"><ExternalLink /> Open</a><a href={document.url} download><Download /> Download</a></>}<button type="button" onClick={() => setReviewing(document)}>Review</button></div></article>) : <p className="admin-empty-state">No verification documents have been submitted.</p>}</div>
     {reviewing && <div className="document-review-form"><header><b>Review {reviewing.name}</b><button type="button" onClick={() => setReviewing(null)}>Close</button></header><label>Internal reviewer note<textarea value={notes} onChange={(event) => setNotes(event.target.value)} /></label><label>Seller feedback / rejection reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Required for rejection or revision" /></label>{error && <p className="action-error">{error}</p>}<footer><button type="button" disabled={busy} onClick={() => review('under_review')}>Pending review</button><button type="button" className="danger-outline" disabled={busy || !reason.trim()} onClick={() => review('needs_update')}><XCircle /> Request revision</button><button type="button" className="danger-outline" disabled={busy || !reason.trim()} onClick={() => review('rejected')}>Reject</button><button type="button" className="primary" disabled={busy} onClick={() => review('verified')}><CheckCircle2 /> Approve</button></footer></div>}
     {preview && <DocumentViewer document={preview} close={() => setPreview(null)} />}
   </section>
@@ -243,7 +301,19 @@ function DocumentReview({ verification, refreshed }) {
 
 function DocumentViewer({ document, close }) {
   const [zoom, setZoom] = useState(1)
-  return <div className="document-viewer-backdrop" onMouseDown={close}><section className="document-viewer" onMouseDown={(event) => event.stopPropagation()}><header><div><b>{document.name}</b><small>{humanize(document.type)}</small></div><nav><button type="button" onClick={() => setZoom((value) => Math.max(.5, value - .25))}><ZoomOut /></button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(3, value + .25))}><ZoomIn /></button><a href={document.url} target="_blank" rel="noreferrer"><ExternalLink /></a><button type="button" onClick={close}><XCircle /></button></nav></header><div>{isImage(document) ? <img src={document.url} alt={document.name} style={{ transform: `scale(${zoom})` }} /> : <object data={document.url} type={document.mimeType || 'application/pdf'}><a href={document.url} target="_blank" rel="noreferrer">Open document</a></object>}</div></section></div>
+  const [source, setSource] = useState('')
+  const [error, setError] = useState('')
+  useEffect(() => {
+    let active = true
+    let objectUrl = ''
+    fetchVerificationDocument(document._id).then((blob) => {
+      if (!active) return
+      objectUrl = URL.createObjectURL(blob)
+      setSource(objectUrl)
+    }).catch((nextError) => { if (active) setError(nextError.message) })
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [document._id])
+  return <div className="document-viewer-backdrop" onMouseDown={close}><section className="document-viewer" onMouseDown={(event) => event.stopPropagation()}><header><div><b>{document.name}</b><small>{humanize(document.type)}</small></div><nav><button type="button" onClick={() => setZoom((value) => Math.max(.5, value - .25))}><ZoomOut /></button><span>{Math.round(zoom * 100)}%</span><button type="button" onClick={() => setZoom((value) => Math.min(3, value + .25))}><ZoomIn /></button><a href={document.url} target="_blank" rel="noreferrer"><ExternalLink /></a><button type="button" onClick={close}><XCircle /></button></nav></header><div>{error ? <p className="action-error">{error}</p> : !source ? <DrawerSkeleton /> : isImage(document) ? <img src={source} alt={document.name} style={{ transform: `scale(${zoom})` }} /> : <object data={source} type={document.mimeType || 'application/pdf'}><a href={document.url} target="_blank" rel="noreferrer">Open document</a></object>}</div></section></div>
 }
 
 function Timeline({ items = [] }) {
@@ -260,6 +330,7 @@ function recordTitle(resource, record) { return record?.fullName || record?.comp
 function humanize(value) { return String(value || '').replaceAll('_', ' ').replaceAll(/([A-Z])/g, ' $1').trim().replace(/^./, (letter) => letter.toUpperCase()) }
 function formatDate(value, withTime = false) { return value ? new Date(value).toLocaleString([], withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }) : 'Not available' }
 function formatBytes(value) { if (!Number(value)) return 'Size unavailable'; const units = ['B', 'KB', 'MB', 'GB']; const index = Math.min(Math.floor(Math.log(Number(value)) / Math.log(1024)), units.length - 1); return `${(Number(value) / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}` }
+function formatAdminValue(value) { if (value === undefined || value === null || value === '') return 'Not provided'; if (typeof value !== 'object') return String(value); return [value.street, value.line1, value.line2, value.city, value.state, value.country, value.pincode || value.postalCode].filter(Boolean).join(', ') || JSON.stringify(value) }
 function fileType(name = '') { return name.split('.').pop()?.toUpperCase() || 'File' }
 function isImage(document) { return document.mimeType?.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(document.url || document.name || '') }
 function requiresReason(action) { return ['suspend', 'reject', 'refund', 'cancel'].includes(action) }

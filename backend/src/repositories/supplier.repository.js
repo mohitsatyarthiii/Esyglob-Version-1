@@ -64,6 +64,7 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
               isVerified: 1,
               isTrustedSeller: 1,
               trustedSellerBadge: 1,
+              badges: 1,
               verificationLevel: 1,
               rating: 1,
               reviewCount: 1,
@@ -112,7 +113,7 @@ export async function findPublicSellerById(sellerId) {
     isActive: true,
     isSuspended: { $ne: true },
   })
-    .select('userId companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos companyVideos brochures companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone languages socialLinks teamContacts address shippingInfo tradeCapabilities isVerified isTrustedSeller trustedSellerBadge verificationStatus verificationLevel rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate trustScore totalProducts totalOrders certifications productCategories productSubcategories industries mainProducts exportMarkets tradeHistorySummary createdAt')
+    .select('userId companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos companyVideos brochures companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone languages socialLinks teamContacts address shippingInfo tradeCapabilities isVerified isTrustedSeller trustedSellerBadge badges verificationStatus verificationLevel rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate trustScore totalProducts totalOrders certifications productCategories productSubcategories industries mainProducts exportMarkets tradeHistorySummary createdAt')
     .populate('userId', 'fullName avatarUrl')
     .lean()
     .exec();

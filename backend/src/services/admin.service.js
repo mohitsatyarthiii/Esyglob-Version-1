@@ -12,8 +12,10 @@ import Order from '../models/Order.js';
 import Payment from '../models/Payment.js';
 import Product from '../models/Product.js';
 import Subcategory from '../models/Subcategory.js';
+import Seller from '../models/Seller.js';
 import User from '../models/User.js';
 import { createGiftCard } from './promotion.service.js';
+import { invalidateMemoryCache } from '../lib/cache.js';
 
 const resourcePermission = {
   users: 'users:manage', sellers: 'sellers:manage', verifications: 'verifications:manage',
@@ -46,6 +48,15 @@ export async function update(resource, id, body, admin, request = {}) {
   }
   if (resource === 'verifications') {
     const before = await repository.getResource(resource, id);
+    if (body.sellerBadges !== undefined && body.status === undefined) {
+      const badges = normalizeSellerBadges(body.sellerBadges);
+      const sellerId = before.sellerId?._id || before.sellerId;
+      const seller = await Seller.findByIdAndUpdate(sellerId, { $set: { badges } }, { new: true, runValidators: true }).lean();
+      if (!seller) throw notFound('Seller');
+      invalidateMemoryCache('sellers:');
+      await log(admin, request, { action: 'seller_badges_updated', resource, resourceId: id, summary: `Updated seller badges for ${seller.companyName || 'seller'}`, changes: { badges: { from: before.sellerId?.badges || {}, to: badges } } });
+      return repository.getResource(resource, id);
+    }
     const result = await reviewVerificationApplication(admin, id, {
       status: body.status,
       sellerFeedback: body.sellerFeedback || body.notes || '',
@@ -57,6 +68,7 @@ export async function update(resource, id, body, admin, request = {}) {
   }
   const before = await repository.getResource(resource, id);
   const item = await repository.updateResource(resource, id, body);
+  if (resource === 'sellers') invalidateMemoryCache('sellers:');
   await log(admin, request, { action: 'updated', resource, resourceId: id, summary: `Updated ${resourceLabel(resource, item)}`, changes: diff(before, item, Object.keys(body)) });
   return item;
 }
@@ -265,6 +277,11 @@ function normalizeCouponInput(body) {
     if (typeof normalized[field] === 'string') normalized[field] = normalized[field].split(',').map((value) => value.trim()).filter(Boolean);
   }
   return normalized;
+}
+function normalizeSellerBadges(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('Seller badges must be an object'), { statusCode: 422 });
+  const allowed = ['verifiedSeller', 'premiumSeller', 'trustedSupplier', 'goldSupplier', 'topRated', 'manufacturer', 'exporter', 'fastResponse'];
+  return Object.fromEntries(allowed.map((key) => [key, value[key] === true]));
 }
 function snapshot(value) { return sanitize(value?.toObject?.() || value || {}); }
 function diff(before, after, keys) {

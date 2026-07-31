@@ -25,7 +25,7 @@ const resources = {
     model: Seller,
     search: ['companyName', 'companyType', 'businessEmail', 'businessPhone', 'country'],
     populate: 'userId',
-    fields: ['companyName', 'companyType', 'companyDescription', 'businessEmail', 'businessPhone', 'country', 'city', 'status', 'isVerified'],
+    fields: ['companyName', 'companyType', 'companyDescription', 'businessEmail', 'businessPhone', 'country', 'city', 'status', 'isVerified', 'badges'],
   },
   products: {
     model: Product,
@@ -62,7 +62,7 @@ const resources = {
   verifications: {
     model: SellerVerification,
     search: ['status', 'businessInfo.legalName', 'businessInfo.gstin', 'businessInfo.panNumber'],
-    populate: 'sellerId userId reviewedBy internalNotes.authorId documents.reviewedBy',
+    populate: 'sellerId userId reviewedBy internalNotes.authorId documents.verifiedBy',
     fields: [],
   },
   coupons: {
@@ -202,6 +202,16 @@ function escapeRegExp(value) {
 }
 
 function normalizeResourcePayload(resource, payload) {
+  if (resource === 'sellers' && payload.badges !== undefined) {
+    if (!payload.badges || typeof payload.badges !== 'object' || Array.isArray(payload.badges)) {
+      throw Object.assign(new Error('Seller badges must be an object'), { statusCode: 422 });
+    }
+    const allowed = ['verifiedSeller', 'premiumSeller', 'trustedSupplier', 'goldSupplier', 'topRated', 'manufacturer', 'exporter', 'fastResponse'];
+    return {
+      ...payload,
+      badges: Object.fromEntries(allowed.map((key) => [key, payload.badges[key] === true])),
+    };
+  }
   if (resource === 'users') {
     const roles = typeof payload.roles === 'string'
       ? payload.roles.split(',').map((value) => value.trim().toLowerCase()).filter(Boolean)

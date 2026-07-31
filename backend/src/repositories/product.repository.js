@@ -209,7 +209,7 @@ class ProductRepository {
       : { slug: String(productId).toLowerCase() };
 
     return Product.findOne(query)
-      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge logo companyName companyType industries productCategories productSubcategories city state userId')
+      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge badges logo companyName companyType industries productCategories productSubcategories city state userId')
       .lean()
       .exec();
   }

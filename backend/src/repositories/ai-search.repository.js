@@ -226,7 +226,7 @@ class AISearchRepository {
         isSuspended: { $ne: true },
         $or: sellerOr,
       })
-        .select('companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos address isVerified verificationStatus verificationLevel isTrustedSeller trustScore rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate totalProducts totalOrders yearsInBusiness yearEstablished productCategories productSubcategories industries mainProducts userId')
+        .select('companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos address isVerified verificationStatus verificationLevel isTrustedSeller badges trustScore rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate totalProducts totalOrders yearsInBusiness yearEstablished productCategories productSubcategories industries mainProducts userId')
         .populate('userId', 'fullName email')
         .limit(Math.min(supplierLimit * 3, 60))
         .lean()
