@@ -107,7 +107,9 @@ class AISearchController {
         error,
       });
       return res.status(statusCode).json({
-        error: statusCode >= 500
+        error: error.code === 'VISION_PROVIDER_UNAVAILABLE'
+          ? 'Vision provider is currently unavailable'
+          : statusCode >= 500
           ? 'Image search is temporarily unavailable. Please retry in a moment.'
           : error.message,
         code: error.code || 'IMAGE_SEARCH_FAILED',

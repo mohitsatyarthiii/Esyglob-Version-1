@@ -7,7 +7,7 @@ import {
   parseVisionAnalysis,
   VISION_ANALYSIS_JSON_SCHEMA,
 } from './image-search.js';
-import { getVisionProvider } from '../providers/vision.provider.js';
+import { getVisionProvider, isVisionProviderAvailable } from '../providers/vision.provider.js';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'ollama';
 const OLLAMA_FALLBACK_ENABLED = process.env.OLLAMA_FALLBACK_ENABLED === 'true';
 const AI_CHAT_FAST_MODE = process.env.AI_CHAT_FAST_MODE !== 'false';
@@ -250,16 +250,16 @@ class AIService {
       provider: AI_PROVIDER,
       ollamaApiUrl: OLLAMA_BASE_URL,
       model: OLLAMA_MODEL,
-      visionProvider: 'huggingface',
-      visionModel: process.env.HF_IMAGE_MODEL || '',
-      visionFallbackModel: process.env.HF_IMAGE_FALLBACK_MODEL || '',
-      visionConfigured: Boolean(process.env.HF_API_KEY && process.env.HF_IMAGE_MODEL),
+      visionProvider: 'unavailable',
+      visionModel: '',
+      visionFallbackModel: '',
+      visionConfigured: false,
       isConfigured: geminiKeyManager.keys.length > 0 || deepseekKeyManager.keys.length > 0 || Boolean(OLLAMA_BASE_URL),
       availableProviders: {
         gemini: geminiKeyManager.keys.length,
         deepseek: deepseekKeyManager.keys.length,
         ollama: Boolean(OLLAMA_BASE_URL),
-        huggingfaceVision: Boolean(process.env.HF_API_KEY && process.env.HF_IMAGE_MODEL),
+        vision: false,
       },
     };
   }
@@ -311,6 +311,10 @@ class AIService {
 
   static async analyzeMarketplaceImage(imageUrl, options = {}) {
     const requestId = options.requestId || '';
+    const provider = getVisionProvider();
+    if (!isVisionProviderAvailable()) {
+      return provider.analyze({ requestId, signal: options.signal });
+    }
     const visionUrl = cloudinaryVisionUrl(imageUrl);
     try {
       const downloadStartedAt = Date.now();
@@ -358,7 +362,6 @@ class AIService {
         durationMs: Date.now() - downloadStartedAt,
       });
 
-      const provider = getVisionProvider();
       return provider.analyze({
         imageBuffer,
         mimeType,

@@ -5,13 +5,11 @@ import { closeAIKnowledgeDatabase, connectToAIKnowledgeDatabase } from './config
 import { createServer } from 'node:http';
 import { initializeSocket } from './lib/socket-server.js';
 import AIChatService from './services/ai-chat.service.js';
-import { validateVisionProviderOnStartup } from './providers/vision.provider.js';
 
 let server;
 
 async function startServer() {
   try {
-    await validateVisionProviderOnStartup();
     await connectToDatabase();
     console.log('Marketplace database connected successfully');
     await connectToAIKnowledgeDatabase()
