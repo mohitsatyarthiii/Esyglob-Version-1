@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import * as supplierService from '../services/supplier.service.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
 import UploadService from '../services/upload.service.js';
+import StorageService from '../services/storage.service.js';
 import { UPLOAD, ALLOWED_DOCUMENT_TYPES_SET } from '../lib/constants.js';
 import { invalidateMemoryCache } from '../lib/cache.js';
 import { toPositiveInt, sellerSortField } from '../lib/supplier-helpers.js';
@@ -251,12 +252,15 @@ export async function downloadDocument(req, res) {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    // Redirect for cloudinary documents
-    if (document.storageProvider === 'cloudinary' && document.url) {
-      return res.redirect(document.url);
+    if (document.storageProvider === 'vps' && document.storageKey) {
+      const buffer = await StorageService.readFile(document.storageKey).catch(error => error.code === 'ENOENT' ? null : Promise.reject(error));
+      if (!buffer) return res.status(404).json({ error: 'Document file is unavailable' });
+      res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Length', buffer.length);
+      res.setHeader('Content-Disposition', `inline; filename="${String(document.name || 'document').replace(/["\\\r\n]/g, '_')}"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.send(buffer);
     }
-
-    // For local files (if any exist)
     return res.status(404).json({ error: 'Document file is unavailable' });
   } catch (error) {
     console.error('Document download error:', error);

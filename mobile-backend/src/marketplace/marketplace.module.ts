@@ -30,6 +30,7 @@ import {
 } from './catalog.schemas';
 import { MarketplaceController } from './marketplace.controller';
 import { MarketplaceService } from './marketplace.service';
+import { StorageService } from '../storage/storage.service';
 
 @Module({
   imports: [
@@ -52,6 +53,6 @@ import { MarketplaceService } from './marketplace.service';
     ]),
   ],
   controllers: [MarketplaceController],
-  providers: [MarketplaceService],
+  providers: [MarketplaceService, StorageService],
 })
 export class MarketplaceModule {}

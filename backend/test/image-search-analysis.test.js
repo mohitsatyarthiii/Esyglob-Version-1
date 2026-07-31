@@ -6,7 +6,7 @@ import {
   parseVisionAnalysis,
   rankProductsByVisualRelevance,
 } from '../src/lib/image-search.js';
-import { cloudinaryVisionUrl } from '../src/lib/ai-service.js';
+import { storageVisionUrl } from '../src/lib/ai-service.js';
 
 test('normalizes structured vision JSON into the stable image-search contract', () => {
   const analysis = parseVisionAnalysis(`\`\`\`json
@@ -32,11 +32,11 @@ test('invalid or uncertain model output becomes an empty low-confidence analysis
   assert.equal(normalizeVisionAnalysis({ productName: '', confidence: -2 }).confidence, 0);
 });
 
-test('normalizes Cloudinary uploads to a bounded JPEG for the vision runtime', () => {
-  const result = cloudinaryVisionUrl('https://res.cloudinary.com/demo/image/upload/v1/catalog/product.webp');
-  assert.match(result, /\/image\/upload\/f_jpg,q_auto:good,w_1024,h_1024,c_limit\//);
+test('accepts only secure EsyGlob VPS storage URLs for the vision runtime', () => {
+  const result = storageVisionUrl('https://api.esyglob.in/storage/products/catalog-product.webp');
+  assert.equal(result, 'https://api.esyglob.in/storage/products/catalog-product.webp');
   assert.throws(
-    () => cloudinaryVisionUrl('https://example.com/product.webp'),
+    () => storageVisionUrl('https://example.com/product.webp'),
     /uploaded through EsyGlob/
   );
 });

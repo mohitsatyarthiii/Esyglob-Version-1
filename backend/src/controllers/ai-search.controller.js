@@ -1,5 +1,6 @@
 import AISearchService from '../services/ai-search.service.js';
 import UploadService from '../services/upload.service.js';
+import StorageService from '../services/storage.service.js';
 import { imageSourceMetadata, logImageSearch } from '../lib/image-search-logger.js';
 import { refundUsage } from '../lib/subscription-access.js';
 
@@ -15,6 +16,7 @@ class AISearchController {
    */
   static async search(req, res) {
     const startedAt = Date.now();
+    let temporaryStorageKey = null;
     try {
       const { query, imageUrl, role, includeAI, forceAI } = req.body;
       logImageSearch('info', 'request_received', {
@@ -37,6 +39,10 @@ class AISearchController {
 
       const searchQuery = query?.trim() || '';
       let resolvedImageUrl = imageUrl?.trim() || null;
+      if (!req.file && resolvedImageUrl) {
+        const submittedStorageKey = StorageService.storageKeyFromUrl(resolvedImageUrl);
+        if (submittedStorageKey.startsWith('temp/')) temporaryStorageKey = submittedStorageKey;
+      }
       if (req.file) {
         logImageSearch('info', 'file_received', {
           requestId: req.id,
@@ -48,6 +54,7 @@ class AISearchController {
         const uploadStartedAt = Date.now();
         const uploaded = await UploadService.uploadFiles(req.user._id, [req.file], 'image-search');
         resolvedImageUrl = uploaded.uploads?.[0]?.url || null;
+        temporaryStorageKey = uploaded.uploads?.[0]?.storageKey || null;
         if (!resolvedImageUrl) {
           throw Object.assign(new Error('Image storage did not return a usable URL'), {
             statusCode: 503,
@@ -70,6 +77,8 @@ class AISearchController {
         forceAI: booleanValue(forceAI, false),
         userId: req.user?._id || null,
         requestId: req.id,
+        imageBuffer: req.file?.buffer || null,
+        imageMimeType: req.file?.mimetype || null,
       });
 
       logImageSearch('info', 'response_sent', {
@@ -117,6 +126,16 @@ class AISearchController {
         retryable: error.retryable ?? statusCode >= 500,
         requestId: req.id,
       });
+    } finally {
+      if (temporaryStorageKey) {
+        await UploadService.deleteImage(temporaryStorageKey).catch(error => {
+          logImageSearch('warn', 'temporary_image_cleanup_failed', {
+            requestId: req.id,
+            storageKey: temporaryStorageKey,
+            error,
+          });
+        });
+      }
     }
   }
 }

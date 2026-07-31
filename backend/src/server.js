@@ -5,11 +5,15 @@ import { closeAIKnowledgeDatabase, connectToAIKnowledgeDatabase } from './config
 import { createServer } from 'node:http';
 import { initializeSocket } from './lib/socket-server.js';
 import AIChatService from './services/ai-chat.service.js';
+import StorageService from './services/storage.service.js';
 
 let server;
 
 async function startServer() {
   try {
+    await StorageService.initialize().catch(error => {
+      console.error('[Storage] VPS storage is unavailable; upload endpoints will return an error:', error.message);
+    });
     await connectToDatabase();
     console.log('Marketplace database connected successfully');
     await connectToAIKnowledgeDatabase()

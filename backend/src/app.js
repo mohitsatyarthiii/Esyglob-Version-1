@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { config, isCorsOriginAllowed } from './config/env.js';
 import { getAIKnowledgeDatabaseState } from './config/knowledge-database.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
+import StorageService from './services/storage.service.js';
 
 // Routes
 import authRoutes from './routes/auth.routes.js';
@@ -93,6 +94,24 @@ app.use(cors({
 app.use(express.json({ limit: config.jsonLimit, verify: (req, _res, buffer) => { req.rawBody = buffer; } }));
 app.use(express.urlencoded({ extended: true, limit: config.formLimit }));
 app.use(cookieParser());
+
+// Public VPS media only. Private verification and temporary assets are never
+// reachable through static file serving.
+app.use('/storage', (req, res, next) => {
+  const rootFolder = String(req.path || '').split('/').filter(Boolean)[0]?.toLowerCase();
+  if (!rootFolder || !StorageService.publicFolders().has(rootFolder)) return res.status(404).end();
+  return next();
+}, express.static(StorageService.rootDirectory(), {
+  dotfiles: 'deny',
+  index: false,
+  fallthrough: false,
+  maxAge: '1y',
+  immutable: true,
+  setHeaders(res) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+}));
 
 // ✅ FIX: Lightweight auth — sets req.user ONLY if token exists, NO DB query
 // authenticate should ONLY decode JWT, NOT query DB

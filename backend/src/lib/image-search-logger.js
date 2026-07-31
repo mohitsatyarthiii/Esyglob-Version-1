@@ -25,7 +25,7 @@ export function logImageSearch(level, event, details = {}) {
 export function imageSourceMetadata(imageUrl) {
   try {
     const url = new URL(imageUrl);
-    return { imageHost: url.hostname, imagePathType: url.pathname.includes('/image/upload/') ? 'cloudinary-image' : 'other' };
+    return { imageHost: url.hostname, imagePathType: url.pathname.startsWith('/storage/') ? 'vps-storage' : 'other' };
   } catch {
     return { imageHost: 'invalid', imagePathType: 'invalid' };
   }

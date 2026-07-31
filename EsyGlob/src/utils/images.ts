@@ -6,7 +6,7 @@ type ImageOptions = {
   fit?: 'cover' | 'contain';
 };
 
-export function normalizeImageUrl(value?: unknown, options: ImageOptions = {}) {
+export function normalizeImageUrl(value?: unknown, _options: ImageOptions = {}) {
   const candidate = typeof value === 'object' && value
     ? (value as Record<string, unknown>).url ?? (value as Record<string, unknown>).secure_url ??
       (value as Record<string, unknown>).location ?? (value as Record<string, unknown>).src
@@ -25,14 +25,6 @@ export function normalizeImageUrl(value?: unknown, options: ImageOptions = {}) {
 
   if (!absolute.startsWith('http://') && !absolute.startsWith('https://')) {
     return null;
-  }
-
-  if (absolute.includes('res.cloudinary.com') && absolute.includes('/image/upload/') && !absolute.includes('/q_auto')) {
-    const width = options.width ?? 500;
-    const height = options.height;
-    const crop = options.fit === 'contain' ? 'c_fit' : 'c_fill';
-    const transform = `q_auto:eco,w_${width}${height ? `,h_${height}` : ''},${crop}`;
-    return absolute.replace('/image/upload/', `/image/upload/${transform}/`);
   }
 
   return absolute;

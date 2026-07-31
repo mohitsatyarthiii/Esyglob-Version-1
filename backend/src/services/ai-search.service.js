@@ -37,6 +37,8 @@ class AISearchService {
     forceAI = false,
     userId = null,
     requestId = '',
+    imageBuffer = null,
+    imageMimeType = null,
   }) {
     if (!query && !imageUrl) {
       throw Object.assign(new Error('Query is required'), { statusCode: 400 });
@@ -49,7 +51,11 @@ class AISearchService {
         requestId,
         ...imageSourceMetadata(imageUrl),
       });
-      visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl, { requestId });
+      visualAnalysis = await AIService.analyzeMarketplaceImage(imageUrl, {
+        requestId,
+        imageBuffer,
+        imageMimeType,
+      });
       logImageSearch(visualAnalysis.success ? 'info' : 'error', 'ai_analysis_completed', {
         requestId,
         success: visualAnalysis.success,

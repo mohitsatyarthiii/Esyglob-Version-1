@@ -14,7 +14,13 @@
     "status": "pm2 status",
     "knowledge:migrate": "node scripts/migrate-knowledge-database.js",
     "knowledge:seed-market-insights": "node scripts/seed-market-insights-knowledge.js",
-    "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js"
+    "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js",
+    "storage:cleanup:dry-run": "node scripts/migrate-vps-storage-and-cleanup.js",
+    "storage:backup": "node scripts/migrate-vps-storage-and-cleanup.js --backup-only",
+    "storage:cleanup:images": "node scripts/migrate-vps-storage-and-cleanup.js --execute --images-only --confirm=DELETE_MARKETPLACE_CONTENT",
+    "storage:cleanup": "node scripts/migrate-vps-storage-and-cleanup.js --execute --confirm=DELETE_MARKETPLACE_CONTENT",
+    "storage:validate": "node scripts/validate-vps-storage-migration.js",
+    "storage:validate:http": "node scripts/validate-storage-http.js"
   },
   "keywords": [],
   "author": "",
@@ -39,6 +45,7 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.19.1",
     "razorpay": "^2.9.6",
+    "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"

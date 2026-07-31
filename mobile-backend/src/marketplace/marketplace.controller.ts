@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { success } from '../common/api-response';
 import { AuthGuard } from '../auth/auth.guard';
@@ -106,7 +106,7 @@ export class MarketplaceController {
   @Post('seller/verification/documents')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('seller')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   async uploadSellerDocument(
     @Req() request: AuthenticatedRequest,
     @Body('documentType') documentType: string,
@@ -118,8 +118,12 @@ export class MarketplaceController {
   @Get('seller/verification/documents/:documentId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('seller', 'admin')
-  async sellerDocument(@Req() request: AuthenticatedRequest, @Param('documentId') documentId: string) {
-    return success(await this.marketplace.sellerDocument(request.user.sub, documentId));
+  async sellerDocument(@Req() request: AuthenticatedRequest, @Param('documentId') documentId: string, @Res() response: any) {
+    const document = await this.marketplace.sellerDocument(request.user.sub, documentId);
+    response.setHeader('Content-Type', document.mimeType);
+    response.setHeader('Content-Disposition', `inline; filename="${document.name}"`);
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.send(document.file);
   }
 
   @Get('seller/factory')
@@ -357,7 +361,7 @@ export class MarketplaceController {
   @Post('uploads/chat')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('buyer', 'seller')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   async uploadChatFile(@Req() request: AuthenticatedRequest, @UploadedFile() file: any) {
     return success(await this.marketplace.saveChatUpload(request.user.sub, file));
   }
@@ -365,23 +369,9 @@ export class MarketplaceController {
   @Post('uploads')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('buyer', 'seller')
-  @UseInterceptors(AnyFilesInterceptor())
+  @UseInterceptors(AnyFilesInterceptor({ limits: { fileSize: 5 * 1024 * 1024, files: 10 } }))
   async uploadFiles(@Req() request: AuthenticatedRequest, @Body('folder') folder: string, @UploadedFiles() files: any[]) {
     return success(await this.marketplace.uploadFiles(request.user.sub, folder, files));
-  }
-
-  @Get('uploads/chat/:filename')
-  @Header('Cache-Control', 'public, max-age=31536000, immutable')
-  async getChatFile(@Param('filename') filename: string, @Res() response: any) {
-    const file = await this.marketplace.readChatUpload(filename);
-    response.send(file);
-  }
-
-  @Get('uploads/:folder/:filename')
-  @Header('Cache-Control', 'public, max-age=31536000, immutable')
-  async getUploadedFile(@Param('folder') folder: string, @Param('filename') filename: string, @Res() response: any) {
-    const file = await this.marketplace.readUpload(folder, filename);
-    response.send(file);
   }
 
   @Patch('chats/:chatId')

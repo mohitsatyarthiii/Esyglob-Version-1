@@ -1,4 +1,5 @@
 import axios from 'axios';
+import path from 'node:path';
 import {
   imageSourceMetadata,
   logImageSearch,
@@ -8,6 +9,7 @@ import {
   VISION_ANALYSIS_JSON_SCHEMA,
 } from './image-search.js';
 import { getVisionProvider, isVisionProviderAvailable } from '../providers/vision.provider.js';
+import StorageService from '../services/storage.service.js';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'ollama';
 const OLLAMA_FALLBACK_ENABLED = process.env.OLLAMA_FALLBACK_ENABLED === 'true';
 const AI_CHAT_FAST_MODE = process.env.AI_CHAT_FAST_MODE !== 'false';
@@ -98,30 +100,26 @@ async function unloadOllamaModel(model, requestId = '') {
   }
 }
 
-export function cloudinaryVisionUrl(imageUrl) {
+export function storageVisionUrl(imageUrl) {
   const parsedUrl = new URL(imageUrl);
-  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') {
+  const secureProtocol = parsedUrl.protocol === 'https:' || (parsedUrl.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsedUrl.hostname));
+  if (!secureProtocol) {
     throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), {
       statusCode: 400,
       code: 'INVALID_IMAGE_SOURCE',
       stage: 'image_validation',
     });
   }
-  if (!parsedUrl.pathname.includes('/image/upload/')) {
-    throw Object.assign(new Error('The uploaded asset is not a supported Cloudinary image'), {
+  try {
+    StorageService.storageKeyFromUrl(parsedUrl);
+  } catch (error) {
+    throw Object.assign(new Error('Visual analysis requires an image uploaded through EsyGlob'), {
       statusCode: 400,
-      code: 'INVALID_IMAGE_ASSET',
+      code: 'INVALID_IMAGE_SOURCE',
       stage: 'image_validation',
+      cause: error,
     });
   }
-
-  // The deployed Qwen/Ollama vision runner rejects some WebP payloads. Asking
-  // Cloudinary for a bounded JPEG keeps transport deterministic without changing
-  // the stored original.
-  parsedUrl.pathname = parsedUrl.pathname.replace(
-    '/image/upload/',
-    '/image/upload/f_jpg,q_auto:good,w_1024,h_1024,c_limit/'
-  );
   return parsedUrl.toString();
 }
 
@@ -315,30 +313,24 @@ class AIService {
     if (!isVisionProviderAvailable()) {
       return provider.analyze({ requestId, signal: options.signal });
     }
-    const visionUrl = cloudinaryVisionUrl(imageUrl);
+    const providedBuffer = Buffer.isBuffer(options.imageBuffer) ? options.imageBuffer : null;
+    const visionUrl = providedBuffer ? null : storageVisionUrl(imageUrl);
     try {
       const downloadStartedAt = Date.now();
-      const imageResponse = await fetch(visionUrl, {
-        redirect: 'error',
-        signal: withTimeoutSignal(options.downloadTimeout || IMAGE_DOWNLOAD_TIMEOUT_MS, options.signal),
-      });
-      const contentType = imageResponse.headers.get('content-type') || '';
-      const contentLength = Number(imageResponse.headers.get('content-length') || 0);
-      if (!imageResponse.ok || !contentType.startsWith('image/')) {
-        throw Object.assign(new Error(`Uploaded image is unavailable (HTTP ${imageResponse.status})`), {
-          statusCode: 422,
-          code: 'IMAGE_DOWNLOAD_FAILED',
-          stage: 'image_download',
+      let imageBuffer = providedBuffer;
+      let mimeType = String(options.imageMimeType || '').split(';')[0].toLowerCase();
+      if (!imageBuffer) {
+        const storageKey = StorageService.storageKeyFromUrl(visionUrl);
+        imageBuffer = await StorageService.readFile(storageKey).catch(error => {
+          if (error.code === 'ENOENT') throw Object.assign(new Error('Uploaded image is unavailable'), {
+            statusCode: 422,
+            code: 'IMAGE_DOWNLOAD_FAILED',
+            stage: 'image_download',
+          });
+          throw error;
         });
+        mimeType = path.extname(storageKey).toLowerCase() === '.webp' ? 'image/webp' : '';
       }
-      if (contentLength > 5 * 1024 * 1024) {
-        throw Object.assign(new Error('Image exceeds the 5MB visual-search limit'), {
-          statusCode: 413,
-          code: 'IMAGE_TOO_LARGE',
-          stage: 'image_validation',
-        });
-      }
-      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
       if (!imageBuffer.length) {
         throw Object.assign(new Error('The uploaded image is empty'), {
           statusCode: 422,
@@ -353,7 +345,6 @@ class AIService {
           stage: 'image_validation',
         });
       }
-      const mimeType = contentType.split(';')[0];
       logImageSearch('info', 'image_downloaded_for_ai', {
         requestId,
         ...imageSourceMetadata(imageUrl),

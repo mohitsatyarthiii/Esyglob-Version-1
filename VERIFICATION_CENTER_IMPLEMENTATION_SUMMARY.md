@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document is the source of truth for reproducing the React Native Verification Center in the future EsyGlob web application. The implementation extends the existing seller onboarding, SellerVerification, Cloudinary, notification, and audit architecture. It does not introduce a second verification collection or replace authentication.
+This document is the source of truth for reproducing the React Native Verification Center in the future EsyGlob web application. The implementation extends the existing seller onboarding, SellerVerification, secure VPS storage, notification, and audit architecture. It does not introduce a second verification collection or replace authentication.
 
 ## Complete UI Flow
 
@@ -147,7 +147,7 @@ Authentication: seller role required. Multipart fields:
 - `file`
 - `documentType`
 
-Response returns a protected application URL rather than exposing the stored Cloudinary URL:
+Response returns a protected application URL rather than exposing the stored VPS object URL:
 
 ```json
 {
@@ -170,7 +170,7 @@ Response returns a protected application URL rather than exposing the stored Clo
 
 #### `GET /api/suppliers/verification/documents/:documentId`
 
-Authentication: document owner or admin. Resolves the stored Cloudinary object only after authorization.
+Authentication: document owner or admin. Resolves the stored VPS object only after authorization.
 
 ### New lifecycle/admin operations
 
@@ -256,17 +256,17 @@ No duplicate collection was created.
 - verification level maximum increased from 4 to 6
 - existing `trustScore` and `verificationLevel` are synchronized after saves and reviews
 
-## Cloudinary Integration Flow
+## Secure VPS Storage Flow
 
 The existing `storeUpload` pipeline is retained:
 
 1. Multer stores the incoming multipart file in memory.
 2. Controller validates declared verification type, MIME type, and 5 MB maximum.
 3. SHA-256 checksum is calculated.
-4. `storeUpload` writes into `verification/{sellerId}` in Cloudinary.
-5. Only the Cloudinary URL/storage key and metadata are stored in MongoDB.
+4. `storeUpload` writes into the protected `verification/{sellerId}` VPS directory.
+5. Only the VPS URL/storage key and metadata are stored in MongoDB.
 6. API responses replace the storage URL with the authenticated application download route.
-7. Owner/admin authorization is checked before redirecting to the stored object.
+7. Owner/admin authorization is checked before the private file is streamed by the API.
 
 ## Upload and Re-upload Flow
 
@@ -415,14 +415,13 @@ Upload, submission, score increase, level increase, and admin review create in-a
 
 ## Required Live Verification
 
-The following must be executed against a deployed environment with Cloudinary credentials, MongoDB, a seller account, and an admin account:
+The following must be executed against a deployed environment with writable VPS storage, MongoDB, a seller account, and an admin account:
 
 - upload every supported MIME/type combination
-- confirm Cloudinary delivery and authorized preview/download
+- confirm VPS storage delivery and authorized preview/download
 - confirm duplicate checksum rejection
 - submit, review, reject, re-upload, approve, archive, and inspect version history
 - confirm score/level synchronization and public badges
 - confirm Account notifications
 - background/terminate the app during autosave and verify exact resume
 - verify seller/admin isolation and unauthorized download rejection
-

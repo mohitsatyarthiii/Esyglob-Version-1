@@ -2,7 +2,8 @@ import multer from 'multer';
 import { UPLOAD } from '../lib/constants.js';
 import { logImageSearch } from '../lib/image-search-logger.js';
 
-// Memory storage (files stored in buffer for Cloudinary upload)
+// Memory storage keeps untrusted bytes out of the filesystem until the
+// centralized StorageService validates and transforms them.
 const storage = multer.memoryStorage();
 
 /**

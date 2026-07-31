@@ -20,7 +20,7 @@ React Native app
 Express API (primary deployed API, /api, PM2 cluster)
   | controllers -> services -> repositories/models
   v
-MongoDB Atlas-compatible database + Cloudinary + Razorpay + AI providers
+MongoDB Atlas-compatible database + secure VPS storage + Razorpay + AI providers
 
 Parallel code path: NestJS mobile API (/api, port 3001) -> same MongoDB collections
 ```
@@ -47,7 +47,7 @@ Parallel code path: NestJS mobile API (/api, port 3001) -> same MongoDB collecti
 - Database: MongoDB with references, embedded snapshots/history, text indexes, compound indexes, TTL indexes, and a `2dsphere` location index.
 - Authentication: signed JWT stored as an HTTP-only cookie by Express; the native client extracts/persists the cookie and supplies its token to Socket.IO.
 - Nest authentication independently issues 15-minute bearer JWTs and does not implement refresh tokens.
-- Storage: Cloudinary signed uploads for images/documents; the secondary API also exposes local upload paths.
+- Storage: centralized VPS storage with validated uploads, optimized image variants, and protected verification documents.
 - Payments: Razorpay orders and HMAC signature verification for orders, subscriptions, and service bookings.
 - AI: local Ollama first for chat, with Gemini and DeepSeek paths/fallbacks; Tavily powers optional live research.
 - Caching: process-local Maps/objects and NodeCache, HTTP cache headers, and client memory caching; Redis is not used.
@@ -246,13 +246,13 @@ Socket.IO    -> token in handshake.auth -> verify -> load User -> join user room
 6. Listing cards project only name, first image, price, unit, MOQ, taxonomy, rating, seller; details populate seller and full product data.
 7. Similar products are same-category, verified, public products excluding the current item, limited to six; this is rule-based, not personalized ML.
 8. Home first tries `/home`; Express lacks that route, so the client falls back to parallel categories and product requests and slices latest data into trending/recommended.
-9. Images are Cloudinary URLs stored in arrays; variants may have their own images, and video objects store URL/thumbnail/title.
+9. Images are VPS storage URLs stored in arrays; variants may have their own images, and video objects store URL/thumbnail/title.
 10. Updates/deletes enforce seller ownership and clear repository caches; review writes refresh product and seller rating aggregates.
 
 ## 10. Seller Flow
 
 - Registration creates User -> Seller -> SellerVerification; onboarding drafts save incremental company, business, trade, bank, factory, and document data.
-- Submission computes completion/readiness scores and moves verification toward review; document upload uses Multer then Cloudinary.
+- Submission computes completion/readiness scores and moves verification toward review; document upload uses Multer then protected VPS storage.
 - Admin document review supports under_review, verified, rejected, and needs_update, requires rejection notes, writes VerificationAudit, updates scores, and notifies the seller.
 - Factory information is intended to live in a unique FactoryProfile linked by sellerId; seller public detail also exposes products and trust attributes.
 - Trust score and verification level derive from verification-center completeness/checks; verified/trusted badges and subscription affect visibility and ranking fields.
@@ -372,7 +372,7 @@ Screen/component
   -> optional Socket.IO event -> cache invalidation -> refetch
 ```
 
-- Cloudinary receives binary uploads before URLs/metadata are saved; Razorpay receives payment intents before verified state is committed.
+- The centralized storage service validates binary uploads before URLs/metadata are saved; Razorpay receives payment intents before verified state is committed.
 - Transactions are generally multi-document sequential writes, not MongoDB sessions, so partial failure compensation is limited.
 - Cache layers are client Map, React Query/persistence, repository objects, shared memory-cache helper, NodeCache RAG, and HTTP/CDN semantics.
 
@@ -417,7 +417,7 @@ Screen/component
 5. Introduce queues/workers for notifications, webhooks, invoices, media, imports, AI research, expiry, settlements, and reconciliation.
 6. Use MongoDB transactions for quotation acceptance/order creation/payment finalization and an outbox for reliable events.
 7. Add Razorpay webhook-first reconciliation, signed webhook replay protection, idempotency keys, centralized refunds, and ledger invariants.
-8. Put Cloudinary behind lifecycle/retention policies and a CDN; add private signed downloads, malware scanning, checksums, and media transformations.
+8. Put VPS media behind lifecycle/retention policies and a CDN; retain private downloads, malware scanning, checksums, and optimized media variants.
 9. Move product/supplier discovery to Atlas Search or OpenSearch; add autocomplete, facets, typo tolerance, analytics, embeddings, and real image similarity.
 10. Split only where load/ownership demands it: identity, catalog/search, procurement/orders, payments/ledger, messaging/realtime, services, AI, notifications.
 11. Scale APIs statelessly behind a load balancer; add health/readiness checks, autoscaling, secret manager, backups, staging isolation, and zero-downtime migrations.

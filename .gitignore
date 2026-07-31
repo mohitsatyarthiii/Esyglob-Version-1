@@ -1,0 +1,4 @@
+# Runtime media and sensitive migration exports
+backend/storage/
+mobile-backend/uploads/
+backups/*.json

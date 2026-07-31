@@ -35,7 +35,7 @@ export default function ImageSearchScreen() {
     const uploaded = await uploadFiles('image-search', [file]);
     const cloud = uploaded.uploads?.[0] ?? uploaded.files?.[0];
     const imageUrl = cloud?.secure_url ?? cloud?.url ?? cloud?.location;
-    if (!imageUrl) throw new Error('The image upload did not return a Cloudinary URL.');
+    if (!imageUrl) throw new Error('The image upload did not return a storage URL.');
     setLabel('Finding similar products…');
     const result = await searchMarketplaceByImage(imageUrl, activeRole);
     queryClient.setQueryData(['image-search-result', imageUrl, activeRole], result);

@@ -42,3 +42,27 @@ test('image analysis fails clearly before downloading an image when vision is di
       && error.message === 'Vision provider is currently unavailable',
   );
 });
+
+test('uploaded image buffers reach the provider without exposing temporary storage', async () => {
+  const imageBuffer = Buffer.from('validated-image-bytes');
+  let received;
+  setVisionProviderForTests({
+    configured: true,
+    async analyze(input) {
+      received = input;
+      return { success: true, provider: 'test' };
+    },
+  });
+
+  const result = await AIService.analyzeMarketplaceImage('https://api.esyglob.in/storage/temp/private.webp', {
+    imageBuffer,
+    imageMimeType: 'image/webp',
+    requestId: 'buffer-test',
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(received.imageBuffer, imageBuffer);
+  assert.equal(received.mimeType, 'image/webp');
+  assert.equal(received.requestId, 'buffer-test');
+  resetVisionProviderForTests();
+});

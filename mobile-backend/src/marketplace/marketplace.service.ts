@@ -1,21 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { InjectModel } from '@nestjs/mongoose';
-import { randomUUID } from 'crypto';
-import { mkdir, readFile, writeFile } from 'fs/promises';
 import { Connection, Model, SortOrder, Types } from 'mongoose';
-import { extname, join } from 'path';
 import { Seller } from '../sellers/seller.schema';
 import { SellerVerification } from '../sellers/seller-verification.schema';
 import { User } from '../users/user.schema';
 import { AuthService } from '../auth/auth.service';
 import { PasswordService } from '../auth/password.service';
 import { Category, Chat, Message, Notification, Order, Payment, Product, Quotation, Rfq, SavedItem, Subcategory } from './catalog.schemas';
+import { StorageService } from '../storage/storage.service';
 
 const PRODUCT_VISIBLE_STATUSES = ['published', 'active'];
 const RFQ_VISIBLE_STATUSES = ['active', 'pending', 'viewed', 'replied', 'quoted', 'negotiating'];
-const UPLOAD_ROOT = join(process.cwd(), 'uploads');
-const UPLOAD_DIR = join(UPLOAD_ROOT, 'chat');
 
 type QueryValue = string | number | boolean | undefined;
 
@@ -38,6 +34,7 @@ export class MarketplaceService {
     @InjectModel(User.name) private readonly users: Model<User>,
     private readonly auth: AuthService,
     private readonly passwords: PasswordService,
+    private readonly storage: StorageService,
     @InjectConnection() private readonly connection: Connection,
   ) {}
 
@@ -357,7 +354,7 @@ export class MarketplaceService {
 
     const seller = await this.ensureSellerProfile(userId);
     const verification = await this.ensureSellerVerification(seller);
-    const saved = await this.saveUploadFile(file, 'verification');
+    const saved = await this.saveUploadFile(file, `verification/${seller._id}`);
     const document = {
       _id: new Types.ObjectId(),
       ...saved,
@@ -376,7 +373,14 @@ export class MarketplaceService {
     );
     await this.sellers.updateOne({ _id: seller._id }, { $set: { verificationStatus: 'document_submitted' } });
 
-    return { success: true, document };
+    return {
+      success: true,
+      document: {
+        ...document,
+        url: `/api/seller/verification/documents/${document._id}`,
+        secure_url: undefined,
+      },
+    };
   }
 
   async sellerDocument(userId: string, documentId: string) {
@@ -393,13 +397,21 @@ export class MarketplaceService {
     }
 
     const verification = await this.sellerVerifications.findOne(filter).lean();
-    const document = (verification?.documents ?? []).find((item: any) => item._id?.toString() === documentObjectId.toString());
+    const document: any = (verification?.documents ?? []).find((item: any) => item._id?.toString() === documentObjectId.toString());
 
     if (!document) {
       throw new NotFoundException('Verification document not found.');
     }
-
-    return { document };
+    if (document.storageProvider !== 'vps' || !document.storageKey) {
+      throw new NotFoundException('Verification document file is unavailable.');
+    }
+    const file = await this.storage.read(String(document.storageKey)).catch(() => null);
+    if (!file) throw new NotFoundException('Verification document file is unavailable.');
+    return {
+      file,
+      mimeType: String(document.mimeType || 'application/octet-stream'),
+      name: String(document.name || 'document').replace(/["\\\r\n]/g, '_'),
+    };
   }
 
   async factoryProfile(userId: string) {
@@ -440,12 +452,11 @@ export class MarketplaceService {
   }
 
   async uploadFiles(userId: string, folder: string, files: any[]) {
-    void userId;
     const safeFolder = ['products', 'verification', 'factory', 'profile-photos', 'factory-profiles', 'chat'].includes(folder) ? folder : 'general';
     if (!files?.length) {
       throw new BadRequestException('At least one file is required.');
     }
-    const uploads = await Promise.all((files ?? []).map(file => this.saveUploadFile(file, safeFolder)));
+    const uploads = await Promise.all((files ?? []).map(file => this.saveUploadFile(file, `${safeFolder}/${userId}`)));
 
     return { uploads };
   }
@@ -957,36 +968,13 @@ export class MarketplaceService {
       throw new BadRequestException('Upload file is required.');
     }
 
-    await mkdir(UPLOAD_DIR, { recursive: true });
-    const extension = extname(String(file.originalname ?? '')).toLowerCase() || this.extensionForMime(String(file.mimetype ?? ''));
-    const filename = `${new Types.ObjectId(userId).toString()}-${Date.now()}-${randomUUID()}${extension}`;
-    await writeFile(join(UPLOAD_DIR, filename), file.buffer);
+    const stored = await this.storage.upload(file, `chat/${new Types.ObjectId(userId).toString()}`);
 
     return {
       attachment: {
-        id: filename,
-        url: `/api/uploads/chat/${filename}`,
-        name: file.originalname ?? filename,
-        mimeType: file.mimetype ?? 'application/octet-stream',
-        size: file.size ?? file.buffer.length,
+        ...stored,
       },
     };
-  }
-
-  async readChatUpload(filename: string) {
-    if (!/^[a-f0-9]{24}-\d+-[a-f0-9-]+\.[a-z0-9]+$/i.test(filename)) {
-      throw new BadRequestException('Invalid upload filename.');
-    }
-
-    return readFile(join(UPLOAD_DIR, filename));
-  }
-
-  async readUpload(folder: string, filename: string) {
-    if (!['products', 'verification', 'factory', 'general'].includes(folder) || !/^\d+-[a-f0-9-]+\.[a-z0-9]+$/i.test(filename)) {
-      throw new BadRequestException('Invalid upload path.');
-    }
-
-    return readFile(join(UPLOAD_ROOT, folder, filename));
   }
 
   async createChat(userId: string, body: Record<string, unknown>) {
@@ -2886,26 +2874,7 @@ export class MarketplaceService {
   }
 
   private async saveUploadFile(file: any, folder: string) {
-    if (!file?.buffer?.length) {
-      throw new BadRequestException('Upload file is required.');
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      throw new BadRequestException('Upload file must be 5MB or smaller.');
-    }
-
-    const targetDir = join(UPLOAD_ROOT, folder);
-    await mkdir(targetDir, { recursive: true });
-    const extension = extname(String(file.originalname ?? '')).toLowerCase() || this.extensionForMime(String(file.mimetype ?? ''));
-    const filename = `${Date.now()}-${randomUUID()}${extension}`;
-    await writeFile(join(targetDir, filename), file.buffer);
-
-    return {
-      id: filename,
-      url: `/api/uploads/${folder}/${filename}`,
-      name: file.originalname ?? filename,
-      mimeType: file.mimetype ?? 'application/octet-stream',
-      size: file.size ?? file.buffer.length,
-    };
+    return this.storage.upload(file, folder);
   }
 
   private async productPayload(body: Record<string, unknown>, seller: Record<string, any>, userId: string) {
@@ -3239,18 +3208,6 @@ export class MarketplaceService {
       updatedAt: new Date(),
       ...(requireCore ? { createdAt: new Date() } : {}),
     };
-  }
-
-  private extensionForMime(mimeType: string) {
-    if (mimeType.includes('png')) return '.png';
-    if (mimeType.includes('webp')) return '.webp';
-    if (mimeType.includes('pdf')) return '.pdf';
-    if (mimeType.includes('word')) return '.docx';
-    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '.xlsx';
-    if (mimeType.includes('zip')) return '.zip';
-    if (mimeType.includes('text')) return '.txt';
-    if (mimeType.includes('audio')) return '.m4a';
-    return '.bin';
   }
 
   private isDirectOrderEnabled(product: Record<string, any>, seller: Record<string, any>) {
