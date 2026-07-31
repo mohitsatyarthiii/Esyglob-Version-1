@@ -7,11 +7,17 @@ import SavedResearchReport from '../models/SavedResearchReport.js';
 import { getAISearchResults } from '../lib/ai-marketplace-context.js';
 import { analyzeRequest, rewriteSearchQuery } from '../lib/ai-intelligence-pipeline.js';
 import { buildMarketInsightPdf } from '../lib/market-insight-pdf.js';
+import { buildMarketInsightHtml } from '../lib/market-insight-html.js';
+import TradeIntentService from './trade-intent.service.js';
+import TradeKnowledgeService from './trade-knowledge.service.js';
 
 const cache = new Map();
-const CACHE_TTL = 15 * 60 * 1000;
-const REPORT_REUSE_TTL = 24 * 60 * 60 * 1000;
-const REPORT_VERSION = '4.0';
+const inFlight = new Map();
+const CACHE_TTL = Math.max(60_000, Number(process.env.MARKET_INSIGHT_MEMORY_TTL_MS || 15 * 60 * 1000));
+const REPORT_REUSE_TTL = Math.max(60 * 60 * 1000, Number(process.env.MARKET_INSIGHT_REPORT_REUSE_TTL_MS || 8 * 24 * 60 * 60 * 1000));
+const CACHE_MAX_ENTRIES = Math.max(25, Number(process.env.MARKET_INSIGHT_MEMORY_CACHE_MAX || 250));
+const AI_SYNTHESIS_TIMEOUT_MS = Math.max(10_000, Number(process.env.MARKET_RESEARCH_AI_TIMEOUT_MS || 45_000));
+const REPORT_VERSION = '5.0';
 
 const asArray = value => Array.isArray(value) ? value : [];
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -49,6 +55,7 @@ function reportMetadata(report, id, persisted = {}) {
     productName: report.productName || '',
     country: report.country || '',
     reportVersion: REPORT_VERSION,
+    dataVersion: persisted.dataVersion || report.dataVersion || '',
     status: persisted.pdfStatus || 'ready',
     pdfStatus: persisted.pdfStatus || 'ready',
     previewUrl: persisted.previewUrl || `/api/market-insights/reports/${savedReportId}/pdf`,
@@ -75,6 +82,30 @@ function knowledgeContext(documents) {
   }).join('\n\n').slice(0, Number(process.env.MARKET_RESEARCH_KNOWLEDGE_CONTEXT_LIMIT || 48_000));
 }
 
+function relevanceToken(value) {
+  const token = clean(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (token.length > 5 && token.endsWith('ies')) return `${token.slice(0, -3)}y`;
+  if (token.length > 4 && token.endsWith('es')) return token.slice(0, -2);
+  if (token.length > 3 && token.endsWith('s')) return token.slice(0, -1);
+  return token;
+}
+
+function filterKnowledgeDocuments(documents, productName) {
+  const ignored = new Set(['from', 'into', 'market', 'product', 'trade', 'industry', 'analysis', 'global']);
+  const productTokens = clean(productName).split(/\s+/).map(relevanceToken).filter(token => token.length >= 3 && !ignored.has(token));
+  if (!productTokens.length) return documents;
+  return documents.map(document => {
+    const titleTokens = new Set(clean(document.title).split(/\s+/).map(relevanceToken));
+    const keywordText = [document.category, ...(asArray(document.keywords)), document.metadata?.productName, document.metadata?.hsCode].filter(Boolean).join(' ');
+    const bodyText = clean(document.content || document.retrievedChunks?.map(chunk => chunk.content).join(' ') || document.summary || document.overview).toLowerCase();
+    const score = productTokens.reduce((total, token) => total
+      + (titleTokens.has(token) ? 6 : 0)
+      + (new RegExp(`\\b${token}(?:s|es|ies)?\\b`, 'i').test(keywordText) ? 3 : 0)
+      + (new RegExp(`\\b${token}(?:s|es|ies)?\\b`, 'i').test(bodyText) ? 1 : 0), 0);
+    return { document, score };
+  }).filter(item => item.score > 0).sort((a, b) => b.score - a.score).map(item => item.document);
+}
+
 function marketplaceSummary(results = {}) {
   return {
     products: asArray(results.products).length,
@@ -82,6 +113,12 @@ function marketplaceSummary(results = {}) {
     categories: asArray(results.categories).length,
     services: asArray(results.services).length,
   };
+}
+
+function reportForStorage(report) {
+  const stored = { ...report };
+  delete stored.html;
+  return stored;
 }
 
 function parseNumeric(value) {
@@ -154,8 +191,8 @@ function actualTradeTables(global = {}, query = '') {
   });
   if (product.length) tables.push({
     title: 'Product-level trade observations',
-    columns: ['Flow', 'Reporter', 'Partner', 'HS code', 'Period', 'Value'],
-    rows: product.map(row => [row.flow, row.reporter, row.partner, row.hsCode, row.period, fmtUsd(row.valueUsd)]),
+    columns: ['Flow', 'Reporter', 'Partner', 'HS code', 'Period', 'Value', 'Net weight'],
+    rows: product.map(row => [row.flow, row.reporter, row.partner, row.hsCode, row.period, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported']),
     source: 'UN Comtrade',
   });
   return tables;
@@ -188,6 +225,145 @@ function actualCharts(global = {}, marketplace = {}, query = '') {
     source: 'EsyGlob marketplace search snapshot',
   });
   return charts;
+}
+
+function evidenceSections(global = {}, productName = '', country = '') {
+  const sections = [];
+  const hsRows = asArray(global.relatedHsCodes).filter(row => row.code);
+  if (global.hsCode || hsRows.length) {
+    sections.push({
+      key: 'verified-product-classification',
+      title: 'Product Classification & HS Code Analysis',
+      evidenceNote: 'Classification candidates come from attributed HS classification references and require specification-level confirmation.',
+      paragraphs: [
+        global.hsCode
+          ? `The working product classification for ${productName} is HS ${global.hsCode}. Customs treatment depends on the final code depth, product composition, processing and intended use.`
+          : `No verified HS classification was available for ${productName}. Product-level customs conclusions are therefore withheld until classification is confirmed.`,
+      ],
+      insights: ['Confirm classification with the destination customs authority or a qualified customs broker before shipment.'],
+      tables: hsRows.length ? [{
+        title: 'HS classification candidates',
+        columns: ['HS code', 'Description', 'Level', 'Source'],
+        rows: hsRows.map(row => [row.code, row.description || 'Description unavailable', row.level || 'Not specified', row.source]),
+        source: [...new Set(hsRows.map(row => row.source).filter(Boolean))].join('; '),
+      }] : [],
+    });
+  }
+
+  const profile = global.countryProfile;
+  if (profile?.series) {
+    const indicatorRows = Object.values(profile.series).filter(series => series.latest).map(series => [
+      series.label,
+      Number(series.latest.value).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      series.latest.year,
+      series.latest.status || 'Published observation',
+    ]);
+    sections.push({
+      key: 'official-country-context',
+      title: `${profile.name} — Country & Trade Context`,
+      evidenceNote: 'Country indicators are official World Development Indicators and are not product-specific unless stated.',
+      paragraphs: [`${profile.name} is assessed using current official macroeconomic and trade indicators. These indicators provide operating context for ${productName}, while product-level conclusions remain grounded in HS-specific observations.`],
+      insights: [profile.region ? `Region: ${profile.region}.` : '', profile.currency ? `Local currency: ${profile.currency}.` : '', profile.ports?.length ? `Major logistics gateways include ${profile.ports.join(', ')}.` : ''].filter(Boolean),
+      tables: indicatorRows.length ? [{ title: 'Latest official country indicators', columns: ['Indicator', 'Value', 'Year', 'Observation status'], rows: indicatorRows, source: profile.source }] : [],
+    });
+  }
+
+  const historical = asArray(global.historicalTrade);
+  if (historical.length) {
+    const importSeries = historical.filter(row => row.flow === 'Import');
+    const exportSeries = historical.filter(row => row.flow === 'Export');
+    sections.push({
+      key: 'verified-historical-trade',
+      title: 'Historical Import & Export Performance',
+      evidenceNote: `Product observations cover requested periods ${asArray(global.requestedPeriods).join('–')} where available. Missing years are not interpolated.`,
+      paragraphs: [`The historical series contains ${historical.length} verified flow-period observations for ${productName}${country ? ` in ${country}` : ''}. Growth rates are calculated only when consecutive published observations are available.`],
+      tables: [{
+        title: 'Historical product trade',
+        columns: ['Flow', 'Year', 'Trade value', 'Net weight', 'YoY growth', 'Observations'],
+        rows: historical.map(row => [row.flow, row.period, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported', row.growthPercent === null ? 'Not available' : `${row.growthPercent}%`, row.observations]),
+        source: 'UN Comtrade',
+      }],
+      charts: [
+        importSeries.length > 1 ? { type: 'line', title: 'Product import value trend', data: importSeries.map(row => ({ label: row.period, value: row.valueUsd })), source: 'UN Comtrade' } : null,
+        exportSeries.length > 1 ? { type: 'line', title: 'Product export value trend', data: exportSeries.map(row => ({ label: row.period, value: row.valueUsd })), source: 'UN Comtrade' } : null,
+      ].filter(Boolean),
+    });
+  }
+
+  const topImporters = asArray(global.topImporters);
+  const topExporters = asArray(global.topExporters);
+  if (topImporters.length || topExporters.length) {
+    sections.push({
+      key: 'observed-global-product-markets',
+      title: 'Leading Product Importers & Exporters',
+      evidenceNote: 'Rankings cover the explicitly labelled monitored set of major reporting economies, not every global reporter.',
+      paragraphs: [`The connected UN Comtrade sample returned ${topImporters.length} importer observations and ${topExporters.length} exporter observations for the latest requested period. Observed shares describe only the represented dataset.`],
+      tables: [
+        topImporters.length ? { title: 'Leading import markets in monitored set', columns: ['Rank', 'Country', 'Value', 'Net weight', 'Observed share', 'Year'], rows: topImporters.map(row => [row.rank, row.country, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported', row.observedSharePercent === null ? 'Not available' : `${row.observedSharePercent}%`, row.period]), source: 'UN Comtrade' } : null,
+        topExporters.length ? { title: 'Leading export markets in monitored set', columns: ['Rank', 'Country', 'Value', 'Net weight', 'Observed share', 'Year'], rows: topExporters.map(row => [row.rank, row.country, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported', row.observedSharePercent === null ? 'Not available' : `${row.observedSharePercent}%`, row.period]), source: 'UN Comtrade' } : null,
+      ].filter(Boolean),
+      charts: [
+        topImporters.length > 1 ? { type: 'bar', title: 'Observed import market comparison', data: topImporters.slice(0, 10).map(row => ({ label: row.country, value: row.valueUsd })), source: 'UN Comtrade' } : null,
+        topExporters.length > 1 ? { type: 'bar', title: 'Observed export market comparison', data: topExporters.slice(0, 10).map(row => ({ label: row.country, value: row.valueUsd })), source: 'UN Comtrade' } : null,
+        topImporters.length > 2 ? { type: 'pie', title: 'Observed importer share distribution', data: topImporters.slice(0, 8).map(row => ({ label: row.country, value: row.valueUsd })), source: 'UN Comtrade — observed monitored set' } : null,
+      ].filter(Boolean),
+    });
+  }
+
+  const importPartners = asArray(global.importPartners);
+  const exportPartners = asArray(global.exportPartners);
+  if (importPartners.length || exportPartners.length) {
+    const partnerCoverage = importPartners[0]?.coverage || exportPartners[0]?.coverage || 'Selected major trading partners';
+    sections.push({
+      key: 'bilateral-partner-structure',
+      title: 'Trade Partners & Bilateral Flow Structure',
+      evidenceNote: `Partner rankings cover ${partnerCoverage} returned by UN Comtrade.`,
+      paragraphs: [`Partner-level observations identify the trade corridors represented in the connected dataset for ${country || 'the selected reporting scope'}. The requested origin scope is ${global.originScope?.name || 'not constrained'}. They support corridor prioritization but do not replace a complete customs extract.`],
+      tables: [
+        importPartners.length ? { title: 'Observed import-origin partners', columns: ['Rank', 'Partner', 'Value', 'Net weight', 'Observed share', 'Year'], rows: importPartners.map(row => [row.rank, row.country, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported', row.observedSharePercent === null ? 'Not available' : `${row.observedSharePercent}%`, row.period]), source: 'UN Comtrade' } : null,
+        exportPartners.length ? { title: 'Observed export-destination partners', columns: ['Rank', 'Partner', 'Value', 'Net weight', 'Observed share', 'Year'], rows: exportPartners.map(row => [row.rank, row.country, fmtUsd(row.valueUsd), row.netWeightKg ? `${Math.round(row.netWeightKg).toLocaleString('en-US')} kg` : 'Not reported', row.observedSharePercent === null ? 'Not available' : `${row.observedSharePercent}%`, row.period]), source: 'UN Comtrade' } : null,
+      ].filter(Boolean),
+      charts: importPartners.length > 1 ? [{ type: 'bar', title: 'Observed import partner concentration', data: importPartners.slice(0, 10).map(row => ({ label: row.country, value: row.valueUsd })), source: 'UN Comtrade' }] : [],
+    });
+  }
+
+  const articles = asArray(global.publicArticles);
+  if (articles.length) {
+    sections.push({
+      key: 'current-market-signals',
+      title: 'Current Market Signals & Related Intelligence',
+      evidenceNote: 'Public articles are supporting qualitative signals; they are not used as numerical trade evidence.',
+      paragraphs: [`The collection engine identified ${articles.length} recent public market signals related to ${productName}. These sources should be reviewed for developments affecting demand, policy, production, logistics or pricing.`],
+      tables: [{ title: 'Recent supporting market signals', columns: ['Date', 'Title', 'Publisher domain', 'Language'], rows: articles.slice(0, 15).map(row => [row.date || 'Not reported', row.title, row.domain || 'Not reported', row.language || 'Not reported']), source: 'GDELT public news index' }],
+    });
+  }
+  return sections;
+}
+
+function assessEvidenceQuality(global = {}, knowledgeDocuments = []) {
+  const checks = [
+    { key: 'classification', weight: 15, passed: Boolean(global.hsCode) },
+    { key: 'historicalTrade', weight: 20, passed: asArray(global.historicalTrade).length >= 2 },
+    { key: 'productTrade', weight: 15, passed: asArray(global.officialProductRows).length > 0 },
+    { key: 'globalRankings', weight: 15, passed: asArray(global.topImporters).length > 0 || asArray(global.topExporters).length > 0 },
+    { key: 'partnerTrade', weight: 10, passed: asArray(global.importPartners).length > 0 || asArray(global.exportPartners).length > 0 },
+    { key: 'countryContext', weight: 10, passed: Boolean(global.countryProfile) || !global.targetScope?.name },
+    { key: 'sourceAttribution', weight: 10, passed: asArray(global.sources).some(source => source.status === 'connected') },
+    { key: 'knowledgeContext', weight: 5, passed: knowledgeDocuments.length > 0 },
+  ];
+  const score = checks.reduce((total, check) => total + (check.passed ? check.weight : 0), 0);
+  return {
+    score,
+    grade: score >= 80 ? 'strong' : score >= 55 ? 'moderate' : 'limited',
+    checks,
+    missingEvidence: checks.filter(check => !check.passed).map(check => check.key),
+    verifiedNumericalObservations: asArray(global.officialProductRows).length
+      + asArray(global.historicalTrade).length
+      + asArray(global.topImporters).length
+      + asArray(global.topExporters).length
+      + asArray(global.importPartners).length
+      + asArray(global.exportPartners).length,
+  };
 }
 
 function fallbackAnalysis({ query, productName, country, knowledge, global, marketplace }) {
@@ -246,7 +422,21 @@ PRIMARY KNOWLEDGE EVIDENCE:
 ${knowledge || 'No knowledge documents were returned. Do not invent facts.'}
 
 CONNECTED TRADE EVIDENCE:
-${JSON.stringify({ hsCode: global.hsCode, target: global.target?.name, ...(macroRelevant ? { macroImports: asArray(global.macroImports).slice(0, 8), macroExports: asArray(global.macroExports).slice(0, 8) } : {}), productTrade: asArray(global.officialProductRows).slice(0, 12), gaps: global.gaps })}
+${JSON.stringify({
+  hsCode: global.hsCode,
+  relatedHsCodes: asArray(global.relatedHsCodes).slice(0, 8),
+  target: global.target?.name || global.targetScope?.name,
+  originScope: global.originScope,
+  countryIndicators: global.countryProfile ? Object.values(global.countryProfile.series || {}).map(series => ({ indicator: series.label, latest: series.latest })).filter(item => item.latest) : [],
+  ...(macroRelevant ? { macroImports: asArray(global.macroImports).slice(0, 8), macroExports: asArray(global.macroExports).slice(0, 8) } : {}),
+  historicalTrade: asArray(global.historicalTrade).slice(0, 16),
+  topImporters: asArray(global.topImporters).slice(0, 10),
+  topExporters: asArray(global.topExporters).slice(0, 10),
+  importPartners: asArray(global.importPartners).slice(0, 10),
+  exportPartners: asArray(global.exportPartners).slice(0, 10),
+  productTrade: asArray(global.officialProductRows).slice(0, 16),
+  gaps: global.gaps,
+})}
 
 MARKETPLACE EVIDENCE:
 ${JSON.stringify(marketplace)}
@@ -285,11 +475,31 @@ export default class MarketResearchService {
     this.emit(emit, startedAt, { type: 'step', agent, operation, progress, status, sourceCount });
   }
 
-  static async run({ userId, session = {}, query, productName = '', country = '', category = '', mode = 'product_rd', force = false }, emit = () => {}) {
+  static async run(input, emit = () => {}) {
+    const structuredIntent = TradeIntentService.parse(input);
+    const operationKey = `${input.userId}:${structuredIntent.queryKey}:${REPORT_VERSION}`;
+    if (!input.force && inFlight.has(operationKey)) {
+      this.emit(emit, Date.now(), { type: 'step', agent: 'Research Orchestrator', operation: 'Joining an identical report already in progress', progress: 8, status: 'running' });
+      return inFlight.get(operationKey);
+    }
+    const operation = this.execute({ ...input, structuredIntent }, emit);
+    if (!input.force) inFlight.set(operationKey, operation);
+    try {
+      return await operation;
+    } finally {
+      if (inFlight.get(operationKey) === operation) inFlight.delete(operationKey);
+    }
+  }
+
+  static async execute({ userId, session = {}, query, productName = '', country = '', category = '', mode = 'product_rd', force = false, structuredIntent }, emit = () => {}) {
     const startedAt = Date.now();
     const researchQuery = clean(query || [productName, category, country].filter(Boolean).join(' '));
     if (researchQuery.length < 3) throw Object.assign(new Error('Please provide a detailed research query'), { statusCode: 400 });
-    const queryHash = crypto.createHash('sha256').update(`${researchQuery.toLowerCase()}:${REPORT_VERSION}`).digest('hex');
+    const researchProduct = structuredIntent.product || productName || researchQuery;
+    const researchCountry = country
+      || structuredIntent.destinationCountries?.[0]
+      || (structuredIntent.countries?.length === 1 ? structuredIntent.countries[0] : '');
+    const queryHash = crypto.createHash('sha256').update(`${structuredIntent.queryKey}:${REPORT_VERSION}`).digest('hex');
     const cacheKey = `${userId}:${queryHash}`;
     if (!force) {
       const cached = cache.get(cacheKey);
@@ -298,7 +508,7 @@ export default class MarketResearchService {
         return cached.report;
       }
       const reusable = await SavedResearchReport.findOne({ userId, queryHash, status: 'active', pdfStatus: 'ready', createdAt: { $gte: new Date(Date.now() - REPORT_REUSE_TTL) } })
-        .select('reportData previewUrl downloadUrl pageCount fileSize generationTimeMs createdAt pdfStatus').sort({ createdAt: -1 }).lean();
+        .select('reportData dataVersion previewUrl downloadUrl pageCount fileSize generationTimeMs createdAt pdfStatus').sort({ createdAt: -1 }).lean();
       if (reusable?.reportData) {
         const report = reportMetadata(reusable.reportData, reusable._id, reusable);
         this.emit(emit, startedAt, { type: 'report', report, cached: true, progress: 100 });
@@ -311,32 +521,50 @@ export default class MarketResearchService {
     this.emit(emit, startedAt, { type: 'research_started', researchId, progress: 2 });
     const intelligence = analyzeRequest({ message: researchQuery, role: 'buyer' });
     const rewrittenQuery = rewriteSearchQuery({ message: researchQuery, intelligence });
+    const storedTradeKnowledge = !force ? await TradeKnowledgeService.findFresh(structuredIntent).catch(error => {
+      console.warn('[Trade Intelligence] Structured knowledge lookup failed:', error.message);
+      return null;
+    }) : null;
     this.step(emit, startedAt, 'Research Orchestrator', 'Running hybrid knowledge, trade and marketplace retrieval', 10, 'running');
-    const [knowledgeDocuments, global, marketplaceResults] = await Promise.all([
+    const [retrievedKnowledgeDocuments, collectedGlobal, marketplaceResults] = await Promise.all([
       KnowledgeBaseService.retrieve({ query: researchQuery, rewrittenQuery, role: 'buyer', intent: 'market_research', language: intelligence.language, limit: 12 }),
-      GlobalTradeResearchService.collect({ query: researchQuery, productName: productName || researchQuery, country }),
-      getAISearchResults({ query: researchQuery, filters: { categories: category ? [category] : [], countries: country ? [country] : [] }, userId }),
+      storedTradeKnowledge
+        ? Promise.resolve(storedTradeKnowledge.dataset)
+        : GlobalTradeResearchService.collect({ query: researchQuery, productName: researchProduct, country: researchCountry, structuredIntent }),
+      getAISearchResults({ query: researchQuery, filters: { categories: category ? [category] : [], countries: researchCountry ? [researchCountry] : [] }, userId }),
     ]);
+    const knowledgeDocuments = filterKnowledgeDocuments(retrievedKnowledgeDocuments, researchProduct);
+    let global = collectedGlobal;
+    let tradeKnowledge = storedTradeKnowledge;
+    if (!tradeKnowledge) {
+      tradeKnowledge = await TradeKnowledgeService.store(structuredIntent, global).catch(error => {
+        console.warn('[Trade Intelligence] Structured knowledge persistence failed:', error.message);
+        return null;
+      });
+      if (tradeKnowledge?.dataset) global = tradeKnowledge.dataset;
+    }
     const knowledge = knowledgeContext(knowledgeDocuments);
     const marketplace = marketplaceSummary(marketplaceResults);
     const sourceCount = knowledgeDocuments.length + asArray(global.sources).length + Object.values(marketplace).reduce((sum, value) => sum + value, 0);
     this.step(emit, startedAt, 'Evidence Ranker', `Merged and ranked ${knowledgeDocuments.length} knowledge sources`, 35, 'success', sourceCount);
 
-    const fallback = fallbackAnalysis({ query: researchQuery, productName, country, knowledge: knowledgeDocuments, global, marketplace });
+    const fallback = fallbackAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, knowledge: knowledgeDocuments, global, marketplace });
     let generated;
     try {
       this.step(emit, startedAt, 'AI Analyst', 'Reasoning across the evidence and planning the report', 48, 'running', sourceCount);
       const response = await AIChatService.callOllama(
-        promptForAnalysis({ query: researchQuery, productName, country, intent: intelligence.intent, knowledge, global, marketplace }),
+        promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace }),
         [],
         'You are EsyGlob AI Market Intelligence. Synthesize evidence into original executive analysis. Return valid JSON only.',
-        { maxTokens: 7_000, temperature: .18, timeoutMs: 150_000, jsonMode: true },
+        { maxTokens: 7_000, temperature: .18, timeoutMs: AI_SYNTHESIS_TIMEOUT_MS, jsonMode: true },
       );
       generated = extractJson(response?.message);
     } catch (error) {
       console.warn('[Market Insights] AI synthesis unavailable; using evidence-safe analytical fallback:', error.message);
     }
     const analysis = normalizeAnalysis(generated, fallback);
+    const verifiedEvidenceSections = evidenceSections(global, researchProduct, researchCountry);
+    analysis.sections = [...analysis.sections, ...verifiedEvidenceSections];
     this.step(emit, startedAt, 'Quality Reviewer', 'Cross-validating claims and attaching only measured charts and tables', 72, 'success', sourceCount);
 
     const artifacts = knowledgeArtifacts(knowledgeDocuments);
@@ -356,8 +584,8 @@ export default class MarketResearchService {
     if (competitionSection) competitionSection.charts = charts.filter(item => item.source?.includes('EsyGlob'));
     const relevantGlobalSources = asArray(global.sources).filter(source => {
       if (source.status === 'unavailable') return false;
-      if (/World Bank/i.test(source.name)) return /\b(global|top markets?|country comparison|compare countries|macro|worldwide)\b/i.test(researchQuery);
-      if (/UN Comtrade/i.test(source.name)) return asArray(global.officialProductRows).length > 0;
+      if (/World Bank/i.test(source.name)) return Boolean(global.countryProfile) || /\b(global|top markets?|country comparison|compare countries|macro|worldwide)\b/i.test(researchQuery);
+      if (/UN Comtrade/i.test(source.name)) return [global.officialProductRows, global.historicalTrade, global.topImporters, global.topExporters, global.importPartners, global.exportPartners].some(rows => asArray(rows).length > 0);
       if (/WTO/i.test(source.name)) return /\b(wto|tariff|trade policy|trade agreement|duty)\b/i.test(researchQuery);
       if (/WCO|HS Classification/i.test(source.name)) return Boolean(global.hsCode);
       return source.status === 'connected';
@@ -367,6 +595,7 @@ export default class MarketResearchService {
       ...relevantGlobalSources,
     ];
     const generatedAt = new Date().toISOString();
+    const evidenceQuality = assessEvidenceQuality(global, knowledgeDocuments);
     const report = {
       id: researchId,
       reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd',
@@ -376,15 +605,18 @@ export default class MarketResearchService {
       executiveSummary: analysis.executiveSummary,
       executiveHighlights: analysis.executiveHighlights,
       generatedFor: generatedFor(session),
-      productName: productName || researchQuery,
-      country,
+      productName: researchProduct,
+      country: researchCountry,
       category,
       reportVersion: REPORT_VERSION,
+      dataVersion: tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned',
+      structuredIntent,
       sections: analysis.sections,
       keyMetrics: [
-        { label: 'Knowledge sources', value: knowledgeDocuments.length, note: 'Hybrid ranked' },
-        { label: 'Official datasets', value: relevantGlobalSources.length, note: 'Query-relevant' },
-        { label: 'Trade observations', value: asArray(global.officialProductRows).length, note: global.hsCode ? `HS ${global.hsCode}` : 'HS pending' },
+        { label: 'Evidence quality', value: `${evidenceQuality.score}%`, note: evidenceQuality.grade },
+        { label: 'Verified evidence rows', value: asArray(global.officialProductRows).length + asArray(global.historicalTrade).length + asArray(global.topImporters).length + asArray(global.topExporters).length, note: global.hsCode ? `HS ${global.hsCode}` : 'HS pending' },
+        { label: 'Connected sources', value: relevantGlobalSources.length + knowledgeDocuments.length, note: 'Attributed and versioned' },
+        { label: 'Historical periods', value: new Set(asArray(global.historicalTrade).map(row => row.period)).size, note: 'No interpolation' },
         { label: 'Marketplace matches', value: marketplace.products + marketplace.suppliers, note: 'Current snapshot' },
       ],
       recommendations: asArray(analysis.recommendations),
@@ -393,11 +625,17 @@ export default class MarketResearchService {
       references: sources,
       sources,
       dataGaps: asArray(global.gaps),
+      evidenceQuality,
       sourceCount,
       generatedBy: 'EsyGlob AI Market Intelligence',
       generatedAt,
       createdAt: generatedAt,
     };
+    report.html = buildMarketInsightHtml(report, {
+      reportId: report.id,
+      generatedAt,
+      reportVersion: REPORT_VERSION,
+    });
 
     this.step(emit, startedAt, 'Document Planner', 'Planning continuous narrative, tables and charts', 82, 'running', sourceCount);
     const saved = new SavedResearchReport({
@@ -405,12 +643,15 @@ export default class MarketResearchService {
       roleContext: session.primaryRole === 'seller' ? 'seller' : 'buyer',
       reportType: report.reportType,
       title: report.title,
-      productName,
-      country,
+      productName: researchProduct,
+      country: researchCountry,
       query: researchQuery,
       queryHash,
       reportVersion: REPORT_VERSION,
-      reportData: report,
+      dataVersion: report.dataVersion,
+      structuredIntent,
+      html: report.html,
+      reportData: reportForStorage(report),
       pdfStatus: 'pending',
       lastOpenedAt: new Date(),
     });
@@ -437,20 +678,22 @@ export default class MarketResearchService {
       saved.generationTimeMs = Date.now() - startedAt;
       report.elapsedMs = saved.generationTimeMs;
       report.pdfValidation = pdf.validation;
-      saved.reportData = report;
+      saved.reportData = reportForStorage(report);
       await saved.save();
+      TradeKnowledgeService.learnRelated(structuredIntent, global);
     } catch (error) {
       await MarketReportStorageService.remove(saved.storageKey).catch(() => undefined);
       saved.pdfStatus = 'failed';
       saved.pdfError = clean(error.message).slice(0, 500);
       saved.storageKey = '';
       saved.fileSize = 0;
-      saved.reportData = report;
+      saved.reportData = reportForStorage(report);
       await saved.save().catch(() => undefined);
       throw Object.assign(new Error('The analysis completed, but the validated PDF could not be produced. Please retry.'), { cause: error });
     }
     const completed = reportMetadata(report, saved._id, saved);
     cache.set(cacheKey, { createdAt: Date.now(), report: completed });
+    if (cache.size > CACHE_MAX_ENTRIES) cache.delete(cache.keys().next().value);
     this.step(emit, startedAt, 'Complete', 'Enterprise Market Intelligence PDF completed', 100, 'success', sourceCount);
     this.emit(emit, startedAt, { type: 'report', report: completed, progress: 100 });
     return completed;

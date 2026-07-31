@@ -136,6 +136,11 @@ function modelUrl(baseUrl, model) {
   return `${baseUrl.replace(/\/+$/, '')}/${encodedModel}`;
 }
 
+function modelMetadataUrl(baseUrl, model) {
+  const encodedModel = model.split('/').map(encodeURIComponent).join('/');
+  return `${baseUrl.replace(/\/+$/, '')}/api/models/${encodedModel}?expand[]=pipeline_tag&expand[]=inferenceProviderMapping`;
+}
+
 function retryAfterMs(response, attempt) {
   const seconds = Number(response?.headers?.get?.('retry-after'));
   if (Number.isFinite(seconds) && seconds > 0) return Math.min(2_000, seconds * 1_000);
@@ -152,6 +157,7 @@ export default class HuggingFaceVisionProvider {
     model = process.env.HF_IMAGE_MODEL,
     fallbackModel = process.env.HF_IMAGE_FALLBACK_MODEL,
     baseUrl = process.env.HF_BASE_URL || 'https://router.huggingface.co/hf-inference/models',
+    hubBaseUrl = process.env.HF_HUB_BASE_URL || 'https://huggingface.co',
     timeoutMs = Number(process.env.HF_TIMEOUT || 30_000),
     maxRetries = Number(process.env.HF_MAX_RETRIES || 2),
     fetchImpl = fetch,
@@ -159,6 +165,7 @@ export default class HuggingFaceVisionProvider {
     this.apiKey = clean(apiKey, 500);
     this.models = uniqueOriginal([model, fallbackModel], 2);
     this.baseUrl = clean(baseUrl, 500).replace(/\/+$/, '');
+    this.hubBaseUrl = clean(hubBaseUrl, 500).replace(/\/+$/, '');
     this.timeoutMs = Math.max(5_000, Math.min(120_000, Number(timeoutMs) || 30_000));
     this.maxRetries = Math.max(0, Math.min(3, Number(maxRetries) || 0));
     this.fetch = fetchImpl;
@@ -193,6 +200,95 @@ export default class HuggingFaceVisionProvider {
         statusCode: 500,
       });
     }
+    try {
+      parsed = new URL(this.hubBaseUrl);
+    } catch {
+      throw new VisionProviderError('HF_HUB_BASE_URL is invalid', {
+        code: 'HF_HUB_BASE_URL_INVALID',
+        statusCode: 500,
+      });
+    }
+    if (parsed.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+      throw new VisionProviderError('HF_HUB_BASE_URL must use HTTPS', {
+        code: 'HF_HUB_BASE_URL_INSECURE',
+        statusCode: 500,
+      });
+    }
+  }
+
+  async validateSupport({ signal } = {}) {
+    this.validateConfiguration();
+    const validated = [];
+
+    for (const model of this.models) {
+      let response;
+      try {
+        response = await this.fetch(modelMetadataUrl(this.hubBaseUrl, model), {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: 'application/json',
+          },
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(this.timeoutMs)])
+            : AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (error) {
+        const isTimeout = ['TimeoutError', 'AbortError'].includes(error.name);
+        throw new VisionProviderError(
+          isTimeout
+            ? `Timed out while validating Hugging Face model "${model}"`
+            : `Unable to validate Hugging Face model "${model}"`,
+          {
+            code: isTimeout ? 'HF_MODEL_VALIDATION_TIMEOUT' : 'HF_MODEL_VALIDATION_FAILED',
+            statusCode: 503,
+            retryable: true,
+            model,
+            cause: error,
+          }
+        );
+      }
+
+      const metadata = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new VisionProviderError(
+          response.status === 404
+            ? `Configured Hugging Face model "${model}" does not exist`
+            : `Hugging Face model validation failed for "${model}" with HTTP ${response.status}`,
+          {
+            code: response.status === 404 ? 'HF_MODEL_NOT_FOUND' : 'HF_MODEL_VALIDATION_FAILED',
+            statusCode: 500,
+            providerStatus: response.status,
+            model,
+          }
+        );
+      }
+
+      const pipelineTag = clean(metadata?.pipeline_tag, 100).toLowerCase();
+      const mapping = metadata?.inferenceProviderMapping?.['hf-inference'];
+      const task = clean(mapping?.task, 100).toLowerCase();
+      const isCaptionTask = pipelineTag === 'image-to-text';
+      const isLive = mapping?.status === 'live';
+      const taskMatches = !task || task === 'image-to-text';
+
+      if (!isCaptionTask || !isLive || !taskMatches) {
+        throw new VisionProviderError(
+          `Configured model "${model}" is not a live image-to-text model on provider hf-inference`,
+          {
+            code: 'HF_MODEL_UNSUPPORTED_BY_PROVIDER',
+            statusCode: 500,
+            model,
+          }
+        );
+      }
+
+      validated.push({ model, pipelineTag, provider: 'hf-inference', status: mapping.status });
+    }
+
+    logImageSearch('info', 'vision_provider_configuration_validated', {
+      provider: this.name,
+      models: validated,
+    });
+    return validated;
   }
 
   validateImage(imageBuffer, mimeType) {

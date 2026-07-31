@@ -15,6 +15,7 @@ const reportPayload = row => ({
   savedReportId: String(row._id),
   reportId: row.reportData?.id || String(row._id),
   reportVersion: row.reportVersion || row.reportData?.reportVersion || '1.0',
+  dataVersion: row.dataVersion || row.reportData?.dataVersion || '',
   pdfStatus: row.pdfStatus,
   status: row.pdfStatus === 'ready' ? 'ready' : row.pdfStatus,
   previewUrl: row.previewUrl || `/api/market-insights/reports/${row._id}/pdf`,
@@ -41,7 +42,7 @@ class MarketInsightsController {
       const filter = { userId: req.user._id, status: 'active' };
       const [rows, total] = await Promise.all([
         SavedResearchReport.find(filter)
-          .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs storageProvider isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt')
+          .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion dataVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs storageProvider isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt')
           .sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
         SavedResearchReport.countDocuments(filter),
       ]);
@@ -57,7 +58,7 @@ class MarketInsightsController {
   static async getResearchReport(req, res) {
     try {
       const row = await SavedResearchReport.findOne({ _id: req.params.reportId, userId: req.user._id, status: 'active' })
-        .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs storageProvider isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt').lean();
+        .select('title reportType productName country query reportData.id reportData.generatedAt reportVersion dataVersion pdfStatus previewUrl downloadUrl pageCount fileSize generationTimeMs storageProvider isBookmarked isFavorite downloadCount lastOpenedAt createdAt updatedAt').lean();
       if (!row) return res.status(404).json({ error: 'Report not found' });
       await SavedResearchReport.updateOne({ _id: row._id }, { $set: { lastOpenedAt: new Date() } });
       return res.json({ report: reportPayload({ ...row, lastOpenedAt: new Date() }) });

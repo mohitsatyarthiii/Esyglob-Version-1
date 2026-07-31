@@ -7,6 +7,10 @@ export function getVisionProvider() {
   return activeProvider;
 }
 
+export function validateVisionProviderOnStartup() {
+  return getVisionProvider().validateSupport();
+}
+
 export function setVisionProviderForTests(provider) {
   activeProvider = provider;
 }

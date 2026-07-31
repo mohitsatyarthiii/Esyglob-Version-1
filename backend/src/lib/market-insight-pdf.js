@@ -1,4 +1,6 @@
 import PDFDocument from 'pdfkit';
+import { buildMarketInsightHtml } from './market-insight-html.js';
+import { renderMarketInsightHtmlPdf } from './market-insight-html-pdf.js';
 
 const A4 = { width: 595.28, height: 841.89 };
 const PAGE = { left: 44, right: 551, top: 62, bottom: 775, width: 507 };
@@ -426,6 +428,17 @@ function validate(buffer) {
 }
 
 export async function buildMarketInsightPdf(report, metadata = {}) {
+  const engine = String(process.env.MARKET_INSIGHT_PDF_ENGINE || 'html').toLowerCase();
+  if (engine === 'html') {
+    try {
+      return await renderMarketInsightHtmlPdf(report.html || buildMarketInsightHtml(report, metadata));
+    } catch (error) {
+      const fallbackAllowed = process.env.MARKET_INSIGHT_PDF_FALLBACK === 'true'
+        || (process.env.NODE_ENV || 'development') !== 'production';
+      if (!fallbackAllowed) throw error;
+      console.warn('[Market Insights] HTML PDF engine unavailable; using PDFKit fallback:', error.message);
+    }
+  }
   let last;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     last = await render(report, metadata, attempt === 1);

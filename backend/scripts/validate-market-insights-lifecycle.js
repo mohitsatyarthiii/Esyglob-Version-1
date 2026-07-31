@@ -105,7 +105,7 @@ async function main() {
       assert(row.previewUrl && row.downloadUrl, `${sample.query}: delivery URLs are missing`);
       assert(row.storageProvider === 'filesystem' && row.storageKey, `${sample.query}: storage metadata is incomplete`);
       assert(row.fileSize > 1000, `${sample.query}: stored file size is invalid`);
-      const knowledgeMetric = row.reportData?.keyMetrics?.find(metric => metric.label === 'Knowledge sources');
+      const knowledgeMetric = row.reportData?.keyMetrics?.find(metric => metric.label === 'Connected sources');
       assert(Number(knowledgeMetric?.value) > 0, `${sample.query}: AI Knowledge Database did not contribute evidence`);
       assert(row.reportData?.pdfValidation?.passed === true, `${sample.query}: PDF quality validation did not pass`);
       assert(row.reportData?.sources?.some(source => source.name === sample.expectedSource), `${sample.query}: expected folder-aware source was not cited`);

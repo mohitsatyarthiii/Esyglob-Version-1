@@ -30,8 +30,8 @@ test('uses the configured fallback model when the primary model is unavailable',
   const urls = [];
   const provider = new HuggingFaceVisionProvider({
     apiKey: 'hf_test',
-    model: 'microsoft/Florence-2-base',
-    fallbackModel: 'Salesforce/blip-image-captioning-large',
+    model: 'caption/primary',
+    fallbackModel: 'caption/fallback',
     baseUrl: 'https://router.huggingface.test/models',
     maxRetries: 0,
     fetchImpl: async (url) => {
@@ -48,11 +48,58 @@ test('uses the configured fallback model when the primary model is unavailable',
     requestId: 'provider-fallback-test',
   });
 
-  assert.equal(result.model, 'Salesforce/blip-image-captioning-large');
+  assert.equal(result.model, 'caption/fallback');
   assert.equal(result.analysis.material, '');
   assert.match(result.analysis.productName, /office chair/i);
-  assert.match(urls[0], /microsoft\/Florence-2-base$/);
-  assert.match(urls[1], /Salesforce\/blip-image-captioning-large$/);
+  assert.match(urls[0], /caption\/primary$/);
+  assert.match(urls[1], /caption\/fallback$/);
+});
+
+test('validates a live hf-inference image-to-text model before startup', async () => {
+  const provider = new HuggingFaceVisionProvider({
+    apiKey: 'hf_test',
+    model: 'caption/supported',
+    fetchImpl: async () => response(200, {
+      pipeline_tag: 'image-to-text',
+      inferenceProviderMapping: {
+        'hf-inference': {
+          status: 'live',
+          providerId: 'caption/supported',
+          task: 'image-to-text',
+        },
+      },
+    }),
+  });
+
+  const result = await provider.validateSupport();
+  assert.deepEqual(result, [{
+    model: 'caption/supported',
+    pipelineTag: 'image-to-text',
+    provider: 'hf-inference',
+    status: 'live',
+  }]);
+});
+
+test('rejects an image model that is not live on hf-inference during startup', async () => {
+  const provider = new HuggingFaceVisionProvider({
+    apiKey: 'hf_test',
+    model: 'caption/unsupported',
+    fetchImpl: async () => response(200, {
+      pipeline_tag: 'image-to-text',
+      inferenceProviderMapping: {
+        'another-provider': {
+          status: 'live',
+          task: 'image-to-text',
+        },
+      },
+    }),
+  });
+
+  await assert.rejects(
+    provider.validateSupport(),
+    (error) => error.code === 'HF_MODEL_UNSUPPORTED_BY_PROVIDER'
+      && /not a live image-to-text model on provider hf-inference/.test(error.message)
+  );
 });
 
 test('retries transient Hugging Face failures before succeeding', async () => {

@@ -56,6 +56,20 @@ const savedResearchReportSchema = new mongoose.Schema(
       type: String,
       default: '1.0',
     },
+    dataVersion: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    structuredIntent: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    html: {
+      type: String,
+      default: '',
+      select: false,
+    },
     reportData: {
       type: mongoose.Schema.Types.Mixed,
       required: true,
