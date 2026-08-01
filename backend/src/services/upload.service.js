@@ -1,5 +1,6 @@
 import StorageService, { UploadStorageError } from './storage.service.js';
 import { UPLOAD } from '../lib/constants.js';
+import MediaReferenceService from './media-reference.service.js';
 
 class UploadService {
   static validateFiles(files) {
@@ -30,8 +31,11 @@ class UploadService {
     return StorageService.deleteImage(storageKey);
   }
 
-  static replaceImage(storageKey, upload) {
-    return StorageService.replaceImage(storageKey, upload);
+  static replaceImage(storageKey, upload, options) {
+    return StorageService.replaceImage(storageKey, upload, {
+      ...options,
+      isReferenced: options?.isReferenced || ((key) => MediaReferenceService.isReferenced(key)),
+    });
   }
 
   static getAccountHealth() {

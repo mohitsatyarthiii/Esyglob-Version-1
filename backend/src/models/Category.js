@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const categorySchema = new mongoose.Schema(
   {
@@ -20,5 +21,6 @@ const categorySchema = new mongoose.Schema(
 
 categorySchema.index({ isActive: 1, 'metadata.sortOrder': 1, name: 1 });
 categorySchema.index({ name: 'text', slug: 'text', description: 'text', 'metadata.keywords': 'text' });
+categorySchema.plugin(mediaIntegrityPlugin, { entity: 'categories', paths: ['image'] });
 
 export default mongoose.models.Category || mongoose.model('Category', categorySchema);

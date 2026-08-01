@@ -1,6 +1,6 @@
 import ProductRepository from '../repositories/product.repository.js';
 import mongoose from 'mongoose';
-import { productSchema, productUpdateSchema } from '../validators/product.validator.js';
+import { productSchema, parseProductUpdate } from '../validators/product.validator.js';
 import { normalizePricingTiers } from './promotion.service.js';
 
 function normalizeProductInput(data, currentMinimum = 1, currentPrice = 0) {
@@ -411,12 +411,7 @@ class ProductService {
       throw error;
     }
 
-    const parsedUpdate = productUpdateSchema.parse(data);
-    const validatedData = Object.fromEntries(
-      Object.keys(data)
-        .filter((key) => Object.hasOwn(parsedUpdate, key))
-        .map((key) => [key, parsedUpdate[key]])
-    );
+    const validatedData = parseProductUpdate(data);
     Object.assign(product, normalizeProductInput(
       validatedData,
       validatedData.minimumOrderQuantity || product.minimumOrderQuantity,

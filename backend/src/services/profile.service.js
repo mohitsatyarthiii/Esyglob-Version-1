@@ -3,6 +3,7 @@ import { profileSchema, passwordSchema } from '../validators/profile.validator.j
 import { z } from 'zod';
 import { hashPassword, verifyPassword } from '../lib/crypto.js';
 import { normalizeCurrency } from '../lib/currency-metadata.js';
+import { ownDefinedFields } from '../lib/media-integrity.js';
 
 function splitName(fullName) {
   const parts = fullName.trim().split(/\s+/);
@@ -81,7 +82,7 @@ class ProfileService {
       firstName,
       lastName,
       phone: parsed.phone,
-      avatarUrl: parsed.avatarUrl,
+      ...ownDefinedFields(parsed, ['avatarUrl']),
       'metadata.companyName': parsed.companyName,
       'metadata.country': parsed.country,
       'metadata.city': parsed.city,
@@ -98,8 +99,9 @@ class ProfileService {
         companyDescription: parsed.companyDescription,
         businessEmail: parsed.email.toLowerCase(),
         businessPhone: parsed.phone,
-        companyLogo: parsed.avatarUrl,
-        logoUrl: parsed.avatarUrl,
+        ...(Object.prototype.hasOwnProperty.call(parsed, 'avatarUrl')
+          ? { companyLogo: parsed.avatarUrl, logoUrl: parsed.avatarUrl }
+          : {}),
         'address.street': parsed.address,
         'address.city': parsed.city,
         'address.country': parsed.country,

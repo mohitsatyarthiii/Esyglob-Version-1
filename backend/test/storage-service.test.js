@@ -24,6 +24,9 @@ test('creates secure storage folders and uploads optimized WebP variants', async
   const uploaded = await StorageService.uploadImage({ buffer: input, mimeType: 'image/png', folder: 'products/test-user', originalName: '../../unsafe.png' });
   assert.equal(uploaded.storageProvider, 'vps');
   assert.equal(uploaded.mimeType, 'image/webp');
+  assert.equal(uploaded.filename, path.posix.basename(uploaded.storageKey));
+  assert.equal(uploaded.storagePath, uploaded.storageKey);
+  assert.equal(uploaded.hashes.sha256, uploaded.checksum);
   assert.match(uploaded.storageKey, /^products\/test-user\/[0-9a-f-]{36}-original\.webp$/);
   assert.match(uploaded.variants.thumbnail.storageKey, /^product-thumbnails\/test-user\//);
   assert.equal(uploaded.url, `https://api.esyglob.test/storage/${uploaded.storageKey}`);
@@ -31,7 +34,12 @@ test('creates secure storage folders and uploads optimized WebP variants', async
   assert.equal(metadata.format, 'webp');
   assert.ok(metadata.width <= 2048);
 
-  const replacement = await StorageService.replaceImage(uploaded.storageKey, { buffer: input, mimeType: 'image/png', folder: 'products/test-user', originalName: 'replacement.png' });
+  let committedStorageKey = uploaded.storageKey;
+  const replacement = await StorageService.replaceImage(uploaded.storageKey, { buffer: input, mimeType: 'image/png', folder: 'products/test-user', originalName: 'replacement.png' }, {
+    commit: async next => { committedStorageKey = next.storageKey; },
+    isReferenced: async () => false,
+  });
+  assert.equal(committedStorageKey, replacement.storageKey);
   await assert.rejects(StorageService.readFile(uploaded.storageKey), error => error.code === 'ENOENT');
   assert.ok(await StorageService.readFile(replacement.storageKey));
   assert.equal(await StorageService.deleteImage(replacement.storageKey), true);
@@ -70,7 +78,53 @@ test('removes only expired unreferenced media during cleanup', async t => {
     fs.utimes(path.join(root, ...variant.storageKey.split('/')), oldDate, oldDate)
   )));
 
-  const removed = await StorageService.cleanupUnusedImages([], { olderThanMs: 60_000 });
+  const preview = await StorageService.cleanupUnusedImages([], { olderThanMs: 60_000, manifestComplete: true });
+  assert.equal(preview.length, 3);
+  assert.ok(await StorageService.readFile(uploaded.storageKey));
+  const removed = await StorageService.cleanupUnusedImages([], { olderThanMs: 60_000, manifestComplete: true, dryRun: false });
   assert.equal(removed.length, 3);
   await assert.rejects(StorageService.readFile(uploaded.storageKey), error => error.code === 'ENOENT');
+});
+
+test('cleanup preserves every variant when the database references only the original', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'esyglob-storage-referenced-'));
+  process.env.VPS_STORAGE_ROOT = root;
+  t.after(async () => {
+    delete process.env.VPS_STORAGE_ROOT;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  await StorageService.ensureFoldersExist();
+  const input = await sharp({ create: { width: 80, height: 80, channels: 3, background: '#7c3aed' } }).png().toBuffer();
+  const uploaded = await StorageService.uploadImage({ buffer: input, mimeType: 'image/png', folder: 'products/referenced' });
+  const oldDate = new Date(Date.now() - 2 * 60 * 1000);
+  await Promise.all(Object.values(uploaded.variants).map(variant => fs.utimes(path.join(root, ...variant.storageKey.split('/')), oldDate, oldDate)));
+  const removed = await StorageService.cleanupUnusedImages([uploaded.storageKey], { olderThanMs: 60_000, manifestComplete: true, dryRun: false });
+  assert.deepEqual(removed, []);
+  await Promise.all(Object.values(uploaded.variants).map(variant => StorageService.readFile(variant.storageKey)));
+});
+
+test('replacement rolls back the new files and retains the old files when the database commit fails', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'esyglob-storage-rollback-'));
+  process.env.VPS_STORAGE_ROOT = root;
+  t.after(async () => {
+    delete process.env.VPS_STORAGE_ROOT;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  await StorageService.ensureFoldersExist();
+  const input = await sharp({ create: { width: 80, height: 80, channels: 3, background: '#be123c' } }).png().toBuffer();
+  const uploaded = await StorageService.uploadImage({ buffer: input, mimeType: 'image/png', folder: 'seller-logos/rollback' });
+  await assert.rejects(
+    StorageService.replaceImage(uploaded.storageKey, { buffer: input, mimeType: 'image/png', folder: 'seller-logos/rollback' }, {
+      commit: async () => { throw new Error('database unavailable'); },
+      isReferenced: async () => false,
+    }),
+    /database unavailable/,
+  );
+  await StorageService.readFile(uploaded.storageKey);
+  const files = (await fs.readdir(path.join(root, 'seller-logos', 'rollback'))).filter(name => name.endsWith('.webp'));
+  assert.equal(files.length, 3);
+});
+
+test('cleanup cannot run without a complete database reference manifest', async () => {
+  await assert.rejects(StorageService.cleanupUnusedImages([]), error => error.code === 'INCOMPLETE_MEDIA_MANIFEST');
 });

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const certificationSchema = new mongoose.Schema(
   {
@@ -23,6 +24,7 @@ const certificationSchema = new mongoose.Schema(
 );
 
 certificationSchema.index({ sellerId: 1, status: 1 });
+certificationSchema.plugin(mediaIntegrityPlugin, { entity: 'certifications', paths: ['documentUrl'] });
 
 export default mongoose.models.Certification ||
   mongoose.model('Certification', certificationSchema);

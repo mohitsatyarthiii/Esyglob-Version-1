@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const subcategorySchema = new mongoose.Schema(
   {
@@ -27,5 +28,6 @@ const subcategorySchema = new mongoose.Schema(
 subcategorySchema.index({ categoryId: 1, slug: 1 }, { unique: true });
 subcategorySchema.index({ categoryId: 1, isActive: 1, 'metadata.sortOrder': 1, name: 1 });
 subcategorySchema.index({ name: 'text', slug: 'text', description: 'text', 'metadata.keywords': 'text' });
+subcategorySchema.plugin(mediaIntegrityPlugin, { entity: 'subcategories', paths: ['image'] });
 
 export default mongoose.models.Subcategory || mongoose.model('Subcategory', subcategorySchema);

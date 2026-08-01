@@ -41,39 +41,43 @@ export async function countExpectedCategories() {
   return Category.countDocuments({ slug: { $in: EXPECTED_CATEGORY_SLUGS } });
 }
 
+export function categorySeedUpdate(item, index) {
+  return {
+    $set: {
+      name: item.name,
+      slug: item.slug,
+      description: item.description,
+      icon: 'Package',
+      metadata: { sortOrder: index, isFeatured: index < 8, keywords: item.trending || [] },
+    },
+    $setOnInsert: { image: categoryImageSeed(item.slug) },
+  };
+}
+
+export function subcategorySeedUpdate(categoryId, item, subName, subIndex) {
+  return {
+    $set: {
+      categoryId,
+      name: subName,
+      slug: slugifyCategory(subName),
+      icon: 'Package',
+      metadata: { sortOrder: subIndex, isFeatured: subIndex < 4 },
+    },
+    $setOnInsert: { image: categoryImageSeed(`${item.slug}-${subIndex}`) },
+  };
+}
+
 export async function seedCategory(item, index) {
   const category = await Category.findOneAndUpdate(
     { slug: item.slug },
-    {
-      $set: {
-        name: item.name,
-        slug: item.slug,
-        description: item.description,
-        image: categoryImageSeed(item.slug),
-        icon: 'Package',
-        metadata: {
-          sortOrder: index,
-          isFeatured: index < 8,
-          keywords: item.trending || [],
-        },
-      },
-    },
+    categorySeedUpdate(item, index),
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
   for (const [subIndex, subName] of item.subcategories.entries()) {
     await Subcategory.findOneAndUpdate(
       { categoryId: category._id, slug: slugifyCategory(subName) },
-      {
-        $set: {
-          categoryId: category._id,
-          name: subName,
-          slug: slugifyCategory(subName),
-          image: categoryImageSeed(`${item.slug}-${subIndex}`),
-          icon: 'Package',
-          metadata: { sortOrder: subIndex, isFeatured: subIndex < 4 },
-        },
-      },
+      subcategorySeedUpdate(category._id, item, subName, subIndex),
       { upsert: true, setDefaultsOnInsert: true }
     );
   }

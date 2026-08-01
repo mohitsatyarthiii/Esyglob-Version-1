@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const documentSchema = new mongoose.Schema({
   type: {
@@ -283,6 +284,10 @@ sellerVerificationSchema.index({
   rejectionReason: 'text',
   'documents.name': 'text',
   'documents.type': 'text',
+});
+sellerVerificationSchema.plugin(mediaIntegrityPlugin, {
+  entity: 'seller verification records',
+  paths: ['documents.url', 'documents.storageKey', 'documents.checksum', 'assessmentReportUrl', 'publicVerificationVideoUrl'],
 });
 
 const SellerVerification = mongoose.models.SellerVerification || 

@@ -1,5 +1,6 @@
 // models/Document.js
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const documentSchema = new mongoose.Schema({
   userId: {
@@ -118,5 +119,6 @@ documentSchema.pre('save', async function() {
   }
   this.updatedAt = new Date();
 });
+documentSchema.plugin(mediaIntegrityPlugin, { entity: 'documents', paths: ['fileUrl'] });
 
 export default mongoose.models.Document || mongoose.model('Document', documentSchema);

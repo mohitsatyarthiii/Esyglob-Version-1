@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { USER_ROLES } from '../lib/constants.js';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const userSchema = new mongoose.Schema(
   {
@@ -93,6 +94,7 @@ userSchema.index({ isActive: 1 });
 userSchema.index({ createdAt: -1 });
 userSchema.index({ fullName: 'text', firstName: 'text', lastName: 'text', email: 'text', phone: 'text' });
 userSchema.index({ email: 1, phone: 1 });
+userSchema.plugin(mediaIntegrityPlugin, { entity: 'users', paths: ['avatarUrl'] });
 
 // Virtual for full name
 userSchema.virtual('displayName').get(function () {

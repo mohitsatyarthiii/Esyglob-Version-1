@@ -10,8 +10,7 @@ export const factorySchema = z.object({
       country: z.string().trim().optional(),
       pincode: z.string().trim().optional(),
     })
-    .optional()
-    .default({}),
+    .optional(),
   floorArea: z.string().trim().optional(),
   description: z.string().trim().optional(),
   employeeCount: z.coerce.number().min(0).optional(),
@@ -26,16 +25,16 @@ export const factorySchema = z.object({
         model: z.string().trim().optional(),
         year: z.coerce.number().optional(),
       })
-    )]).optional().default([]),
+    )]).optional(),
   monthlyCapacity: z.string().trim().optional(),
   annualCapacity: z.string().trim().optional(),
-  capabilities: z.array(z.string().trim()).optional().default([]),
+  capabilities: z.array(z.string().trim()).optional(),
   qualityControl: z.string().trim().optional(),
-  qualityProcesses: z.array(z.string().trim()).optional().default([]),
-  exportMarkets: z.array(z.string().trim()).optional().default([]),
-  certifications: z.array(z.unknown()).optional().default([]),
-  images: z.array(z.string().trim()).optional().default([]),
-  videos: z.array(z.string().trim()).optional().default([]),
+  qualityProcesses: z.array(z.string().trim()).optional(),
+  exportMarkets: z.array(z.string().trim()).optional(),
+  certifications: z.array(z.unknown()).optional(),
+  images: z.array(z.string().trim()).optional(),
+  videos: z.array(z.string().trim()).optional(),
 });
 
 export const onboardingSchema = z.object({

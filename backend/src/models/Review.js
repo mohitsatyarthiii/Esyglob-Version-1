@@ -1,5 +1,6 @@
 // models/Review.js
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const reviewSchema = new mongoose.Schema({
   userId: {
@@ -62,5 +63,6 @@ const reviewSchema = new mongoose.Schema({
 reviewSchema.index({ sellerId: 1, createdAt: -1 });
 reviewSchema.index({ productId: 1, createdAt: -1 });
 reviewSchema.index({ title: 'text', comment: 'text', pros: 'text', cons: 'text', status: 'text' });
+reviewSchema.plugin(mediaIntegrityPlugin, { entity: 'reviews', paths: ['images'] });
 
 export default mongoose.models.Review || mongoose.model('Review', reviewSchema);

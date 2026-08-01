@@ -5,7 +5,7 @@ export const profileSchema = z.object({
   companyName: z.string().trim().max(160).optional().default(''),
   email: z.string().trim().email().max(180),
   phone: z.string().trim().max(40).optional().default(''),
-  avatarUrl: z.string().trim().url().or(z.literal('')).optional().default(''),
+  avatarUrl: z.string().trim().url().or(z.literal('')).optional(),
   country: z.string().trim().max(80).optional().default(''),
   city: z.string().trim().max(80).optional().default(''),
   address: z.string().trim().max(240).optional().default(''),

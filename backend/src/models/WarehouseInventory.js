@@ -1,5 +1,6 @@
 // models/WarehouseInventory.js
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const warehouseInventorySchema = new mongoose.Schema({
   userId: {
@@ -69,5 +70,6 @@ warehouseInventorySchema.pre('save', function(next) {
   this.updatedAt = new Date();
   next();
 });
+warehouseInventorySchema.plugin(mediaIntegrityPlugin, { entity: 'warehouse inventory', paths: ['images'] });
 
 export default mongoose.models.WarehouseInventory || mongoose.model('WarehouseInventory', warehouseInventorySchema);

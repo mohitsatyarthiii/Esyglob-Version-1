@@ -96,6 +96,13 @@ export const productSchema = z.object({
 
 export const productUpdateSchema = productSchema.partial();
 
+export function parseProductUpdate(input) {
+  const parsed = productUpdateSchema.parse(input);
+  return Object.fromEntries(Object.keys(input || {})
+    .filter((key) => Object.hasOwn(parsed, key))
+    .map((key) => [key, parsed[key]]));
+}
+
 export function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

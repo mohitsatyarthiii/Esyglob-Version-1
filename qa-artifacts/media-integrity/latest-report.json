@@ -1,0 +1,137 @@
+{
+  "runId": "media-integrity-1785545131113-c84ae6c9",
+  "startedAt": "2026-08-01T00:45:31.118Z",
+  "checks": [
+    {
+      "name": "five unique uploads created with optimized variants",
+      "passed": true,
+      "at": "2026-08-01T00:45:38.899Z"
+    },
+    {
+      "name": "create",
+      "passed": true,
+      "at": "2026-08-01T00:45:41.574Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "edit name and description without media payloads",
+      "passed": true,
+      "at": "2026-08-01T00:45:42.561Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "deactivate",
+      "passed": true,
+      "at": "2026-08-01T00:45:42.630Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "activate",
+      "passed": true,
+      "at": "2026-08-01T00:45:42.710Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "null and undefined media assignments are ignored",
+      "passed": true,
+      "at": "2026-08-01T00:45:42.819Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "delete unrelated fields",
+      "passed": true,
+      "at": "2026-08-01T00:45:43.340Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "multiple consecutive and bulk updates",
+      "passed": true,
+      "at": "2026-08-01T00:45:43.606Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "cache clear and refetch",
+      "passed": true,
+      "at": "2026-08-01T00:45:43.844Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "backend database reconnect",
+      "passed": true,
+      "at": "2026-08-01T00:45:44.871Z",
+      "databaseReferences": 8,
+      "physicalVariants": 15
+    },
+    {
+      "name": "two independent HTTP sessions render every original image",
+      "passed": true,
+      "at": "2026-08-01T00:45:44.975Z",
+      "requests": 10
+    },
+    {
+      "name": "no missing, duplicate, or orphan variants before explicit cleanup",
+      "passed": true,
+      "at": "2026-08-01T00:45:44.987Z",
+      "expectedFiles": 15,
+      "actualFiles": 15
+    }
+  ],
+  "entities": {
+    "category": {
+      "storageKey": "categories/media-integrity-1785545131113-c84ae6c9/3b70fcb6-9a8b-437c-b7b5-8c64677d3b1b-original.webp",
+      "checksum": "c7a9b21e05491b5d61726b575c1f5ab8fcdcb8fc4a32c2b6323a1e9e6940297f",
+      "variants": [
+        "original",
+        "medium",
+        "thumbnail"
+      ]
+    },
+    "product": {
+      "storageKey": "products/media-integrity-1785545131113-c84ae6c9/a44c1dda-a675-448e-8045-9041952b71c8-original.webp",
+      "checksum": "eec4dcc6c979cf1fec852de3e2d0b4daf92d611b7e29b0c6681ab99580306af8",
+      "variants": [
+        "original",
+        "medium",
+        "thumbnail"
+      ]
+    },
+    "profile": {
+      "storageKey": "profiles/media-integrity-1785545131113-c84ae6c9/ce4f7e27-9097-4fc6-b03a-60fd0128ca1b-original.webp",
+      "checksum": "d5e2be86b8cb7a3973b4d78f85e41207f278e4d7a49e7cfdd0b6ee6d98aa813a",
+      "variants": [
+        "original",
+        "medium",
+        "thumbnail"
+      ]
+    },
+    "seller": {
+      "storageKey": "seller-logos/media-integrity-1785545131113-c84ae6c9/252a1a32-2ac7-4a03-9558-88c06ccc4bba-original.webp",
+      "checksum": "119113190c2fda963d7a17dbe6d55d7120217bfe3dbd862767182a4390afa26c",
+      "variants": [
+        "original",
+        "medium",
+        "thumbnail"
+      ]
+    },
+    "factory": {
+      "storageKey": "manufacturers/media-integrity-1785545131113-c84ae6c9/089a3222-e869-42fc-b943-4066c650db51-original.webp",
+      "checksum": "7ff406962d41fac16d572d2731d19798291cb0bb9b6dd4701c98c9d1df938fdd",
+      "variants": [
+        "original",
+        "medium",
+        "thumbnail"
+      ]
+    }
+  },
+  "status": "passed",
+  "finishedAt": "2026-08-01T00:45:45.726Z",
+  "testArtifactsRemoved": true
+}

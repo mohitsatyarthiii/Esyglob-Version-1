@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const machinerySchema = new mongoose.Schema({
   name: { type: String, trim: true, required: true },
@@ -55,5 +56,9 @@ const factoryProfileSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 factoryProfileSchema.index({ verificationStatus: 1, updatedAt: -1 });
+factoryProfileSchema.plugin(mediaIntegrityPlugin, {
+  entity: 'factory profiles',
+  paths: ['images', 'videos', 'certifications', 'inspection.reportUrl'],
+});
 
 export default mongoose.models.FactoryProfile || mongoose.model('FactoryProfile', factoryProfileSchema);

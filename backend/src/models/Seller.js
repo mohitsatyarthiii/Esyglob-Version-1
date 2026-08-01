@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { SELLER_STATUS } from '../lib/constants.js';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const sellerSchema = new mongoose.Schema(
   {
@@ -342,6 +343,10 @@ sellerSchema.index({ isActive: 1, isVerified: 1, isTrustedSeller: -1, verificati
 sellerSchema.index({ isActive: 1, isVerified: 1, companyType: 1, rating: -1, createdAt: -1 });
 sellerSchema.index({ isActive: 1, isVerified: 1, 'address.country': 1, rating: -1 });
 sellerSchema.index({ companyName: 'text', companyDescription: 'text', companyType: 'text', productCategories: 'text' });
+sellerSchema.plugin(mediaIntegrityPlugin, {
+  entity: 'sellers',
+  paths: ['companyLogo', 'coverImage', 'companyPhotos', 'companyVideos', 'brochures', 'logoUrl', 'logo', 'certifications.documentUrl'],
+});
 
 // Methods
 sellerSchema.methods.updateVerificationBadge = function () {

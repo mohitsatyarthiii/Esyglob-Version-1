@@ -20,7 +20,8 @@
     "storage:cleanup:images": "node scripts/migrate-vps-storage-and-cleanup.js --execute --images-only --confirm=DELETE_MARKETPLACE_CONTENT",
     "storage:cleanup": "node scripts/migrate-vps-storage-and-cleanup.js --execute --confirm=DELETE_MARKETPLACE_CONTENT",
     "storage:validate": "node scripts/validate-vps-storage-migration.js",
-    "storage:validate:http": "node scripts/validate-storage-http.js"
+    "storage:validate:http": "node scripts/validate-storage-http.js",
+    "storage:validate:integrity": "node scripts/validate-media-integrity.js"
   },
   "keywords": [],
   "author": "",

@@ -36,6 +36,7 @@ export async function create(resource, body, admin, request = {}) {
       ? await createGiftCard(body, admin)
       : await repository.createResource(resource, body);
   const record = item.card || item;
+  invalidateResourceCaches(resource, record?._id);
   await log(admin, request, { action: 'created', resource, resourceId: record._id, summary: `Created ${resourceLabel(resource, record)}`, changes: { created: sanitize(body) } });
   return item;
 }
@@ -68,7 +69,7 @@ export async function update(resource, id, body, admin, request = {}) {
   }
   const before = await repository.getResource(resource, id);
   const item = await repository.updateResource(resource, id, body);
-  if (resource === 'sellers') invalidateMemoryCache('sellers:');
+  invalidateResourceCaches(resource, id);
   await log(admin, request, { action: 'updated', resource, resourceId: id, summary: `Updated ${resourceLabel(resource, item)}`, changes: diff(before, item, Object.keys(body)) });
   return item;
 }
@@ -93,8 +94,20 @@ export async function remove(resource, id, admin, request = {}) {
   } else {
     item = await repository.deleteResource(resource, id, admin.id);
   }
+  invalidateResourceCaches(resource, id);
   await log(admin, request, { action: actionName, resource, resourceId: id, summary: `${humanize(actionName)} ${resourceLabel(resource, before)}`, changes: { [actionName]: snapshot(item) } });
   return item;
+}
+
+function invalidateResourceCaches(resource, id) {
+  if (resource === 'sellers') {
+    invalidateMemoryCache('sellers:');
+    if (id) invalidateMemoryCache(`supplier-profile:${id}`);
+  }
+  if (resource === 'categories' || resource === 'subcategories') {
+    invalidateMemoryCache('categories:');
+    invalidateMemoryCache('category:');
+  }
 }
 
 export async function reviewDocument(verificationId, documentId, body, admin, request = {}) {
@@ -113,6 +126,7 @@ export async function action(resource, id, input, admin, request = {}) {
   assertPermission(admin, resource);
   const result = await handlers[resource]?.(id, input, admin);
   if (!result) throw Object.assign(new Error('This action is not supported for the selected resource'), { statusCode: 422 });
+  invalidateResourceCaches(resource, id);
   await log(admin, request, {
     action: input.action, resource, resourceId: result._id || id,
     summary: `${humanize(input.action)} ${resourceLabel(resource, result)}`,

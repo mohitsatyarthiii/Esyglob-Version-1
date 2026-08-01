@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 
 const productSchema = new mongoose.Schema(
   {
@@ -307,6 +308,10 @@ productSchema.index({ bulkImportId: 1, importRowNumber: 1 });
 productSchema.index({ hsCodeIds: 1, status: 1 });
 productSchema.index({ 'hsCodes.code': 1, status: 1 });
 productSchema.index({ slug: 1 }, { sparse: true });
+productSchema.plugin(mediaIntegrityPlugin, {
+  entity: 'products',
+  paths: ['images', 'videos', 'variants.images', 'certifications.documentUrl'],
+});
 
 function slugify(value) {
   return String(value || 'product')

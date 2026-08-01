@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { mediaIntegrityPlugin } from '../lib/media-integrity.js';
 import { activitySchema, tradeDocumentSchema, tradeNoteSchema } from './schemas/tradeArtifact.schema.js';
 
 const rfqSchema = new mongoose.Schema(
@@ -243,5 +244,6 @@ rfqSchema.index({
   deliveryCountry: 'text',
   specifications: 'text',
 });
+rfqSchema.plugin(mediaIntegrityPlugin, { entity: 'RFQs', paths: ['attachments.url', 'images.url', 'documents.url'] });
 
 export default mongoose.models.RFQ || mongoose.model('RFQ', rfqSchema);

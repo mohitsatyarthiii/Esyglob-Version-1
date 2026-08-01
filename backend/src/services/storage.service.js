@@ -101,6 +101,20 @@ function absoluteStoragePath(storageKey) {
   return resolved;
 }
 
+function imageFamilyKeys(storageKey) {
+  const normalized = String(storageKey || '').replace(/\\/g, '/');
+  const filename = path.posix.basename(normalized);
+  const directory = path.posix.dirname(normalized);
+  const match = filename.match(/^([0-9a-f-]{36})-(?:original|medium|thumbnail)\.webp$/i);
+  if (!match) return normalized ? [normalized] : [];
+  const rootFolder = directory.split('/')[0];
+  const relativeDirectory = directory.split('/').slice(1).join('/');
+  const primaryRoot = rootFolder === 'product-thumbnails' ? 'products' : rootFolder;
+  const thumbnailRoot = primaryRoot === 'products' ? 'product-thumbnails' : primaryRoot;
+  const join = (root, suffix) => [root, relativeDirectory, `${match[1]}-${suffix}.webp`].filter(Boolean).join('/');
+  return [join(primaryRoot, 'original'), join(primaryRoot, 'medium'), join(thumbnailRoot, 'thumbnail')];
+}
+
 function isPrivateAddress(address) {
   return PRIVATE_NETWORKS.some(pattern => pattern.test(String(address || '')));
 }
@@ -158,7 +172,7 @@ async function atomicWrite(destination, buffer) {
   await fs.rename(temporary, destination);
 }
 
-function uploadResult({ storageKey, originalName, mimeType, size, visibility, width, height, variants }) {
+function uploadResult({ storageKey, originalName, mimeType, size, visibility, width, height, checksum, variants }) {
   const url = StorageService.getImageUrl(storageKey);
   return {
     url,
@@ -166,6 +180,8 @@ function uploadResult({ storageKey, originalName, mimeType, size, visibility, wi
     location: url,
     storageProvider: 'vps',
     storageKey,
+    storagePath: storageKey,
+    filename: path.posix.basename(storageKey),
     originalName: String(originalName || 'upload').slice(0, 255),
     name: String(originalName || 'upload').slice(0, 255),
     mimeType,
@@ -174,6 +190,8 @@ function uploadResult({ storageKey, originalName, mimeType, size, visibility, wi
     visibility,
     width,
     height,
+    checksum,
+    hashes: checksum ? { sha256: checksum } : {},
     format: mimeType === 'image/webp' ? 'webp' : path.extname(storageKey).slice(1),
     variants,
   };
@@ -240,10 +258,13 @@ export default class StorageService {
       { name: 'original', width: 2048, quality: 84 },
       { name: 'medium', width: 1024, quality: 80 },
       { name: 'thumbnail', width: 320, quality: 76 },
-    ].map(async variant => ({
-      ...variant,
-      buffer: await base.clone().resize({ width: variant.width, height: variant.width, fit: 'inside', withoutEnlargement: true }).webp({ quality: variant.quality, effort: 5 }).toBuffer(),
-    })));
+    ].map(async variant => {
+      const { data, info } = await base.clone()
+        .resize({ width: variant.width, height: variant.width, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: variant.quality, effort: 5 })
+        .toBuffer({ resolveWithObject: true });
+      return { ...variant, buffer: data, outputWidth: info.width, outputHeight: info.height };
+    }));
     return variants;
   }
 
@@ -262,7 +283,14 @@ export default class StorageService {
         const key = `${variantFolder}/${id}-${variant.name}.webp`;
         await atomicWrite(absoluteStoragePath(key), variant.buffer);
         written.push(key);
-        variants[variant.name] = { storageKey: key, url: this.getImageUrl(key), size: variant.buffer.length };
+        variants[variant.name] = {
+          storageKey: key,
+          url: this.getImageUrl(key),
+          size: variant.buffer.length,
+          width: variant.outputWidth,
+          height: variant.outputHeight,
+          checksum: crypto.createHash('sha256').update(variant.buffer).digest('hex'),
+        };
       }
       const primary = variants.original;
       return uploadResult({
@@ -273,6 +301,7 @@ export default class StorageService {
         visibility,
         width: Math.min(Number(metadata.width), 2048),
         height: Math.round(Number(metadata.height) * Math.min(1, 2048 / Number(metadata.width))),
+        checksum: primary.checksum,
         variants,
       });
     } catch (error) {
@@ -290,7 +319,15 @@ export default class StorageService {
     const storageKey = `${safeFolder}/${crypto.randomUUID()}${extension}`;
     try {
       await atomicWrite(absoluteStoragePath(storageKey), buffer);
-      return uploadResult({ storageKey, originalName, mimeType, size: buffer.length, visibility, variants: {} });
+      return uploadResult({
+        storageKey,
+        originalName,
+        mimeType,
+        size: buffer.length,
+        visibility,
+        checksum: crypto.createHash('sha256').update(buffer).digest('hex'),
+        variants: {},
+      });
     } catch (error) {
       throw new UploadStorageError('Unable to store the uploaded file', { code: 'VPS_FILE_WRITE_FAILED', cause: error });
     }
@@ -356,34 +393,44 @@ export default class StorageService {
 
   static async deleteImage(storageKey) {
     if (!storageKey) return false;
-    const normalized = String(storageKey).replace(/\\/g, '/');
-    const filename = path.posix.basename(normalized);
-    const directory = path.posix.dirname(normalized);
-    const match = filename.match(/^([0-9a-f-]{36})-(?:original|medium|thumbnail)\.webp$/i);
-    const rootFolder = directory.split('/')[0];
-    const thumbnailDirectory = rootFolder === 'products'
-      ? ['product-thumbnails', ...directory.split('/').slice(1)].join('/')
-      : rootFolder === 'product-thumbnails'
-        ? ['products', ...directory.split('/').slice(1)].join('/')
-        : directory;
-    const primaryDirectory = rootFolder === 'product-thumbnails' ? thumbnailDirectory : directory;
-    const keys = match ? [
-      `${primaryDirectory}/${match[1]}-original.webp`,
-      `${primaryDirectory}/${match[1]}-medium.webp`,
-      `${rootFolder === 'products' || rootFolder === 'product-thumbnails' ? (rootFolder === 'products' ? thumbnailDirectory : directory) : directory}/${match[1]}-thumbnail.webp`,
-    ] : [normalized];
+    const keys = imageFamilyKeys(storageKey);
     const removed = await Promise.all(keys.map(key => fs.unlink(absoluteStoragePath(key)).then(() => true).catch(error => error.code === 'ENOENT' ? false : Promise.reject(error))));
     return removed.some(Boolean);
   }
 
-  static async replaceImage(storageKey, upload) {
+  static async replaceImage(storageKey, upload, options = {}) {
+    if (typeof options.commit !== 'function') {
+      throw Object.assign(new Error('Image replacement requires a database commit callback'), { statusCode: 409, code: 'MEDIA_COMMIT_REQUIRED' });
+    }
+    if (typeof options.isReferenced !== 'function') {
+      throw Object.assign(new Error('Image replacement requires a database reference check'), { statusCode: 409, code: 'MEDIA_REFERENCE_CHECK_REQUIRED' });
+    }
     const replacement = await this.uploadImage(upload);
-    await this.deleteImage(storageKey).catch(error => console.warn('[Storage] Previous image cleanup failed:', error.message));
+    try {
+      await options.commit(replacement);
+    } catch (error) {
+      await this.deleteImage(replacement.storageKey).catch(() => undefined);
+      throw error;
+    }
+    try {
+      const previousStillReferenced = await options.isReferenced(storageKey);
+      if (!previousStillReferenced) {
+        await this.deleteImage(storageKey).catch(error => console.warn('[Storage] Previous image cleanup failed after commit:', error.message));
+      } else {
+        replacement.previousCleanupDeferred = true;
+      }
+    } catch (error) {
+      replacement.previousCleanupDeferred = true;
+      console.warn('[Storage] Previous image retained because its reference check failed:', error.message);
+    }
     return replacement;
   }
 
-  static async cleanupUnusedImages(activeStorageKeys = [], { olderThanMs = 24 * 60 * 60 * 1000 } = {}) {
-    const active = new Set(activeStorageKeys.map(key => String(key).replace(/\\/g, '/')));
+  static async cleanupUnusedImages(activeStorageKeys = [], { olderThanMs = 24 * 60 * 60 * 1000, manifestComplete = false, dryRun = true } = {}) {
+    if (!manifestComplete) {
+      throw Object.assign(new Error('Media cleanup requires an explicitly complete reference manifest'), { statusCode: 409, code: 'INCOMPLETE_MEDIA_MANIFEST' });
+    }
+    const active = new Set(activeStorageKeys.flatMap(imageFamilyKeys));
     const removed = [];
     const cutoff = Date.now() - Math.max(60_000, Number(olderThanMs));
     for (const folder of REQUIRED_FOLDERS) {
@@ -395,7 +442,7 @@ export default class StorageService {
         const relative = path.relative(storageRoot(), absolute).split(path.sep).join('/');
         const stat = await fs.stat(absolute);
         if (!active.has(relative) && stat.mtimeMs < cutoff) {
-          await fs.unlink(absolute);
+          if (!dryRun) await fs.unlink(absolute);
           removed.push(relative);
         }
       }
