@@ -1,10 +1,11 @@
-const TAGGED_REASONING = /<\s*(think|thinking|analysis|reasoning|planning|internal(?:_notes?)?|scratchpad)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi;
-const UNCLOSED_REASONING = /<\s*(think|thinking|analysis|reasoning|planning|internal(?:_notes?)?|scratchpad)\b[^>]*>[\s\S]*$/gi;
-const ORPHAN_REASONING_TAGS = /<\s*\/?\s*(think|thinking|analysis|reasoning|planning|internal(?:_notes?)?|scratchpad)\b[^>]*>/gi;
-const MARKED_REASONING_SECTION = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:thinking|analysis|reasoning|planning|internal notes?|prompt analysis)\s*:?\s*\n[\s\S]*?(?=\n\s*(?:#{1,6}\s*)?(?:final answer|answer|response)\s*:?\s*\n|$)/gi;
+const PRIVATE_BLOCK = 'think|thinking|analysis|reasoning|planning|internal(?:_notes?)?|scratchpad|system|developer|tool(?:_call|_trace)?|prompt';
+const TAGGED_REASONING = new RegExp(`<\\s*(${PRIVATE_BLOCK})\\b[^>]*>[\\s\\S]*?<\\s*\\/\\s*\\1\\s*>`, 'gi');
+const UNCLOSED_REASONING = new RegExp(`<\\s*(${PRIVATE_BLOCK})\\b[^>]*>[\\s\\S]*$`, 'gi');
+const ORPHAN_REASONING_TAGS = new RegExp(`<\\s*\\/?\\s*(${PRIVATE_BLOCK})\\b[^>]*>`, 'gi');
+const MARKED_REASONING_SECTION = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:thinking|analysis|reasoning|planning|internal notes?|prompt analysis|system (?:prompt|message)|developer (?:prompt|message)|tool (?:call|trace|output))\s*:?\s*\n[\s\S]*?(?=\n\s*(?:#{1,6}\s*)?(?:final answer|answer|response)\s*:?\s*\n|$)/gi;
 const FINAL_ANSWER_LABEL = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:final answer|answer|response)\s*:\s*(?=\n|$)/gi;
 
-export const INTERNAL_DISCLOSURE_PATTERN = /(?:\bthe user (?:is asking|asked|wants|needs|requested)\b|\b(?:i|we) (?:should|will|need to|must|am going to|are going to) (?:answer|respond|explain|provide|request|use|consider|mention|avoid|determine|craft)\b|\bneed to (?:answer|respond|determine|craft)\b|\blet(?:'s| us) (?:answer|respond|analyze|reason|plan|craft)\b|\bgiven (?:the )?user(?:'s)? (?:request|question|message)\b|\blooking at (?:the )?(?:conversation|context|messages?)\b|\bbased on (?:the )?(?:context|prompt|instructions?)\b|\baccording to (?:my|the|system) instructions?\b|\bthe system prompt (?:says|requires|instructs)?\b|\bthe conversation says\b|\b(?:internal|hidden) (?:reasoning|analysis|notes?|planning)\b|\bchain[ -]of[ -]thought\b|\bprompt (?:analysis|interpretation|reasoning)\b|^\s*(?:#{1,6}\s*)?(?:thinking|planning|reasoning|internal notes?|prompt analysis)\s*:?\s*$)/i;
+export const INTERNAL_DISCLOSURE_PATTERN = /(?:\bthe user (?:\w+\s+){0,2}?(?:is asking|asked|wants|needs|requested)\b|^\s*(?:okay[,!.]?\s*)?(?:i|we) (?:should|will|need to|must|am going to|are going to)\b|^\s*i (?:recall|remember|think|believe|suspect)\b|^\s*they (?:also )?(?:asked|said|specified|requested|want|expect)\b|\bwhich (?:probably|likely) means (?:the user|they)\b|\b(?:i|we) (?:should|will|need to|must|am going to|are going to) (?:answer|respond|explain|provide|request|use|consider|mention|avoid|determine|craft|make)\b|\bi need to be (?:concise|careful|accurate|brief)\b|\bneed to (?:answer|respond|determine|craft)\b|\blet me (?:think|analy[sz]e|reason|plan|consider)\b|\blet(?:'s| us) (?:answer|respond|analyze|reason|plan|craft)\b|\bbefore (?:i )?(?:answer|respond)\b|\bto answer (?:this|the question|the user)\b|\bgiven (?:the )?user(?:'s)? (?:request|question|message)\b|\blooking at (?:the )?(?:conversation|context|messages?)\b|\bbased on (?:the )?(?:context|prompt|instructions?)\b|\baccording to (?:my|the|system) instructions?\b|\bthe system prompt (?:says|requires|instructs)?\b|\bthe (?:developer|system) message (?:says|requires|instructs)?\b|\bmy (?:prompt|instructions?|hidden context)\b|\bthe conversation says\b|\b(?:internal|hidden) (?:reasoning|analysis|notes?|planning)\b|\bchain[ -]of[ -]thought\b|\bprompt (?:analysis|interpretation|reasoning)\b|\btool (?:call|trace|output)\b|^\s*(?:#{1,6}\s*)?(?:thinking|planning|reasoning|internal notes?|prompt analysis|system prompt|developer message|tool trace)\s*:?\s*$)/i;
 
 function removeUnsafeSentences(line) {
   const sentences = String(line).split(/(?<=[.!?])\s+/);
@@ -47,7 +48,7 @@ export function assertSafeAIOutput(value) {
   return result;
 }
 
-const STREAM_TAGS = new Set(['think', 'thinking', 'analysis', 'reasoning', 'planning', 'internal', 'internal_notes', 'scratchpad']);
+const STREAM_TAGS = new Set(['think', 'thinking', 'analysis', 'reasoning', 'planning', 'internal', 'internal_notes', 'scratchpad', 'system', 'developer', 'prompt', 'tool', 'tool_call', 'tool_trace']);
 const ABBREVIATIONS = new Set(['mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'e.g.', 'i.e.', 'vs.', 'etc.', 'inc.', 'ltd.']);
 
 export class ReasoningStreamFilter {

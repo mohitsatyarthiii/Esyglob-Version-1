@@ -7,6 +7,7 @@ import OllamaRuntimeService from '../services/ollama-runtime.service.js';
 import KnowledgeBaseService from '../services/knowledge-base.service.js';
 import AIIntentRouterService from '../services/ai-intent-router.service.js';
 import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
+import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
@@ -16,6 +17,14 @@ function isObjectId(value) {
 
 function debugLog(...args) {
   if (process.env.AI_DEBUG === 'true') console.log(...args);
+}
+
+function inferenceBudget(route = {}, intelligence = {}, message = '') {
+  const handling = route.handling || '';
+  if (handling === 'ai_market_insights' || intelligence.intent === 'market_research') return { maxTokens: CHAT_MAX_TOKENS, contextSize: 8_192 };
+  if (handling === 'database_first' || intelligence.route === 'marketplace_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
+  if (handling === 'ai_trade' || intelligence.route === 'knowledge_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
+  return { maxTokens: Math.min(CHAT_MAX_TOKENS, String(message).length < 120 ? 220 : 320), contextSize: 4_096 };
 }
 
 class AIChatController {
@@ -32,7 +41,7 @@ class AIChatController {
       if (error.statusCode === 404) {
         return res.status(404).json({ error: error.message });
       }
-      return res.status(500).json({ error: 'Failed to fetch chats', details: error.message });
+      return res.status(500).json({ error: 'Failed to fetch chats' });
     }
   }
 
@@ -205,6 +214,7 @@ class AIChatController {
 
         const fastDirectRoute = platformContext.snapshot.intelligence?.route === 'general_knowledge';
         const isSimpleGreeting = platformContext.snapshot.intelligence?.route === 'greeting';
+        const budget = inferenceBudget(requestRoute, platformContext.snapshot.intelligence, message);
 
         let assistantText = '';
         let tokensUsed = 0;
@@ -213,6 +223,7 @@ class AIChatController {
         let aiFailed = false;
         let firstTokenAt = 0;
         let draftWasStreamed = false;
+        let replaceStreamedDraft = false;
         const providerStartedAt = Date.now();
         if (requestRoute.handling === 'direct' || semanticCached) {
           assistantText = requestRoute.handling === 'direct' ? requestRoute.response : semanticCached.response;
@@ -235,8 +246,9 @@ class AIChatController {
               stream: true,
               signal: requestAbort.signal,
               timeoutMs: Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 90_000),
-              temperature: 0.35,
-              maxTokens: CHAT_MAX_TOKENS,
+              temperature: 0.22,
+              maxTokens: budget.maxTokens,
+              contextSize: budget.contextSize,
               onToken(token) {
                 if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
                 if (!firstTokenAt) firstTokenAt = Date.now();
@@ -251,6 +263,7 @@ class AIChatController {
           } catch (error) {
             debugLog('[Stream] AI failed:', error.message);
             aiFailed = true;
+            replaceStreamedDraft = draftWasStreamed;
           }
         } else if (!assistantText) {
           aiFailed = true;
@@ -278,7 +291,9 @@ class AIChatController {
 
         }
 
-        let cleanText = assistantText.trim() || 'I can help with your request. Please try again.';
+        const sanitized = sanitizeAIOutput(assistantText);
+        let cleanText = sanitized.text || 'I can help with your request. Please try again.';
+        if (draftWasStreamed && (sanitized.changed || sanitized.rejected)) replaceStreamedDraft = true;
         const intelligence = platformContext.snapshot.intelligence || {};
         let validation = validateAIResponse({
           message,
@@ -295,7 +310,7 @@ class AIChatController {
               buildRepairPrompt({ message, response: cleanText, validation, intelligence }),
               chat.messages.slice(-4),
               systemPrompt,
-              { maxTokens: CHAT_MAX_TOKENS, temperature: 0.2 },
+              { maxTokens: CHAT_MAX_TOKENS, temperature: 0.15 },
             );
             const repairedText = String(repair.message || '').trim();
             const repairedValidation = validateAIResponse({
@@ -318,19 +333,21 @@ class AIChatController {
             debugLog('[Validator] Repair failed:', repairError.message);
           }
         }
-        if (!semanticCached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
-          AISemanticCacheService.put(message, cleanText, requestRoute.cacheCategory).catch(() => undefined);
-        }
-
-        if (!validation.passed && !draftWasStreamed) {
-          const critical = validation.issues.some(issue => issue.severity === 'critical');
-          if (critical) {
+        if (!validation.passed) {
+          const unsafe = validation.issues.some(issue => ['critical', 'high'].includes(issue.severity));
+          if (unsafe && (draftWasStreamed || !regenerated)) {
             cleanText = intelligence.language === 'hi'
               ? 'मैं इस अनुरोध का सुरक्षित और सत्यापित उत्तर नहीं दे सका। कृपया निजी जानकारी साझा किए बिना अनुरोध को दोबारा लिखें।'
               : intelligence.language === 'hinglish'
                 ? 'Main is request ka safe aur verified answer generate nahi kar saka. Private details ke bina request dobara likhein.'
                 : 'I could not produce a safe, verified answer for this request. Please rephrase it without including private information.';
+            replaceStreamedDraft = draftWasStreamed;
+            validation = validateAIResponse({ message, response: cleanText, intelligence, snapshot: platformContext.snapshot });
           }
+        }
+
+        if (!semanticCached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
+          AISemanticCacheService.put(message, cleanText, requestRoute.cacheCategory).catch(() => undefined);
         }
 
         // Only the validated/repaired final response is streamed to the client.
@@ -340,6 +357,8 @@ class AIChatController {
             if (!firstTokenAt) firstTokenAt = Date.now();
             sendSSE({ type: 'token', content: word });
           }
+        } else if (replaceStreamedDraft) {
+          sendSSE({ type: 'replace', content: cleanText });
         }
         const providerMs = Date.now() - providerStartedAt;
         const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({
@@ -453,7 +472,7 @@ class AIChatController {
     if (statusOnly === 'true') {
       const health = await AIService.healthCheck();
       return res.json({
-        status: 'operational',
+        status: health.online ? 'operational' : 'degraded',
         providers: { ollama: OllamaRuntimeService.status() },
         cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus(), semantic: AISemanticCacheService.status() },
       });

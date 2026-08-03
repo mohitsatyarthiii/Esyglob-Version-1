@@ -238,6 +238,15 @@ function HomeScreen() {
             return u;
           });
         }
+        if (chunk.type === 'replace') {
+          full = String(chunk.content ?? '');
+          setMessages(prev => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === 'assistant' && last.isStreaming) updated[updated.length - 1] = { ...last, content: full };
+            return updated;
+          });
+        }
         if ((chunk.type === 'start' || chunk.type === 'done') && typeof chunk.chatId === 'string') {
           setChatId(chunk.chatId);
           setActiveAIChatId('buyer', chunk.chatId);

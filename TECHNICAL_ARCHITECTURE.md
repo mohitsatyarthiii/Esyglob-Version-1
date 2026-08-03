@@ -49,7 +49,7 @@ Parallel code path: NestJS mobile API (/api, port 3001) -> same MongoDB collecti
 - Nest authentication independently issues 15-minute bearer JWTs and does not implement refresh tokens.
 - Storage: centralized VPS storage with validated uploads, optimized image variants, and protected verification documents.
 - Payments: Razorpay orders and HMAC signature verification for orders, subscriptions, and service bookings.
-- AI: dedicated Ollama runtime using only `qwen3:4b`; Tavily powers optional live research for explicitly current queries.
+- AI: dedicated Ollama runtime using only `gemma3:4b`; Tavily powers optional live research for explicitly current queries.
 - Caching: process-local Maps/objects and NodeCache, HTTP cache headers, and client memory caching; Redis is not used.
 - Deployment: PM2 cluster mode, two Express workers, port 5000, 1 GB restart threshold; no Docker/Kubernetes/IaC was found.
 - Public mobile configuration points to `https://api.esyglob.in/api` and `https://api.esyglob.in` for sockets.
@@ -293,7 +293,7 @@ message -> language/role/intent classifier
         -> route: marketplace data | private account data | knowledge | trade research
         -> Mongo retrieval + optional KnowledgeDocument RAG + optional Tavily evidence
         -> prompt with bounded snapshots/history
-        -> queued Ollama `qwen3:4b` runtime
+        -> queued Ollama `gemma3:4b` runtime
         -> safety/relevance/language validation -> bounded repair -> persist AIChat/usage
 ```
 

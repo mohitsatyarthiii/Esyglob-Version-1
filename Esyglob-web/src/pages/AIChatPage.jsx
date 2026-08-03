@@ -171,6 +171,7 @@ export default function AIChatPage() {
         if (event.type === 'start') { nextChatId = event.chatId || nextChatId; return }
         if (event.type === 'status') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: event.message || 'Preparing your answer...' } : item)); return }
         if (event.type === 'token') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${event.content || ''}` } : item)); return }
+        if (event.type === 'replace') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: String(event.content || '') } : item)); return }
         if (event.type === 'done') {
           streamCompleted = true
           const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }

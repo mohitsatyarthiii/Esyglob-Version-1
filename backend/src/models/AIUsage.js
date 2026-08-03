@@ -21,7 +21,7 @@ const aiUsageSchema = new mongoose.Schema(
     },
     modelUsed: {
       type: String,
-      default: 'qwen3:4b',
+      default: 'gemma3:4b',
     },
     
     // Request Details

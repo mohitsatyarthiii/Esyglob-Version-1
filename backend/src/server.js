@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { initializeSocket } from './lib/socket-server.js';
 import AIChatService from './services/ai-chat.service.js';
 import StorageService from './services/storage.service.js';
+import OllamaRuntimeService from './services/ollama-runtime.service.js';
 
 let server;
 
@@ -23,13 +24,16 @@ async function startServer() {
 
     server = createServer(app);
     initializeSocket(server);
-    AIChatService.warmProvider().then(ok => {
-      console.log(`[AI] Ollama warm-up ${ok ? 'complete' : 'unavailable'}`);
-    });
-    const aiKeepWarm = setInterval(() => {
-      AIChatService.warmProvider().catch(() => undefined);
-    }, Number(process.env.OLLAMA_WARM_INTERVAL_MS || 4.5 * 60 * 1000));
-    aiKeepWarm.unref();
+    OllamaRuntimeService.validateModel()
+      .then(() => AIChatService.warmProvider())
+      .then(ok => console.log(`[AI] ${OllamaRuntimeService.model} warm-up ${ok ? 'complete' : 'unavailable'}`))
+      .catch(error => console.error(`[AI] ${error.message}`));
+    if (OllamaRuntimeService.requiresPeriodicWarmup()) {
+      const aiKeepWarm = setInterval(() => {
+        AIChatService.warmProvider().catch(() => undefined);
+      }, Number(process.env.OLLAMA_WARM_INTERVAL_MS || 4.5 * 60 * 1000));
+      aiKeepWarm.unref();
+    }
     server.listen(config.port, () => {
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
     });

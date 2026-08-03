@@ -1,6 +1,6 @@
 import { assertSafeAIOutput, FinalAnswerStreamFilter } from '../lib/ai-output-sanitizer.js';
 
-const MODEL = 'qwen3:4b';
+const MODEL = 'gemma3:4b';
 const BASE_URL = String(process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in').replace(/\/$/, '');
 const ENABLED = process.env.OLLAMA_ENABLED !== 'false';
 const KEEP_ALIVE_SETTING = process.env.OLLAMA_KEEP_ALIVE || '-1';
@@ -11,6 +11,9 @@ const MAX_QUEUE = Math.max(1, Number(process.env.OLLAMA_MAX_QUEUE || 64));
 const queue = [];
 let active = 0;
 let warmPromise;
+let modelValidationPromise;
+let modelAvailable = null;
+let modelValidatedAt = null;
 const samples = [];
 const counters = { requests: 0, successes: 0, failures: 0, cancelled: 0, retries: 0, slowRequests: 0, filteredOutput: 0, lastSuccessAt: null, lastFailureAt: null };
 
@@ -19,7 +22,7 @@ function runtimeError(message, statusCode = 503, code = 'AI_PROVIDER_UNAVAILABLE
 }
 
 function record(sample) {
-  samples.push(sample);
+  samples.push({ ...sample, recordedAt: Date.now() });
   if (samples.length > 500) samples.shift();
 }
 
@@ -112,7 +115,7 @@ async function readStream(response, onSafeToken) {
 class OllamaRuntimeService {
   static model = MODEL;
 
-  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.3, topP = 0.85, repeatPenalty = 1.08, maxTokens = 520, contextSize, jsonMode = false } = {}) {
+  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.22, topP = 0.9, topK = 40, repeatPenalty = 1.1, maxTokens = 520, contextSize, jsonMode = false } = {}) {
     const queuedAt = Date.now();
     return enqueue(async () => {
       counters.requests += 1;
@@ -128,11 +131,12 @@ class OllamaRuntimeService {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             signal: requestSignal(signal, Number(timeoutMs || process.env.OLLAMA_REQUEST_TIMEOUT_MS || 90_000)),
             body: JSON.stringify({
-              model: MODEL, messages: requestMessages, stream, think: false, keep_alive: KEEP_ALIVE,
+              model: MODEL, messages: requestMessages, stream, keep_alive: KEEP_ALIVE,
               ...(jsonMode ? { format: 'json' } : {}),
               options: {
                 temperature,
                 top_p: topP,
+                top_k: topK,
                 repeat_penalty: repeatPenalty,
                 num_ctx: Math.max(2_048, Number(contextSize || process.env.OLLAMA_CONTEXT_SIZE || 8_192)),
                 num_predict: maxTokens,
@@ -186,8 +190,39 @@ class OllamaRuntimeService {
   static warm() {
     if (!ENABLED) return Promise.resolve(false);
     if (active > 0 || queue.length > 0) return Promise.resolve(true);
-    if (!warmPromise) warmPromise = this.complete({ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 2, temperature: 0, timeoutMs: Number(process.env.OLLAMA_WARMUP_TIMEOUT_MS || 90_000) }).then(() => true).catch(() => false).finally(() => { warmPromise = undefined; });
+    if (!warmPromise) warmPromise = this.validateModel()
+      .then(() => this.complete({ messages: [{ role: 'user', content: 'Reply OK.' }], maxTokens: 2, temperature: 0, timeoutMs: Number(process.env.OLLAMA_WARMUP_TIMEOUT_MS || 90_000) }))
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => { warmPromise = undefined; });
     return warmPromise;
+  }
+
+  static async validateModel({ force = false } = {}) {
+    if (!ENABLED) return false;
+    if (!force && modelAvailable === true) return true;
+    if (!modelValidationPromise) {
+      modelValidationPromise = fetch(`${BASE_URL}/api/show`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(Number(process.env.OLLAMA_HEALTH_TIMEOUT_MS || 8_000)),
+        body: JSON.stringify({ model: MODEL }),
+      }).then(response => {
+        if (!response.ok) throw runtimeError(`Configured AI model is unavailable (HTTP ${response.status})`, 503, 'AI_MODEL_UNAVAILABLE');
+        modelAvailable = true;
+        modelValidatedAt = new Date().toISOString();
+        return true;
+      }).catch(error => {
+        modelAvailable = false;
+        modelValidatedAt = new Date().toISOString();
+        throw runtimeError(`Configured AI model ${MODEL} is unavailable: ${error.message}`, 503, 'AI_MODEL_UNAVAILABLE');
+      }).finally(() => { modelValidationPromise = undefined; });
+    }
+    return modelValidationPromise;
+  }
+
+  static requiresPeriodicWarmup() {
+    return ENABLED && KEEP_ALIVE !== -1;
   }
 
   static status() {
@@ -195,7 +230,8 @@ class OllamaRuntimeService {
     const totalTokens = samples.reduce((sum, item) => sum + Number(item.tokens || 0), 0);
     const generationSeconds = samples.reduce((sum, item) => sum + Math.max(0, item.totalMs - item.queueMs) / 1000, 0);
     const memory = process.memoryUsage();
-    return { enabled: ENABLED, baseUrl: BASE_URL, model: MODEL, keepAlive: KEEP_ALIVE, health: counters.lastFailureAt && (!counters.lastSuccessAt || counters.lastFailureAt > counters.lastSuccessAt) ? 'degraded' : 'operational', activeSessions: active, queue: { active, pending: queue.length, maxConcurrency: MAX_CONCURRENCY, maxQueue: MAX_QUEUE }, counters: { ...counters }, throughput: { tokensPerSecond: generationSeconds ? Number((totalTokens / generationSeconds).toFixed(2)) : 0, sampleCount: samples.length }, process: { rssMb: Math.round(memory.rss / 1024 / 1024), heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024) }, latency: { averageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0, p95Ms: percentile(totals, .95), firstTokenP95Ms: percentile(samples.map(item => item.firstTokenMs), .95), streamingAverageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0 } };
+    const requestsPerMinute = samples.filter(item => item.recordedAt >= Date.now() - 60_000).length;
+    return { enabled: ENABLED, baseUrl: BASE_URL, model: MODEL, modelAvailable, modelValidatedAt, keepAlive: KEEP_ALIVE, health: modelAvailable === false || (counters.lastFailureAt && (!counters.lastSuccessAt || counters.lastFailureAt > counters.lastSuccessAt)) ? 'degraded' : 'operational', activeSessions: active, queue: { active, pending: queue.length, maxConcurrency: MAX_CONCURRENCY, maxQueue: MAX_QUEUE }, counters: { ...counters }, throughput: { tokensPerSecond: generationSeconds ? Number((totalTokens / generationSeconds).toFixed(2)) : 0, requestsPerMinute, sampleCount: samples.length }, process: { rssMb: Math.round(memory.rss / 1024 / 1024), heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024) }, latency: { averageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0, p95Ms: percentile(totals, .95), firstTokenP95Ms: percentile(samples.map(item => item.firstTokenMs), .95), streamingAverageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0 } };
   }
 }
 

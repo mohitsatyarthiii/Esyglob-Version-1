@@ -1,0 +1,22 @@
+{
+  "model": "gemma3:4b",
+  "environment": "production Ollama endpoint, CPU inference",
+  "runs": 10,
+  "completed": true,
+  "failures": 0,
+  "retries": 0,
+  "filteredOutputs": 0,
+  "firstRequestMs": 864,
+  "warmAverageMs": 1362,
+  "averageMs": 1312,
+  "p50Ms": 1307,
+  "p95Ms": 1684,
+  "p99Ms": 1684,
+  "firstTokenAverageMs": 1312,
+  "firstSentenceAverageMs": 1312,
+  "tokenThroughputPerSecond": 17.46,
+  "backendProcessMemoryDeltaMb": 3,
+  "backendProcessCpuMs": 218,
+  "modelValidated": true,
+  "runtimeHealth": "operational"
+}

@@ -177,6 +177,14 @@ function AIChatScreen() {
           tokenBuffer += String(event.content ?? '');
           if (!flushTimer) flushTimer = setTimeout(flushTokens, 40);
         }
+        if (event.type === 'replace') {
+          if (flushTimer) clearTimeout(flushTimer);
+          flushTimer = null;
+          tokenBuffer = '';
+          setMessages(current => current.map(item =>
+            item.localId === assistantId ? { ...item, statusText: '', content: String(event.content ?? '') } : item
+          ));
+        }
         if (event.type === 'status') {
           setMessages(current => current.map(item =>
             item.localId === assistantId ? { ...item, statusText: String(event.message ?? 'Preparing your answer...') } : item

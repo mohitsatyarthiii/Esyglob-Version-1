@@ -84,4 +84,4 @@ OLLAMA_KEEP_ALIVE=-1
 OLLAMA_WARM_INTERVAL_MS=270000
 ```
 
-`REDIS_URL` is optional; when omitted, semantic caching remains process-local. Only public, context-free questions are eligible for semantic caching, so account and marketplace records never enter the shared cache. Embeddings use the deterministic local 768-dimensional retrieval encoder; Ollama runs only `qwen3:4b`. Do not reuse credentials between clusters. Apply least-privilege users separately: the application marketplace user needs no access to the knowledge cluster, and the knowledge user needs no access to marketplace collections.
+`REDIS_URL` is optional; when omitted, semantic caching remains process-local. Only public, context-free questions are eligible for semantic caching, so account and marketplace records never enter the shared cache. Embeddings use the deterministic local 768-dimensional retrieval encoder; Ollama runs only `gemma3:4b`. Do not reuse credentials between clusters. Apply least-privilege users separately: the application marketplace user needs no access to the knowledge cluster, and the knowledge user needs no access to marketplace collections.

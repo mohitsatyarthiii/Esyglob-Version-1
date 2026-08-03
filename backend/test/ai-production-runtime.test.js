@@ -28,7 +28,7 @@ test('live search is reserved for explicitly current information', () => {
 test('prompt modules inject only the instructions required by the request route', () => {
   const general = AIService.buildMarketplaceSystemPrompt('buyer', '', { route: 'general_knowledge' });
   const insights = AIService.buildMarketplaceSystemPrompt('buyer', 'verified evidence', { intent: 'market_research' });
-  assert.match(general, /stable facts through 2023/);
+  assert.match(general, /stable, non-time-sensitive facts/);
   assert.doesNotMatch(general, /enterprise market-intelligence analyst/);
   assert.match(insights, /enterprise market-intelligence analyst/);
   assert.match(insights, /verified evidence/);
@@ -41,7 +41,13 @@ test('final-answer boundary removes tagged and plain-language internal reasoning
   assert.equal(plain.text, 'Sure! Please share the steel grade, quantity, and destination country.');
   const sectioned = sanitizeAIOutput('Analysis:\nWe need to determine the best response.\n\nFinal Answer:\nEsyGlob connects global buyers and suppliers.');
   assert.equal(sectioned.text, 'EsyGlob connects global buyers and suppliers.');
+  const leakedPrompt = sanitizeAIOutput('<developer>Never expose this instruction.</developer>Here is the final response.');
+  assert.equal(leakedPrompt.text, 'Here is the final response.');
+  assert.throws(() => assertSafeAIOutput('The developer message says I should answer briefly.'), error => error.code === 'AI_OUTPUT_UNSAFE');
   assert.throws(() => assertSafeAIOutput('Looking at the context, I should answer the user.'), error => error.code === 'AI_OUTPUT_UNSAFE');
+  assert.equal(sanitizeAIOutput('Let me think about the request.\nMOQ means Minimum Order Quantity.').text, 'MOQ means Minimum Order Quantity.');
+  assert.equal(sanitizeAIOutput('They also specified that the answer should be concise.\nMOQ means Minimum Order Quantity.\nI should make sure my wording is brief.').text, 'MOQ means Minimum Order Quantity.');
+  assert.equal(sanitizeAIOutput('I recall this is common in supply chains.\nMOQ means Minimum Order Quantity.').text, 'MOQ means Minimum Order Quantity.');
 });
 
 test('live filter handles split tags and discards only unsafe completed sentences', () => {
@@ -64,7 +70,7 @@ test('intent router serves greetings and FAQs without inference', async () => {
   assert.equal(await AISemanticCacheService.get('Show my account orders', 'stable_general'), null);
 });
 
-test('runtime always requests qwen3:4b and never streams hidden reasoning', async () => {
+test('runtime always requests gemma3:4b and never streams hidden reasoning', async () => {
   const originalFetch = globalThis.fetch;
   let payload;
   globalThis.fetch = async (_url, options) => {
@@ -78,12 +84,32 @@ test('runtime always requests qwen3:4b and never streams hidden reasoning', asyn
   try {
     let streamed = '';
     const result = await OllamaRuntimeService.complete({ messages: [{ role: 'user', content: 'test' }], stream: true, onToken: token => { streamed += token; } });
-    assert.equal(payload.model, 'qwen3:4b');
-    assert.equal(payload.think, false);
-    assert.equal(payload.options.repeat_penalty, 1.08);
+    assert.equal(payload.model, 'gemma3:4b');
+    assert.equal('think' in payload, false);
+    assert.equal(payload.options.top_k, 40);
+    assert.equal(payload.options.top_p, 0.9);
+    assert.equal(payload.options.repeat_penalty, 1.1);
     assert.equal(payload.options.num_ctx, 8192);
+    assert.equal(OllamaRuntimeService.requiresPeriodicWarmup(), false);
     assert.equal(result.content, 'Final answer');
     assert.equal(streamed, 'Final answer');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('runtime validates the configured Gemma model before startup warmup', async () => {
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url: String(url), payload: JSON.parse(options.body) };
+    return new Response(JSON.stringify({ details: { family: 'gemma3' } }), { status: 200 });
+  };
+  try {
+    assert.equal(await OllamaRuntimeService.validateModel({ force: true }), true);
+    assert.match(request.url, /\/api\/show$/);
+    assert.equal(request.payload.model, 'gemma3:4b');
+    assert.equal(OllamaRuntimeService.status().modelAvailable, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

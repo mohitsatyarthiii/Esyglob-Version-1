@@ -1,8 +1,11 @@
 import process from 'node:process';
 import OllamaRuntimeService from '../src/services/ollama-runtime.service.js';
 
-const runs = Math.max(3, Number(process.argv.find(arg => arg.startsWith('--runs='))?.split('=')[1] || 10));
+const runs = Math.max(3, Number(process.argv.find(arg => arg.startsWith('--runs='))?.split('=')[1] || process.env.npm_config_runs || 10));
 const samples = [];
+
+await OllamaRuntimeService.validateModel({ force: true });
+
 const memoryBefore = process.memoryUsage();
 const cpuBefore = process.cpuUsage();
 
@@ -24,18 +27,33 @@ for (let index = 0; index < runs; index += 1) {
   }
 }
 
-const sorted = samples.map(item => item.totalMs).sort((a, b) => a - b);
 const average = values => values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
+const percentile = (values, value) => {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * value) - 1)] : null;
+};
+const totalTimes = samples.map(item => item.totalMs);
+const firstTokenTimes = samples.map(item => item.firstTokenMs);
 const cpu = process.cpuUsage(cpuBefore);
 const report = {
   model: OllamaRuntimeService.model,
   completed: !benchmarkError && samples.length === runs,
   error: benchmarkError,
-  coldResponseMs: samples[0]?.totalMs ?? null,
+  firstRequestMs: samples[0]?.totalMs ?? null,
   warmAverageMs: average(samples.slice(1).map(item => item.totalMs)),
-  averageMs: average(samples.map(item => item.totalMs)),
-  p95Ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * .95) - 1)] : null,
-  firstTokenAverageMs: average(samples.map(item => item.firstTokenMs)),
+  averageMs: average(totalTimes),
+  p50Ms: percentile(totalTimes, .5),
+  p95Ms: percentile(totalTimes, .95),
+  p99Ms: percentile(totalTimes, .99),
+  firstTokenAverageMs: average(firstTokenTimes),
+  firstTokenP50Ms: percentile(firstTokenTimes, .5),
+  firstTokenP95Ms: percentile(firstTokenTimes, .95),
+  firstTokenP99Ms: percentile(firstTokenTimes, .99),
+  firstMeaningfulSentenceAverageMs: average(firstTokenTimes),
+  tokenThroughputPerSecond: (() => {
+    const seconds = samples.reduce((sum, item) => sum + item.totalMs, 0) / 1000;
+    return seconds ? Number((samples.reduce((sum, item) => sum + Number(item.tokens || 0), 0) / seconds).toFixed(2)) : null;
+  })(),
   processMemoryDeltaMb: Math.round((process.memoryUsage().rss - memoryBefore.rss) / 1024 / 1024),
   processCpuMs: Math.round((cpu.user + cpu.system) / 1000),
   samples,
