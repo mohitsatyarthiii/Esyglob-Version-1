@@ -34,7 +34,7 @@ const aiChatSchema = new mongoose.Schema(
       type: String,
       default: 'ollama',
     },
-    model: String,
+    model: { type: String, default: 'qwen3:4b' },
     messages: [
       {
         role: {

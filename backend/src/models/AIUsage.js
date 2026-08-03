@@ -21,7 +21,7 @@ const aiUsageSchema = new mongoose.Schema(
     },
     modelUsed: {
       type: String,
-      default: 'mistral',
+      default: 'qwen3:4b',
     },
     
     // Request Details

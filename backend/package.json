@@ -15,6 +15,7 @@
     "knowledge:migrate": "node scripts/migrate-knowledge-database.js",
     "knowledge:seed-market-insights": "node scripts/seed-market-insights-knowledge.js",
     "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js",
+    "benchmark:ai": "node scripts/benchmark-ai-runtime.js",
     "storage:cleanup:dry-run": "node scripts/migrate-vps-storage-and-cleanup.js",
     "storage:backup": "node scripts/migrate-vps-storage-and-cleanup.js --backup-only",
     "storage:cleanup:images": "node scripts/migrate-vps-storage-and-cleanup.js --execute --images-only --confirm=DELETE_MARKETPLACE_CONTENT",

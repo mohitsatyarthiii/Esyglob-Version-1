@@ -1,0 +1,113 @@
+{
+  "status": "passed",
+  "verifiedAt": "2026-08-01T09:21:53.814Z",
+  "database": "test",
+  "counts": {
+    "sellerUsers": 0,
+    "adminUsers": 1,
+    "buyerUsers": 61,
+    "sellers": 0,
+    "products": 0,
+    "sellerVerifications": 0,
+    "supplierVerifications": 0,
+    "categories": 35,
+    "subcategories": 174,
+    "sportsSubcategories": 0
+  },
+  "category": {
+    "_id": "6a6da0350b39667f8dc3932b",
+    "name": "Sportswear & Outdoor Apparel",
+    "slug": "sportswear-and-outdoor-apparel"
+  },
+  "foreignKeyIssues": [],
+  "duplicateIndexes": [],
+  "searchIndexes": [],
+  "endpoints": [
+    {
+      "url": "/api/health",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "status",
+        "mongodb",
+        "uptime",
+        "timestamp"
+      ]
+    },
+    {
+      "url": "/api/categories?includeCounts=true&activeOnly=false",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "categories"
+      ]
+    },
+    {
+      "url": "/api/categories/sportswear-and-outdoor-apparel",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "category"
+      ]
+    },
+    {
+      "url": "/api/products?limit=12",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "products",
+        "total",
+        "pagination"
+      ]
+    },
+    {
+      "url": "/api/suppliers?limit=12",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "sellers",
+        "pagination"
+      ]
+    },
+    {
+      "url": "/api/search?q=sports",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "query",
+        "results",
+        "suggestions",
+        "products",
+        "suppliers",
+        "categories",
+        "subcategories",
+        "services",
+        "rfqs"
+      ]
+    },
+    {
+      "url": "/api/marketplace/statistics",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "responseKeys": [
+        "stats"
+      ]
+    },
+    {
+      "url": "/api/admin/overview",
+      "status": 401,
+      "expected": 401,
+      "passed": true,
+      "responseKeys": [
+        "error"
+      ]
+    }
+  ]
+}

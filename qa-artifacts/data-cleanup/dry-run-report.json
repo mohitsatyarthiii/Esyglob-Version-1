@@ -1,0 +1,58 @@
+{
+  "mode": "dry-run",
+  "database": "test",
+  "startedAt": "2026-08-01T09:17:09.660Z",
+  "collections": {
+    "shipments": 2,
+    "invoices": 2,
+    "payments": 10,
+    "subscriptions": 12,
+    "orders": 11,
+    "factoryprofiles": 21,
+    "sellerverifications": 70,
+    "verificationaudits": 252,
+    "wallets": 14,
+    "adminactivities": 4,
+    "aiusages": 40,
+    "documents": 13,
+    "notifications": 282,
+    "savedresearchreports": 1,
+    "userlocations": 1,
+    "subcategories": 5,
+    "sellers": 67,
+    "users": 68
+  },
+  "category": {
+    "_id": "6a6da0350b39667f8dc3932b",
+    "name": "Sportswear & Outdoor Apparel",
+    "removed": [
+      "Mobile Phones",
+      "Network Equipment",
+      "Cables & Accessories",
+      "Communication Devices",
+      "Signal Boosters"
+    ],
+    "kept": []
+  },
+  "storage": {
+    "candidates": 0,
+    "removed": [],
+    "stillReferenced": [],
+    "missingLocally": [],
+    "errors": []
+  },
+  "integrity": {
+    "sellerUsersRemaining": 0,
+    "sellerProfilesRemaining": 0,
+    "productsRemaining": 0,
+    "sellerVerificationsRemaining": 0,
+    "supplierVerificationsRemaining": 0,
+    "sportsSubcategoriesRemaining": 0,
+    "danglingReferences": 0
+  },
+  "sellerUsers": 68,
+  "sellerProfiles": 67,
+  "duplicateIndexes": [],
+  "finishedAt": "2026-08-01T09:17:31.228Z",
+  "status": "dry-run-passed"
+}

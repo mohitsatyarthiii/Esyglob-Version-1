@@ -1,0 +1,20 @@
+{
+  "model": "qwen3:4b",
+  "completed": false,
+  "error": {
+    "code": "AI_PROVIDER_UNAVAILABLE",
+    "message": "AI service unavailable: AI provider returned HTTP 403"
+  },
+  "coldResponseMs": null,
+  "warmAverageMs": null,
+  "averageMs": null,
+  "p95Ms": null,
+  "firstTokenAverageMs": null,
+  "processMemoryDeltaMb": 13,
+  "processCpuMs": 109,
+  "runtime": {
+    "keepAlive": "24h",
+    "maxConcurrency": 2,
+    "maxQueue": 64
+  }
+}

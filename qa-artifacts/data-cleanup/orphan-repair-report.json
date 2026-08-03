@@ -1,0 +1,39 @@
+{
+  "startedAt": "2026-08-01T09:21:09.889Z",
+  "database": "test",
+  "repairs": {
+    "orphanSubcategoriesDeleted": 25,
+    "orphanSubcategoryNames": [
+      "Microscopes",
+      "Lab Glassware",
+      "Testing Instruments",
+      "Measurement Tools",
+      "Lab Consumables",
+      "Mobile Phones",
+      "Network Equipment",
+      "Cables & Accessories",
+      "Communication Devices",
+      "Signal Boosters",
+      "Trucks",
+      "Buses",
+      "Spare Parts",
+      "Vehicle Accessories",
+      "Logistics Services",
+      "Mobile Phones",
+      "Network Equipment",
+      "Cable Accessories",
+      "Communication Devices",
+      "Signal Boosters",
+      "Leather Bags",
+      "Wallets",
+      "Belts",
+      "Shoes",
+      "Leather Accessories"
+    ],
+    "orphanSubscriptionsDeleted": 1,
+    "staleSubscriptionPaymentReferencesUnset": 18,
+    "staleSupportTicketChatReferencesUnset": 2
+  },
+  "status": "completed",
+  "finishedAt": "2026-08-01T09:21:10.620Z"
+}

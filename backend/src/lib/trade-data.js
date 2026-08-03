@@ -34,7 +34,7 @@ export const SOURCE_CHIPS = [
   { name:'FAOSTAT', url:'https://www.fao.org/faostat' },
   { name:'Exchange Rate API', url:'https://www.exchangerate-api.com' },
   { name:'Marketplace Database', url:'/products' },
-  { name:'Groq AI', url:'https://groq.com' },
+  { name:'EsyGlob AI', url:'/market-insights' },
 ];
 
 export const PRODUCT_RULES = [

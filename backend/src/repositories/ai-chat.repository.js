@@ -82,6 +82,7 @@ class AIChatRepository {
       $push: {
         messages: {
           $each: [userMessage, assistantMessage].filter(Boolean),
+          $slice: -Math.max(100, Number(process.env.AI_MAX_STORED_MESSAGES || 160)),
         },
       },
       $inc: {

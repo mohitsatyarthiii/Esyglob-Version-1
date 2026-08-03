@@ -75,8 +75,7 @@ MONGODB_URI=mongodb+srv://.../esyglob
 AI_KNOWLEDGE_MONGODB_URI=mongodb+srv://.../esyglob-ai
 AI_KNOWLEDGE_DB_NAME=esyglob_ai_knowledge
 AI_KNOWLEDGE_VECTOR_INDEX=knowledge_chunk_embedding
-AI_EMBEDDING_MODEL=nomic-embed-text
 AI_EMBEDDINGS_ENABLED=true
 ```
 
-Do not reuse credentials between clusters. Apply least-privilege users separately: the application marketplace user needs no access to the knowledge cluster, and the knowledge user needs no access to marketplace collections.
+Embeddings use the deterministic local 768-dimensional retrieval encoder; Ollama runs only `qwen3:4b`. Do not reuse credentials between clusters. Apply least-privilege users separately: the application marketplace user needs no access to the knowledge cluster, and the knowledge user needs no access to marketplace collections.

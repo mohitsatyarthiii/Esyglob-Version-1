@@ -3,20 +3,9 @@ import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
+import OllamaRuntimeService from '../services/ollama-runtime.service.js';
 
-// Ollama streaming configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
-const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
-// Large enough to finish normal trade answers while remaining bounded for the 3B provider.
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
-
-// Provider health tracking
-const providerHealth = {
-  ollama: { failures: 0, successes: 0, totalLatency: 0, rateLimits: 0, timeouts: 0 },
-  groq: { failures: 0, successes: 0, totalLatency: 0, rateLimits: 0, timeouts: 0 },
-  gemini: { failures: 0, successes: 0, totalLatency: 0, rateLimits: 0, timeouts: 0 },
-};
 
 function isObjectId(value) {
   return mongoose.Types.ObjectId.isValid(String(value || ''));
@@ -167,6 +156,10 @@ class AIChatController {
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) res.write(': keep-alive\n\n');
       }, 10_000);
+      const requestAbort = new AbortController();
+      res.once('close', () => {
+        if (!res.writableEnded) requestAbort.abort();
+      });
 
       try {
         // Build platform context
@@ -176,10 +169,12 @@ class AIChatController {
           context: { ...(chat.context || {}), ...(body.context || {}) },
         });
         const retrievalMs = Date.now() - retrievalStartedAt;
+        const promptStartedAt = Date.now();
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
           `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`
         );
+        const promptConstructionMs = Date.now() - promptStartedAt;
         const smartResponse = AIChatService.resolveSmartResponse({
           message,
           role: roleContext,
@@ -192,8 +187,8 @@ class AIChatController {
 
         let assistantText = '';
         let tokensUsed = 0;
-        let activeProvider = 'smart';
-        let activeModel = 'default';
+        let activeProvider = 'marketplace';
+        let activeModel = null;
         let aiFailed = false;
         let firstTokenAt = 0;
         let draftWasStreamed = false;
@@ -202,76 +197,32 @@ class AIChatController {
         // Try AI if not simple greeting
         if (fastDirectRoute || (!isSimpleGreeting && smartResponse.shouldUseAI !== false)) {
           try {
-            if (OLLAMA_ENABLED) {
-              const ollamaResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                signal: AbortSignal.timeout(Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 65000)),
-                body: JSON.stringify({
-                  model: OLLAMA_MODEL,
-                  keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
-                  messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...chat.messages.slice(-4).map(item => ({
-                      role: item.role === 'user' ? 'user' : 'assistant',
-                      content: String(item.content || '').slice(0, 1200),
-                    })),
-                    { role: 'user', content: message },
-                  ],
-                  stream: true,
-                  options: {
-                    temperature: 0.35,
-                    top_p: 0.9,
-                    num_predict: CHAT_MAX_TOKENS,
-                  },
-                }),
-              });
-
-              if (ollamaResponse.ok && ollamaResponse.body) {
-                activeProvider = 'ollama';
-                activeModel = OLLAMA_MODEL;
-
-                const reader = ollamaResponse.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-
-                  buffer += decoder.decode(value, { stream: true });
-                  const lines = buffer.split('\n');
-                  buffer = lines.pop() || '';
-
-                  for (const line of lines) {
-                    if (!line.trim()) continue;
-                    try {
-                      const data = JSON.parse(line);
-                      const token = data.message?.content || data.response || '';
-                      if (token) {
-                        if (!firstTokenAt) firstTokenAt = Date.now();
-                        assistantText += token;
-                        draftWasStreamed = true;
-                        sendSSE({ type: 'token', content: token });
-                      }
-                      if (data.eval_count) tokensUsed = data.eval_count;
-                    } catch (e) {
-                      // Skip parse errors
-                    }
-                  }
-                }
-
-                // Update health
-                providerHealth.ollama.successes++;
-              } else {
-                throw new Error('Ollama stream failed');
-              }
-            } else {
-              throw new Error('Ollama disabled');
-            }
+            const result = await OllamaRuntimeService.complete({
+              messages: [
+                { role: 'system', content: systemPrompt },
+                ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20)).map(item => ({
+                  role: item.role === 'user' ? 'user' : 'assistant',
+                  content: String(item.content || '').slice(0, 1200),
+                })),
+                { role: 'user', content: message },
+              ],
+              stream: true,
+              signal: requestAbort.signal,
+              timeoutMs: Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 90_000),
+              temperature: 0.35,
+              maxTokens: CHAT_MAX_TOKENS,
+              onToken(token) {
+                if (!firstTokenAt) firstTokenAt = Date.now();
+                assistantText += token;
+                draftWasStreamed = true;
+                sendSSE({ type: 'token', content: token });
+              },
+            });
+            activeProvider = result.provider;
+            activeModel = result.model;
+            tokensUsed = result.tokensUsed;
           } catch (error) {
             debugLog('[Stream] AI failed:', error.message);
-            providerHealth.ollama.failures++;
             aiFailed = true;
           }
         } else {
@@ -284,15 +235,15 @@ class AIChatController {
           if (!isSimpleGreeting && smartResponse.shouldUseAI === false && smartResponse.response) {
             fallbackText = smartResponse.response.trim();
             activeProvider = smartResponse.source || 'smart_intelligence';
-            activeModel = 'smart-intelligence';
+            activeModel = null;
           } else if (isSimpleGreeting) {
             fallbackText = 'Hello! How can I help you with your B2B sourcing needs today?';
             activeProvider = 'smart_intelligence';
-            activeModel = 'greeting-fallback';
+            activeModel = null;
           } else {
             fallbackText = 'I can help you with product discovery, supplier matching, and marketplace guidance. How can I assist you?';
             activeProvider = 'fallback';
-            activeModel = 'offline-fallback';
+            activeModel = null;
           }
 
           assistantText = fallbackText;
@@ -428,8 +379,11 @@ class AIChatController {
             issues: validation.issues.map(issue => issue.code),
           },
           timing: {
+            promptConstructionMs,
             retrievalMs,
+            databaseLookupMs: retrievalMs,
             providerMs,
+            ollamaInferenceMs: providerMs,
             persistenceMs,
             timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
             totalMs: Date.now() - requestStartedAt,
@@ -460,18 +414,7 @@ class AIChatController {
     if (statusOnly === 'true') {
       return res.json({
         status: 'operational',
-        providers: {
-          ollama: {
-            enabled: OLLAMA_ENABLED,
-            baseUrl: OLLAMA_BASE_URL,
-            model: OLLAMA_MODEL,
-          },
-        },
-        health: {
-          ollama: providerHealth.ollama,
-          groq: providerHealth.groq,
-          gemini: providerHealth.gemini,
-        },
+        providers: { ollama: OllamaRuntimeService.status() },
       });
     }
 

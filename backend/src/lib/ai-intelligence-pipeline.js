@@ -31,7 +31,7 @@ export function analyzeRequest({ message, role = 'general', previousLanguage = '
   const language = detectLanguage(message, previousLanguage);
   const requiresPrivateData = PRIVATE.test(message);
   const greeting = /^(hi|hello|hey|namaste|hola|bonjour|thanks|thank you|shukriya|धन्यवाद|नमस्ते)[\s.!?]*$/iu.test(message);
-  const liveInformation = /\b(current|today|latest|right now|live|202[5-9])\b.*\b(duty|tariff|rate|regulation|news|price|statistics)|\b(duty|tariff|regulation)\b.*\b(current|today|latest|live)\b/i.test(message);
+  const liveInformation = /\b(current|today|latest|right now|live|recent|new|breaking|202[5-9])\b.*\b(duty|tariff|rate|regulation|policy|news|price|statistics|score|weather|launch|government|company|geopolitic|exchange)|\b(news|stock|share price|cricket|sports score|weather|exchange rate|product launch|government policy|regulation|tariff|geopolitic)\b.*\b(current|today|latest|live|recent|now)\b/i.test(message);
   const platformIntent = ['rfq', 'quotation', 'order', 'shipping', 'trade_assurance', 'payment', 'membership', 'policy', 'platform_help', 'hs_code', 'market_research'].includes(intent);
   const hasMarketplaceDiscovery = /\b(find|show|search|compare|source|recommend)\b/i.test(message)
     && /\b(suppliers?|manufacturers?|factories|factory|products?|prices?|moq)\b/i.test(message);
@@ -90,7 +90,21 @@ export function rewriteSearchQuery({ message = '', intelligence = {}, memory = {
 }
 
 export function buildConversationMemory({ messages = [], context = {}, language = 'en' } = {}) {
-  const recent = messages.slice(-8);
+  const maxChars = Math.max(4_000, Number(process.env.AI_MEMORY_MAX_CHARS || 12_000));
+  const importantPattern = /\b(remember|always|never|prefer|my company|our company|budget|currency|country|language|call me|instruction|requirement|must|do not)\b/i;
+  const durable = messages
+    .slice(0, -20)
+    .filter(item => item.role === 'user' && importantPattern.test(String(item.content || '')))
+    .slice(-8);
+  const selected = [...durable, ...messages.slice(-20)].filter((item, index, all) => all.indexOf(item) === index);
+  let used = 0;
+  const recent = [];
+  for (const item of selected.reverse()) {
+    const content = String(item.content || '').slice(0, 1_500);
+    if (used + content.length > maxChars && recent.length >= 6) continue;
+    recent.unshift({ ...item, content });
+    used += content.length;
+  }
   const userMessages = recent.filter(item => item.role === 'user').map(item => String(item.content || ''));
   const joined = userMessages.join(' ');
   const entityPatterns = {
@@ -123,7 +137,12 @@ export function buildConversationMemory({ messages = [], context = {}, language 
     language: context.language || language,
     intent: context.intent,
     entities,
-    summary: recent.map(item => `${item.role}: ${String(item.content || '').slice(0, 240)}`).join('\n').slice(0, 1_500),
+    summary: [
+      context.conversationSummary ? `Previous summary: ${String(context.conversationSummary).slice(0, 2_000)}` : '',
+      ...recent.map(item => `${item.role}: ${String(item.content || '').slice(0, 500)}`),
+    ].filter(Boolean).join('\n').slice(-maxChars),
+    selectedMessages: recent,
+    estimatedTokens: Math.ceil(used / 4),
     preferences,
   };
 }

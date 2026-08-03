@@ -54,7 +54,7 @@ const assertions = {
   sellerActionsReturned: sellerActions.length > 0,
   nativeRoutesValid: actions.every(item => item.route && !/^https?:/i.test(item.route)),
   sensitiveFieldsExcluded: leaked.length === 0,
-  requestedModelCompleted: done?.model === 'qwen2.5:3b',
+  requestedModelCompleted: done?.model === 'qwen3:4b',
 };
 console.log(JSON.stringify({ assertions, timing: done?.timing, model: done?.model, planCount, actions: actions.length, productActions: productActions.length, sellerActions: sellerActions.length, leaked, answer: answer.slice(0, 500) }, null, 2));
 if (Object.values(assertions).some(value => !value)) process.exitCode = 1;

@@ -3,9 +3,8 @@ import {
   COUNTRIES, SOURCE_CHIPS, productProfile, trendFrom,
   normalizedRows, fmtUSD, fmtNumber, normalizeText,
 } from '../lib/trade-data.js';
+import OllamaRuntimeService from './ollama-runtime.service.js';
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const cacheStore = new Map();
 
@@ -354,60 +353,17 @@ function opportunityReport(productName, category, targetCountry, countries, mark
 async function callAIAnalysis(structuredData) {
   const prompt = `You are a trade intelligence analyst. Use ONLY the structured data below. Do not invent or estimate numerical statistics. If official product-level data is unavailable, state that clearly. Return concise sections: Executive Summary, Market Opportunity, Buying Strategy, Selling Strategy, Competition Analysis, Market Risks, Growth Outlook.\n\n${JSON.stringify(structuredData).slice(0, 12000)}`;
 
-  const body = {
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.2,
-    max_tokens: 900,
-  };
-
-  // Try Groq first
-  if (GROQ_API_KEY) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_API_KEY}` },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content?.trim();
-        if (text) return { text, source: 'Groq AI' };
-      }
-    } catch { /* fall through */ }
+  try {
+    const result = await OllamaRuntimeService.complete({
+      messages: [{ role: 'system', content: 'Analyze only supplied evidence. Never invent figures and never reveal private reasoning.' }, { role: 'user', content: prompt }],
+      temperature: 0.2,
+      maxTokens: 900,
+    });
+    return result.content ? { text: result.content, source: 'EsyGlob AI' } : null;
+  } catch (error) {
+    console.warn('[Market insights] AI narrative unavailable:', error.message);
+    return null;
   }
-
-  // Try Gemini fallback
-  if (GEMINI_API_KEY) {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 900 },
-          }),
-          signal: controller.signal,
-        }
-      );
-      clearTimeout(timeout);
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('')?.trim();
-        if (text) return { text, source: 'Gemini AI' };
-      }
-    } catch { /* fall through */ }
-  }
-
-  return null;
 }
 
 class MarketInsightsService {

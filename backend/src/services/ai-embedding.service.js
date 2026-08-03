@@ -1,13 +1,10 @@
 import crypto from 'node:crypto';
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
-const EMBEDDING_MODEL = process.env.AI_EMBEDDING_MODEL || 'nomic-embed-text';
-let disabledUntil = 0;
+const EMBEDDING_MODEL = 'local-hash-v1';
 const embeddingCache = new Map();
 const EMBEDDING_CACHE_TTL = Number(process.env.AI_EMBEDDING_CACHE_TTL_MS || 60 * 60 * 1000);
 const EMBEDDING_CACHE_MAX = Number(process.env.AI_EMBEDDING_CACHE_MAX || 1_000);
-// Match nomic-embed-text's default dimensionality so locally generated
-// fallback vectors can coexist with provider vectors in the same index.
+// Stable local vectors keep retrieval independent from a second inference model.
 const LOCAL_DIMENSIONS = Number(process.env.AI_LOCAL_EMBEDDING_DIMENSIONS || 768);
 
 function localEmbedding(text) {
@@ -53,40 +50,9 @@ export default class AIEmbeddingService {
     const key = cacheKey(text);
     const cached = getCached(key);
     if (cached) return cached;
-    if (Date.now() < disabledUntil) {
-      const embedding = localEmbedding(text);
-      setCached(key, embedding);
-      return embedding;
-    }
-
-    try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(Number(process.env.AI_EMBEDDING_TIMEOUT_MS || 5_000)),
-        body: JSON.stringify({ model: EMBEDDING_MODEL, input: text.slice(0, 8_000) }),
-      });
-      if (!response.ok) {
-        disabledUntil = Date.now() + Number(process.env.AI_EMBEDDING_RETRY_DELAY_MS || 60_000);
-        const embedding = localEmbedding(text);
-        setCached(key, embedding);
-        return embedding;
-      }
-      const data = await response.json();
-      const embedding = data.embeddings?.[0] || data.embedding;
-      if (!Array.isArray(embedding) || !embedding.length) return null;
-      const normalized = embedding.map(Number);
-      setCached(key, normalized);
-      return normalized;
-    } catch (error) {
-      disabledUntil = Date.now() + Number(process.env.AI_EMBEDDING_RETRY_DELAY_MS || 60_000);
-      if (process.env.AI_DEBUG === 'true') {
-        console.warn('[AI embeddings] Provider unavailable:', error.message);
-      }
-      const embedding = localEmbedding(text);
-      setCached(key, embedding);
-      return embedding;
-    }
+    const embedding = localEmbedding(text.slice(0, 8_000));
+    setCached(key, embedding);
+    return embedding;
   }
 
   static async embedMany(values, concurrency = 3) {

@@ -13,32 +13,11 @@ import {
 } from '../lib/ai-intelligence-pipeline.js';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import LiveSearchService from './live-search.service.js';
-
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
-const OLLAMA_ENABLED = process.env.OLLAMA_ENABLED !== 'false';
+import OllamaRuntimeService from './ollama-runtime.service.js';
 
 class AIChatService {
   static async warmProvider() {
-    if (!OLLAMA_ENABLED) return false;
-    try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(Number(process.env.OLLAMA_WARMUP_TIMEOUT_MS || 90000)),
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          messages: [{ role: 'user', content: 'Respond with OK.' }],
-          stream: false,
-          keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
-          options: { num_predict: 2, temperature: 0 },
-        }),
-      });
-      return response.ok;
-    } catch (error) {
-      console.warn('[Ollama] Warm-up failed:', error.message);
-      return false;
-    }
+    return OllamaRuntimeService.warm();
   }
   /**
    * Determine role context
@@ -262,56 +241,21 @@ class AIChatService {
    * Call Ollama API (non-streaming)
    */
   static async callOllama(prompt, messages = [], systemPrompt = '', options = {}) {
-    if (!OLLAMA_ENABLED) {
-      throw new Error('Ollama is disabled');
-    }
-
-    try {
-      const ollamaMessages = [
+    return OllamaRuntimeService.complete({
+      messages: [
         ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
         ...messages.map(msg => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content,
         })),
         { role: 'user', content: prompt },
-      ];
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(Number(options.timeoutMs || process.env.OLLAMA_REQUEST_TIMEOUT_MS || 90000)),
-        body: JSON.stringify({
-          model: OLLAMA_MODEL,
-          keep_alive: process.env.OLLAMA_KEEP_ALIVE || '60m',
-          messages: ollamaMessages,
-          stream: false,
-          ...(options.jsonMode ? { format: 'json' } : {}),
-          options: {
-            temperature: options.temperature ?? 0.35,
-            top_p: 0.9,
-            num_predict: options.maxTokens || 520,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Ollama API returned ${response.status}${response.status === 504 ? ' (gateway timeout)' : ''}`);
-      }
-
-      const data = await response.json();
-
-      return {
-        success: true,
-        message: data.message?.content || data.response || 'No response from Ollama',
-        tokensUsed: data.eval_count || 0,
-        provider: 'ollama',
-        model: OLLAMA_MODEL,
-        fallback: false,
-      };
-    } catch (error) {
-      console.error('[Ollama] Error:', error);
-      throw error;
-    }
+      ],
+      signal: options.signal,
+      timeoutMs: options.timeoutMs,
+      jsonMode: options.jsonMode,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+    });
   }
 
   // ─── NEW: Dedicated createChat method ──────────────────────────────────
@@ -447,16 +391,7 @@ class AIChatService {
       `${platformContext.text}${this.formatSupportContext(body.context)}`
     );
 
-    // Try Ollama first, fallback to AIService
-    let aiResult;
-    try {
-      aiResult = await this.callOllama(message, chat.messages.slice(-7), systemPrompt);
-    } catch (ollamaError) {
-      aiResult = await AIService.chat(message, chat.messages.slice(-7), systemPrompt, {
-        role: roleContext,
-        platformContext: platformContext.text,
-      });
-    }
+    const aiResult = await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
 
     const intelligence = platformContext.snapshot.intelligence || {};
     let finalResponse = String(aiResult.message || '').trim();

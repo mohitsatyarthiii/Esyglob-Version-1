@@ -49,10 +49,7 @@ function getAiTierFromPlanKey(key: string): string {
 function getAiTierInfo(plan: SubscriptionPlan | null) {
   if (!plan) return AI_TIER_MAP.esyai_lite;
   const tier = plan.aiTier || (plan as any).aiProvider || getAiTierFromPlanKey(plan.key);
-  const oldMapping: Record<string, string> = {
-    ollama: 'esyai_lite', deepseek: 'esyai_pro', openai: 'esyai_advanced',
-    chatgpt: 'esyai_advanced', claude: 'esyai_enterprise',
-  };
+  const oldMapping: Record<string, string> = { ollama: 'esyai_lite' };
   const mapped = oldMapping[(tier || '').toLowerCase()] || tier;
   return AI_TIER_MAP[mapped] || AI_TIER_MAP.esyai_lite;
 }
@@ -62,8 +59,8 @@ function getAiModelName(plan: SubscriptionPlan | null): string {
   if (plan.aiModel) return plan.aiModel;
   const aiTier = plan.aiTier || getAiTierFromPlanKey(plan.key);
   const names: Record<string, string> = {
-    esyai_lite: 'EsyAI Lite', esyai_pro: 'DeepSeek AI',
-    esyai_advanced: 'ChatGPT AI', esyai_enterprise: 'Claude AI',
+    esyai_lite: 'EsyAI Lite', esyai_pro: 'EsyAI Pro',
+    esyai_advanced: 'EsyAI Advanced', esyai_enterprise: 'EsyAI Enterprise',
   };
   return names[aiTier] || 'EsyAI Lite';
 }
