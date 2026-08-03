@@ -50,7 +50,7 @@ export default class AIPlatformContextService {
     const wantsShipping = /my .*ship|track.*ship|shipment.*status|logistics.*status/i.test(message);
     const wantsAssurance = /my .*assurance|assurance.*status|protected order/i.test(message);
     const wantsPayments = /my payment method|saved payment|payment method/i.test(message);
-    const wantsHsCodes = /product|import|export|trade|customs|hs\s*code|tariff|classification|market research|regulation/i.test(message);
+    const wantsHsCodes = /hs\s*code|tariff|customs\s+classification|classif(?:y|ication)|commodity\s+code|market research|regulation/i.test(message);
     const [plans, services, disputes, shipments, assurances, paymentMethods, hsCodes] = await Promise.all([
       needsPlans(message) ? listPlans(role === 'seller' ? 'seller' : 'buyer') : Promise.resolve([]),
       Promise.resolve(needsServices(message) ? listServices() : []),

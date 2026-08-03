@@ -242,8 +242,10 @@ async function getAISearchResultsUncached({
   let orders = [];
 
   if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-    const seller = await Seller.findOne({ userId }).select('_id').lean().exec();
-    const buyerRfqIds = await RFQ.distinct('_id', { buyerId: userId });
+    const [seller, buyerRfqIds] = await Promise.all([
+      Seller.findOne({ userId }).select('_id').lean().exec(),
+      RFQ.distinct('_id', { buyerId: userId }),
+    ]);
 
     const orderQuery = {
       $or: [

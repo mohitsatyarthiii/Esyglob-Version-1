@@ -60,6 +60,11 @@ test('live filter handles split tags and discards only unsafe completed sentence
   const quarantined = failClosed.process('<think>private plan that is too long') + failClosed.process(' and remains private');
   assert.equal(quarantined, '');
   assert.equal(failClosed.process('</ think >Safe answer.' ) + failClosed.finish(), 'Safe answer.');
+
+  const earlySafeClause = new FinalAnswerStreamFilter();
+  assert.equal(earlySafeClause.process('MOQ is the minimum order a supplier accepts, '), '');
+  assert.equal(earlySafeClause.process('and it can often be negotiated for different products and long-term buyer relationships.'), 'MOQ is the minimum order a supplier accepts,');
+  assert.equal(earlySafeClause.finish(), ' and it can often be negotiated for different products and long-term buyer relationships.');
 });
 
 test('intent router serves greetings and FAQs without inference', async () => {
@@ -67,6 +72,8 @@ test('intent router serves greetings and FAQs without inference', async () => {
   assert.equal(AIIntentRouterService.route('What is MOQ?').handling, 'direct');
   await AISemanticCacheService.put('Explain international trade basics', 'Stable answer', 'stable_general');
   assert.equal((await AISemanticCacheService.get('Explain international trade basics', 'stable_general'))?.response, 'Stable answer');
+  assert.equal((await AISemanticCacheService.get('Explain international trade basics!', 'stable_general'))?.response, 'Stable answer');
+  assert.ok(AISemanticCacheService.status().exactHits >= 1);
   assert.equal(await AISemanticCacheService.get('Show my account orders', 'stable_general'), null);
 });
 

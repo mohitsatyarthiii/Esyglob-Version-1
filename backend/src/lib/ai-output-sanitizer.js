@@ -115,9 +115,12 @@ export class ReasoningStreamFilter {
   }
 }
 
-function isSentenceBoundary(text, index) {
+function isSentenceBoundary(text, index, segmentStart = 0) {
   const char = text[index];
   if (char === '\n') return true;
+  if (',;'.includes(char)) {
+    return index - segmentStart >= 28 && (!text[index + 1] || /\s/.test(text[index + 1]));
+  }
   if (!'.!?'.includes(char)) return false;
   if (char === '.' && /\d/.test(text[index - 1] || '') && /\d/.test(text[index + 1] || '')) return false;
   const prefix = text.slice(Math.max(0, index - 8), index + 1).toLowerCase();
@@ -147,7 +150,7 @@ export class SentenceSafetyFilter {
     let output = '';
     let start = 0;
     for (let index = 0; index < this.buffer.length; index += 1) {
-      if (!isSentenceBoundary(this.buffer, index)) continue;
+      if (!isSentenceBoundary(this.buffer, index, start)) continue;
       output += this.validate(this.buffer.slice(start, index + 1));
       start = index + 1;
     }

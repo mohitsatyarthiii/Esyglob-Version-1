@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import AIEmbeddingService from './ai-embedding.service.js';
 
 const localEntries = new Map();
-const stats = { hits: 0, misses: 0, writes: 0, redisErrors: 0 };
+const exactEntries = new Map();
+const stats = { hits: 0, exactHits: 0, semanticHits: 0, misses: 0, writes: 0, redisErrors: 0 };
 const MAX_ENTRIES = Math.max(20, Number(process.env.AI_SEMANTIC_CACHE_MAX || 200));
 const THRESHOLD = Math.min(.99, Math.max(.75, Number(process.env.AI_SEMANTIC_CACHE_THRESHOLD || .92)));
 const TTLS = Object.freeze({ static_faq: 86_400, stable_general: 21_600, stable_trade: 10_800 });
@@ -24,6 +25,14 @@ function cosine(a = [], b = []) {
   return left && right ? dot / Math.sqrt(left * right) : 0;
 }
 
+function normalizedQuery(value) {
+  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s-]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function exactKey(query, category) {
+  return `${category}:${normalizedQuery(query)}`;
+}
+
 async function redisClient() {
   if (!process.env.REDIS_URL) return null;
   if (!redisPromise) redisPromise = import('redis').then(async ({ createClient }) => {
@@ -37,29 +46,72 @@ async function redisClient() {
 
 function pruneLocal() {
   const now = Date.now();
-  for (const [key, value] of localEntries) if (value.expiresAt <= now) localEntries.delete(key);
-  while (localEntries.size > MAX_ENTRIES) localEntries.delete(localEntries.keys().next().value);
+  for (const [key, value] of localEntries) {
+    if (value.expiresAt > now) continue;
+    localEntries.delete(key);
+    if (exactEntries.get(value.exactKey) === key) exactEntries.delete(value.exactKey);
+  }
+  while (localEntries.size > MAX_ENTRIES) {
+    const oldestKey = localEntries.keys().next().value;
+    const oldest = localEntries.get(oldestKey);
+    localEntries.delete(oldestKey);
+    if (oldest && exactEntries.get(oldest.exactKey) === oldestKey) exactEntries.delete(oldest.exactKey);
+  }
+}
+
+function storeLocal(entry) {
+  const key = entry.id || crypto.randomUUID();
+  const resolvedExactKey = entry.exactKey || (entry.query ? exactKey(entry.query, entry.category) : '');
+  const value = { ...entry, id: key, exactKey: resolvedExactKey };
+  const previousId = resolvedExactKey ? exactEntries.get(resolvedExactKey) : null;
+  if (previousId && previousId !== key) localEntries.delete(previousId);
+  localEntries.set(key, value);
+  if (resolvedExactKey) exactEntries.set(resolvedExactKey, key);
+  pruneLocal();
+  return value;
 }
 
 export default class AISemanticCacheService {
   static async get(query, category) {
     if (!TTLS[category] || !isSafePublicQuery(query) || process.env.AI_SEMANTIC_CACHE_ENABLED === 'false') return null;
+    pruneLocal();
+    const directId = exactEntries.get(exactKey(query, category));
+    const direct = directId ? localEntries.get(directId) : null;
+    if (direct?.expiresAt > Date.now()) {
+      stats.hits += 1;
+      stats.exactHits += 1;
+      return { response: direct.response, similarity: 1 };
+    }
     const vector = await AIEmbeddingService.embed(query);
     if (!vector) return null;
-    pruneLocal();
     let candidates = [...localEntries.values()].filter(item => item.category === category);
-    const redis = await redisClient();
-    if (redis) {
-      const rows = await redis.lRange(`esyglob:ai:semantic:${category}`, 0, MAX_ENTRIES - 1).catch(() => []);
-      candidates = [...candidates, ...rows.map(row => { try { return JSON.parse(row); } catch { return null; } }).filter(Boolean)];
-    }
     let best = null;
     for (const candidate of candidates) {
       if (candidate.expiresAt <= Date.now()) continue;
       const score = cosine(vector, candidate.vector);
       if (score >= THRESHOLD && (!best || score > best.score)) best = { ...candidate, score };
     }
-    if (best) { stats.hits += 1; return { response: best.response, similarity: best.score }; }
+    if (best) {
+      stats.hits += 1;
+      stats.semanticHits += 1;
+      return { response: best.response, similarity: best.score };
+    }
+    const redis = await redisClient();
+    if (redis) {
+      const rows = await redis.lRange(`esyglob:ai:semantic:${category}`, 0, MAX_ENTRIES - 1).catch(() => []);
+      candidates = rows.map(row => { try { return JSON.parse(row); } catch { return null; } }).filter(Boolean);
+    }
+    for (const candidate of candidates) {
+      if (candidate.expiresAt <= Date.now()) continue;
+      const score = cosine(vector, candidate.vector);
+      if (score >= THRESHOLD && (!best || score > best.score)) best = { ...candidate, score };
+    }
+    if (best) {
+      storeLocal(best);
+      stats.hits += 1;
+      stats.semanticHits += 1;
+      return { response: best.response, similarity: best.score };
+    }
     stats.misses += 1;
     return null;
   }
@@ -68,8 +120,8 @@ export default class AISemanticCacheService {
     if (!TTLS[category] || !response || !isSafePublicQuery(query) || process.env.AI_SEMANTIC_CACHE_ENABLED === 'false') return false;
     const vector = await AIEmbeddingService.embed(query);
     if (!vector) return false;
-    const entry = { id: crypto.randomUUID(), category, vector, response, expiresAt: Date.now() + TTLS[category] * 1_000 };
-    localEntries.set(entry.id, entry); pruneLocal(); stats.writes += 1;
+    const entry = storeLocal({ id: crypto.randomUUID(), query, category, vector, response, expiresAt: Date.now() + TTLS[category] * 1_000 });
+    stats.writes += 1;
     const redis = await redisClient();
     if (redis) await redis.multi().lPush(`esyglob:ai:semantic:${category}`, JSON.stringify(entry)).lTrim(`esyglob:ai:semantic:${category}`, 0, MAX_ENTRIES - 1).expire(`esyglob:ai:semantic:${category}`, TTLS[category]).exec().catch(() => { stats.redisErrors += 1; });
     return true;

@@ -1,0 +1,55 @@
+{
+  "model": "gemma3:4b",
+  "workload": {
+    "uniqueRealisticQueries": 20,
+    "baselineRequests": 100,
+    "postOptimizationSuccessfulRequests": 125,
+    "concurrency": 2,
+    "benchmarkContextSize": 4096,
+    "benchmarkMaxTokens": 48
+  },
+  "baseline": {
+    "successes": 100,
+    "failures": 0,
+    "averageMs": 4641,
+    "p50Ms": 4593,
+    "p90Ms": 4987,
+    "p95Ms": 5157,
+    "p99Ms": 5411,
+    "firstVisibleAverageMs": 4286,
+    "firstVisibleP95Ms": 4909,
+    "requestsPerMinute": 25.76,
+    "tokenThroughputPerSecond": 19.06,
+    "backendCpuMsPerRequest": 25.78,
+    "backendMemoryDeltaMb": 7,
+    "filteredOutputs": 0
+  },
+  "stablePostOptimizationSample": {
+    "successes": 20,
+    "failures": 0,
+    "averageMs": 4337,
+    "p50Ms": 4370,
+    "p90Ms": 4762,
+    "p95Ms": 5061,
+    "p99Ms": 5110,
+    "firstVisibleAverageMs": 3362,
+    "firstVisibleP95Ms": 3823,
+    "requestsPerMinute": 27.11,
+    "tokenThroughputPerSecond": 20.24,
+    "backendCpuMsPerRequest": 21.85,
+    "backendMemoryDeltaMb": 5,
+    "filteredOutputs": 0,
+    "queueAverageMs": 0,
+    "queueP95Ms": 0
+  },
+  "exactPublicCache": {
+    "lookups": 1000,
+    "totalMs": 6.466,
+    "averageMs": 0.0065,
+    "hitRate": 1
+  },
+  "rejectedExperiment": {
+    "change": "Reduce simple-query context from 4096 to 2048",
+    "reason": "The production model runner did not produce a stable comparable result, so the production context policy was left unchanged."
+  }
+}

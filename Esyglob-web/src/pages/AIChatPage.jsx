@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { ArrowLeft, Bot, Camera, Check, ChevronDown, Copy, File, FileText, History, Image, Menu, Mic, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
 import { resolveApiResourceUrl } from '../api/client'
@@ -54,6 +54,8 @@ export default function AIChatPage() {
   const documentRef = useRef(null)
   const streamRef = useRef(null)
   const streamSequence = useRef(0)
+  const streamTokenBufferRef = useRef('')
+  const streamTokenFrameRef = useRef(0)
   const sendingRef = useRef(false)
   const stickToBottomRef = useRef(true)
   const shareTimerRef = useRef(null)
@@ -71,6 +73,7 @@ export default function AIChatPage() {
   }, [sidebarCollapsed])
   useEffect(() => () => {
     streamRef.current?.abort()
+    window.cancelAnimationFrame(streamTokenFrameRef.current)
     voiceRecognitionRef.current?.abort?.()
     window.clearTimeout(shareTimerRef.current)
   }, [])
@@ -158,24 +161,54 @@ export default function AIChatPage() {
     sendingRef.current = true
     const sentAttachments = attachments
     const streamMessageId = `stream-${++streamSequence.current}`
+    window.cancelAnimationFrame(streamTokenFrameRef.current)
+    streamTokenFrameRef.current = 0
+    streamTokenBufferRef.current = ''
     setDraft(''); setAttachments([]); setError(''); setFailed(''); setBusy(true)
     setMessages((current) => [...current, { role: 'user', content, createdAt: new Date().toISOString(), metadata: { attachmentUrls: sentAttachments } }, { _id: streamMessageId, role: 'assistant', content: '', statusText: 'Preparing your answer...', streaming: true, createdAt: new Date().toISOString() }])
     const controller = new AbortController()
     streamRef.current = controller
     let streamError = ''
     let nextChatId = chatId
+    let hasVisibleToken = false
+    const flushStreamTokens = () => {
+      const chunk = streamTokenBufferRef.current
+      streamTokenBufferRef.current = ''
+      streamTokenFrameRef.current = 0
+      if (!chunk) return
+      setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${chunk}` } : item))
+    }
     try {
       const attachmentUrls = sentAttachments.map((item) => item.url)
       let streamCompleted = false
       await streamAIMessage({ message: content, displayMessage: content, chatId: chatId || undefined, role, conversationType: 'assistant', forceAI: true, context: { feature: 'AI Chatbot', sourcePath: '/ai-chat', attachments: attachmentUrls }, pluginPayload: attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null }, (event) => {
         if (event.type === 'start') { nextChatId = event.chatId || nextChatId; return }
         if (event.type === 'status') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: event.message || 'Preparing your answer...' } : item)); return }
-        if (event.type === 'token') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${event.content || ''}` } : item)); return }
-        if (event.type === 'replace') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: String(event.content || '') } : item)); return }
+        if (event.type === 'token') {
+          const chunk = String(event.content || '')
+          if (!hasVisibleToken) {
+            hasVisibleToken = true
+            setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${chunk}` } : item))
+          } else {
+            streamTokenBufferRef.current += chunk
+            if (!streamTokenFrameRef.current) streamTokenFrameRef.current = window.requestAnimationFrame(flushStreamTokens)
+          }
+          return
+        }
+        if (event.type === 'replace') {
+          window.cancelAnimationFrame(streamTokenFrameRef.current)
+          streamTokenFrameRef.current = 0
+          streamTokenBufferRef.current = ''
+          setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: String(event.content || '') } : item)); return
+        }
         if (event.type === 'done') {
+          window.cancelAnimationFrame(streamTokenFrameRef.current)
+          streamTokenFrameRef.current = 0
+          const finalChunk = streamTokenBufferRef.current
+          streamTokenBufferRef.current = ''
           streamCompleted = true
           const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
-          setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, streaming: false, metadata } : item))
+          setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${finalChunk}`, streaming: false, metadata } : item))
           nextChatId = event.chatId || nextChatId
         }
         if (event.type === 'error') streamError = event.message || 'The AI response could not be completed.'
@@ -190,6 +223,9 @@ export default function AIChatPage() {
         setError(next.message); setFailed(content)
       }
     } finally {
+      window.cancelAnimationFrame(streamTokenFrameRef.current)
+      streamTokenFrameRef.current = 0
+      streamTokenBufferRef.current = ''
       if (streamRef.current === controller) streamRef.current = null
       sendingRef.current = false
       setBusy(false)
@@ -361,7 +397,7 @@ function AIMessage({ item, user, onPrompt, onRegenerate }) {
   return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{content && !item.streaming && <button type="button" onClick={() => navigator.clipboard?.writeText(content)}><Copy /> Copy</button>}{onRegenerate && <button onClick={onRegenerate}><RefreshCw /> Regenerate</button>}</footer></div></article>
 }
 
-function RichMessage({ content, streaming }) {
+const RichMessage = memo(function RichMessage({ content, streaming }) {
   const lines = content.split('\n')
   const nodes = []
   let index = 0
@@ -387,7 +423,7 @@ function RichMessage({ content, streaming }) {
     index += 1
   }
   return <div className={streaming && !content ? 'ai-rich-message ai-stream-placeholder' : 'ai-rich-message'}>{nodes.length ? nodes : <p>Preparing your answer...</p>}{streaming && <span className="ai-stream-cursor" />}</div>
-}
+})
 
 function inlineMarkdown(value) {
   return String(value).split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\))/g).filter(Boolean).map((part, index) => {

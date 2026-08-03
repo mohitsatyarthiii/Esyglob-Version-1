@@ -122,7 +122,9 @@ class AIChatController {
       const body = req.body;
       const message = body.message?.trim();
       const displayMessage = body.displayMessage?.trim() || message;
+      const routingStartedAt = Date.now();
       const requestRoute = AIIntentRouterService.route(message);
+      const routingMs = Date.now() - routingStartedAt;
 
       // Validate message exists (only reject if no message at all)
       if (!message) {
@@ -131,6 +133,7 @@ class AIChatController {
 
       const roleContext = AIChatService.getRoleContext(body.role, req.user);
       let chat;
+      const chatLookupStartedAt = Date.now();
 
       // ── Load or create chat ────────────────────────────────────────────
 
@@ -151,6 +154,7 @@ class AIChatController {
         });
         chat = result.chat;
       }
+      const chatLookupMs = Date.now() - chatLookupStartedAt;
 
       // ── Set up SSE ─────────────────────────────────────────────────────
 
@@ -186,10 +190,12 @@ class AIChatController {
       });
 
       try {
-        const retrievalStartedAt = Date.now();
+        const cacheLookupStartedAt = Date.now();
         const semanticCached = requestRoute.handling === 'direct'
           ? null
           : await AISemanticCacheService.get(message, requestRoute.cacheCategory);
+        const cacheLookupMs = Date.now() - cacheLookupStartedAt;
+        const contextStartedAt = Date.now();
         // Intent routing happens before expensive retrieval and inference.
         const platformContext = requestRoute.handling === 'direct' || semanticCached
           ? AIChatService.lightweightContext(requestRoute)
@@ -197,7 +203,8 @@ class AIChatController {
             messages: chat.messages,
             context: { ...(chat.context || {}), ...(body.context || {}) },
           });
-        const retrievalMs = Date.now() - retrievalStartedAt;
+        const contextAssemblyMs = Date.now() - contextStartedAt;
+        const retrievalMs = cacheLookupMs + contextAssemblyMs;
         const promptStartedAt = Date.now();
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
@@ -291,7 +298,10 @@ class AIChatController {
 
         }
 
+        const sanitizationStartedAt = Date.now();
         const sanitized = sanitizeAIOutput(assistantText);
+        const sanitizationMs = Date.now() - sanitizationStartedAt;
+        const validationStartedAt = Date.now();
         let cleanText = sanitized.text || 'I can help with your request. Please try again.';
         if (draftWasStreamed && (sanitized.changed || sanitized.rejected)) replaceStreamedDraft = true;
         const intelligence = platformContext.snapshot.intelligence || {};
@@ -345,6 +355,7 @@ class AIChatController {
             validation = validateAIResponse({ message, response: cleanText, intelligence, snapshot: platformContext.snapshot });
           }
         }
+        const validationAndRepairMs = Date.now() - validationStartedAt;
 
         if (!semanticCached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
           AISemanticCacheService.put(message, cleanText, requestRoute.cacheCategory).catch(() => undefined);
@@ -436,11 +447,17 @@ class AIChatController {
             issues: validation.issues.map(issue => issue.code),
           },
           timing: {
+            routingMs,
+            chatLookupMs,
+            cacheLookupMs,
+            contextAssemblyMs,
             promptConstructionMs,
             retrievalMs,
             databaseLookupMs: retrievalMs,
             providerMs,
             ollamaInferenceMs: providerMs,
+            sanitizationMs,
+            validationAndRepairMs,
             persistenceMs,
             timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
             totalMs: Date.now() - requestStartedAt,

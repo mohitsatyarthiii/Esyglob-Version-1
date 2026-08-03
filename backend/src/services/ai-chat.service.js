@@ -93,7 +93,7 @@ class AIChatService {
         results: emptyResults,
         snapshot: { roleContext: role, intelligence, navigationActions: [] },
         internal: { rewrittenQuery, memory },
-        text: `${languageInstruction(intelligence.language)}\nDetected route: ${intelligence.route}. Answer directly using native model knowledge. Be natural, concise, and do not invent EsyGlob platform facts. Return clean plain text without Markdown symbols or raw URLs.`,
+        text: intelligence.language === 'en' ? '' : languageInstruction(intelligence.language),
       };
     }
     if (intelligence.route === 'live_information') {
@@ -187,14 +187,12 @@ class AIChatService {
         intelligence,
       },
       text: [
-        `${role} assistant context:`,
         languageInstruction(intelligence.language),
-        'Write naturally in clean plain text. Do not copy retrieved documents verbatim. Do not emit Markdown control symbols or raw URLs.',
-        `Detected intent: ${intelligence.intent}. Use only the sources required for this intent: ${intelligence.sources.join(', ')}.`,
+        `Intent: ${intelligence.intent}. Allowed sources: ${intelligence.sources.join(', ')}.`,
         memory.summary ? `Conversation summary:\n${memory.summary}` : '',
         Object.keys(memory.entities || {}).length ? `Remembered entities and preferences:\n${JSON.stringify({ entities: memory.entities, preferences: memory.preferences })}` : '',
         templateInstruction(intelligence.intent),
-        intelligence.requiresPrivateData ? 'Private-data request: only use records already scoped to this authenticated user. Never infer or expose another user\'s data.' : '',
+        intelligence.requiresPrivateData ? 'Private records are scoped to this user; never infer another user\'s data.' : '',
         knowledgeText ? `Platform knowledge base:\n${knowledgeText}` : '',
         summarizeMarketplaceResults(results).slice(0, 1900),
         knowledge.text?.slice(0, 1500),

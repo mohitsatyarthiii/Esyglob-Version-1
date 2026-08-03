@@ -227,11 +227,14 @@ class OllamaRuntimeService {
 
   static status() {
     const totals = samples.map(item => item.totalMs);
+    const queues = samples.map(item => item.queueMs);
+    const firstTokens = samples.map(item => item.firstTokenMs);
+    const generations = samples.map(item => Math.max(0, item.totalMs - item.queueMs));
     const totalTokens = samples.reduce((sum, item) => sum + Number(item.tokens || 0), 0);
     const generationSeconds = samples.reduce((sum, item) => sum + Math.max(0, item.totalMs - item.queueMs) / 1000, 0);
     const memory = process.memoryUsage();
     const requestsPerMinute = samples.filter(item => item.recordedAt >= Date.now() - 60_000).length;
-    return { enabled: ENABLED, baseUrl: BASE_URL, model: MODEL, modelAvailable, modelValidatedAt, keepAlive: KEEP_ALIVE, health: modelAvailable === false || (counters.lastFailureAt && (!counters.lastSuccessAt || counters.lastFailureAt > counters.lastSuccessAt)) ? 'degraded' : 'operational', activeSessions: active, queue: { active, pending: queue.length, maxConcurrency: MAX_CONCURRENCY, maxQueue: MAX_QUEUE }, counters: { ...counters }, throughput: { tokensPerSecond: generationSeconds ? Number((totalTokens / generationSeconds).toFixed(2)) : 0, requestsPerMinute, sampleCount: samples.length }, process: { rssMb: Math.round(memory.rss / 1024 / 1024), heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024) }, latency: { averageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0, p95Ms: percentile(totals, .95), firstTokenP95Ms: percentile(samples.map(item => item.firstTokenMs), .95), streamingAverageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0 } };
+    return { enabled: ENABLED, baseUrl: BASE_URL, model: MODEL, modelAvailable, modelValidatedAt, keepAlive: KEEP_ALIVE, health: modelAvailable === false || (counters.lastFailureAt && (!counters.lastSuccessAt || counters.lastFailureAt > counters.lastSuccessAt)) ? 'degraded' : 'operational', activeSessions: active, queue: { active, pending: queue.length, maxConcurrency: MAX_CONCURRENCY, maxQueue: MAX_QUEUE, averageWaitMs: queues.length ? Math.round(queues.reduce((a, b) => a + b, 0) / queues.length) : 0, p95WaitMs: percentile(queues, .95) }, counters: { ...counters }, throughput: { tokensPerSecond: generationSeconds ? Number((totalTokens / generationSeconds).toFixed(2)) : 0, requestsPerMinute, sampleCount: samples.length }, process: { rssMb: Math.round(memory.rss / 1024 / 1024), heapUsedMb: Math.round(memory.heapUsed / 1024 / 1024) }, latency: { averageMs: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0, p50Ms: percentile(totals, .5), p90Ms: percentile(totals, .9), p95Ms: percentile(totals, .95), p99Ms: percentile(totals, .99), firstTokenAverageMs: firstTokens.length ? Math.round(firstTokens.reduce((a, b) => a + b, 0) / firstTokens.length) : 0, firstTokenP95Ms: percentile(firstTokens, .95), generationAverageMs: generations.length ? Math.round(generations.reduce((a, b) => a + b, 0) / generations.length) : 0 } };
   }
 }
 
