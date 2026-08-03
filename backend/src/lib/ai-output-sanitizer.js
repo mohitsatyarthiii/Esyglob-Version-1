@@ -95,7 +95,10 @@ export class ReasoningStreamFilter {
         this.buffer = this.buffer.slice(tagMatch.index + tagMatch[0].length);
         continue;
       }
-      const safeLength = Math.max(0, this.buffer.length - this.maxLookahead);
+      // Only retain a possible split tag. Plain answer text can flow immediately.
+      const possibleTagStart = this.buffer.lastIndexOf('<');
+      const hasIncompleteTag = possibleTagStart >= 0 && !this.buffer.slice(possibleTagStart).includes('>');
+      const safeLength = hasIncompleteTag ? possibleTagStart : this.buffer.length;
       output += this.buffer.slice(0, safeLength);
       this.buffer = this.buffer.slice(safeLength);
       break;
@@ -128,61 +131,54 @@ function isSentenceBoundary(text, index, segmentStart = 0) {
   return !text[index + 1] || /\s/.test(text[index + 1]);
 }
 
-export class SentenceSafetyFilter {
-  constructor({ maxPendingChars = 700, onDiscard } = {}) {
-    this.maxPendingChars = maxPendingChars;
-    this.onDiscard = onDiscard;
-    this.buffer = '';
-  }
-
-  validate(segment) {
-    if (!segment.trim()) return segment;
-    const result = sanitizeAIOutput(segment);
-    if (result.rejected || result.text !== segment.trim()) {
-      this.onDiscard?.({ code: 'INTERNAL_DISCLOSURE_SENTENCE', preview: segment.trim().slice(0, 120) });
-      return '';
-    }
-    return segment;
-  }
-
-  process(chunk = '') {
-    this.buffer += String(chunk);
-    let output = '';
-    let start = 0;
-    for (let index = 0; index < this.buffer.length; index += 1) {
-      if (!isSentenceBoundary(this.buffer, index, start)) continue;
-      output += this.validate(this.buffer.slice(start, index + 1));
-      start = index + 1;
-    }
-    this.buffer = this.buffer.slice(start);
-    if (this.buffer.length > this.maxPendingChars) {
-      const splitAt = this.buffer.lastIndexOf(' ', this.maxPendingChars);
-      if (splitAt > 0) {
-        output += this.validate(this.buffer.slice(0, splitAt + 1));
-        this.buffer = this.buffer.slice(splitAt + 1);
-      }
-    }
-    return output;
-  }
-
-  finish() {
-    const output = this.validate(this.buffer);
-    this.buffer = '';
-    return output;
-  }
-}
-
 export class FinalAnswerStreamFilter {
-  constructor(options = {}) {
+  constructor({ initialSafetyChars = 96, onDiscard, ...options } = {}) {
     this.reasoning = new ReasoningStreamFilter(options);
-    this.sentences = new SentenceSafetyFilter(options);
+    this.initialSafetyChars = initialSafetyChars;
+    this.onDiscard = onDiscard;
+    this.initialBuffer = '';
+    this.released = false;
   }
 
   process(chunk) {
-    return this.sentences.process(this.reasoning.process(chunk));
+    const safeChunk = this.reasoning.process(chunk);
+    if (this.released) return safeChunk;
+    this.initialBuffer += safeChunk;
+    while (this.initialBuffer) {
+      let boundary = -1;
+      for (let index = 0; index < this.initialBuffer.length; index += 1) {
+        if (isSentenceBoundary(this.initialBuffer, index, 0)) { boundary = index + 1; break; }
+      }
+      if (boundary < 0 && this.initialBuffer.length < this.initialSafetyChars) return '';
+      if (boundary < 0) boundary = this.initialBuffer.lastIndexOf(' ', this.initialSafetyChars);
+      if (boundary < 1) boundary = Math.min(this.initialBuffer.length, this.initialSafetyChars);
+      const candidate = this.initialBuffer.slice(0, boundary);
+      const validation = sanitizeAIOutput(candidate);
+      this.initialBuffer = this.initialBuffer.slice(boundary);
+      if (validation.rejected || validation.text !== candidate.trim()) {
+        this.onDiscard?.({ code: 'INTERNAL_DISCLOSURE_PREFIX', preview: candidate.trim().slice(0, 120) });
+        continue;
+      }
+      this.released = true;
+      const spacing = /^\s/.test(candidate) ? candidate.match(/^\s*/)?.[0] || '' : '';
+      const output = `${spacing}${validation.text}${this.initialBuffer}`;
+      this.initialBuffer = '';
+      return output;
+    }
+    return '';
   }
 
   finish() {
-    return this.sentences.process(this.reasoning.finish()) + this.sentences.finish();
+    const tail = this.reasoning.finish();
+    if (this.released) return tail;
+    this.initialBuffer += tail;
+    const validation = sanitizeAIOutput(this.initialBuffer);
+    const spacing = /^\s/.test(this.initialBuffer) ? this.initialBuffer.match(/^\s*/)?.[0] || '' : '';
+    this.initialBuffer = '';
+    if (validation.rejected) {
+      this.onDiscard?.({ code: 'INTERNAL_DISCLOSURE_PREFIX' });
+      return '';
+    }
+    return `${spacing}${validation.text}`;
   }
 }

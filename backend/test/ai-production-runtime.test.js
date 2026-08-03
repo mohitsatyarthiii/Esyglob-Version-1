@@ -139,7 +139,7 @@ test('final-answer boundary removes tagged and plain-language internal reasoning
   assert.equal(sanitizeAIOutput('I recall this is common in supply chains.\nMOQ means Minimum Order Quantity.').text, 'MOQ means Minimum Order Quantity.');
 });
 
-test('live filter handles split tags and discards only unsafe completed sentences', () => {
+test('live filter handles split tags and releases tokens after a bounded safe prefix', () => {
   const filter = new FinalAnswerStreamFilter();
   const chunks = ['<ana', 'lysis>private plan</analysis>The user asked for steel. ', 'Sure! Please share the grade.'];
   const output = chunks.map(chunk => filter.process(chunk)).join('') + filter.finish();
@@ -151,9 +151,9 @@ test('live filter handles split tags and discards only unsafe completed sentence
   assert.equal(failClosed.process('</ think >Safe answer.' ) + failClosed.finish(), 'Safe answer.');
 
   const earlySafeClause = new FinalAnswerStreamFilter();
-  assert.equal(earlySafeClause.process('MOQ is the minimum order a supplier accepts, '), '');
-  assert.equal(earlySafeClause.process('and it can often be negotiated for different products and long-term buyer relationships.'), 'MOQ is the minimum order a supplier accepts,');
-  assert.equal(earlySafeClause.finish(), ' and it can often be negotiated for different products and long-term buyer relationships.');
+  assert.equal(earlySafeClause.process('MOQ is the minimum order a supplier accepts, '), 'MOQ is the minimum order a supplier accepts, ');
+  assert.equal(earlySafeClause.process('and it can often be negotiated for different products and long-term buyer relationships.'), 'and it can often be negotiated for different products and long-term buyer relationships.');
+  assert.equal(earlySafeClause.finish(), '');
 });
 
 test('intent router serves greetings and FAQs without inference', async () => {

@@ -4,11 +4,9 @@ import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import OllamaRuntimeService from '../services/ollama-runtime.service.js';
-import KnowledgeBaseService from '../services/knowledge-base.service.js';
 import AIIntentRouterService from '../services/ai-intent-router.service.js';
 import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
 import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
-import { config } from '../config/env.js';
 import EsyGlobAIGuideService from '../services/esyglob-ai-guide.service.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
@@ -246,9 +244,9 @@ class AIChatController {
             const result = await OllamaRuntimeService.complete({
               messages: [
                 { role: 'system', content: systemPrompt },
-                ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20)).map(item => ({
+                ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-10)).map(item => ({
                   role: item.role === 'user' ? 'user' : 'assistant',
-                  content: String(item.content || '').slice(0, 1200),
+                  content: String(item.content || '').slice(0, 800),
                 })),
                 { role: 'user', content: message },
               ],
@@ -423,7 +421,6 @@ class AIChatController {
           tokensUsed,
           contextUpdates: {
             'context.lastQuery': message,
-            'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
             'context.language': platformContext.snapshot.intelligence?.language,
             'context.intent': platformContext.snapshot.intelligence?.intent,
             'context.conversationSummary': platformContext.internal?.memory?.summary,
@@ -493,8 +490,8 @@ class AIChatController {
       return res.json({
         status: health.online ? 'operational' : 'degraded',
         providers: { ollama: OllamaRuntimeService.status() },
-        cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus(), semantic: AISemanticCacheService.status() },
-        architecture: { gemmaFirst: !config.aiRagEnabled, ragEnabled: config.aiRagEnabled, platformGuide: EsyGlobAIGuideService.status() },
+        cache: { responses: health.responseCache, semantic: AISemanticCacheService.status() },
+        architecture: { gemmaFirst: true, chatbotRag: false, platformGuide: EsyGlobAIGuideService.status() },
       });
     }
 

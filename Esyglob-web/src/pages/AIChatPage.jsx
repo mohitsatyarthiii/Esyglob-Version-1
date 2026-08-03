@@ -256,7 +256,7 @@ export default function AIChatPage() {
     }
     recognition.onerror = (event) => {
       setVoiceListening(false)
-      setError(event.error === 'not-allowed' ? 'Allow microphone access to dictate an ESY AI message.' : 'Voice input could not hear you. Please retry.')
+      setError(event.error === 'not-allowed' ? 'Allow microphone access to dictate an EsyGlob AI message.' : 'Voice input could not hear you. Please retry.')
     }
     recognition.onend = () => {
       setVoiceListening(false)
@@ -271,9 +271,9 @@ export default function AIChatPage() {
   }
 
   async function shareConversation() {
-    const title = active?.title || 'ESY AI conversation'
+    const title = active?.title || 'EsyGlob AI conversation'
     try {
-      if (navigator.share) await navigator.share({ title, text: 'ESY AI marketplace conversation', url: window.location.href })
+      if (navigator.share) await navigator.share({ title, text: 'EsyGlob AI marketplace conversation', url: window.location.href })
       else {
         await navigator.clipboard.writeText(window.location.href)
         setShareStatus('Link copied')
@@ -312,7 +312,7 @@ export default function AIChatPage() {
   return <AppShell><div className={`ai-workspace ${sidebarCollapsed ? 'ai-workspace--sidebar-collapsed' : ''}`}>
     {sidebarOpen && <button className="ai-sidebar-backdrop" aria-label="Close conversation history" onClick={() => setSidebarOpen(false)} />}
     <aside className={sidebarOpen ? 'open' : ''} aria-label="Recent AI chats" aria-modal={sidebarOpen ? 'true' : undefined}>
-      <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>ESY AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
+      <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>EsyGlob AI</b><small>Marketplace copilot</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
       <button className="ai-new-chat" onClick={newConversation}><Plus /> New conversation</button>
       <div className="ai-history-tools"><UnifiedSearchInput compact suggestions={false} value={historySearch} onChange={setHistorySearch} onSubmit={setHistorySearch} placeholder="Search conversations" /><label className="ai-history-sort"><span>Sort</span><select value={historySort} onChange={(event) => setHistorySort(event.target.value)}><option value="recent">Most recent</option><option value="oldest">Oldest first</option></select><ChevronDown /></label></div>
       <div className="ai-sidebar-head"><b><History /> Recent chats</b><small>{visibleChats.length}</small></div>
@@ -320,7 +320,7 @@ export default function AIChatPage() {
         const id = resolveId(item)
         const timestamp = item.lastMessageAt || item.updatedAt || item.createdAt
         return <div className={`ai-history-row ${id === chatId ? 'active' : ''}`} key={id}>
-          {editingId === id ? <form onSubmit={(event) => { event.preventDefault(); renameConversation(id) }}><input autoFocus maxLength={90} value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setEditingId('') }} /><button title="Save name"><Check /></button></form> : <button className="ai-history-main" onClick={() => { if (!busy) { setChatId(id); setSidebarOpen(false); setError('') } }}><span><b>{item.title || 'Marketplace assistant'}</b><small>{timestamp ? new Date(timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : `${item.totalMessages || 0} messages`}</small></span></button>}
+          {editingId === id ? <form onSubmit={(event) => { event.preventDefault(); renameConversation(id) }}><input autoFocus maxLength={90} value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => { if (event.key === 'Escape') setEditingId('') }} /><button title="Save name"><Check /></button></form> : <button className="ai-history-main" title={item.title || 'Marketplace assistant'} onClick={() => { if (!busy) { setChatId(id); setSidebarOpen(false); setError('') } }}><span><b>{item.title || 'Marketplace assistant'}</b><small>{timestamp ? new Date(timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : `${item.totalMessages || 0} messages`}</small></span></button>}
           {editingId !== id && <div className="ai-history-actions"><button title="Rename conversation" onClick={() => { setEditingId(id); setEditingTitle(item.title || 'Marketplace assistant') }}><Pencil /></button><button title="Delete conversation" onClick={() => removeConversation(id)}><Trash2 /></button></div>}
         </div>
       }) : <div className="ai-history-empty"><History /><b>{historySearch ? 'No chats found' : 'No saved chats yet'}</b><p>{historySearch ? 'Try a different search.' : 'Your conversations will appear here.'}</p></div>}</div>
@@ -332,7 +332,7 @@ export default function AIChatPage() {
           <button className="ai-mobile-back" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
           <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open recent chats"><Menu /><span>Chats</span></button>
           <i><Sparkles /></i>
-          <span><small>ESY AI</small><h1>{active?.title || 'New conversation'}</h1><p><em /> Ready to help <span>· {role}</span></p></span>
+          <span><small>EsyGlob AI</small><h1>{active?.title || 'New conversation'}</h1><p><em /> Ready to help <span>· {role}</span></p></span>
         </div>
         <div className="ai-header-actions">
           <span className="ai-share-status" role="status">{shareStatus}</span>
@@ -357,7 +357,7 @@ export default function AIChatPage() {
           const element = event.currentTarget
           stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120
         }}
-      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">ESY AI sourcing workspace</span><h2>All your sourcing tasks, one conversation.</h2><p>Discover products, evaluate verified suppliers, prepare RFQs and understand global markets with live EsyGlob context.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div><div className="ai-welcome-capabilities" aria-label="ESY AI capabilities"><span><Check /> Marketplace-aware</span><span><Check /> Procurement focused</span><span><Check /> Available 24/7</span></div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
+      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">EsyGlob AI sourcing workspace</span><h2>All your sourcing tasks, one conversation.</h2><p>Discover products, evaluate verified suppliers, prepare RFQs and understand global markets with live EsyGlob context.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div><div className="ai-welcome-capabilities" aria-label="EsyGlob AI capabilities"><span><Check /> Marketplace-aware</span><span><Check /> Procurement focused</span><span><Check /> Available 24/7</span></div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
       <div className="ai-composer-dock">
         {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
         {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
@@ -375,7 +375,7 @@ export default function AIChatPage() {
           <input ref={cameraRef} hidden type="file" accept="image/*" capture="environment" onChange={attach} />
           <input ref={fileRef} hidden type="file" multiple onChange={attach} />
           <input ref={documentRef} hidden type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" multiple onChange={attach} />
-          <textarea ref={textareaRef} rows="1" value={draft} disabled={conversationLoading} maxLength={12000} aria-label="Message ESY AI" onFocus={() => { stickToBottomRef.current = true; requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' })) }} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'ESY AI is responding...' : 'Message ESY AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
+          <textarea ref={textareaRef} rows="1" value={draft} disabled={conversationLoading} maxLength={12000} aria-label="Message EsyGlob AI" onFocus={() => { stickToBottomRef.current = true; requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end' })) }} onChange={(event) => setDraft(event.target.value)} placeholder={uploading ? 'Uploading securely...' : busy ? 'EsyGlob AI is responding...' : 'Message EsyGlob AI'} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send() } }} />
           <div className="ai-composer-actions"><button type="button" className="ai-composer-tool" aria-label="Attach an image for visual search" title="Search with an image" disabled={uploading || busy} onClick={() => imageRef.current?.click()}><Image /></button><button type="button" className={`ai-composer-tool ${voiceListening ? 'is-listening' : ''}`} aria-label={voiceListening ? 'Listening' : 'Dictate message'} title="Voice input" disabled={busy} onClick={startVoiceMessage}>{voiceListening ? <span className="ai-send-loader" /> : <Mic />}</button>{busy ? <button type="button" className="ai-send-button" aria-label="Stop generation" title="Stop generation" onClick={() => streamRef.current?.abort()}><X /></button> : <button className="ai-send-button" aria-label="Send message" disabled={uploading || (!draft.trim() && !attachments.length)}><Send /></button>}</div>
         </form>
         <small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small>
@@ -384,7 +384,7 @@ export default function AIChatPage() {
   </div></AppShell>
 }
 
-function AIMessage({ item, user, onPrompt, onRegenerate }) {
+const AIMessage = memo(function AIMessage({ item, user, onPrompt, onRegenerate }) {
   const metadata = item.metadata || {}
   const marketplace = metadata.marketplace || {}
   const products = Array.isArray(metadata.topProducts || marketplace.topProducts) ? metadata.topProducts || marketplace.topProducts : []
@@ -395,9 +395,10 @@ function AIMessage({ item, user, onPrompt, onRegenerate }) {
   const attachmentUrls = metadata.attachmentUrls || metadata.pluginPayload?.attachmentUrls || []
   const content = String(item.content || item.message || (item.streaming ? item.statusText || 'Preparing your answer...' : ''))
   return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{content && !item.streaming && <button type="button" onClick={() => navigator.clipboard?.writeText(content)}><Copy /> Copy</button>}{onRegenerate && <button onClick={onRegenerate}><RefreshCw /> Regenerate</button>}</footer></div></article>
-}
+})
 
 const RichMessage = memo(function RichMessage({ content, streaming }) {
+  if (streaming) return <div className="ai-rich-message ai-rich-message--streaming">{content || 'Preparing your answer...'}<span className="ai-stream-cursor" /></div>
   const lines = content.split('\n')
   const nodes = []
   let index = 0
@@ -422,7 +423,7 @@ const RichMessage = memo(function RichMessage({ content, streaming }) {
     if (line.trim()) nodes.push(<p key={`paragraph-${index}`}>{inlineMarkdown(line)}</p>)
     index += 1
   }
-  return <div className={streaming && !content ? 'ai-rich-message ai-stream-placeholder' : 'ai-rich-message'}>{nodes.length ? nodes : <p>Preparing your answer...</p>}{streaming && <span className="ai-stream-cursor" />}</div>
+  return <div className="ai-rich-message">{nodes.length ? nodes : <p>Preparing your answer...</p>}</div>
 })
 
 function inlineMarkdown(value) {

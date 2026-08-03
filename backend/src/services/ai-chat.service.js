@@ -3,12 +3,10 @@ import { getAISearchResults, summarizeMarketplaceResults } from '../lib/ai-marke
 import { resolveSmartResponse } from '../lib/smart-intelligence.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIPlatformContextService from './ai-platform-context.service.js';
-import KnowledgeBaseService from './knowledge-base.service.js';
 import {
   analyzeRequest,
   buildConversationMemory,
   languageInstruction,
-  rewriteSearchQuery,
   templateInstruction,
 } from '../lib/ai-intelligence-pipeline.js';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
@@ -18,7 +16,6 @@ import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
 import AIIntentRouterService from './ai-intent-router.service.js';
 import AISemanticCacheService from './ai-semantic-cache.service.js';
 import EsyGlobAIGuideService from './esyglob-ai-guide.service.js';
-import { config } from '../config/env.js';
 
 class AIChatService {
   static lightweightContext(route = {}) {
@@ -88,21 +85,18 @@ class AIChatService {
       role,
       previousLanguage: memory.language,
     });
-    const platformGuide = EsyGlobAIGuideService.contextFor(detectedIntelligence, message);
     const intelligence = {
       ...detectedIntelligence,
-      sources: [
-        ...detectedIntelligence.sources.filter(source => source !== 'knowledge_base' || config.aiRagEnabled),
-        ...(platformGuide ? ['platform_guide'] : []),
-      ],
+      sources: detectedIntelligence.sources.filter(source => ['products', 'suppliers', 'user_data', 'hs_codes', 'live_search', 'model_knowledge'].includes(source)),
     };
-    const rewrittenQuery = rewriteSearchQuery({ message, intelligence, memory });
+    const platformGuide = EsyGlobAIGuideService.contextFor(intelligence, message);
+    const searchQuery = String(message || '').trim().slice(0, 700);
     const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
     if (['greeting', 'general_knowledge'].includes(intelligence.route)) {
       return {
         results: emptyResults,
         snapshot: { roleContext: role, intelligence, navigationActions: [] },
-        internal: { rewrittenQuery, memory },
+        internal: { memory },
         text: intelligence.language === 'en' ? '' : languageInstruction(intelligence.language),
       };
     }
@@ -113,7 +107,7 @@ class AIChatService {
       return {
         results: emptyResults,
         snapshot: { roleContext: role, intelligence, liveSources: live.results, navigationActions: [] },
-        internal: { rewrittenQuery, memory },
+        internal: { memory },
         text: [
           languageInstruction(intelligence.language),
           'Detected route: live_information. Use only the current sources below. Clearly say when current information could not be verified.',
@@ -135,27 +129,15 @@ class AIChatService {
         : {}),
     };
     const marketplacePromise = retrievalAllowed && this.needsMarketplaceContext(message)
-      ? getAISearchResults({ query: rewrittenQuery, filters: marketplaceFilters, userId })
+      ? getAISearchResults({ query: searchQuery, filters: marketplaceFilters, userId })
       : Promise.resolve(emptyResults);
-    const knowledgePromise = config.aiRagEnabled && intelligence.sources.includes('knowledge_base')
-      ? KnowledgeBaseService.retrieve({
-        query: message,
-        rewrittenQuery,
-        role,
-        intent: intelligence.intent,
-        language: intelligence.language,
-      })
-      : Promise.resolve([]);
-    const [results, knowledgeDocuments] = await Promise.all([marketplacePromise, knowledgePromise]);
+    const results = await marketplacePromise;
     const knowledge = await AIPlatformContextService.enrich({ message, role, results, userId });
-    const knowledgeText = KnowledgeBaseService.format(knowledgeDocuments);
 
     return {
       results,
       internal: {
-        rewrittenQuery,
         memory,
-        knowledgeDocumentIds: knowledgeDocuments.map(document => String(document._id)),
       },
       snapshot: {
         roleContext: role,
@@ -198,15 +180,13 @@ class AIChatService {
       },
       text: [
         languageInstruction(intelligence.language),
-        `Intent: ${intelligence.intent}. Allowed sources: ${intelligence.sources.join(', ')}.`,
-        memory.summary ? `Conversation summary:\n${memory.summary}` : '',
-        Object.keys(memory.entities || {}).length ? `Remembered entities and preferences:\n${JSON.stringify({ entities: memory.entities, preferences: memory.preferences })}` : '',
+        `Intent: ${intelligence.intent}.`,
+        Object.keys(memory.entities || {}).length ? `Remembered details:\n${JSON.stringify({ entities: memory.entities, preferences: memory.preferences }).slice(0, 500)}` : '',
         templateInstruction(intelligence.intent),
         intelligence.requiresPrivateData ? 'Private records are scoped to this user; never infer another user\'s data.' : '',
         platformGuide ? `EsyGlob platform guide:\n${platformGuide}` : '',
-        knowledgeText ? `Platform knowledge base:\n${knowledgeText}` : '',
-        summarizeMarketplaceResults(results).slice(0, 1900),
-        knowledge.text?.slice(0, 1500),
+        summarizeMarketplaceResults(results).slice(0, 1400),
+        knowledge.text?.slice(0, 1100),
       ].filter(Boolean).join('\n\n'),
     };
   }
@@ -441,7 +421,7 @@ class AIChatService {
       ? { success: true, message: requestRoute.response, tokensUsed: 0, provider: 'marketplace', model: null, fallback: false }
       : cached
         ? { success: true, message: cached.response, tokensUsed: 0, provider: 'semantic_cache', model: null, fallback: false }
-        : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
+        : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-10), systemPrompt);
 
     const intelligence = platformContext.snapshot.intelligence || {};
     let finalResponse = String(aiResult.message || '').trim();
@@ -501,7 +481,6 @@ class AIChatService {
     // Context updates
     const contextUpdates = {
       'context.lastQuery': message,
-      'context.rewrittenQuery': platformContext.internal?.rewrittenQuery,
       'context.language': platformContext.snapshot.intelligence?.language,
       'context.intent': platformContext.snapshot.intelligence?.intent,
       'context.conversationSummary': platformContext.internal?.memory?.summary,

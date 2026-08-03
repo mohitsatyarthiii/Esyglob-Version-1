@@ -2,8 +2,6 @@ import { performance } from 'node:perf_hooks';
 import AIChatService from '../src/services/ai-chat.service.js';
 import AIIntentRouterService from '../src/services/ai-intent-router.service.js';
 import AIService from '../src/lib/ai-service.js';
-import KnowledgeBaseService from '../src/services/knowledge-base.service.js';
-import { config } from '../src/config/env.js';
 
 const prompts = [
   'Explain FOB briefly.',
@@ -29,15 +27,7 @@ const prompts = [
 ];
 
 const samples = [];
-let documentRetrievalCalls = 0;
-const originalRetrieve = KnowledgeBaseService.retrieve;
-KnowledgeBaseService.retrieve = async (...args) => {
-  documentRetrievalCalls += 1;
-  return originalRetrieve.apply(KnowledgeBaseService, args);
-};
-
-try {
-  for (let index = 0; index < 100; index += 1) {
+for (let index = 0; index < 100; index += 1) {
     const message = prompts[index % prompts.length];
     const startedAt = performance.now();
     const route = AIIntentRouterService.route(message);
@@ -49,9 +39,6 @@ try {
       promptCharacters = systemPrompt.length;
     }
     samples.push({ route: route.handling, requiresLivePlatformData, elapsedMs: performance.now() - startedAt, promptCharacters });
-  }
-} finally {
-  KnowledgeBaseService.retrieve = originalRetrieve;
 }
 
 const values = samples.map(sample => sample.elapsedMs).sort((left, right) => left - right);
@@ -62,8 +49,7 @@ const promptSamples = samples.filter(sample => sample.promptCharacters);
 
 console.log(JSON.stringify({
   requests: samples.length,
-  architecture: config.aiRagEnabled ? 'rag-enabled-comparison' : 'gemma-first',
-  documentRetrievalCalls,
+  architecture: 'gemma-first-no-chat-rag',
   databaseRequiredRequests: samples.filter(sample => sample.requiresLivePlatformData).length,
   directOrGuideRequests: samples.filter(sample => !sample.requiresLivePlatformData).length,
   routingAndContextLatencyMs: {
