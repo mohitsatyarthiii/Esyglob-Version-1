@@ -1,4 +1,5 @@
 import { detectLanguage } from './ai-intelligence-pipeline.js';
+import { INTERNAL_DISCLOSURE_PATTERN } from './ai-output-sanitizer.js';
 
 const SENSITIVE_PATTERNS = [
   { code: 'email_exposure', pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
@@ -30,6 +31,7 @@ export function validateAIResponse({ message, response, intelligence = {}, snaps
   const issues = [];
   const text = String(response || '').trim();
   if (!text) issues.push({ code: 'empty_response', severity: 'critical' });
+  if (INTERNAL_DISCLOSURE_PATTERN.test(text)) issues.push({ code: 'internal_reasoning_disclosure', severity: 'critical' });
 
   const relevance = relevanceScore(message, text);
   if (text.length > 80 && relevance < 0.12) issues.push({ code: 'low_question_relevance', severity: 'high', score: relevance });

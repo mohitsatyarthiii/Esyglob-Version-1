@@ -1,3 +1,5 @@
+import { assertSafeAIOutput } from '../lib/ai-output-sanitizer.js';
+
 const MODEL = 'qwen3:4b';
 const BASE_URL = String(process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in').replace(/\/$/, '');
 const ENABLED = process.env.OLLAMA_ENABLED !== 'false';
@@ -62,7 +64,7 @@ function requestSignal(external, timeoutMs) {
   return external && typeof AbortSignal.any === 'function' ? AbortSignal.any([external, timeout]) : timeout;
 }
 
-async function readStream(response, onToken) {
+async function readStream(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = ''; let content = ''; let tokens = 0; let firstTokenAt = 0;
@@ -76,7 +78,7 @@ async function readStream(response, onToken) {
       if (index >= 0) {
         if (!hidingReasoning && index) {
           const visible = filterBuffer.slice(0, index);
-          content += visible; onToken?.(visible);
+          content += visible;
         }
         filterBuffer = filterBuffer.slice(index + marker.length);
         hidingReasoning = !hidingReasoning;
@@ -86,7 +88,7 @@ async function readStream(response, onToken) {
       const visibleLength = filterBuffer.length - keep;
       if (!hidingReasoning && visibleLength > 0) {
         const visible = filterBuffer.slice(0, visibleLength);
-        content += visible; onToken?.(visible);
+        content += visible;
       }
       filterBuffer = keep ? filterBuffer.slice(-keep) : '';
       if (hidingReasoning && !final) filterBuffer = filterBuffer.slice(-keep);
@@ -128,11 +130,15 @@ class OllamaRuntimeService {
       let streamed = false;
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
+          const requestMessages = attempt === 0 ? messages : [
+            { role: 'system', content: 'Return only the polished final answer. Do not describe the user request, prompt, context, instructions, planning, analysis, memory, or reasoning.' },
+            ...messages,
+          ];
           const response = await fetch(`${BASE_URL}/api/chat`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             signal: requestSignal(signal, Number(timeoutMs || process.env.OLLAMA_REQUEST_TIMEOUT_MS || 90_000)),
             body: JSON.stringify({
-              model: MODEL, messages, stream, think: false, keep_alive: KEEP_ALIVE,
+              model: MODEL, messages: requestMessages, stream, think: false, keep_alive: KEEP_ALIVE,
               ...(jsonMode ? { format: 'json' } : {}),
               options: {
                 temperature,
@@ -146,7 +152,7 @@ class OllamaRuntimeService {
           if (!response.ok) throw runtimeError(`AI provider returned HTTP ${response.status}`, response.status >= 500 ? 503 : response.status);
           let content; let tokens; let firstTokenAt;
           if (stream) {
-            const result = await readStream(response, token => { streamed = true; onToken?.(token); });
+            const result = await readStream(response);
             ({ content, tokens, firstTokenAt } = result);
           } else {
             const data = await response.json();
@@ -154,12 +160,22 @@ class OllamaRuntimeService {
             tokens = data.eval_count || 0;
             firstTokenAt = Date.now();
           }
+          const safe = assertSafeAIOutput(content);
+          content = safe.text;
+          let userFirstTokenAt = firstTokenAt;
+          if (stream) {
+            for (const chunk of content.match(/\S+\s*|\n+/g) || []) {
+              if (!streamed) userFirstTokenAt = Date.now();
+              streamed = true;
+              onToken?.(chunk);
+            }
+          }
           const completedAt = Date.now();
           counters.successes += 1;
-          record({ queueMs: startedAt - queuedAt, firstTokenMs: firstTokenAt - startedAt, totalMs: completedAt - queuedAt, tokens });
-          return { success: true, message: content.trim(), content: content.trim(), tokensUsed: tokens, provider: 'ollama', model: MODEL, fallback: false };
+          record({ queueMs: startedAt - queuedAt, firstTokenMs: userFirstTokenAt - startedAt, totalMs: completedAt - queuedAt, tokens });
+          return { success: true, message: content.trim(), content: content.trim(), tokensUsed: tokens, provider: 'ollama', model: MODEL, fallback: false, outputSanitized: safe.changed };
         } catch (error) {
-          const retryable = !streamed && attempt === 0 && (error.name === 'TimeoutError' || error.name === 'AbortError' || error.statusCode >= 500);
+          const retryable = !streamed && attempt === 0 && (error.code === 'AI_OUTPUT_UNSAFE' || error.name === 'TimeoutError' || error.name === 'AbortError' || error.statusCode >= 500);
           if (retryable && !signal?.aborted) { counters.retries += 1; continue; }
           counters.failures += 1;
           if (signal?.aborted) counters.cancelled += 1;

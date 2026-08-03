@@ -3,6 +3,7 @@ import test from 'node:test';
 import { analyzeRequest, buildConversationMemory } from '../src/lib/ai-intelligence-pipeline.js';
 import OllamaRuntimeService from '../src/services/ollama-runtime.service.js';
 import AIService from '../src/lib/ai-service.js';
+import { assertSafeAIOutput, sanitizeAIOutput } from '../src/lib/ai-output-sanitizer.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -29,6 +30,16 @@ test('prompt modules inject only the instructions required by the request route'
   assert.doesNotMatch(general, /enterprise market-intelligence analyst/);
   assert.match(insights, /enterprise market-intelligence analyst/);
   assert.match(insights, /verified evidence/);
+});
+
+test('final-answer boundary removes tagged and plain-language internal reasoning', () => {
+  const tagged = sanitizeAIOutput('<analysis>The user asked what EsyGlob is. I should explain.</analysis>EsyGlob is a global B2B marketplace.');
+  assert.equal(tagged.text, 'EsyGlob is a global B2B marketplace.');
+  const plain = sanitizeAIOutput('The user asked for steel suppliers. I should request specifications.\nSure! Please share the steel grade, quantity, and destination country.');
+  assert.equal(plain.text, 'Sure! Please share the steel grade, quantity, and destination country.');
+  const sectioned = sanitizeAIOutput('Analysis:\nWe need to determine the best response.\n\nFinal Answer:\nEsyGlob connects global buyers and suppliers.');
+  assert.equal(sectioned.text, 'EsyGlob connects global buyers and suppliers.');
+  assert.throws(() => assertSafeAIOutput('Looking at the context, I should answer the user.'), error => error.code === 'AI_OUTPUT_UNSAFE');
 });
 
 test('runtime always requests qwen3:4b and never streams hidden reasoning', async () => {

@@ -38,7 +38,7 @@ Date: 2026-08-03
 - Bounded FIFO queue: 2 active requests and 64 pending by default, configurable without changing the model.
 - `keep_alive=24h`, startup warming, and periodic warming retain the loaded model.
 - Streaming SSE forwards tokens immediately, supports client disconnect cancellation, and never forwards Ollama's `thinking` field or `<think>` blocks.
-- One bounded retry is allowed only for non-streamed transient failures and timeouts.
+- One bounded retry is allowed for non-streamed transient failures, timeouts, or an unsafe final-answer validation failure.
 - Health output includes queue depth, counters, average latency, p95 latency, and p95 first-token latency.
 - Provider errors become stable `AI_PROVIDER_UNAVAILABLE`, `AI_QUEUE_FULL`, or `AI_REQUEST_CANCELLED` errors.
 
@@ -65,7 +65,7 @@ Legacy text-model references were removed from source, tests, environment model 
 
 ## Validation results
 
-- Backend: 66/66 tests pass.
+- Backend: 67/67 tests pass.
 - Added tests: fixed model payload, no hidden-reasoning stream exposure, bounded queue concurrency, live-search routing, and 100+ message memory.
 - Node syntax checks pass for the runtime, chat controller/service, AI facade, and market insights.
 - Mobile subscription screen: 0 lint errors; 3 existing inline-style warnings.
@@ -75,8 +75,8 @@ Legacy text-model references were removed from source, tests, environment model 
 
 The benchmark runner records cold response time, warm average, overall average, p95, first-token average, token counts, process RSS delta, process CPU, and runtime queue metrics.
 
-The first 2026-08-03 baseline attempt was rejected by the AI proxy with HTTP 403, so a valid pre-optimization inference baseline was unavailable. The final attempt succeeded for five streamed 80-token responses: cold total 7,049 ms, warm total average 3,210 ms, overall average 3,977 ms, p95 7,049 ms, and warm first-token average 386 ms (615, 273, 314, and 342 ms). Client-process RSS increased by 15 MB and CPU usage was 484 ms. The warm first-token result is within the requested 300–800 ms experience target; cold model startup remains the largest latency outlier.
+The first 2026-08-03 baseline attempt was rejected by the AI proxy with HTTP 403. A later pre-boundary run measured 386 ms warm first-token latency, but that path did not fully validate the complete answer before release. The production strict-boundary benchmark completed three 80-token requests with 3,589 ms cold total, 3,078 ms warm total average, 3,248 ms overall average, and 3,248 ms average generation-to-first-visible-chunk. Client-process RSS increased by 12 MB and CPU usage was 484 ms.
 
 ## Remaining operational limitation
 
-Cold model activation took 4,001 ms to first token despite the keep-alive policy. Production should retain startup warming and monitor for proxy or Ollama restarts that evict the model. Total response latency remains bounded by generation speed and requested output length. End-to-end authenticated database timing should be monitored from the SSE timing payload in production because the standalone benchmark intentionally isolates Ollama inference.
+The strict boundary intentionally releases no model text until the complete response has passed final-answer sanitation. A contextual loading state appears after 500 ms. Total latency remains bounded by generation speed and requested output length. End-to-end authenticated database timing should be monitored from the SSE timing payload because the standalone benchmark isolates Ollama inference.

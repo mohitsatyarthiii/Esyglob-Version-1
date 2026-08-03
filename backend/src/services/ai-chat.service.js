@@ -14,8 +14,18 @@ import {
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import LiveSearchService from './live-search.service.js';
 import OllamaRuntimeService from './ollama-runtime.service.js';
+import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
 
 class AIChatService {
+  static sanitizeChatForClient(chat) {
+    if (!chat) return chat;
+    const value = typeof chat.toObject === 'function' ? chat.toObject() : { ...chat };
+    value.messages = (value.messages || []).map(message => message.role === 'assistant'
+      ? { ...message, content: sanitizeAIOutput(message.content).text || 'I could not safely display this response. Please regenerate it.' }
+      : message);
+    return value;
+  }
+
   static async warmProvider() {
     return OllamaRuntimeService.warm();
   }
@@ -288,7 +298,7 @@ class AIChatService {
       if (!chat || chat.userId.toString() !== userId.toString()) {
         throw Object.assign(new Error('Chat not found'), { statusCode: 404 });
       }
-      return { chat };
+      return { chat: this.sanitizeChatForClient(chat) };
     }
 
     const chats = await AIChatRepository.findUserChats(userId, { role });
@@ -336,9 +346,11 @@ class AIChatService {
 
     // Handle direct response (no AI needed)
     if (body.directResponse?.message) {
+      const directText = sanitizeAIOutput(body.directResponse.message).text
+        || 'I could not safely display this response. Please try again.';
       const assistantMessage = {
         role: 'assistant',
-        content: body.directResponse.message,
+        content: directText,
         tokens: 0,
         timestamp: new Date(),
         metadata: {
@@ -369,7 +381,7 @@ class AIChatService {
       return {
         chat: updatedChat,
         response: {
-          message: body.directResponse.message,
+          message: directText,
           success: true,
           fallback: false,
           tokensUsed: 0,

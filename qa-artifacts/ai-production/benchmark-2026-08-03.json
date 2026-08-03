@@ -1,27 +1,18 @@
 {
   "model": "qwen3:4b",
+  "mode": "strict-final-answer-boundary",
   "completed": true,
-  "coldResponseMs": 7049,
-  "warmAverageMs": 3210,
-  "averageMs": 3977,
-  "p95Ms": 7049,
-  "firstTokenAverageMs": 1109,
-  "warmFirstTokenAverageMs": 386,
-  "processMemoryDeltaMb": 15,
+  "coldResponseMs": 3589,
+  "warmAverageMs": 3078,
+  "averageMs": 3248,
+  "p95Ms": 3589,
+  "firstVisibleChunkAverageMs": 3248,
+  "processMemoryDeltaMb": 12,
   "processCpuMs": 484,
   "samples": [
-    { "totalMs": 7049, "firstTokenMs": 4001, "tokens": 80 },
-    { "totalMs": 3730, "firstTokenMs": 615, "tokens": 80 },
-    { "totalMs": 2934, "firstTokenMs": 273, "tokens": 80 },
-    { "totalMs": 2952, "firstTokenMs": 314, "tokens": 80 },
-    { "totalMs": 3222, "firstTokenMs": 342, "tokens": 80 }
+    { "totalMs": 3589, "firstVisibleChunkMs": 3589, "tokens": 80 },
+    { "totalMs": 3101, "firstVisibleChunkMs": 3101, "tokens": 80 },
+    { "totalMs": 3054, "firstVisibleChunkMs": 3054, "tokens": 80 }
   ],
-  "runtime": {
-    "keepAlive": "24h",
-    "maxConcurrency": 2,
-    "maxQueue": 64,
-    "requests": 5,
-    "successes": 5,
-    "failures": 0
-  }
+  "safetyNote": "No model content is released before complete final-answer sanitization and validation."
 }

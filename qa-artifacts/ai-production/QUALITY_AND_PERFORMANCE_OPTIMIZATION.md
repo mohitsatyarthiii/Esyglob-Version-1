@@ -20,7 +20,7 @@ Date: 2026-08-03
 
 ## Verification
 
-- Backend tests: 66/66 passed.
+- Backend tests: 67/67 passed.
 - Vite production build: passed.
 - Mobile AI chat lint: passed with no errors or warnings.
 - Market Insight report/PDF tests: passed, including chart/table/branding/footer validation and storage lifecycle.
@@ -28,7 +28,7 @@ Date: 2026-08-03
 
 ## Performance
 
-The earlier baseline attempt returned HTTP 403 and produced no valid inference values. After optimization and restored VPS access, five streamed requests completed successfully.
+The earlier baseline attempt returned HTTP 403 and produced no valid inference values. After restored VPS access, five requests measured the pre-validation streaming path:
 
 | Metric | Result |
 |---|---:|
@@ -42,6 +42,10 @@ The earlier baseline attempt returned HTTP 403 and produced no valid inference v
 | Process CPU | 484 ms |
 | Successful requests | 5/5 |
 
-Warm first-token latency meets the requested 300–800 ms target. Cold activation remains the primary bottleneck, so the startup/periodic warm process and 24-hour keep-alive must remain enabled.
+These values are retained as the before-strict-boundary comparison only. They no longer describe the production release boundary below.
+
+## Strict final-answer boundary update
+
+The final production boundary now buffers model generation internally, removes tagged/XML and plain-language meta-reasoning, validates the complete cleaned answer, and only then releases user-facing SSE chunks. Unsafe-only output is regenerated once with a stricter final-answer instruction. This prioritizes the non-disclosure requirement over speculative token latency: the post-boundary three-run benchmark measured 3,248 ms average generation-to-first-visible-chunk because no content is released before complete validation. A contextual loading state appears after 500 ms. Existing stored assistant messages are also sanitized when read.
 
 The SSE completion event now exposes prompt construction, retrieval/database, Ollama inference, persistence, first-token, and total timing. Cache ratios are available from the AI status endpoint. This enables production traffic comparisons without logging private prompt contents.
