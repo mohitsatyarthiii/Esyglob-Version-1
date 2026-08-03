@@ -17,7 +17,9 @@ if (isProduction && authSecret.length < 32) {
   throw new Error('AUTH_SECRET must be at least 32 characters in production');
 }
 
-if (isProduction && !process.env.AI_KNOWLEDGE_MONGODB_URI) {
+const aiRagEnabled = process.env.AI_RAG_ENABLED === 'true';
+
+if (isProduction && aiRagEnabled && !process.env.AI_KNOWLEDGE_MONGODB_URI) {
   throw new Error('Missing required environment variable: AI_KNOWLEDGE_MONGODB_URI');
 }
 
@@ -42,6 +44,8 @@ export const config = {
   isProduction,
   mongodbUri: process.env.MONGODB_URI,
   aiKnowledgeMongoUri: process.env.AI_KNOWLEDGE_MONGODB_URI || process.env.MONGODB_URI,
+  aiRagEnabled,
+  marketInsightsRagEnabled: aiRagEnabled && process.env.MARKET_INSIGHTS_RAG_ENABLED === 'true',
   // When a dedicated URI is supplied, respect the database encoded in that
   // URI unless an explicit override is configured.
   aiKnowledgeDbName: process.env.AI_KNOWLEDGE_DB_NAME || (process.env.AI_KNOWLEDGE_MONGODB_URI ? undefined : 'esyglob_ai_knowledge'),

@@ -1,0 +1,56 @@
+{
+  "date": "2026-08-03",
+  "architecture": "gemma-first",
+  "model": "gemma3:4b",
+  "configuration": {
+    "aiRagEnabled": false,
+    "marketInsightsRagEnabled": false,
+    "knowledgeDatabaseInitialized": false
+  },
+  "directMarketInsights": {
+    "maxTokens": 900,
+    "contextSize": 4096,
+    "timeoutMs": 120000,
+    "automaticRetry": false,
+    "pdfPipeline": "existing",
+    "liveProbe": {
+      "success": true,
+      "elapsedMs": 34548,
+      "tokens": 722,
+      "validJson": true,
+      "requiredSections": 10,
+      "returnedSections": 10,
+      "outputSanitized": false
+    }
+  },
+  "pipelineBenchmark": {
+    "requests": 100,
+    "documentRetrievalCalls": 0,
+    "databaseRequiredRequests": 40,
+    "directOrGuideRequests": 60,
+    "averageMs": 0.151,
+    "p50Ms": 0.02,
+    "p95Ms": 0.372,
+    "p99Ms": 2.671,
+    "averagePromptCharacters": 2611
+  },
+  "ragEnabledDisconnectedComparison": {
+    "requests": 100,
+    "documentRetrievalCalls": 40,
+    "averageMs": 0.159,
+    "p95Ms": 0.387,
+    "averagePromptCharacters": 2622
+  },
+  "guidePromptReduction": {
+    "initialAverageCharacters": 4863,
+    "finalAverageCharacters": 2611,
+    "reductionPercent": 46.3
+  },
+  "validation": {
+    "backendTestsPassed": 75,
+    "backendTestsFailed": 0,
+    "webBuild": "passed",
+    "reactNativeTypecheck": "passed",
+    "pdfPipelineTests": "passed"
+  }
+}

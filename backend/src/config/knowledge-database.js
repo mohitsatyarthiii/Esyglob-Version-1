@@ -20,6 +20,7 @@ export function getAIKnowledgeConnection() {
 }
 
 export async function connectToAIKnowledgeDatabase() {
+  if (!config.aiRagEnabled) return null;
   const activeConnection = getAIKnowledgeConnection();
   if (activeConnection.readyState === 1) return activeConnection;
   if (connectPromise) return connectPromise;
@@ -41,7 +42,7 @@ export async function connectToAIKnowledgeDatabase() {
 }
 
 export function getAIKnowledgeDatabaseState() {
-  return getAIKnowledgeConnection().readyState;
+  return config.aiRagEnabled ? getAIKnowledgeConnection().readyState : 0;
 }
 
 export async function closeAIKnowledgeDatabase() {

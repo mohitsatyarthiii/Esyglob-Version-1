@@ -115,13 +115,14 @@ async function readStream(response, onSafeToken) {
 class OllamaRuntimeService {
   static model = MODEL;
 
-  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.22, topP = 0.9, topK = 40, repeatPenalty = 1.1, maxTokens = 520, contextSize, jsonMode = false } = {}) {
+  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.22, topP = 0.9, topK = 40, repeatPenalty = 1.1, maxTokens = 520, contextSize, jsonMode = false, retry = true } = {}) {
     const queuedAt = Date.now();
     return enqueue(async () => {
       counters.requests += 1;
       const startedAt = Date.now();
       let streamed = false;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
+      const attempts = retry ? 2 : 1;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {
           const requestMessages = attempt === 0 ? messages : [
             { role: 'system', content: 'Return only the polished final answer. Do not describe the user request, prompt, context, instructions, planning, analysis, memory, or reasoning.' },
@@ -176,7 +177,7 @@ class OllamaRuntimeService {
           record({ queueMs: startedAt - queuedAt, firstTokenMs: firstTokenAt - startedAt, totalMs: completedAt - queuedAt, tokens });
           return { success: true, message: content.trim(), content: content.trim(), tokensUsed: tokens, provider: 'ollama', model: MODEL, fallback: false, outputSanitized };
         } catch (error) {
-          const retryable = !streamed && attempt === 0 && (error.code === 'AI_OUTPUT_UNSAFE' || error.name === 'TimeoutError' || error.name === 'AbortError' || error.statusCode >= 500);
+          const retryable = retry && !streamed && attempt === 0 && (error.code === 'AI_OUTPUT_UNSAFE' || error.name === 'TimeoutError' || error.name === 'AbortError' || error.statusCode >= 500);
           if (retryable && !signal?.aborted) { counters.retries += 1; continue; }
           counters.failures += 1;
           counters.lastFailureAt = new Date().toISOString();

@@ -17,8 +17,10 @@ async function startServer() {
     });
     await connectToDatabase();
     console.log('Marketplace database connected successfully');
-    await connectToAIKnowledgeDatabase()
-      .catch(error => console.error('AI knowledge database unavailable; AI will use marketplace/model fallbacks:', error.message));
+    if (config.aiRagEnabled) {
+      await connectToAIKnowledgeDatabase()
+        .catch(error => console.error('AI knowledge database unavailable; AI will use marketplace/model fallbacks:', error.message));
+    }
 
     await warmupDatabase();
 

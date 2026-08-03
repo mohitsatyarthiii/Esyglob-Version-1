@@ -290,8 +290,9 @@ signup -> home/categories/search -> product/seller detail -> save or inquiry/cha
 
 ```text
 message -> language/role/intent classifier
-        -> route: marketplace data | private account data | knowledge | trade research
-        -> Mongo retrieval + optional KnowledgeDocument RAG + optional Tavily evidence
+        -> route: direct Gemma | EsyGlob guide | marketplace/private data | live research
+        -> Mongo retrieval only for current platform records
+        -> optional KnowledgeDocument RAG only when AI_RAG_ENABLED=true
         -> prompt with bounded snapshots/history
         -> queued Ollama `gemma3:4b` runtime
         -> safety/relevance/language validation -> bounded repair -> persist AIChat/usage
@@ -299,12 +300,13 @@ message -> language/role/intent classifier
 
 - Intent routing is deterministic regex-based and recognizes products, suppliers, RFQ, quotation, order, shipping, assurance, payment, membership, policy, HS codes, research, and business templates.
 - Private retrieval is authorized by userId; marketplace snapshots cap product/supplier/category/RFQ/order counts before prompt construction.
-- Knowledge RAG tokenizes the query, applies status/role/intent/language filters, text-searches `KnowledgeDocument`, re-ranks, and caches for five minutes.
-- Ollama is warmed on startup and every 25 minutes, retained for 24 hours, queued with bounded concurrency, and streamed with client cancellation.
+- Gemma-first mode skips document, embedding, vector, and ranking work for default chat. A compact maintained Markdown guide supplies EsyGlob-specific identity and policy context.
+- Knowledge RAG remains available behind `AI_RAG_ENABLED=true`; Market Insights RAG additionally requires `MARKET_INSIGHTS_RAG_ENABLED=true`.
+- Ollama is validated and warmed on startup, retained indefinitely by default, queued with bounded concurrency, and streamed with client cancellation.
 - Conversation memory combines durable user instructions, a rolling summary, and recent messages while persisted histories are capped at 160 messages.
 - Response validation checks empty/incomplete output, relevance, requested language, wrong retrieval, credential leakage, and malformed formatting.
 - AI quotas are plan-driven; usage increments before execution and selected failures can refund usage.
-- There is no vector store for general RAG, no embedding pipeline for products/images, and no durable job queue for long research.
+- Disabled RAG code and indexes are retained for future knowledge-base growth; default requests do not initialize or query them.
 
 ## 14. Payments, Subscription, and Wallet
 

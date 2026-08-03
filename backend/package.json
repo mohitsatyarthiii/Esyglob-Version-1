@@ -17,6 +17,7 @@
     "validate:market-insights": "node scripts/validate-market-insights-lifecycle.js",
     "benchmark:ai": "node scripts/benchmark-ai-runtime.js",
     "benchmark:ai:production": "node scripts/benchmark-ai-production.js",
+    "benchmark:ai:pipeline": "node scripts/benchmark-gemma-first-pipeline.js",
     "storage:cleanup:dry-run": "node scripts/migrate-vps-storage-and-cleanup.js",
     "storage:backup": "node scripts/migrate-vps-storage-and-cleanup.js --backup-only",
     "storage:cleanup:images": "node scripts/migrate-vps-storage-and-cleanup.js --execute --images-only --confirm=DELETE_MARKETPLACE_CONTENT",

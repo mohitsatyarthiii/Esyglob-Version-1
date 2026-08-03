@@ -8,6 +8,8 @@ import KnowledgeBaseService from '../services/knowledge-base.service.js';
 import AIIntentRouterService from '../services/ai-intent-router.service.js';
 import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
 import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
+import { config } from '../config/env.js';
+import EsyGlobAIGuideService from '../services/esyglob-ai-guide.service.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
@@ -492,6 +494,7 @@ class AIChatController {
         status: health.online ? 'operational' : 'degraded',
         providers: { ollama: OllamaRuntimeService.status() },
         cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus(), semantic: AISemanticCacheService.status() },
+        architecture: { gemmaFirst: !config.aiRagEnabled, ragEnabled: config.aiRagEnabled, platformGuide: EsyGlobAIGuideService.status() },
       });
     }
 

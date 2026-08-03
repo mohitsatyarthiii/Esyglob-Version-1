@@ -3,10 +3,10 @@
 ## Database boundary
 
 - `MONGODB_URI` is the marketplace database. It remains the source of truth for users, products, suppliers, RFQs, quotations, orders, chats, wallets, reviews, and all transactional state.
-- `AI_KNOWLEDGE_MONGODB_URI` is the independent AI knowledge connection. In production it is required and should point to a separate MongoDB cluster. `AI_KNOWLEDGE_DB_NAME` selects its database.
+- `AI_KNOWLEDGE_MONGODB_URI` is the optional independent RAG knowledge connection. It is required only when `AI_RAG_ENABLED=true`. `AI_KNOWLEDGE_DB_NAME` selects its database.
 - AI conversations remain in the marketplace database because they are user-owned operational data. Knowledge documents and chunks are registered only on the AI knowledge connection.
 
-Both connections start independently and are reported separately by `/api/health`.
+Gemma-first mode is the default. It opens only the marketplace connection. When RAG is enabled, both connections start independently and are reported separately by `/api/health`.
 
 ## Request pipeline
 
@@ -15,11 +15,11 @@ AI chat requests follow this path:
 1. Load the authenticated conversation.
 2. Detect language and intent, using the remembered language as fallback.
 3. rebuild compact conversation memory and remembered entities.
-4. Rewrite the current query internally.
-5. Route to marketplace retrieval, knowledge retrieval, live retrieval, or a mixed route.
-6. Run independent marketplace and knowledge retrieval in parallel.
-7. Rank and bound retrieved context.
-8. Build the system prompt from role, memory, recent messages, marketplace data, knowledge excerpts, and the current question.
+4. Route ordinary questions directly to Gemma.
+5. Load the compact `knowledge/esyglob-ai-guide.md` only for EsyGlob platform and policy questions.
+6. Query marketplace MongoDB only for current products, suppliers, manufacturers, categories, or authenticated private records.
+7. When `AI_RAG_ENABLED=true`, optionally rewrite and retrieve document knowledge for configured routes.
+8. Build the system prompt from only the context required by the selected route.
 9. Generate, validate, optionally repair, polish, and stream the response.
 10. Persist the response and updated memory in one marketplace-database write.
 
@@ -72,6 +72,8 @@ The migration is non-destructive: it does not remove legacy documents from the m
 
 ```dotenv
 MONGODB_URI=mongodb+srv://.../esyglob
+AI_RAG_ENABLED=false
+MARKET_INSIGHTS_RAG_ENABLED=false
 AI_KNOWLEDGE_MONGODB_URI=mongodb+srv://.../esyglob-ai
 AI_KNOWLEDGE_DB_NAME=esyglob_ai_knowledge
 AI_KNOWLEDGE_VECTOR_INDEX=knowledge_chunk_embedding
@@ -84,4 +86,4 @@ OLLAMA_KEEP_ALIVE=-1
 OLLAMA_WARM_INTERVAL_MS=270000
 ```
 
-`REDIS_URL` is optional; when omitted, semantic caching remains process-local. Only public, context-free questions are eligible for semantic caching, so account and marketplace records never enter the shared cache. Embeddings use the deterministic local 768-dimensional retrieval encoder; Ollama runs only `gemma3:4b`. Do not reuse credentials between clusters. Apply least-privilege users separately: the application marketplace user needs no access to the knowledge cluster, and the knowledge user needs no access to marketplace collections.
+`REDIS_URL` is optional; when omitted, semantic caching remains process-local. Only public, context-free questions are eligible for semantic caching, so account and marketplace records never enter the shared cache. Ollama runs only `gemma3:4b`. To restore document RAG, set `AI_RAG_ENABLED=true`; set `MARKET_INSIGHTS_RAG_ENABLED=true` as well to restore evidence retrieval for reports. Do not reuse credentials between clusters.

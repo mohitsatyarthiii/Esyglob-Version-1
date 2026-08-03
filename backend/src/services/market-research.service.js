@@ -10,6 +10,7 @@ import { buildMarketInsightPdf } from '../lib/market-insight-pdf.js';
 import { buildMarketInsightHtml } from '../lib/market-insight-html.js';
 import TradeIntentService from './trade-intent.service.js';
 import TradeKnowledgeService from './trade-knowledge.service.js';
+import { config } from '../config/env.js';
 
 const cache = new Map();
 const inFlight = new Map();
@@ -17,7 +18,7 @@ const CACHE_TTL = Math.max(60_000, Number(process.env.MARKET_INSIGHT_MEMORY_TTL_
 const REPORT_REUSE_TTL = Math.max(60 * 60 * 1000, Number(process.env.MARKET_INSIGHT_REPORT_REUSE_TTL_MS || 8 * 24 * 60 * 60 * 1000));
 const CACHE_MAX_ENTRIES = Math.max(25, Number(process.env.MARKET_INSIGHT_MEMORY_CACHE_MAX || 250));
 const AI_SYNTHESIS_TIMEOUT_MS = Math.max(10_000, Number(process.env.MARKET_RESEARCH_AI_TIMEOUT_MS || 45_000));
-const REPORT_VERSION = '5.0';
+const REPORT_VERSION = '5.1';
 
 const asArray = value => Array.isArray(value) ? value : [];
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -466,7 +467,53 @@ Return only valid JSON:
 }`;
 }
 
+export function buildDirectMarketInsightPrompt({ query, productName, country, intent }) {
+  return `Create a professional qualitative B2B market insight report using your general knowledge.
+QUERY: ${query}
+PRODUCT: ${productName || 'Not specified'}
+COUNTRY: ${country || 'Global'}
+INTENT: ${intent}
+
+Do not claim access to live statistics, documents, databases, current prices, or verified market shares. Do not invent precise figures. Clearly frame country rankings and trends as general market patterns that require current validation. Be practical, natural, and decision-oriented.
+
+Required report sections: Executive Summary, Market Overview, Demand Trends, Supply Trends, Major Producing Countries, Major Importing Countries, Major Exporting Countries, Business Opportunities, Potential Risks, Recommendations, and Conclusion.
+
+Strict length contract: executiveSummary must be at most 70 words. Every section must contain exactly one paragraph of at most 30 words and no more than one insight of at most 12 words. Return exactly three recommendations and exactly three risks. Keep the entire JSON compact and complete; never continue after the closing brace.
+
+Return only valid JSON:
+{
+  "title":"specific professional title",
+  "subtitle":"one-line scope",
+  "executiveSummary":"concise executive summary",
+  "executiveHighlights":["3-5 decision highlights"],
+  "sections":[
+    {"key":"market-overview","title":"Market Overview","paragraphs":["..."],"insights":["..."]},
+    {"key":"demand-trends","title":"Demand Trends","paragraphs":["..."],"insights":["..."]},
+    {"key":"supply-trends","title":"Supply Trends","paragraphs":["..."],"insights":["..."]},
+    {"key":"producing-countries","title":"Major Producing Countries","paragraphs":["..."],"insights":["..."]},
+    {"key":"importing-countries","title":"Major Importing Countries","paragraphs":["..."],"insights":["..."]},
+    {"key":"exporting-countries","title":"Major Exporting Countries","paragraphs":["..."],"insights":["..."]},
+    {"key":"opportunities","title":"Business Opportunities","paragraphs":["..."],"insights":["..."]},
+    {"key":"risks","title":"Potential Risks","paragraphs":["..."],"insights":["..."]},
+    {"key":"recommendations","title":"Recommendations","paragraphs":["..."],"insights":["..."]},
+    {"key":"conclusion","title":"Conclusion","paragraphs":["..."],"insights":[]}
+  ],
+  "recommendations":["specific actions"],
+  "risks":["specific risks"],
+  "outlook":"qualitative outlook",
+  "conclusion":"professional conclusion"
+}`;
+}
+
 export default class MarketResearchService {
+  static architectureStatus() {
+    return {
+      mode: config.marketInsightsRagEnabled ? 'evidence-rag' : 'gemma-direct',
+      ragEnabled: config.marketInsightsRagEnabled,
+      pdfPipeline: 'existing',
+    };
+  }
+
   static emit(emit, startedAt, event) {
     emit?.({ elapsedMs: Date.now() - startedAt, timestamp: new Date().toISOString(), ...event });
   }
@@ -520,23 +567,26 @@ export default class MarketResearchService {
     const researchId = `research-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
     this.emit(emit, startedAt, { type: 'research_started', researchId, progress: 2 });
     const intelligence = analyzeRequest({ message: researchQuery, role: 'buyer' });
-    const rewrittenQuery = rewriteSearchQuery({ message: researchQuery, intelligence });
-    const storedTradeKnowledge = !force ? await TradeKnowledgeService.findFresh(structuredIntent).catch(error => {
+    const ragEnabled = config.marketInsightsRagEnabled;
+    const rewrittenQuery = ragEnabled ? rewriteSearchQuery({ message: researchQuery, intelligence }) : researchQuery;
+    const storedTradeKnowledge = ragEnabled && !force ? await TradeKnowledgeService.findFresh(structuredIntent).catch(error => {
       console.warn('[Trade Intelligence] Structured knowledge lookup failed:', error.message);
       return null;
     }) : null;
-    this.step(emit, startedAt, 'Research Orchestrator', 'Running hybrid knowledge, trade and marketplace retrieval', 10, 'running');
-    const [retrievedKnowledgeDocuments, collectedGlobal, marketplaceResults] = await Promise.all([
-      KnowledgeBaseService.retrieve({ query: researchQuery, rewrittenQuery, role: 'buyer', intent: 'market_research', language: intelligence.language, limit: 12 }),
-      storedTradeKnowledge
-        ? Promise.resolve(storedTradeKnowledge.dataset)
-        : GlobalTradeResearchService.collect({ query: researchQuery, productName: researchProduct, country: researchCountry, structuredIntent }),
-      getAISearchResults({ query: researchQuery, filters: { categories: category ? [category] : [], countries: researchCountry ? [researchCountry] : [] }, userId }),
-    ]);
+    this.step(emit, startedAt, 'Research Orchestrator', ragEnabled ? 'Running configured evidence retrieval' : 'Preparing direct Gemma market analysis', 10, 'running');
+    const [retrievedKnowledgeDocuments, collectedGlobal, marketplaceResults] = ragEnabled
+      ? await Promise.all([
+        KnowledgeBaseService.retrieve({ query: researchQuery, rewrittenQuery, role: 'buyer', intent: 'market_research', language: intelligence.language, limit: 12 }),
+        storedTradeKnowledge
+          ? Promise.resolve(storedTradeKnowledge.dataset)
+          : GlobalTradeResearchService.collect({ query: researchQuery, productName: researchProduct, country: researchCountry, structuredIntent }),
+        getAISearchResults({ query: researchQuery, filters: { categories: category ? [category] : [], countries: researchCountry ? [researchCountry] : [] }, userId }),
+      ])
+      : [[], {}, { products: [], suppliers: [], categories: [], services: [] }];
     const knowledgeDocuments = filterKnowledgeDocuments(retrievedKnowledgeDocuments, researchProduct);
     let global = collectedGlobal;
     let tradeKnowledge = storedTradeKnowledge;
-    if (!tradeKnowledge) {
+    if (ragEnabled && !tradeKnowledge) {
       tradeKnowledge = await TradeKnowledgeService.store(structuredIntent, global).catch(error => {
         console.warn('[Trade Intelligence] Structured knowledge persistence failed:', error.message);
         return null;
@@ -546,30 +596,34 @@ export default class MarketResearchService {
     const knowledge = knowledgeContext(knowledgeDocuments);
     const marketplace = marketplaceSummary(marketplaceResults);
     const sourceCount = knowledgeDocuments.length + asArray(global.sources).length + Object.values(marketplace).reduce((sum, value) => sum + value, 0);
-    this.step(emit, startedAt, 'Evidence Ranker', `Merged and ranked ${knowledgeDocuments.length} knowledge sources`, 35, 'success', sourceCount);
+    this.step(emit, startedAt, ragEnabled ? 'Evidence Ranker' : 'Report Planner', ragEnabled ? `Merged and ranked ${knowledgeDocuments.length} knowledge sources` : 'Prepared the qualitative report structure', 35, 'success', sourceCount);
 
     const fallback = fallbackAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, knowledge: knowledgeDocuments, global, marketplace });
     let generated;
     try {
       this.step(emit, startedAt, 'AI Analyst', 'Synthesizing verified evidence into the report', 48, 'running', sourceCount);
       const response = await AIChatService.callOllama(
-        promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace }),
+        ragEnabled
+          ? promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace })
+          : buildDirectMarketInsightPrompt({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent }),
         [],
-        'You are EsyGlob AI Market Intelligence. Synthesize evidence into original executive analysis. Return valid JSON only.',
-        { maxTokens: 7_000, contextSize: 16_384, temperature: .18, timeoutMs: AI_SYNTHESIS_TIMEOUT_MS, jsonMode: true },
+        ragEnabled
+          ? 'You are EsyGlob AI Market Intelligence. Synthesize evidence into original executive analysis. Return valid JSON only.'
+          : 'You are EsyGlob AI Market Intelligence. Produce a qualitative, business-ready report without claiming live evidence. Return valid JSON only.',
+        { maxTokens: ragEnabled ? 7_000 : 900, contextSize: ragEnabled ? 16_384 : 4_096, temperature: .18, timeoutMs: ragEnabled ? AI_SYNTHESIS_TIMEOUT_MS : Math.max(AI_SYNTHESIS_TIMEOUT_MS, 120_000), jsonMode: true, retry: ragEnabled },
       );
       generated = extractJson(response?.message);
     } catch (error) {
       console.warn('[Market Insights] AI synthesis unavailable; using evidence-safe analytical fallback:', error.message);
     }
     const analysis = normalizeAnalysis(generated, fallback);
-    const verifiedEvidenceSections = evidenceSections(global, researchProduct, researchCountry);
+    const verifiedEvidenceSections = ragEnabled ? evidenceSections(global, researchProduct, researchCountry) : [];
     analysis.sections = [...analysis.sections, ...verifiedEvidenceSections];
     this.step(emit, startedAt, 'Quality Reviewer', 'Cross-validating claims and attaching only measured charts and tables', 72, 'success', sourceCount);
 
-    const artifacts = knowledgeArtifacts(knowledgeDocuments);
-    const tradeTables = actualTradeTables(global, researchQuery);
-    const charts = actualCharts(global, marketplace, researchQuery);
+    const artifacts = ragEnabled ? knowledgeArtifacts(knowledgeDocuments) : { tables: [], charts: [] };
+    const tradeTables = ragEnabled ? actualTradeTables(global, researchQuery) : [];
+    const charts = ragEnabled ? actualCharts(global, marketplace, researchQuery) : [];
     const tradeSection = analysis.sections.find(section => /trade|import|export/i.test(section.key || section.title));
     if (tradeSection) {
       tradeSection.tables = tradeTables;
@@ -582,20 +636,22 @@ export default class MarketResearchService {
     }
     const competitionSection = analysis.sections.find(section => /compet|marketplace|supplier/i.test(section.key || section.title));
     if (competitionSection) competitionSection.charts = charts.filter(item => item.source?.includes('EsyGlob'));
-    const relevantGlobalSources = asArray(global.sources).filter(source => {
+    const relevantGlobalSources = ragEnabled ? asArray(global.sources).filter(source => {
       if (source.status === 'unavailable') return false;
       if (/World Bank/i.test(source.name)) return Boolean(global.countryProfile) || /\b(global|top markets?|country comparison|compare countries|macro|worldwide)\b/i.test(researchQuery);
       if (/UN Comtrade/i.test(source.name)) return [global.officialProductRows, global.historicalTrade, global.topImporters, global.topExporters, global.importPartners, global.exportPartners].some(rows => asArray(rows).length > 0);
       if (/WTO/i.test(source.name)) return /\b(wto|tariff|trade policy|trade agreement|duty)\b/i.test(researchQuery);
       if (/WCO|HS Classification/i.test(source.name)) return Boolean(global.hsCode);
       return source.status === 'connected';
-    });
+    }) : [];
     const sources = [
       ...knowledgeDocuments.map(document => ({ name: document.title, publisher: document.source?.publisher, type: 'AI knowledge database', version: document.version })),
       ...relevantGlobalSources,
     ];
     const generatedAt = new Date().toISOString();
-    const evidenceQuality = assessEvidenceQuality(global, knowledgeDocuments);
+    const evidenceQuality = ragEnabled
+      ? assessEvidenceQuality(global, knowledgeDocuments)
+      : { score: 0, grade: 'qualitative-model-knowledge', checks: [], missingEvidence: ['live-evidence-disabled'], verifiedNumericalObservations: 0 };
     const report = {
       id: researchId,
       reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd',
@@ -609,19 +665,25 @@ export default class MarketResearchService {
       country: researchCountry,
       category,
       reportVersion: REPORT_VERSION,
-      dataVersion: tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned',
+      dataVersion: ragEnabled ? tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned' : 'gemma3-direct-v1',
       structuredIntent,
       sections: analysis.sections,
-      keyMetrics: [
+      keyMetrics: ragEnabled ? [
         { label: 'Evidence quality', value: `${evidenceQuality.score}%`, note: evidenceQuality.grade },
         { label: 'Verified evidence rows', value: asArray(global.officialProductRows).length + asArray(global.historicalTrade).length + asArray(global.topImporters).length + asArray(global.topExporters).length, note: global.hsCode ? `HS ${global.hsCode}` : 'HS pending' },
         { label: 'Connected sources', value: relevantGlobalSources.length + knowledgeDocuments.length, note: 'Attributed and versioned' },
         { label: 'Historical periods', value: new Set(asArray(global.historicalTrade).map(row => row.period)).size, note: 'No interpolation' },
         { label: 'Marketplace matches', value: marketplace.products + marketplace.suppliers, note: 'Current snapshot' },
+      ] : [
+        { label: 'Analysis mode', value: 'Gemma direct', note: 'Qualitative market guidance' },
+        { label: 'Live evidence', value: 'Not requested', note: 'Validate current figures independently' },
+        { label: 'Report scope', value: researchCountry || 'Global', note: researchProduct },
       ],
       recommendations: asArray(analysis.recommendations),
       risks: asArray(analysis.risks),
-      methodology: 'Intent detection followed by hybrid semantic and lexical knowledge retrieval, relevance ranking and deduplication, connected trade-data collection, marketplace retrieval, AI-assisted synthesis, cross-validation, section planning, measured chart/table planning and layout quality validation.',
+      methodology: ragEnabled
+        ? 'Intent detection followed by configured evidence retrieval, relevance ranking, trade-data collection, marketplace retrieval, AI-assisted synthesis, cross-validation and document planning.'
+        : 'Direct Gemma3 qualitative market analysis using the requested product and country scope. No document, embedding, vector, knowledge-base or live trade-data retrieval was performed. Current figures require independent verification.',
       references: sources,
       sources,
       dataGaps: asArray(global.gaps),
@@ -680,7 +742,7 @@ export default class MarketResearchService {
       report.pdfValidation = pdf.validation;
       saved.reportData = reportForStorage(report);
       await saved.save();
-      TradeKnowledgeService.learnRelated(structuredIntent, global);
+      if (ragEnabled) TradeKnowledgeService.learnRelated(structuredIntent, global);
     } catch (error) {
       await MarketReportStorageService.remove(saved.storageKey).catch(() => undefined);
       saved.pdfStatus = 'failed';

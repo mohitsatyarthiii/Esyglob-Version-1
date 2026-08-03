@@ -6,6 +6,10 @@ import AIService from '../src/lib/ai-service.js';
 import { assertSafeAIOutput, FinalAnswerStreamFilter, sanitizeAIOutput } from '../src/lib/ai-output-sanitizer.js';
 import AIIntentRouterService from '../src/services/ai-intent-router.service.js';
 import AISemanticCacheService from '../src/services/ai-semantic-cache.service.js';
+import AIChatService from '../src/services/ai-chat.service.js';
+import KnowledgeBaseService from '../src/services/knowledge-base.service.js';
+import EsyGlobAIGuideService from '../src/services/esyglob-ai-guide.service.js';
+import MarketResearchService, { buildDirectMarketInsightPrompt } from '../src/services/market-research.service.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -32,6 +36,36 @@ test('prompt modules inject only the instructions required by the request route'
   assert.doesNotMatch(general, /enterprise market-intelligence analyst/);
   assert.match(insights, /enterprise market-intelligence analyst/);
   assert.match(insights, /verified evidence/);
+});
+
+test('Gemma-first chat skips document RAG and loads the maintained guide only for platform questions', async () => {
+  const originalRetrieve = KnowledgeBaseService.retrieve;
+  let retrievals = 0;
+  KnowledgeBaseService.retrieve = async () => { retrievals += 1; return []; };
+  try {
+    const trade = await AIChatService.buildPlatformContext('Explain FOB briefly', 'buyer', '000000000000000000000001');
+    assert.equal(retrievals, 0);
+    assert.doesNotMatch(trade.text, /EsyGlob platform guide:/);
+    assert.equal(trade.snapshot.intelligence.sources.includes('knowledge_base'), false);
+
+    const policy = await AIChatService.buildPlatformContext('What is the EsyGlob refund policy?', 'buyer', '000000000000000000000001');
+    assert.equal(retrievals, 0);
+    assert.match(policy.text, /EsyGlob platform guide:/);
+    assert.match(policy.text, /Payments, refunds, and disputes/);
+    assert.ok(EsyGlobAIGuideService.status().characters > 1_000);
+    assert.equal(MarketResearchService.architectureStatus().mode, 'gemma-direct');
+  } finally {
+    KnowledgeBaseService.retrieve = originalRetrieve;
+  }
+});
+
+test('direct market insights request every required business section without RAG evidence claims', () => {
+  const prompt = buildDirectMarketInsightPrompt({ query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India', intent: 'market_research' });
+  for (const section of ['Executive Summary', 'Market Overview', 'Demand Trends', 'Supply Trends', 'Major Producing Countries', 'Major Importing Countries', 'Major Exporting Countries', 'Business Opportunities', 'Potential Risks', 'Recommendations', 'Conclusion']) {
+    assert.match(prompt, new RegExp(section, 'i'));
+  }
+  assert.match(prompt, /Do not claim access to live statistics/);
+  assert.equal(MarketResearchService.architectureStatus().pdfPipeline, 'existing');
 });
 
 test('final-answer boundary removes tagged and plain-language internal reasoning', () => {
@@ -117,6 +151,21 @@ test('runtime validates the configured Gemma model before startup warmup', async
     assert.match(request.url, /\/api\/show$/);
     assert.equal(request.payload.model, 'gemma3:4b');
     assert.equal(OllamaRuntimeService.status().modelAvailable, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('expensive direct reports can disable automatic inference retries', async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => { requests += 1; return new Response(JSON.stringify({ error: 'busy' }), { status: 503 }); };
+  try {
+    await assert.rejects(
+      OllamaRuntimeService.complete({ messages: [{ role: 'user', content: 'report' }], retry: false }),
+      error => error.code === 'AI_PROVIDER_UNAVAILABLE',
+    );
+    assert.equal(requests, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

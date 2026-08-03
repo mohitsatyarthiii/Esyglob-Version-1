@@ -17,6 +17,8 @@ import OllamaRuntimeService from './ollama-runtime.service.js';
 import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
 import AIIntentRouterService from './ai-intent-router.service.js';
 import AISemanticCacheService from './ai-semantic-cache.service.js';
+import EsyGlobAIGuideService from './esyglob-ai-guide.service.js';
+import { config } from '../config/env.js';
 
 class AIChatService {
   static lightweightContext(route = {}) {
@@ -81,11 +83,19 @@ class AIChatService {
       context: conversation.context || {},
       language: conversation.context?.language || 'en',
     });
-    const intelligence = analyzeRequest({
+    const detectedIntelligence = analyzeRequest({
       message,
       role,
       previousLanguage: memory.language,
     });
+    const platformGuide = EsyGlobAIGuideService.contextFor(detectedIntelligence, message);
+    const intelligence = {
+      ...detectedIntelligence,
+      sources: [
+        ...detectedIntelligence.sources.filter(source => source !== 'knowledge_base' || config.aiRagEnabled),
+        ...(platformGuide ? ['platform_guide'] : []),
+      ],
+    };
     const rewrittenQuery = rewriteSearchQuery({ message, intelligence, memory });
     const emptyResults = { terms: [], products: [], suppliers: [], manufacturers: [], rfqs: [], quotations: [], orders: [], categories: [], countries: [], services: [] };
     if (['greeting', 'general_knowledge'].includes(intelligence.route)) {
@@ -127,7 +137,7 @@ class AIChatService {
     const marketplacePromise = retrievalAllowed && this.needsMarketplaceContext(message)
       ? getAISearchResults({ query: rewrittenQuery, filters: marketplaceFilters, userId })
       : Promise.resolve(emptyResults);
-    const knowledgePromise = intelligence.sources.includes('knowledge_base')
+    const knowledgePromise = config.aiRagEnabled && intelligence.sources.includes('knowledge_base')
       ? KnowledgeBaseService.retrieve({
         query: message,
         rewrittenQuery,
@@ -193,6 +203,7 @@ class AIChatService {
         Object.keys(memory.entities || {}).length ? `Remembered entities and preferences:\n${JSON.stringify({ entities: memory.entities, preferences: memory.preferences })}` : '',
         templateInstruction(intelligence.intent),
         intelligence.requiresPrivateData ? 'Private records are scoped to this user; never infer another user\'s data.' : '',
+        platformGuide ? `EsyGlob platform guide:\n${platformGuide}` : '',
         knowledgeText ? `Platform knowledge base:\n${knowledgeText}` : '',
         summarizeMarketplaceResults(results).slice(0, 1900),
         knowledge.text?.slice(0, 1500),
@@ -281,6 +292,7 @@ class AIChatService {
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       contextSize: options.contextSize,
+      retry: options.retry,
     });
   }
 
