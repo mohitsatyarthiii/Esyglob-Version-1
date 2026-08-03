@@ -163,7 +163,7 @@ function OrderCheckoutScreen() {
   const applyAddress = (item: AddressBookItem) => {
     setSelectedAddressId(item._id ?? item.id);
     setFullName(item.fullName ?? ''); setPhone(item.phone ?? '');
-    setAddress(item.line1 ?? item.street ?? ''); setLandmark(item.line2 ?? '');
+    setAddress(item.line1 ?? item.street ?? item.address ?? ''); setLandmark(item.line2 ?? '');
     setCity(item.city ?? ''); setState(item.state ?? ''); setCountry(item.country ?? 'India');
     setPostalCode(item.postalCode ?? item.pincode ?? ''); setAddressErrors({});
   };

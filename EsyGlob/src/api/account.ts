@@ -57,6 +57,7 @@ export type AddressBookItem = {
   pincode?: string;
   postalCode?: string;
   addressType?: string;
+  addressLabel?: 'Home' | 'Office' | 'Warehouse' | 'Other';
   isDefault?: boolean;
   countryCode?: string;
   placeId?: string;
@@ -116,47 +117,6 @@ export interface UpdateLocationPayload extends LocationCoordinates {
   address?: LocationAddress;
 }
 
-export interface UserLocation {
-  _id: string;
-  userId: string;
-  current: {
-    type: 'Point';
-    coordinates: [number, number]; // [longitude, latitude]
-  };
-  accuracy?: number;
-  altitude?: number;
-  speed?: number;
-  heading?: number;
-  address?: LocationAddress;
-  lastUpdated: string;
-  isActive: boolean;
-  history: Array<{
-    location: {
-      type: 'Point';
-      coordinates: [number, number];
-    };
-    accuracy?: number;
-    timestamp: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LocationResponse {
-  location: UserLocation | null;
-  message?: string;
-}
-
-export interface LocationHistoryResponse {
-  history: Array<{
-    location: {
-      type: 'Point';
-      coordinates: [number, number];
-    };
-    accuracy?: number;
-    timestamp: string;
-  }>;
-}
 
 // ─── Profile APIs ──────────────────────────────────────────────────────
 
@@ -321,12 +281,14 @@ export async function reverseAddressCoordinates(latitude: number, longitude: num
 
 export async function createAddress(input: AddressBookItem) {
   const payload = await apiRequest('/addresses', { method: 'POST', body: normalizeAddressInput(input) });
-  return unwrapData(payload);
+  const data = unwrapData<{ address?: AddressBookItem } | AddressBookItem>(payload);
+  return data && typeof data === 'object' && 'address' in data ? data.address! : data;
 }
 
 export async function updateAddress(addressId: string, input: AddressBookItem) {
   const payload = await apiRequest(`/addresses/${addressId}`, { method: 'PUT', body: normalizeAddressInput(input) });
-  return unwrapData(payload);
+  const data = unwrapData<{ address?: AddressBookItem } | AddressBookItem>(payload);
+  return data && typeof data === 'object' && 'address' in data ? data.address! : data;
 }
 
 function normalizeAddressInput(input: AddressBookItem) {
@@ -338,8 +300,13 @@ function normalizeAddressInput(input: AddressBookItem) {
 }
 
 export async function setDefaultAddress(addressId: string) {
-  const payload = await apiRequest(`/addresses/${addressId}`, { method: 'PATCH' });
+  const payload = await apiRequest(`/addresses/${addressId}`, { method: 'PATCH', body: { isDefault: true } });
   return unwrapData(payload);
+}
+
+export async function updateCurrentAddress(data: UpdateLocationPayload) {
+  const payload = await apiRequest('/addresses/current', { method: 'PUT', body: data });
+  return unwrapData<{ address?: AddressBookItem }>(payload);
 }
 
 export async function deleteAddress(addressId: string) {
@@ -348,56 +315,3 @@ export async function deleteAddress(addressId: string) {
 }
 
 // ─── Location APIs ─────────────────────────────────────────────────────
-
-/**
- * Get current user location
- */
-export async function getCurrentLocation() {
-  const payload = await apiRequest('/location');
-  return unwrapData<LocationResponse>(payload);
-}
-
-/**
- * Update current location (GPS tracking)
- */
-export async function updateCurrentLocation(data: UpdateLocationPayload) {
-  const payload = await apiRequest('/location', { method: 'PUT', body: data });
-  return unwrapData<LocationResponse>(payload);
-}
-
-/**
- * Update address from reverse geocoding
- */
-export async function updateLocationAddress(data: LocationAddress) {
-  const payload = await apiRequest('/location/address', { method: 'PATCH', body: data });
-  return unwrapData<LocationResponse>(payload);
-}
-
-/**
- * Get location history with optional date range
- */
-export async function getLocationHistory(startDate?: string, endDate?: string) {
-  const payload = await apiRequest('/location/history', {
-    query: {
-      ...(startDate && { startDate }),
-      ...(endDate && { endDate }),
-    },
-  });
-  return unwrapData<LocationHistoryResponse>(payload);
-}
-
-/**
- * Toggle location tracking on/off
- */
-export async function toggleLocationTracking(isActive: boolean) {
-  const payload = await apiRequest('/location/toggle', { method: 'PUT', body: { isActive } });
-  return unwrapData<LocationResponse>(payload);
-}
-
-/**
- * Delete location data permanently
- */
-export async function deleteLocationData() {
-  const payload = await apiRequest('/location', { method: 'DELETE' });
-  return unwrapData<{ success: boolean }>(payload);
-}

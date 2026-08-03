@@ -50,7 +50,7 @@ export default function ProductsPage() {
     ...(minRating && { minRating: Number(minRating) }),
   }), [q, category, subcategory, sort, priceRange, verifiedOnly, minRating]);
   const loader = useCallback(() => fetchProducts({ ...productFilters, page: 1 }), [productFilters]);
-  const productsQuery = useAsyncData(loader);
+  const productsQuery = useAsyncData(loader, { refreshOnAddressChange: true });
 
   const categories = useMemo(() => categoriesQuery.data || [], [categoriesQuery.data]);
   const selectedCategory = useMemo(
@@ -532,7 +532,7 @@ function AdditionalProductPages({ filters, totalPages }) {
 }
 
 function ProductBatch({ page, filters }) {
-  const query = useAsyncData(useCallback(() => fetchProducts({ ...filters, page }), [filters, page]));
+  const query = useAsyncData(useCallback(() => fetchProducts({ ...filters, page }), [filters, page]), { refreshOnAddressChange: true });
   if (query.loading) return <SkeletonCards count={8} variant="product" />;
   if (query.error) return <div className="col-span-full"><MarketplaceError error={query.error} onRetry={query.reload} title="More products could not be loaded." /></div>;
   return query.data?.products?.map((product) => <ProductCard key={product._id || product.id} product={product} />);

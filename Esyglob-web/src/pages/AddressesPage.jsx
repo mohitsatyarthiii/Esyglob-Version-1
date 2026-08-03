@@ -1,4 +1,4 @@
-import { Check, Edit3, MapPin, Plus, Trash2, X } from 'lucide-react'
+import { Check, Crosshair, Edit3, MapPin, Plus, Trash2, X } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { createAddress, deleteAddress, fetchAddresses, setDefaultAddress, updateAddress } from '../api/account'
 import AddressAutocomplete from '../components/AddressAutocomplete'
@@ -8,11 +8,12 @@ import { PageHead } from '../components/PageHead'
 import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
+import { detectCurrentAddress } from '../utils/current-address'
 
 const empty = {
   fullName: '', companyName: '', phone: '', country: '', countryCode: '', state: '', city: '', district: '',
   postalCode: '', address: '', placeId: '', latitude: undefined, longitude: undefined,
-  landmark: '', isDefault: false,
+  landmark: '', addressLabel: 'Other', isDefault: false,
 }
 
 export default function AddressesPage() {
@@ -34,6 +35,7 @@ export default function AddressesPage() {
       const id = resolveId(editing)
       if (id) await updateAddress(id, form)
       else await createAddress(form)
+      window.dispatchEvent(new CustomEvent('esyglob-address-change'))
       setEditing(null)
       toast.success(id ? 'Address updated.' : 'Address saved.')
       await query.reload()
@@ -42,7 +44,16 @@ export default function AddressesPage() {
   }
   async function remove(item) {
     if (!await confirm({ title: 'Delete saved address?', message: 'This address will be removed from checkout and your address book.', confirmLabel: 'Delete address' })) return
-    await deleteAddress(resolveId(item)); toast.success('Address deleted.'); query.reload()
+    await deleteAddress(resolveId(item)); window.dispatchEvent(new CustomEvent('esyglob-address-change')); toast.success('Address deleted.'); query.reload()
+  }
+  async function useCurrentLocation() {
+    setBusy(true); setError('')
+    try {
+      await detectCurrentAddress({ persist: true })
+      toast.success('Current location saved as your default address.')
+      await query.reload()
+    } catch (next) { setError(next.message) }
+    finally { setBusy(false) }
   }
   function chooseLocation(location) {
     setForm(current => ({
@@ -62,13 +73,14 @@ export default function AddressesPage() {
 
   return <AppShell><div className="container module-page">
     <PageHead eyebrow="Delivery preferences" title="Address book" description="Manage standardized shipping and billing destinations used across checkout, RFQs and orders." />
-    <div className="module-actions"><button className="button button--primary" onClick={() => open()}><Plus /> Add address</button></div>
+    <div className="module-actions"><button className="button button--secondary" disabled={busy} onClick={useCurrentLocation}><Crosshair /> {busy ? 'Detecting…' : 'Use current location'}</button><button className="button button--primary" onClick={() => open()}><Plus /> Add address</button></div>
+    {error && !editing && <p className="inline-error">{error}</p>}
     {query.loading ? <TradeSkeleton /> : query.error ? <p className="inline-error">{query.error.message}</p> : query.data?.length
       ? <div className="address-grid">{query.data.map(item => <article key={resolveId(item)} className={item.isDefault ? 'is-default' : ''}>
-        <div className="address-card-head"><i><MapPin /></i><div><h2>{item.fullName}</h2><p>{item.companyName}</p></div>{item.isDefault && <span><Check /> Default</span>}</div>
+        <div className="address-card-head"><i><MapPin /></i><div><h2>{item.addressLabel || 'Other'} · {item.fullName || 'Delivery address'}</h2><p>{item.companyName}</p></div>{item.isDefault && <span><Check /> Selected</span>}</div>
         <p>{item.address || item.line1}{item.landmark ? `, ${item.landmark}` : ''}<br />{item.city}, {item.state} {item.postalCode || item.pincode}<br />{item.country}</p>
         <b>{item.phone}</b><div className="address-actions">
-          {!item.isDefault && <button onClick={() => setDefaultAddress(resolveId(item)).then(query.reload)}><Check /> Set default</button>}
+          {!item.isDefault && <button onClick={() => setDefaultAddress(resolveId(item)).then(() => { window.dispatchEvent(new CustomEvent('esyglob-address-change')); return query.reload() })}><Check /> Select address</button>}
           <button onClick={() => open(item)}><Edit3 /> Edit</button><button className="danger-text" onClick={() => remove(item)}><Trash2 /> Delete</button>
         </div>
       </article>)}</div>
@@ -77,6 +89,7 @@ export default function AddressesPage() {
       <div className="compact-heading"><h2>{resolveId(editing) ? 'Edit address' : 'Add address'}</h2><button type="button" onClick={() => setEditing(null)}><X /></button></div>
       <label className="field-wide">Find address<AddressAutocomplete value={form.address} onChange={address => setForm(current => ({ ...current, address }))} onSelect={chooseLocation} /></label>
       <div className="form-grid">
+        <label>Address label<select value={form.addressLabel} onChange={event => setForm({ ...form, addressLabel: event.target.value })}>{['Home', 'Office', 'Warehouse', 'Other'].map(value => <option key={value}>{value}</option>)}</select></label>
         <Field label="Contact name" name="fullName" form={form} setForm={setForm} /><Field label="Company" name="companyName" form={form} setForm={setForm} optional />
         <Field label="Phone" name="phone" form={form} setForm={setForm} /><Field label="Country" name="country" form={form} setForm={setForm} />
         <Field label="State" name="state" form={form} setForm={setForm} /><Field label="City" name="city" form={form} setForm={setForm} />

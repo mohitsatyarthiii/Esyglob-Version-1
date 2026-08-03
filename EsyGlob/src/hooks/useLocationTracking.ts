@@ -1,83 +1,64 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, AppStateStatus, PermissionsAndroid, Platform } from 'react-native';
-import Geolocation, { GeoError, GeoPosition } from 'react-native-geolocation-service';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCurrentLocation, reverseAddressCoordinates, updateCurrentLocation, updateLocationAddress } from '../api/account';
+import { fetchAddresses } from '../api/account';
+import { detectCurrentAddress, hasLocationPermission } from '../services/currentAddress';
 import { useAuth } from '../auth/AuthContext';
 
-export type TrackedCoordinates = { latitude: number; longitude: number; accuracy?: number; altitude?: number; speed?: number; heading?: number };
-
-async function requestPermission() {
-  if (Platform.OS !== 'android') return true;
-  const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, { title: 'Allow location access', message: 'EsyGlob uses your location to improve nearby supplier, shipping, and delivery experiences.', buttonPositive: 'Allow', buttonNegative: 'Not now' });
-  return result === PermissionsAndroid.RESULTS.GRANTED;
-}
-
-function coordinates(position: GeoPosition): TrackedCoordinates {
-  const value = position.coords;
-  return { latitude: value.latitude, longitude: value.longitude, accuracy: value.accuracy ?? undefined, altitude: value.altitude ?? undefined, speed: value.speed ?? undefined, heading: value.heading ?? undefined };
-}
-
-async function reverseGeocode(value: TrackedCoordinates) {
-  const address = await reverseAddressCoordinates(value.latitude, value.longitude);
-  if (!address) return;
-  await updateLocationAddress({ formatted: address.formattedAddress ?? '', street: address.street ?? address.line1 ?? '', city: address.city ?? '', state: address.state ?? '', country: address.country ?? '', postalCode: address.postalCode ?? '' });
-}
-
-export function useLocationTracking() {
+// Compatibility name retained for installed clients. Location now selects the default Address.
+export function useLocationTracking({ autoDetect = true } = {}) {
   const { status } = useAuth();
   const queryClient = useQueryClient();
-  const watchId = useRef<number | null>(null);
-  const lastSentAt = useRef(0);
+  const attempted = useRef(false);
   const [isTracking, setTracking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const location = useQuery({ queryKey: ['current-location'], queryFn: getCurrentLocation, enabled: status === 'authenticated', staleTime: 30_000 });
+  const addresses = useQuery({ queryKey: ['addresses'], queryFn: fetchAddresses, enabled: status === 'authenticated' });
 
-  const persist = useCallback(async (position: GeoPosition) => {
-    if (Date.now() - lastSentAt.current < 29_000) return;
-    lastSentAt.current = Date.now();
-    const value = coordinates(position);
-    try {
-      await updateCurrentLocation(value);
-      await reverseGeocode(value).catch(() => undefined);
-      queryClient.invalidateQueries({ queryKey: ['current-location'] });
-      setError(null);
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to save location.');
-    }
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['addresses'] }),
+      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      queryClient.invalidateQueries({ queryKey: ['sellers'] }),
+      queryClient.invalidateQueries({ queryKey: ['services'] }),
+      queryClient.invalidateQueries({ queryKey: ['home-featured-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['home-latest-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['home-products-feed'] }),
+      queryClient.invalidateQueries({ queryKey: ['manufacturers-directory'] }),
+      queryClient.invalidateQueries({ queryKey: ['sellers-module'] }),
+      queryClient.invalidateQueries({ queryKey: ['service-quote'] }),
+    ]);
   }, [queryClient]);
 
-  const stopTracking = useCallback(() => {
-    if (watchId.current != null) Geolocation.clearWatch(watchId.current);
-    watchId.current = null;
-    setTracking(false);
-  }, []);
-
-  const startTracking = useCallback(async () => {
-    if (watchId.current != null || status !== 'authenticated') return;
+  const detect = useCallback(async (requestPermission = true) => {
+    setTracking(true);
     try {
-      if (!(await requestPermission())) { setError('Location permission was not granted.'); return; }
-      watchId.current = Geolocation.watchPosition(persist, (nextError: GeoError) => setError(nextError.message), { enableHighAccuracy: true, distanceFilter: 0, interval: 30_000, fastestInterval: 30_000, useSignificantChanges: false });
-      setTracking(true);
+      const location = await detectCurrentAddress({ requestPermission, persist: true });
+      await refresh();
+      setError(null);
+      return { latitude: location.latitude!, longitude: location.longitude! };
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Location tracking is unavailable.');
-      stopTracking();
-    }
-  }, [persist, status, stopTracking]);
-
-  const getCurrentPositionOnce = useCallback(async (): Promise<TrackedCoordinates | null> => {
-    if (!(await requestPermission())) return null;
-    return new Promise(resolve => Geolocation.getCurrentPosition(position => resolve(coordinates(position)), () => resolve(null), { enableHighAccuracy: true, timeout: 20_000, maximumAge: 5_000 }));
-  }, []);
+      setError(nextError instanceof Error ? nextError.message : 'Unable to save current address.');
+      return null;
+    } finally { setTracking(false); }
+  }, [refresh]);
 
   useEffect(() => {
-    const handleState = (next: AppStateStatus) => next === 'active' && status === 'authenticated' ? startTracking() : stopTracking();
-    const subscription = AppState.addEventListener('change', handleState);
-    if (status === 'authenticated' && AppState.currentState === 'active') startTracking(); else stopTracking();
-    return () => { subscription.remove(); stopTracking(); };
-  }, [startTracking, status, stopTracking]);
+    if (!autoDetect || status !== 'authenticated' || attempted.current) return;
+    attempted.current = true;
+    hasLocationPermission().then(granted => granted ? detect(false) : null).catch(() => undefined);
+  }, [autoDetect, detect, status]);
 
-  return { currentLocation: location.data, isLocationEnabled: isTracking, isTracking, error, startTracking, stopTracking, getCurrentPositionOnce, refetchLocation: location.refetch };
+  const selected = addresses.data?.find(item => item.isDefault) || addresses.data?.[0];
+  return {
+    currentLocation: selected ? { address: selected, location: selected } : null,
+    isLocationEnabled: Boolean(selected?.latitude && selected?.longitude),
+    isTracking,
+    error,
+    startTracking: () => detect(true),
+    stopTracking: () => undefined,
+    getCurrentPositionOnce: () => detect(true),
+    refetchLocation: addresses.refetch,
+    refreshAddressDependentData: refresh,
+  };
 }
 
 export function LocationTrackingManager() {

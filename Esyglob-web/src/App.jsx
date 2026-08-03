@@ -40,7 +40,6 @@ const OrdersPage = lazy(() => import('./pages/OrdersPage'))
 const OrderDetailsPage = lazy(() => import('./pages/OrderDetailsPage'))
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'))
 const AddressesPage = lazy(() => import('./pages/AddressesPage'))
-const LocationPage = lazy(() => import('./pages/LocationPage'))
 const SavedItemsPage = lazy(() => import('./pages/SavedItemsPage'))
 const WalletPage = lazy(() => import('./pages/WalletPage'))
 const InvoicesPage = lazy(() => import('./pages/InvoicesPage'))
@@ -110,7 +109,7 @@ export default function App() {
       <Route path="/orders/:orderId" element={<OrderDetailsPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/addresses" element={<AddressesPage />} />
-      <Route path="/location" element={<LocationPage />} />
+      <Route path="/location" element={<Navigate replace to="/addresses" />} />
       <Route path="/saved" element={<SavedItemsPage />} />
       <Route path="/wallet" element={<WalletPage />} />
       <Route path="/invoices" element={<InvoicesPage />} />

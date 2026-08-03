@@ -1,6 +1,7 @@
 import { LocateFixed, LoaderCircle, MapPin } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { resolveAddressSuggestion, reverseAddressCoordinates, searchAddressSuggestions } from '../api/account'
+import { resolveAddressSuggestion, searchAddressSuggestions } from '../api/account'
+import { detectCurrentAddress } from '../utils/current-address'
 
 function sessionToken() {
   return globalThis.crypto?.randomUUID?.() || `esyglob-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -53,27 +54,16 @@ export default function AddressAutocomplete({
     } finally { setBusy(false) }
   }
 
-  function useCurrentLocation() {
+  async function useCurrentLocation() {
     setNotice('')
-    if (!navigator.geolocation) {
-      setNotice('Current location is not supported by this browser.')
-      return
-    }
     setBusy(true)
-    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
-      try {
-        const result = await reverseAddressCoordinates(coords.latitude, coords.longitude)
-        const location = result.location
-        if (!location) throw new Error('No address was found for your current location.')
-        onChange(location.formattedAddress || '')
-        onSelect?.(location)
-      } catch (error) {
-        setNotice(error.message || 'Unable to find your current address.')
-      } finally { setBusy(false) }
-    }, (error) => {
-      setBusy(false)
-      setNotice(error.code === 1 ? 'Allow location access to use your current address.' : 'Unable to read your current location.')
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 })
+    try {
+      const location = await detectCurrentAddress()
+      onChange(location.formattedAddress || '')
+      onSelect?.(location)
+    } catch (error) {
+      setNotice(error.message || 'Unable to find your current address.')
+    } finally { setBusy(false) }
   }
 
   function keyDown(event) {

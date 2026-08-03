@@ -9,16 +9,23 @@ export const updateLocationSchema = z.object({
   heading: z.number().min(0).max(360).optional(),
   address: z.object({
     formatted: z.string().optional(),
+    formattedAddress: z.string().optional(),
+    line1: z.string().optional(),
     street: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
     country: z.string().optional(),
     postalCode: z.string().optional(),
+    district: z.string().optional(),
+    countryCode: z.string().optional(),
+    placeId: z.string().optional(),
   }).optional(),
 });
 
 export const reverseGeocodeSchema = z.object({
   formatted: z.string().optional(),
+  formattedAddress: z.string().optional(),
+  line1: z.string().optional(),
   street: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),

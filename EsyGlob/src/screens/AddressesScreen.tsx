@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   AddressBookItem,
   createAddress,
@@ -27,6 +28,7 @@ import {
 import { ErrorState, LoadingState } from '../components/StateViews';
 import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import { getId } from '../utils/format';
+import { useLocationTracking } from '../hooks/useLocationTracking';
 
 // ─── Palette ────────────────────────────────────────────
 const P = {
@@ -63,21 +65,18 @@ const emptyAddress: AddressBookItem = {
   state: '',
   country: '',
   pincode: '',
-  addressType: 'shipping',
+  addressLabel: 'Other',
   isDefault: false,
 };
 
 // ─── Main Component ────────────────────────────────────
 function AddressesScreen() {
   const navigation = useNavigation<any>();
-  const queryClient = useQueryClient();
   const addresses = useQuery({ queryKey: ['addresses'], queryFn: fetchAddresses });
+  const { isTracking, startTracking, refreshAddressDependentData } = useLocationTracking({ autoDetect: false });
   const [form, setForm] = useState<AddressBookItem>(emptyAddress);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'shipping' | 'billing'>('all');
-
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['addresses'] });
 
   const save = useMutation({
     mutationFn: () => (editingId ? updateAddress(editingId, form) : createAddress(form)),
@@ -85,7 +84,7 @@ function AddressesScreen() {
       setForm(emptyAddress);
       setEditingId(null);
       setShowForm(false);
-      await refresh();
+      await refreshAddressDependentData();
     },
     onError: (error: any) =>
       Alert.alert(
@@ -94,15 +93,15 @@ function AddressesScreen() {
       ),
   });
 
-  const makeDefault = useMutation({ mutationFn: setDefaultAddress, onSuccess: refresh });
-  const remove = useMutation({ mutationFn: deleteAddress, onSuccess: refresh });
+  const makeDefault = useMutation({ mutationFn: setDefaultAddress, onSuccess: refreshAddressDependentData });
+  const remove = useMutation({ mutationFn: deleteAddress, onSuccess: refreshAddressDependentData });
 
   const openEdit = (item: AddressBookItem) => {
     setEditingId(getId(item));
     setForm({
       ...emptyAddress,
       ...item,
-      line1: item.line1 ?? (item as any).street,
+      line1: item.line1 ?? item.street ?? item.address,
       pincode: item.pincode ?? (item as any).postalCode,
     });
     setShowForm(true);
@@ -124,13 +123,8 @@ function AddressesScreen() {
     );
 
   const addressList = addresses.data ?? [];
-  const filteredAddresses =
-    activeTab === 'all'
-      ? addressList
-      : addressList.filter(a => a.addressType === activeTab);
-
-  const shippingCount = addressList.filter(a => a.addressType === 'shipping').length;
-  const billingCount = addressList.filter(a => a.addressType === 'billing').length;
+  const filteredAddresses = addressList;
+  const gpsCount = addressList.filter(a => Number.isFinite(a.latitude) && Number.isFinite(a.longitude)).length;
 
   return (
     <View style={styles.screen}>
@@ -161,6 +155,10 @@ function AddressesScreen() {
         }
         ListHeaderComponent={
           <>
+            <Pressable disabled={isTracking} onPress={startTracking} style={styles.currentLocationBtn}>
+              {isTracking ? <ActivityIndicator color="#FFF" /> : <Icon name="crosshairs-gps" size={20} color="#FFF" />}
+              <Text style={styles.currentLocationText}>{isTracking ? 'Detecting address…' : 'Use current location'}</Text>
+            </Pressable>
             {/* Stats Summary */}
             <View style={styles.statsRow}>
               <View style={styles.statCard}>
@@ -170,42 +168,16 @@ function AddressesScreen() {
               </View>
               <View style={styles.statCard}>
                 <Icon name="truck-delivery-outline" size={22} color={P.sky} />
-                <Text style={styles.statValue}>{shippingCount}</Text>
-                <Text style={styles.statLabel}>Shipping</Text>
+                <Text style={styles.statValue}>{addressList.filter(item => item.isDefault).length}</Text>
+                <Text style={styles.statLabel}>Selected</Text>
               </View>
               <View style={styles.statCard}>
                 <Icon name="file-document-outline" size={22} color={P.violet} />
-                <Text style={styles.statValue}>{billingCount}</Text>
-                <Text style={styles.statLabel}>Billing</Text>
+                <Text style={styles.statValue}>{gpsCount}</Text>
+                <Text style={styles.statLabel}>GPS linked</Text>
               </View>
             </View>
 
-            {/* Tab Filter */}
-            <View style={styles.tabRow}>
-              {[
-                { key: 'all' as const, label: 'All', count: addressList.length },
-                { key: 'shipping' as const, label: 'Shipping', count: shippingCount },
-                { key: 'billing' as const, label: 'Billing', count: billingCount },
-              ].map(tab => (
-                <Pressable
-                  key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
-                  style={[
-                    styles.tab,
-                    activeTab === tab.key && styles.tabActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.tabText,
-                      activeTab === tab.key && styles.tabTextActive,
-                    ]}
-                  >
-                    {tab.label} ({tab.count})
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
           </>
         }
         renderItem={({ item }) => (
@@ -230,9 +202,7 @@ function AddressesScreen() {
             <Icon name="map-marker-off-outline" size={56} color={P.border} />
             <Text style={styles.emptyTitle}>No addresses found</Text>
             <Text style={styles.emptySubtitle}>
-              {activeTab === 'all'
-                ? 'Add your first address for faster checkout'
-                : `No ${activeTab} addresses yet`}
+              Add your first address for faster checkout
             </Text>
             <Pressable onPress={openNew} style={styles.emptyBtn}>
               <Icon name="plus" size={18} color="#FFF" />
@@ -300,50 +270,13 @@ function AddressForm({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Address Type Selector */}
+        {/* Address Label Selector */}
         <View style={styles.typeRow}>
-          <Pressable
-            onPress={() => setForm({ ...form, addressType: 'shipping' })}
-            style={[
-              styles.typeCard,
-              form.addressType === 'shipping' && styles.typeCardActive,
-            ]}
-          >
-            <Icon
-              name="truck-delivery-outline"
-              size={24}
-              color={form.addressType === 'shipping' ? P.primary : P.muted}
-            />
-            <Text
-              style={[
-                styles.typeText,
-                form.addressType === 'shipping' && styles.typeTextActive,
-              ]}
-            >
-              Shipping
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setForm({ ...form, addressType: 'billing' })}
-            style={[
-              styles.typeCard,
-              form.addressType === 'billing' && styles.typeCardActive,
-            ]}
-          >
-            <Icon
-              name="file-document-outline"
-              size={24}
-              color={form.addressType === 'billing' ? P.violet : P.muted}
-            />
-            <Text
-              style={[
-                styles.typeText,
-                form.addressType === 'billing' && styles.typeTextActive,
-              ]}
-            >
-              Billing
-            </Text>
-          </Pressable>
+          {(['Home', 'Office', 'Warehouse', 'Other'] as const).map(label => <Pressable
+            key={label}
+            onPress={() => setForm({ ...form, addressLabel: label })}
+            style={[styles.typeCard, form.addressLabel === label && styles.typeCardActive]}
+          ><Icon name={label === 'Home' ? 'home-outline' : label === 'Office' ? 'office-building-outline' : label === 'Warehouse' ? 'warehouse' : 'map-marker-outline'} size={22} color={form.addressLabel === label ? P.primary : P.muted} /><Text style={[styles.typeText, form.addressLabel === label && styles.typeTextActive]}>{label}</Text></Pressable>)}
         </View>
 
         {/* Form Fields */}
@@ -521,7 +454,7 @@ function AddressCard({
   onDefault: () => void;
   onDelete: () => void;
 }) {
-  const isShipping = item.addressType === 'shipping';
+  const label = item.addressLabel || 'Other';
 
   return (
     <View style={styles.addressCard}>
@@ -531,27 +464,27 @@ function AddressCard({
           <View
             style={[
               styles.addressTypeBadge,
-              { backgroundColor: isShipping ? P.skyLight : P.violetLight },
+              { backgroundColor: P.skyLight },
             ]}
           >
             <Icon
-              name={isShipping ? 'truck-delivery-outline' : 'file-document-outline'}
+              name={label === 'Home' ? 'home-outline' : label === 'Office' ? 'office-building-outline' : label === 'Warehouse' ? 'warehouse' : 'map-marker-outline'}
               size={14}
-              color={isShipping ? P.sky : P.violet}
+              color={P.sky}
             />
             <Text
               style={[
                 styles.addressTypeBadgeText,
-                { color: isShipping ? P.sky : P.violet },
+                { color: P.sky },
               ]}
             >
-              {isShipping ? 'Shipping' : 'Billing'}
+              {label}
             </Text>
           </View>
           {item.isDefault && (
             <View style={styles.defaultBadge}>
               <Icon name="check-circle" size={12} color={P.emerald} />
-              <Text style={styles.defaultBadgeText}>Default</Text>
+              <Text style={styles.defaultBadgeText}>Selected</Text>
             </View>
           )}
         </View>
@@ -568,7 +501,7 @@ function AddressCard({
         <View style={styles.addressInfo}>
           <Text style={styles.addressName}>{item.fullName || 'Unnamed Address'}</Text>
           <Text style={styles.addressDetail}>
-            {[item.line1 ?? (item as any).street, item.line2, item.city, item.state, item.country]
+            {[item.line1 ?? item.street ?? item.address, item.line2, item.city, item.state, item.country]
               .filter(Boolean)
               .join(', ')}
           </Text>
@@ -647,6 +580,17 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
     gap: 12,
   },
+  currentLocationBtn: {
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: P.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 9,
+    marginBottom: 4,
+  },
+  currentLocationText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
 
   // Stats Row
   statsRow: {

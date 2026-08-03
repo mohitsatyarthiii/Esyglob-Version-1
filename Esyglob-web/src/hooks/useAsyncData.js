@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export default function useAsyncData(loader) {
+export default function useAsyncData(loader, { refreshOnAddressChange = false } = {}) {
   const [state, setState] = useState({ data: null, error: null, loading: true })
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: null }))
@@ -16,5 +16,11 @@ export default function useAsyncData(loader) {
     const task = Promise.resolve().then(load)
     return () => { void task }
   }, [load])
+  useEffect(() => {
+    if (!refreshOnAddressChange) return undefined
+    const refresh = () => load()
+    window.addEventListener('esyglob-address-change', refresh)
+    return () => window.removeEventListener('esyglob-address-change', refresh)
+  }, [load, refreshOnAddressChange])
   return { ...state, reload: load }
 }

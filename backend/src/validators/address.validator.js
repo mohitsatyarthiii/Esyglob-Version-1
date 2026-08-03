@@ -15,6 +15,10 @@ export const createAddressSchema = z.object({
   placeId: z.string().trim().max(180).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  gpsAccuracy: z.number().nonnegative().optional(),
+  locationSource: z.enum(['manual', 'autocomplete', 'gps', 'legacy']).optional(),
+  addressLabel: z.enum(['Home', 'Office', 'Warehouse', 'Other']).optional().default('Other'),
+  addressType: z.string().trim().max(30).optional(),
   landmark: z.string().trim().optional().default(''),
   isDefault: z.boolean().optional().default(false),
 });

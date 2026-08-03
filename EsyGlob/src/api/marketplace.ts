@@ -716,7 +716,7 @@ export async function calculateCheckoutQuote(
 }
 
 export async function createSampleOrder(input: Record<string, unknown>): Promise<Order> {
-  const payload = await apiRequest('/sample-order', { method: 'POST', body: input });
+  const payload = await apiRequest('/orders/sample', { method: 'POST', body: input });
   const data = unwrapData<{ order?: Order } | Order>(payload);
   const order = data && typeof data === 'object' && 'order' in data ? data.order : data;
   if (!order) throw new Error('Sample order was not returned.');

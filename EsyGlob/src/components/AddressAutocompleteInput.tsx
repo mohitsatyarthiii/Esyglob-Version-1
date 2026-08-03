@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import Geolocation from 'react-native-geolocation-service';
-import { AddressSuggestion, resolveAddressSuggestion, reverseAddressCoordinates, searchAddressSuggestions, StandardizedLocation } from '../api/account';
+import { AddressSuggestion, resolveAddressSuggestion, searchAddressSuggestions, StandardizedLocation } from '../api/account';
+import { detectCurrentAddress } from '../services/currentAddress';
 
 function newToken() {
   return `esyglob-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -62,32 +62,13 @@ export default function AddressAutocompleteInput({
   async function useCurrentLocation() {
     setNotice('');
     setBusy(true);
-    if (Platform.OS === 'android') {
-      const permission = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION, {
-        title: 'Use current location',
-        message: 'EsyGlob uses your location once to fill this address.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Not now',
-      });
-      if (permission !== PermissionsAndroid.RESULTS.GRANTED) {
-        setNotice('Allow location access to use your current address.');
-        setBusy(false);
-        return;
-      }
-    }
-    Geolocation.getCurrentPosition(async position => {
-      try {
-        const location = await reverseAddressCoordinates(position.coords.latitude, position.coords.longitude);
-        if (!location) throw new Error('No address was found for this location.');
-        onChangeText(location.formattedAddress || '');
-        onSelect?.(location);
-      } catch (nextError) {
-        setNotice(nextError instanceof Error ? nextError.message : 'Unable to find your current address.');
-      } finally { setBusy(false); }
-    }, () => {
-      setNotice('Unable to read your current location.');
-      setBusy(false);
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+    try {
+      const location = await detectCurrentAddress();
+      onChangeText(location.formattedAddress || '');
+      onSelect?.(location);
+    } catch (nextError) {
+      setNotice(nextError instanceof Error ? nextError.message : 'Unable to find your current address.');
+    } finally { setBusy(false); }
   }
 
   return <View style={styles.wrap}>

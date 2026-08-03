@@ -1,6 +1,11 @@
 import Address from '../models/Address.js';
 import mongoose from 'mongoose';
 
+function withCoordinates(data) {
+  if (!Number.isFinite(data?.latitude) || !Number.isFinite(data?.longitude)) return data;
+  return { ...data, coordinates: { type: 'Point', coordinates: [data.longitude, data.latitude] } };
+}
+
 class AddressRepository {
   /**
    * Check if ID is valid ObjectId
@@ -16,6 +21,10 @@ class AddressRepository {
     return Address.find({ userId })
       .sort({ isDefault: -1, updatedAt: -1 })
       .lean();
+  }
+
+  static async findDefault(userId) {
+    return Address.findOne({ userId, isDefault: true }).lean();
   }
 
   /**
@@ -45,7 +54,7 @@ class AddressRepository {
    * Create a new address
    */
   static async create(data) {
-    return Address.create(data);
+    return Address.create(withCoordinates(data));
   }
 
   /**
@@ -56,7 +65,7 @@ class AddressRepository {
 
     return Address.findOneAndUpdate(
       { _id: addressId, userId },
-      { $set: data },
+      { $set: withCoordinates(data) },
       { new: true, runValidators: true }
     );
   }
@@ -69,7 +78,7 @@ class AddressRepository {
 
     return Address.findOneAndUpdate(
       { _id: addressId, userId },
-      { $set: data },
+      { $set: withCoordinates(data) },
       { new: true, runValidators: true, lean: true }
     );
   }
@@ -124,6 +133,42 @@ class AddressRepository {
    */
   static async countByUser(userId) {
     return Address.countDocuments({ userId });
+  }
+
+  static async upsertDefaultLocation(userId, data) {
+    const current = await Address.findOne({ userId, isDefault: true });
+    const payload = {
+      ...data,
+      isDefault: true,
+      coordinates: Number.isFinite(data.latitude) && Number.isFinite(data.longitude)
+        ? { type: 'Point', coordinates: [data.longitude, data.latitude] }
+        : current?.coordinates,
+    };
+    if (current) {
+      Object.assign(current, payload);
+      return current.save();
+    }
+    await this.unsetAllDefaults(userId);
+    return Address.create({ ...payload, userId });
+  }
+
+  static async clearDefaultCoordinates(userId) {
+    return Address.findOneAndUpdate(
+      { userId, isDefault: true },
+      { $unset: { latitude: 1, longitude: 1, coordinates: 1, gpsAccuracy: 1, lastLocatedAt: 1 } },
+      { new: true, lean: true },
+    );
+  }
+
+  static async findNearby(coordinates, maxDistance = 5000, limit = 50) {
+    return Address.find({
+      coordinates: {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [coordinates.longitude, coordinates.latitude] },
+          $maxDistance: maxDistance,
+        },
+      },
+    }).limit(limit).lean();
   }
 }
 

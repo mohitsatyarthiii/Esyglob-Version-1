@@ -16,8 +16,8 @@ export default function HomePage() {
   const navigate = useNavigate()
   const { status } = useAuth()
   const categories = useAsyncData(fetchCategories)
-  const featured = useAsyncData(featuredLoader)
-  const feed = useAsyncData(feedLoader)
+  const featured = useAsyncData(featuredLoader, { refreshOnAddressChange: true })
+  const feed = useAsyncData(feedLoader, { refreshOnAddressChange: true })
   const orderedCategories = useMemo(
     () => [...(categories.data || [])].sort((a, b) => Number(b.productCount || 0) - Number(a.productCount || 0)),
     [categories.data],

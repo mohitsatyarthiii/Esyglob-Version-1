@@ -13,11 +13,8 @@ export async function createAddress(input) { return unwrapData(await apiRequest(
 export async function updateAddress(id, input) { return unwrapData(await apiRequest(`/addresses/${id}`, { method: 'PUT', body: input })) }
 export async function setDefaultAddress(id) { return unwrapData(await apiRequest(`/addresses/${id}`, { method: 'PATCH', body: { isDefault: true } })) }
 export async function deleteAddress(id) { return unwrapData(await apiRequest(`/addresses/${id}`, { method: 'DELETE' })) }
+export async function updateCurrentAddress(input) { return unwrapData(await apiRequest('/addresses/current', { method: 'PUT', body: input })) }
 
-export async function fetchLocation() { return unwrapData(await apiRequest('/location', { cache: false })) }
-export async function updateLocation(input) { return unwrapData(await apiRequest('/location', { method: 'PUT', body: input })) }
-export async function updateLocationAddress(input) { return unwrapData(await apiRequest('/location/address', { method: 'PATCH', body: input })) }
-export async function toggleLocationTracking(isActive) { return unwrapData(await apiRequest('/location/toggle', { method: 'PUT', body: { isActive } })) }
 export async function searchAddressSuggestions(input, sessionToken, countryCodes = '') {
   return unwrapData(await apiRequest('/location/autocomplete/search', { query: { input, sessionToken, countryCodes }, cache: false })) || {}
 }

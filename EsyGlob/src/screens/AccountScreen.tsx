@@ -947,16 +947,16 @@ function AccountScreen() {
 
         {/* Location Section */}
         <Pressable
-          onPress={() => nav.navigate('Location')}
+          onPress={() => nav.navigate('Addresses')}
           style={styles.locCard}
         >
           <View style={styles.locIconWrap}>
             <Icon name="map-marker" size={20} color={P.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.locTitle}>My Location</Text>
+            <Text style={styles.locTitle}>Selected Address</Text>
             <Text style={styles.locDesc}>
-              Set location for nearby suppliers & accurate shipping
+              Choose a saved address or use your current location
             </Text>
           </View>
           <Icon name="chevron-right" size={16} color={P.muted} />

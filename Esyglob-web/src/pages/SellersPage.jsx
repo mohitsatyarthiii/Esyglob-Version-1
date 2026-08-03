@@ -55,7 +55,7 @@ export default function SellersPage() {
     () => fetchSellers({ limit: 20, search, sort, ...(regionFilter && { region: regionFilter }) }),
     [search, sort, regionFilter],
   )
-  const query = useAsyncData(loader)
+  const query = useAsyncData(loader, { refreshOnAddressChange: true })
   const allSellers = useMemo(() => query.data || [], [query.data])
   const categoryOptions = useMemo(() => {
     const counts = new Map()

@@ -14,6 +14,9 @@ router.get('/', AddressController.list);
 // POST - Create address
 router.post('/', AddressController.create);
 
+// GPS is an address selection method, not a separate location resource.
+router.put('/current', AddressController.useCurrentLocation);
+
 // PUT - Full update address
 router.put('/:addressId', AddressController.update);
 

@@ -33,6 +33,17 @@ class AddressController {
     }
   }
 
+  static async useCurrentLocation(req, res) {
+    try {
+      const result = await AddressService.upsertCurrentLocation(req.user._id, req.body);
+      return res.json(result);
+    } catch (error) {
+      console.error('[Addresses-Current] Error:', error);
+      if (error instanceof z.ZodError) return res.status(422).json({ error: 'Invalid GPS coordinates' });
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to save current location' });
+    }
+  }
+
   /**
    * PUT - Full update address
    */

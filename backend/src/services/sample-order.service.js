@@ -152,8 +152,8 @@ class SampleOrderService {
         address: shippingAddress?.address || '',
         city: shippingAddress?.city || '',
         state: shippingAddress?.state || '',
-        zipCode: shippingAddress?.zipCode || '',
-        postalCode: shippingAddress?.zipCode || '',
+        zipCode: shippingAddress?.zipCode || shippingAddress?.postalCode || '',
+        postalCode: shippingAddress?.postalCode || shippingAddress?.zipCode || '',
         country: shippingAddress?.country || 'India',
       },
       products: [{

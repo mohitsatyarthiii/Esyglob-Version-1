@@ -1,86 +1,75 @@
-import UserLocationRepository from '../repositories/userLocation.repository.js';
-import { updateLocationSchema, reverseGeocodeSchema } from '../validators/location.validator.js';
-import { z } from 'zod';
+import AddressRepository from '../repositories/address.repository.js';
+import AddressService from './address.service.js';
+import { reverseGeocodeSchema } from '../validators/location.validator.js';
 
+function legacyLocation(address) {
+  if (!address) return null;
+  const latitude = Number(address.latitude);
+  const longitude = Number(address.longitude);
+  return {
+    _id: address._id,
+    userId: address.userId,
+    addressId: address._id,
+    current: Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? { type: 'Point', coordinates: [longitude, latitude] }
+      : undefined,
+    accuracy: address.gpsAccuracy,
+    address: {
+      formatted: address.address,
+      street: address.street || address.address,
+      city: address.city,
+      state: address.state,
+      country: address.country,
+      postalCode: address.postalCode,
+    },
+    lastUpdated: address.lastLocatedAt || address.updatedAt,
+    isActive: true,
+    history: [],
+  };
+}
+
+// Compatibility adapter: legacy /location clients now read and write Address.
 class LocationService {
-  /**
-   * Get user's current location
-   */
   static async getCurrentLocation(userId) {
-    const location = await UserLocationRepository.findByUserId(userId);
-    
-    if (!location) {
-      return { location: null, message: 'No location data available' };
-    }
-
-    return { location };
+    const address = await AddressRepository.findDefault(userId) || await AddressService.promoteLegacyLocation(userId);
+    return { address, location: legacyLocation(address), message: address ? undefined : 'No saved address available' };
   }
 
-  /**
-   * Update current location (from mobile GPS)
-   */
   static async updateLocation(userId, data) {
-    // Validate
-    const parsed = updateLocationSchema.parse(data);
-
-    // Save location
-    const location = await UserLocationRepository.upsertLocation(userId, parsed);
-
-    return { location };
+    const { address } = await AddressService.upsertCurrentLocation(userId, data);
+    return { address, location: legacyLocation(address) };
   }
 
-  /**
-   * Update address from reverse geocoding
-   */
   static async updateAddress(userId, data) {
-    // Validate
     const parsed = reverseGeocodeSchema.parse(data);
-
-    // Update address
-    const location = await UserLocationRepository.updateAddress(userId, parsed);
-
-    if (!location) {
-      throw Object.assign(new Error('Location not found'), { statusCode: 404 });
-    }
-
-    return { location };
+    const current = await AddressRepository.findDefault(userId);
+    if (!current) throw Object.assign(new Error('Default address not found'), { statusCode: 404 });
+    const address = await AddressRepository.updateLean(current._id, userId, {
+      address: parsed.formatted || current.address,
+      street: parsed.street || current.street,
+      city: parsed.city || current.city,
+      state: parsed.state || current.state,
+      country: parsed.country || current.country,
+      postalCode: parsed.postalCode || current.postalCode,
+    });
+    return { address, location: legacyLocation(address) };
   }
 
-  /**
-   * Get location history
-   */
-  static async getLocationHistory(userId, startDate, endDate) {
-    const history = await UserLocationRepository.getHistory(userId, startDate, endDate);
-    return { history };
+  static async getLocationHistory() {
+    return { history: [] };
   }
 
-  /**
-   * Toggle location tracking on/off
-   */
-  static async toggleTracking(userId, isActive) {
-    if (isActive) {
-      await UserLocationRepository.activate(userId);
-    } else {
-      await UserLocationRepository.deactivate(userId);
-    }
-
-    const location = await UserLocationRepository.findByUserId(userId);
-    return { location };
+  static async toggleTracking(userId) {
+    return this.getCurrentLocation(userId);
   }
 
-  /**
-   * Delete location data
-   */
   static async deleteLocation(userId) {
-    await UserLocationRepository.deleteByUserId(userId);
-    return { success: true };
+    const address = await AddressRepository.clearDefaultCoordinates(userId);
+    return { success: true, address };
   }
 
-  /**
-   * Find nearby addresses (for delivery radius)
-   */
   static async findNearbyLocations(coordinates, maxDistance, limit) {
-    const locations = await UserLocationRepository.findNearby(coordinates, maxDistance, limit);
+    const locations = await AddressRepository.findNearby(coordinates, maxDistance, limit);
     return { locations };
   }
 }

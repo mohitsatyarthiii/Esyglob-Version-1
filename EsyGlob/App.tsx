@@ -51,7 +51,7 @@ import { RealtimeProvider } from './src/realtime';
 import AppErrorBoundary from './src/components/AppErrorBoundary';
 import { ToastProvider } from './src/components/ToastProvider';
 import CurrencyProvider from './src/currency/CurrencyContext';
-import LocationScreen from './src/screens/LocationScreen';
+import { LocationTrackingManager } from './src/hooks/useLocationTracking';
 import HelpSupportScreen from './src/screens/HelpSupportScreen';
 import ImageSearchScreen from './src/screens/ImageSearchScreen';
 import ImageSearchResultsScreen from './src/screens/ImageSearchResultsScreen';
@@ -214,6 +214,7 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
   return (
         <CurrencyProvider key={sessionVersion}>
         <RealtimeProvider>
+        <LocationTrackingManager />
         <SafeAreaProvider>
           <StatusBar
             translucent
@@ -265,7 +266,7 @@ function SessionIsolatedRuntime({ isDarkMode }: { isDarkMode: boolean }) {
               <Stack.Screen name="DocumentationManagement" component={DocumentationManagementScreen} />
               <Stack.Screen name="ProductSimilarSearch" component={ProductSimilarSearchScreen} />
               <Stack.Screen name="ShippingLogistics" component={ShippingLogisticsScreen} />
-              <Stack.Screen name="Location" component={LocationScreen} />
+              <Stack.Screen name="Location" component={AddressesScreen} />
               <Stack.Screen name="ImageSearch" component={ImageSearchScreen} />
               <Stack.Screen name="ImageSearchResults" component={ImageSearchResultsScreen} />
               <Stack.Screen name="EsyCalculator" component={EsyCalculatorScreen} />
