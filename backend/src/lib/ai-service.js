@@ -12,6 +12,8 @@ const CORE_DIRECTIVE = `You are EsyGlob AI. Answer in the user's language with t
 const PROMPT_MODULES = Object.freeze({
   general: `Use general knowledge for stable facts through 2023. If supplied current sources are required, distinguish sourced current facts from general knowledge. Do not browse or imply current verification unless sources were supplied.`,
   marketplace: `Use supplied EsyGlob marketplace context as the authority for products, suppliers, manufacturers, categories, RFQs, quotations, orders, payments, assurance, verification, shipping, services, prices, and account records. Never invent records or claim an action completed. Rank recommendations by fit and explain the practical reason briefly.`,
+  supplier: `Help buyers evaluate suppliers using only supplied marketplace records. Prioritize product fit, verification, trust, manufacturing capability, location, MOQ, lead time and commercial risk. Never invent a supplier.`,
+  product: `Help users discover products using only supplied marketplace records. Prioritize specification fit, price, MOQ, lead time, certifications, shipping and supplier quality. Ask briefly for missing requirements when no reliable match can be ranked.`,
   trade: `Act as a pragmatic international trade adviser. Separate verified facts from estimates. Cover classification, duties, documents, compliance, Incoterms, logistics, payment, inspection, and risk only when relevant. Give actionable next steps.`,
   insights: `Act as an enterprise market-intelligence analyst. Synthesize only supplied marketplace, knowledge, trade, and current-source evidence. Never invent figures. Lead with an executive conclusion, then material demand, supply, price, opportunity, risk, and recommendation findings.`,
 });
@@ -58,6 +60,7 @@ class AIService {
         timeoutMs: options.timeoutMs,
         temperature: options.temperature ?? 0.35,
         maxTokens: options.maxTokens || 520,
+        contextSize: options.contextSize,
         jsonMode: options.jsonMode,
       });
       const value = { ...result, content: result.content || result.message };
@@ -84,7 +87,7 @@ class AIService {
     const roleFocus = role === 'seller' ? 'Focus on seller listings, RFQs, quotations, pricing, MOQ, and buyer communication.' : role === 'buyer' ? 'Focus on sourcing, verified suppliers, RFQs, MOQ, lead time, orders, and due diligence.' : 'Focus on B2B sourcing, trade, and EsyGlob support.';
     const intent = String(options.intent || '');
     const route = String(options.route || '');
-    const mode = options.mode || (intent === 'market_research' ? 'insights' : /trade_advice|shipping|hs_code/.test(intent) ? 'trade' : /general_knowledge|greeting/.test(route) ? 'general' : 'marketplace');
+    const mode = options.mode || (intent === 'market_research' ? 'insights' : intent === 'supplier_search' ? 'supplier' : intent === 'product_search' ? 'product' : /trade_advice|shipping|hs_code/.test(intent) ? 'trade' : /general_knowledge|greeting/.test(route) ? 'general' : 'marketplace');
     return [CORE_DIRECTIVE, PROMPT_MODULES[mode] || PROMPT_MODULES.marketplace, mode === 'marketplace' ? roleFocus : '', platformContext ? `Relevant context:\n${platformContext}` : ''].filter(Boolean).join('\n\n');
   }
 
@@ -95,7 +98,7 @@ class AIService {
   }
 
   static async chat(message, context = [], customSystemPrompt = null, options = {}) {
-    const result = await OllamaRuntimeService.complete({ messages: [{ role: 'system', content: customSystemPrompt || this.buildMarketplaceSystemPrompt(options.role, options.platformContext) }, ...context.slice(-20).map(item => ({ role: item.role, content: String(item.content || '') })), { role: 'user', content: message }], signal: options.signal, maxTokens: options.maxTokens || 520 });
+    const result = await OllamaRuntimeService.complete({ messages: [{ role: 'system', content: customSystemPrompt || this.buildMarketplaceSystemPrompt(options.role, options.platformContext) }, ...context.slice(-16).map(item => ({ role: item.role, content: String(item.content || '') })), { role: 'user', content: message }], signal: options.signal, maxTokens: options.maxTokens || 520, contextSize: options.contextSize });
     return result;
   }
 

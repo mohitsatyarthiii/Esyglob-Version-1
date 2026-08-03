@@ -71,6 +71,7 @@ function AIChatScreen() {
   const overlayAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
   const flatListRef = useRef<FlatList>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const chats = useQuery({
     queryKey: ['ai-chats', role],
@@ -138,6 +139,8 @@ function AIChatScreen() {
         metadata: attachmentUrls.length ? { attachmentUrls } : undefined,
       };
       const assistantId = `a-${Date.now()}`;
+      const streamController = new AbortController();
+      streamAbortRef.current = streamController;
       setMessages(current => [...current, userMessage, { localId: assistantId, role: 'assistant', content: '', statusText: 'Preparing your answer...', streaming: true }]);
       setInput('');
       let nextChatId = chatId;
@@ -198,7 +201,7 @@ function AIChatScreen() {
             } : item
           ));
         }
-      });
+      }, streamController.signal);
       return nextChatId;
     },
     onSuccess: () => {
@@ -208,6 +211,7 @@ function AIChatScreen() {
       queryClient.invalidateQueries({ queryKey: ['ai-chats', role] });
     },
     onError: error => {
+      if (error instanceof Error && /cancelled/i.test(error.message)) return;
       const latest = messages.filter(item => item.role === 'user').at(-1)?.content ?? input;
       setFailedMessage(String(latest ?? ''));
       setMessages(current => current.map(item =>
@@ -215,6 +219,7 @@ function AIChatScreen() {
       ));
       Alert.alert('AI unavailable', error instanceof Error ? error.message : 'Unable to contact AI assistant.');
     },
+    onSettled: () => { streamAbortRef.current = null; },
   });
 
   if (status !== 'authenticated') return <AuthScreen onClose={() => navigation.goBack()} />;
@@ -413,13 +418,19 @@ function AIChatScreen() {
             style={styles.input}
             maxLength={4000}
           />
-          <TouchableOpacity
-            disabled={(!input.trim() && !attachments.length) || send.isPending || uploading}
-            onPress={() => submit()}
-            style={[styles.sendBtn, ((!input.trim() && !attachments.length) || send.isPending || uploading) && styles.sendDisabled]}
-          >
-            {send.isPending ? <ActivityIndicator color="#fff" size="small" /> : <Icon name="arrow-up" size={16} color="#fff" />}
-          </TouchableOpacity>
+          {send.isPending ? (
+            <TouchableOpacity accessibilityLabel="Stop generation" onPress={() => streamAbortRef.current?.abort()} style={styles.sendBtn}>
+              <Icon name="stop" size={16} color="#fff" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              disabled={(!input.trim() && !attachments.length) || uploading}
+              onPress={() => submit()}
+              style={[styles.sendBtn, ((!input.trim() && !attachments.length) || uploading) && styles.sendDisabled]}
+            >
+              <Icon name="arrow-up" size={16} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
       </KeyboardAvoidingView>
 

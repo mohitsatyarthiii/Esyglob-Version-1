@@ -15,8 +15,25 @@ import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-valida
 import LiveSearchService from './live-search.service.js';
 import OllamaRuntimeService from './ollama-runtime.service.js';
 import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
+import AIIntentRouterService from './ai-intent-router.service.js';
+import AISemanticCacheService from './ai-semantic-cache.service.js';
 
 class AIChatService {
+  static lightweightContext(route = {}) {
+    return {
+      text: '',
+      results: {},
+      internal: { memory: { selectedMessages: [] } },
+      snapshot: {
+        intelligence: { intent: route.intent || 'general', route: route.handling || 'direct', language: 'en' },
+        topProducts: [],
+        topSuppliers: [],
+        navigationActions: [],
+        liveSources: [],
+      },
+    };
+  }
+
   static sanitizeChatForClient(chat) {
     if (!chat) return chat;
     const value = typeof chat.toObject === 'function' ? chat.toObject() : { ...chat };
@@ -265,6 +282,7 @@ class AIChatService {
       jsonMode: options.jsonMode,
       temperature: options.temperature,
       maxTokens: options.maxTokens,
+      contextSize: options.contextSize,
     });
   }
 
@@ -391,11 +409,16 @@ class AIChatService {
       };
     }
 
-    // Build platform context
-    const platformContext = await this.buildPlatformContext(message, roleContext, userId, {
-      messages: chat.messages,
-      context: { ...(chat.context?.toObject?.() || chat.context || {}), ...(body.context || {}) },
-    });
+    const requestRoute = AIIntentRouterService.route(message);
+
+    const cached = requestRoute.handling === 'direct' ? null : await AISemanticCacheService.get(message, requestRoute.cacheCategory);
+    // Direct and safely cached public answers bypass retrieval and model inference.
+    const platformContext = requestRoute.handling === 'direct' || cached
+      ? this.lightweightContext(requestRoute)
+      : await this.buildPlatformContext(message, roleContext, userId, {
+        messages: chat.messages,
+        context: { ...(chat.context?.toObject?.() || chat.context || {}), ...(body.context || {}) },
+      });
 
     // Build system prompt
     const systemPrompt = AIService.buildMarketplaceSystemPrompt(
@@ -404,9 +427,11 @@ class AIChatService {
       platformContext.snapshot.intelligence,
     );
 
-    let aiResult = platformContext.snapshot.intelligence?.route === 'greeting'
-      ? { success: true, message: 'Hello! 👋\nWelcome to EsyGlob. How can I help you today?', tokensUsed: 0, provider: 'marketplace', model: null, fallback: false }
-      : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
+    let aiResult = requestRoute.handling === 'direct'
+      ? { success: true, message: requestRoute.response, tokensUsed: 0, provider: 'marketplace', model: null, fallback: false }
+      : cached
+        ? { success: true, message: cached.response, tokensUsed: 0, provider: 'semantic_cache', model: null, fallback: false }
+        : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
 
     const intelligence = platformContext.snapshot.intelligence || {};
     let finalResponse = String(aiResult.message || '').trim();
@@ -434,6 +459,9 @@ class AIChatService {
     }
     if (!validation.passed && validation.issues.some(issue => issue.severity === 'critical')) {
       finalResponse = 'I could not produce a safe, verified response. Please rephrase the request without private information.';
+    }
+    if (!cached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
+      AISemanticCacheService.put(message, finalResponse, requestRoute.cacheCategory).catch(() => undefined);
     }
 
     const suggestions = this.buildSuggestedFollowUps({ message, role: roleContext, snapshot: platformContext.snapshot });

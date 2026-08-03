@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import OllamaRuntimeService from '../services/ollama-runtime.service.js';
 import KnowledgeBaseService from '../services/knowledge-base.service.js';
+import AIIntentRouterService from '../services/ai-intent-router.service.js';
+import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
@@ -111,6 +113,7 @@ class AIChatController {
       const body = req.body;
       const message = body.message?.trim();
       const displayMessage = body.displayMessage?.trim() || message;
+      const requestRoute = AIIntentRouterService.route(message);
 
       // Validate message exists (only reject if no message at all)
       if (!message) {
@@ -174,12 +177,17 @@ class AIChatController {
       });
 
       try {
-        // Build platform context
         const retrievalStartedAt = Date.now();
-        const platformContext = await AIChatService.buildPlatformContext(message, roleContext, userId, {
-          messages: chat.messages,
-          context: { ...(chat.context || {}), ...(body.context || {}) },
-        });
+        const semanticCached = requestRoute.handling === 'direct'
+          ? null
+          : await AISemanticCacheService.get(message, requestRoute.cacheCategory);
+        // Intent routing happens before expensive retrieval and inference.
+        const platformContext = requestRoute.handling === 'direct' || semanticCached
+          ? AIChatService.lightweightContext(requestRoute)
+          : await AIChatService.buildPlatformContext(message, roleContext, userId, {
+            messages: chat.messages,
+            context: { ...(chat.context || {}), ...(body.context || {}) },
+          });
         const retrievalMs = Date.now() - retrievalStartedAt;
         const promptStartedAt = Date.now();
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
@@ -206,9 +214,14 @@ class AIChatController {
         let firstTokenAt = 0;
         let draftWasStreamed = false;
         const providerStartedAt = Date.now();
+        if (requestRoute.handling === 'direct' || semanticCached) {
+          assistantText = requestRoute.handling === 'direct' ? requestRoute.response : semanticCached.response;
+          activeProvider = requestRoute.handling === 'direct' ? 'marketplace' : 'semantic_cache';
+          activeModel = null;
+        }
 
         // Try AI if not simple greeting
-        if (!isSimpleGreeting && (fastDirectRoute || smartResponse.shouldUseAI !== false)) {
+        if (!assistantText && !isSimpleGreeting && (fastDirectRoute || smartResponse.shouldUseAI !== false)) {
           try {
             const result = await OllamaRuntimeService.complete({
               messages: [
@@ -239,7 +252,7 @@ class AIChatController {
             debugLog('[Stream] AI failed:', error.message);
             aiFailed = true;
           }
-        } else {
+        } else if (!assistantText) {
           aiFailed = true;
         }
 
@@ -304,6 +317,9 @@ class AIChatController {
           } catch (repairError) {
             debugLog('[Validator] Repair failed:', repairError.message);
           }
+        }
+        if (!semanticCached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
+          AISemanticCacheService.put(message, cleanText, requestRoute.cacheCategory).catch(() => undefined);
         }
 
         if (!validation.passed && !draftWasStreamed) {
@@ -439,7 +455,7 @@ class AIChatController {
       return res.json({
         status: 'operational',
         providers: { ollama: OllamaRuntimeService.status() },
-        cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus() },
+        cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus(), semantic: AISemanticCacheService.status() },
       });
     }
 

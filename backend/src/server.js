@@ -28,7 +28,7 @@ async function startServer() {
     });
     const aiKeepWarm = setInterval(() => {
       AIChatService.warmProvider().catch(() => undefined);
-    }, Number(process.env.OLLAMA_WARM_INTERVAL_MS || 25 * 60 * 1000));
+    }, Number(process.env.OLLAMA_WARM_INTERVAL_MS || 4.5 * 60 * 1000));
     aiKeepWarm.unref();
     server.listen(config.port, () => {
       console.log(`Server running on port ${config.port} in ${config.nodeEnv} mode`);

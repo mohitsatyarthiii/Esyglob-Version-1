@@ -556,7 +556,7 @@ export default class MarketResearchService {
         promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace }),
         [],
         'You are EsyGlob AI Market Intelligence. Synthesize evidence into original executive analysis. Return valid JSON only.',
-        { maxTokens: 7_000, temperature: .18, timeoutMs: AI_SYNTHESIS_TIMEOUT_MS, jsonMode: true },
+        { maxTokens: 7_000, contextSize: 16_384, temperature: .18, timeoutMs: AI_SYNTHESIS_TIMEOUT_MS, jsonMode: true },
       );
       generated = extractJson(response?.message);
     } catch (error) {

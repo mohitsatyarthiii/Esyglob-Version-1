@@ -93,10 +93,10 @@ export function buildConversationMemory({ messages = [], context = {}, language 
   const maxChars = Math.max(4_000, Number(process.env.AI_MEMORY_MAX_CHARS || 12_000));
   const importantPattern = /\b(remember|always|never|prefer|my company|our company|budget|currency|country|language|call me|instruction|requirement|must|do not)\b/i;
   const durable = messages
-    .slice(0, -20)
+    .slice(0, -16)
     .filter(item => item.role === 'user' && importantPattern.test(String(item.content || '')))
     .slice(-8);
-  const selected = [...durable, ...messages.slice(-20)].filter((item, index, all) => all.indexOf(item) === index);
+  const selected = [...durable, ...messages.slice(-16)].filter((item, index, all) => all.indexOf(item) === index);
   let used = 0;
   const recent = [];
   for (const item of selected.reverse()) {

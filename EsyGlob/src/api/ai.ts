@@ -240,6 +240,7 @@ export async function postAIChat(input: AIStreamInput) {
 export async function streamAIChat(
   input: AIStreamInput,
   onEvent: (event: Record<string, unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (typeof XMLHttpRequest === 'undefined') {
     const fallback = await postAIChat(input);
@@ -259,10 +260,14 @@ export async function streamAIChat(
     let buffer = '';
     let settled = false;
     let receivedDone = false;
+    const abort = () => xhr.abort();
+    if (signal?.aborted) return reject(new ApiError('AI request was cancelled.', 499));
+    signal?.addEventListener('abort', abort, { once: true });
 
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', abort);
       if (error) reject(error);
       else resolve();
     };

@@ -3,7 +3,9 @@ import test from 'node:test';
 import { analyzeRequest, buildConversationMemory } from '../src/lib/ai-intelligence-pipeline.js';
 import OllamaRuntimeService from '../src/services/ollama-runtime.service.js';
 import AIService from '../src/lib/ai-service.js';
-import { assertSafeAIOutput, sanitizeAIOutput } from '../src/lib/ai-output-sanitizer.js';
+import { assertSafeAIOutput, FinalAnswerStreamFilter, sanitizeAIOutput } from '../src/lib/ai-output-sanitizer.js';
+import AIIntentRouterService from '../src/services/ai-intent-router.service.js';
+import AISemanticCacheService from '../src/services/ai-semantic-cache.service.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -40,6 +42,26 @@ test('final-answer boundary removes tagged and plain-language internal reasoning
   const sectioned = sanitizeAIOutput('Analysis:\nWe need to determine the best response.\n\nFinal Answer:\nEsyGlob connects global buyers and suppliers.');
   assert.equal(sectioned.text, 'EsyGlob connects global buyers and suppliers.');
   assert.throws(() => assertSafeAIOutput('Looking at the context, I should answer the user.'), error => error.code === 'AI_OUTPUT_UNSAFE');
+});
+
+test('live filter handles split tags and discards only unsafe completed sentences', () => {
+  const filter = new FinalAnswerStreamFilter();
+  const chunks = ['<ana', 'lysis>private plan</analysis>The user asked for steel. ', 'Sure! Please share the grade.'];
+  const output = chunks.map(chunk => filter.process(chunk)).join('') + filter.finish();
+  assert.equal(output, ' Sure! Please share the grade.');
+
+  const failClosed = new FinalAnswerStreamFilter({ maxHiddenChars: 5 });
+  const quarantined = failClosed.process('<think>private plan that is too long') + failClosed.process(' and remains private');
+  assert.equal(quarantined, '');
+  assert.equal(failClosed.process('</ think >Safe answer.' ) + failClosed.finish(), 'Safe answer.');
+});
+
+test('intent router serves greetings and FAQs without inference', async () => {
+  assert.equal(AIIntentRouterService.route('Hi').handling, 'direct');
+  assert.equal(AIIntentRouterService.route('What is MOQ?').handling, 'direct');
+  await AISemanticCacheService.put('Explain international trade basics', 'Stable answer', 'stable_general');
+  assert.equal((await AISemanticCacheService.get('Explain international trade basics', 'stable_general'))?.response, 'Stable answer');
+  assert.equal(await AISemanticCacheService.get('Show my account orders', 'stable_general'), null);
 });
 
 test('runtime always requests qwen3:4b and never streams hidden reasoning', async () => {
