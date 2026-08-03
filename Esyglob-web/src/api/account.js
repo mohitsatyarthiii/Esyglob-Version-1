@@ -21,8 +21,8 @@ export async function searchAddressSuggestions(input, sessionToken, countryCodes
 export async function resolveAddressSuggestion(placeId, sessionToken) {
   return unwrapData(await apiRequest('/location/autocomplete/resolve', { query: { placeId, sessionToken }, cache: false })) || {}
 }
-export async function reverseAddressCoordinates(latitude, longitude) {
-  return unwrapData(await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude }, cache: false })) || {}
+export async function reverseAddressCoordinates(latitude, longitude, refresh = false) {
+  return unwrapData(await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude, refresh: refresh ? '1' : undefined }, cache: false })) || {}
 }
 
 export async function fetchWallet(role) { return unwrapData(await apiRequest('/wallet', { query: { role }, cache: false })) || {} }

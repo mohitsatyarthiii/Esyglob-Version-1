@@ -11,9 +11,14 @@ export function getDeviceCoordinates(options = {}) {
 
 export async function detectCurrentAddress({ persist = false } = {}) {
   const coordinates = await getDeviceCoordinates()
-  const result = await reverseAddressCoordinates(coordinates.latitude, coordinates.longitude)
-  const location = result.location
-  if (!location) throw new Error('No address was found for your current location.')
+  let location
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const result = await reverseAddressCoordinates(coordinates.latitude, coordinates.longitude, attempt > 0)
+    location = normalizeLocation(result.location, coordinates)
+    if (!getMissingAddressFields(location).length) break
+  }
+  const missing = getMissingAddressFields(location)
+  if (missing.length) throw new Error('We could not create a complete address for this location. Please try again or add the address manually.')
   if (persist) {
     await updateCurrentAddress({
       ...coordinates,
@@ -33,4 +38,24 @@ export async function detectCurrentAddress({ persist = false } = {}) {
     window.dispatchEvent(new CustomEvent('esyglob-address-change'))
   }
   return { ...location, ...coordinates }
+}
+
+export function getMissingAddressFields(value = {}) {
+  const missing = []
+  if (!Number.isFinite(Number(value.latitude)) || Number(value.latitude) < -90 || Number(value.latitude) > 90) missing.push('latitude')
+  if (!Number.isFinite(Number(value.longitude)) || Number(value.longitude) < -180 || Number(value.longitude) > 180) missing.push('longitude')
+  if (!/^[A-Z]{2}$/.test(String(value.countryCode || '').trim().toUpperCase())) missing.push('countryCode')
+  for (const field of ['country', 'state', 'city', 'formattedAddress']) {
+    if (!String(value[field] || '').trim()) missing.push(field)
+  }
+  return missing
+}
+
+function normalizeLocation(value = {}, coordinates = {}) {
+  return {
+    ...value,
+    ...coordinates,
+    formattedAddress: String(value.formattedAddress || value.formatted || value.line1 || '').trim(),
+    countryCode: String(value.countryCode || '').trim().toUpperCase(),
+  }
 }

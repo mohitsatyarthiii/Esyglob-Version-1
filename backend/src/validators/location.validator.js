@@ -17,22 +17,7 @@ export const updateLocationSchema = z.object({
     country: z.string().optional(),
     postalCode: z.string().optional(),
     district: z.string().optional(),
-    countryCode: z.string().optional(),
+    countryCode: z.string().trim().regex(/^[A-Za-z]{2}$/).toUpperCase().optional(),
     placeId: z.string().optional(),
   }).optional(),
-});
-
-export const reverseGeocodeSchema = z.object({
-  formatted: z.string().optional(),
-  formattedAddress: z.string().optional(),
-  line1: z.string().optional(),
-  street: z.string().optional(),
-  city: z.string().optional(),
-  state: z.string().optional(),
-  country: z.string().optional(),
-  postalCode: z.string().optional(),
-});
-
-export const toggleTrackingSchema = z.object({
-  isActive: z.boolean(),
 });

@@ -139,6 +139,7 @@ function OrderCheckoutScreen() {
   const { mode, productId, chatId, quotationId } = route.params as RouteParams;
   const [quantity, setQuantity] = useState(mode === 'sample' ? '1' : '100');
   const [country, setCountry] = useState('India');
+  const [countryCode, setCountryCode] = useState('IN');
   const [fullName, setFullName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
@@ -164,7 +165,7 @@ function OrderCheckoutScreen() {
     setSelectedAddressId(item._id ?? item.id);
     setFullName(item.fullName ?? ''); setPhone(item.phone ?? '');
     setAddress(item.line1 ?? item.street ?? item.address ?? ''); setLandmark(item.line2 ?? '');
-    setCity(item.city ?? ''); setState(item.state ?? ''); setCountry(item.country ?? 'India');
+    setCity(item.city ?? ''); setState(item.state ?? ''); setCountry(item.country ?? 'India'); setCountryCode(item.countryCode ?? '');
     setPostalCode(item.postalCode ?? item.pincode ?? ''); setAddressErrors({});
   };
 
@@ -181,13 +182,14 @@ function OrderCheckoutScreen() {
     if (!city.trim()) errors.city = 'City is required';
     if (!state.trim()) errors.state = 'State is required';
     if (!country.trim()) errors.country = 'Country is required';
+    if (!/^[A-Z]{2}$/.test(countryCode.trim().toUpperCase())) errors.country = 'Select a complete address with a valid country code';
     if (!/^[A-Za-z0-9 -]{4,10}$/.test(postalCode.trim())) errors.postalCode = 'Enter a valid postal code';
     setAddressErrors(errors); return Object.keys(errors).length === 0;
   };
 
   const saveAddress = async () => {
     if (!validateAddress()) return;
-    const input: AddressBookItem = { fullName, phone, line1: address, line2: landmark, street: address, city, state, country, postalCode, pincode: postalCode, isDefault: addresses.data?.length === 0 };
+    const input: AddressBookItem = { fullName, phone, line1: address, line2: landmark, street: address, city, state, country, countryCode: countryCode.trim().toUpperCase(), postalCode, pincode: postalCode, isDefault: addresses.data?.length === 0 };
     const saved = (editingAddressId ? await updateAddress(editingAddressId, input) : await createAddress(input)) as AddressBookItem;
     await queryClient.invalidateQueries({ queryKey: ['addresses'] });
     setEditingAddressId(undefined); setSelectedAddressId(saved._id ?? saved.id); setAddressPickerOpen(false);
@@ -391,6 +393,7 @@ function OrderCheckoutScreen() {
               setCity(location.city || '');
               setState(location.state || '');
               setCountry(location.country || '');
+              setCountryCode(String(location.countryCode || '').toUpperCase());
               setPostalCode(location.postalCode || '');
               setAddressErrors({});
             }}
@@ -413,7 +416,7 @@ function OrderCheckoutScreen() {
               <InlineError value={addressErrors.postalCode} />
             </View>
             <View style={styles.flex1}>
-              <ChoiceField label="Country *" value={country} options={['India', 'USA', 'UK', 'UAE', 'China', 'Singapore']} onChange={setCountry} />
+              <ChoiceField label="Country *" value={country} options={['India', 'United States', 'United Kingdom', 'United Arab Emirates', 'China', 'Singapore']} onChange={value => { setCountry(value); setCountryCode(({ India: 'IN', 'United States': 'US', 'United Kingdom': 'GB', 'United Arab Emirates': 'AE', China: 'CN', Singapore: 'SG' } as Record<string, string>)[value] || ''); }} />
               <InlineError value={addressErrors.country} />
             </View>
           </View>

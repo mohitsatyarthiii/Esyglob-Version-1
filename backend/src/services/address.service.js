@@ -33,7 +33,7 @@ class AddressService {
    */
   static async createAddress(userId, data) {
     // Validate
-    const parsed = createAddressSchema.parse(data);
+    const parsed = createAddressSchema.parse(normalizeAddressInput(data));
     parsed.addressLabel = normalizeAddressLabel(data.addressLabel || data.addressType);
     delete parsed.addressType;
 
@@ -61,7 +61,7 @@ class AddressService {
    */
   static async updateAddress(userId, addressId, data) {
     // Validate
-    const parsed = updateAddressSchema.parse(data);
+    const parsed = updateAddressSchema.parse(normalizeAddressInput(data));
     parsed.addressLabel = normalizeAddressLabel(data.addressLabel || data.addressType);
     delete parsed.addressType;
 
@@ -142,11 +142,22 @@ class AddressService {
   }
 
   static async upsertCurrentLocation(userId, data) {
-    const parsed = updateLocationSchema.parse(data);
+    const parsed = updateLocationSchema.parse(normalizeLocationInput(data));
     let geocoded = parsed.address || {};
-    if (!geocoded.city || !geocoded.country || !geocoded.formatted) {
-      const reverse = await AddressAutocompleteService.reverse({ latitude: parsed.latitude, longitude: parsed.longitude });
+    for (let attempt = 0; attempt < 2 && !isCompleteGeocodedAddress(geocoded); attempt += 1) {
+      const reverse = await AddressAutocompleteService.reverse({
+        latitude: parsed.latitude,
+        longitude: parsed.longitude,
+        refresh: attempt > 0,
+      });
       geocoded = { ...geocoded, ...(reverse.location || {}) };
+    }
+    geocoded = normalizeGeocodedAddress(geocoded);
+    if (!isCompleteGeocodedAddress(geocoded)) {
+      throw Object.assign(new Error('We could not create a complete address for this location. Please try again or add the address manually.'), {
+        statusCode: 422,
+        code: 'ADDRESS_GEOCODING_INCOMPLETE',
+      });
     }
     const [current, user] = await Promise.all([
       AddressRepository.findDefault(userId),
@@ -163,7 +174,7 @@ class AddressService {
       district: geocoded.district || current?.district || '',
       state: geocoded.state || current?.state || '',
       country: geocoded.country || current?.country,
-      countryCode: geocoded.countryCode || current?.countryCode,
+      countryCode: geocoded.countryCode,
       postalCode: geocoded.postalCode || current?.postalCode || '',
       placeId: geocoded.placeId || current?.placeId,
       landmark: current?.landmark || '',
@@ -186,4 +197,40 @@ function normalizeAddressLabel(value) {
   if (normalized === 'office' || normalized === 'billing') return 'Office';
   if (normalized === 'warehouse') return 'Warehouse';
   return 'Other';
+}
+
+function normalizeAddressInput(data = {}) {
+  return {
+    ...data,
+    countryCode: String(data.countryCode || '').trim().toUpperCase(),
+  };
+}
+
+function normalizeLocationInput(data = {}) {
+  const address = data.address ? { ...data.address } : undefined;
+  if (address) {
+    const countryCode = String(address.countryCode || '').trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(countryCode)) address.countryCode = countryCode;
+    else delete address.countryCode;
+  }
+  return { ...data, address };
+}
+
+function normalizeGeocodedAddress(value = {}) {
+  return {
+    ...value,
+    formatted: String(value.formatted || value.formattedAddress || '').trim(),
+    countryCode: String(value.countryCode || '').trim().toUpperCase(),
+  };
+}
+
+function isCompleteGeocodedAddress(value = {}) {
+  const normalized = normalizeGeocodedAddress(value);
+  return Boolean(
+    normalized.formatted
+    && String(normalized.city || '').trim()
+    && String(normalized.state || '').trim()
+    && String(normalized.country || '').trim()
+    && /^[A-Z]{2}$/.test(normalized.countryCode)
+  );
 }

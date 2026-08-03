@@ -128,7 +128,7 @@ class AddressAutocompleteService {
     const longitude = coordinate(query.longitude ?? query.lon, -180, 180, 'longitude');
     const language = normalizeLanguage(query.languageCode);
     const cacheKey = `reverse:${language}:${latitude.toFixed(5)}:${longitude.toFixed(5)}`;
-    const cached = cache.get(cacheKey);
+    const cached = query.refresh ? null : cache.get(cacheKey);
     if (cached) return cached;
     const { data } = await serviceClient('NOMINATIM_BASE_URL').get('/reverse', {
       params: {
@@ -146,7 +146,7 @@ class AddressAutocompleteService {
       attribution: '© OpenStreetMap contributors',
       location: normalizeNominatimPlace(data),
     };
-    cache.set(cacheKey, result);
+    if (isCompleteLocation(result.location)) cache.set(cacheKey, result);
     return result;
   }
 }
@@ -279,6 +279,16 @@ function normalizeOsmType(value) {
 
 function unique(values) {
   return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function isCompleteLocation(location) {
+  return Boolean(
+    location?.formattedAddress
+    && location?.city
+    && location?.state
+    && location?.country
+    && /^[A-Z]{2}$/.test(String(location?.countryCode || ''))
+  );
 }
 
 export {

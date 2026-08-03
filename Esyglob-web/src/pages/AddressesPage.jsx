@@ -32,9 +32,11 @@ export default function AddressesPage() {
   async function save(event) {
     event.preventDefault(); setBusy(true); setError('')
     try {
+      const countryCode = String(form.countryCode || '').trim().toUpperCase()
+      if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error('Select an address suggestion or enter a valid 2-letter ISO country code.')
       const id = resolveId(editing)
-      if (id) await updateAddress(id, form)
-      else await createAddress(form)
+      if (id) await updateAddress(id, { ...form, countryCode })
+      else await createAddress({ ...form, countryCode })
       window.dispatchEvent(new CustomEvent('esyglob-address-change'))
       setEditing(null)
       toast.success(id ? 'Address updated.' : 'Address saved.')
@@ -92,6 +94,7 @@ export default function AddressesPage() {
         <label>Address label<select value={form.addressLabel} onChange={event => setForm({ ...form, addressLabel: event.target.value })}>{['Home', 'Office', 'Warehouse', 'Other'].map(value => <option key={value}>{value}</option>)}</select></label>
         <Field label="Contact name" name="fullName" form={form} setForm={setForm} /><Field label="Company" name="companyName" form={form} setForm={setForm} optional />
         <Field label="Phone" name="phone" form={form} setForm={setForm} /><Field label="Country" name="country" form={form} setForm={setForm} />
+        <label>Country code<input value={form.countryCode} maxLength="2" autoCapitalize="characters" onChange={event => setForm({ ...form, countryCode: event.target.value.toUpperCase() })} placeholder="IN" required /></label>
         <Field label="State" name="state" form={form} setForm={setForm} /><Field label="City" name="city" form={form} setForm={setForm} />
         <Field label="District" name="district" form={form} setForm={setForm} optional />
         <Field label="Postal code" name="postalCode" form={form} setForm={setForm} /><Field label="Landmark" name="landmark" form={form} setForm={setForm} optional />

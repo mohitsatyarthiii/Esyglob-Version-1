@@ -64,6 +64,7 @@ const emptyAddress: AddressBookItem = {
   city: '',
   state: '',
   country: '',
+  countryCode: '',
   pincode: '',
   addressLabel: 'Other',
   isDefault: false,
@@ -79,7 +80,12 @@ function AddressesScreen() {
   const [showForm, setShowForm] = useState(false);
 
   const save = useMutation({
-    mutationFn: () => (editingId ? updateAddress(editingId, form) : createAddress(form)),
+    mutationFn: () => {
+      const countryCode = String(form.countryCode || '').trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error('Select an address suggestion or enter a valid 2-letter ISO country code.');
+      const payload = { ...form, countryCode };
+      return editingId ? updateAddress(editingId, payload) : createAddress(payload);
+    },
     onSuccess: async () => {
       setForm(emptyAddress);
       setEditingId(null);
@@ -350,6 +356,14 @@ function AddressForm({
               />
             </View>
           </View>
+          <FormField
+            label="Country Code"
+            icon="flag-outline"
+            value={form.countryCode}
+            onChangeText={countryCode => setForm({ ...form, countryCode: countryCode.toUpperCase().slice(0, 2) })}
+            autoCapitalize="characters"
+            placeholder="IN"
+          />
           <View style={styles.formRow}>
             <View style={styles.formHalf}>
               <FormField
@@ -415,6 +429,7 @@ function FormField({
   value,
   onChangeText,
   keyboardType,
+  autoCapitalize,
   placeholder,
 }: {
   label: string;
@@ -422,6 +437,7 @@ function FormField({
   value?: string;
   onChangeText: (v: string) => void;
   keyboardType?: 'default' | 'numeric' | 'phone-pad';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   placeholder?: string;
 }) {
   return (
@@ -433,6 +449,7 @@ function FormField({
           value={value ?? ''}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
           style={styles.formInput}
           placeholder={placeholder}
           placeholderTextColor={P.muted}

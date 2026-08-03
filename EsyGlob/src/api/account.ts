@@ -103,6 +103,9 @@ interface LocationAddress {
   state?: string;
   country?: string;
   postalCode?: string;
+  district?: string;
+  countryCode?: string;
+  placeId?: string;
 }
 
 interface LocationCoordinates {
@@ -274,8 +277,8 @@ export async function resolveAddressSuggestion(placeId: string, sessionToken: st
   return unwrapData<{ location?: StandardizedLocation }>(payload).location;
 }
 
-export async function reverseAddressCoordinates(latitude: number, longitude: number) {
-  const payload = await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude } });
+export async function reverseAddressCoordinates(latitude: number, longitude: number, refresh = false) {
+  const payload = await apiRequest('/location/autocomplete/reverse', { query: { latitude, longitude, refresh: refresh ? '1' : undefined } });
   return unwrapData<{ location?: StandardizedLocation }>(payload).location;
 }
 

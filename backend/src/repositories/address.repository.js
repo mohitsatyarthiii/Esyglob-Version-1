@@ -66,7 +66,7 @@ class AddressRepository {
     return Address.findOneAndUpdate(
       { _id: addressId, userId },
       { $set: withCoordinates(data) },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
   }
 
@@ -79,7 +79,7 @@ class AddressRepository {
     return Address.findOneAndUpdate(
       { _id: addressId, userId },
       { $set: withCoordinates(data) },
-      { new: true, runValidators: true, lean: true }
+      { returnDocument: 'after', runValidators: true, lean: true }
     );
   }
 
@@ -97,7 +97,7 @@ class AddressRepository {
     return Address.findOneAndUpdate(
       { _id: addressId, userId },
       { $set: { isDefault: true } },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
   }
 
@@ -152,24 +152,6 @@ class AddressRepository {
     return Address.create({ ...payload, userId });
   }
 
-  static async clearDefaultCoordinates(userId) {
-    return Address.findOneAndUpdate(
-      { userId, isDefault: true },
-      { $unset: { latitude: 1, longitude: 1, coordinates: 1, gpsAccuracy: 1, lastLocatedAt: 1 } },
-      { new: true, lean: true },
-    );
-  }
-
-  static async findNearby(coordinates, maxDistance = 5000, limit = 50) {
-    return Address.find({
-      coordinates: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [coordinates.longitude, coordinates.latitude] },
-          $maxDistance: maxDistance,
-        },
-      },
-    }).limit(limit).lean();
-  }
 }
 
 export default AddressRepository;
