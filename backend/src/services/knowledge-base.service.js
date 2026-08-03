@@ -11,6 +11,7 @@ import {
 import { getAIKnowledgeConnection, getAIKnowledgeDatabaseState } from '../config/knowledge-database.js';
 
 const retrievalCache = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false, maxKeys: 500 });
+const retrievalCacheStats = { hits: 0, misses: 0 };
 const ROLE_LABELS = {
   buyer: ['All Users', 'Buyers'],
   seller: ['All Users', 'Suppliers', 'Manufacturers', 'Sellers'],
@@ -213,7 +214,11 @@ export default class KnowledgeBaseService {
     const boundedLimit = Math.min(12, Math.max(1, Number(limit)));
     const cacheKey = JSON.stringify([queryTerms, facets, role, intent, language, boundedLimit]);
     const cached = retrievalCache.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+      retrievalCacheStats.hits += 1;
+      return cached;
+    }
+    retrievalCacheStats.misses += 1;
 
     const queryEmbeddingPromise = AIEmbeddingService.embed(searchQuery);
     const lexicalPromise = lexicalChunks(searchQuery, boundedLimit * 3);
@@ -224,10 +229,18 @@ export default class KnowledgeBaseService {
     ]);
 
     const chunkMap = new Map();
+    const contentMap = new Map();
     for (const chunk of [...semantic, ...lexical]) {
       const key = `${chunk.documentId}:${chunk.chunkIndex}`;
+      const contentKey = String(chunk.content || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 500);
       const previous = chunkMap.get(key);
-      if (!previous || Number(chunk.score || 0) > Number(previous.score || 0)) chunkMap.set(key, chunk);
+      const duplicate = contentKey ? contentMap.get(contentKey) : null;
+      if (duplicate && Number(duplicate.chunk.score || 0) >= Number(chunk.score || 0)) continue;
+      if (duplicate) chunkMap.delete(duplicate.key);
+      if (!previous || Number(chunk.score || 0) > Number(previous.score || 0)) {
+        chunkMap.set(key, chunk);
+        if (contentKey) contentMap.set(contentKey, { key, chunk });
+      }
     }
 
     const KnowledgeDocument = getKnowledgeDocumentModel();
@@ -276,7 +289,7 @@ export default class KnowledgeBaseService {
       return legacy;
     }
 
-    const ranked = documents
+    const rankedCandidates = documents
       .map(document => {
         const matchingChunks = chunkRows
           .filter(chunk => String(chunk.documentId) === String(document._id))
@@ -289,8 +302,14 @@ export default class KnowledgeBaseService {
           relevanceScore: scoreDocument(document, queryTerms, language, intent, chunkScore, facets),
         };
       })
-      .sort((a, b) => b.relevanceScore - a.relevanceScore || new Date(b.lastUpdated) - new Date(a.lastUpdated))
-      .slice(0, boundedLimit);
+      .sort((a, b) => b.relevanceScore - a.relevanceScore || new Date(b.lastUpdated) - new Date(a.lastUpdated));
+    const seenDocuments = new Set();
+    const ranked = rankedCandidates.filter(document => {
+      const fingerprint = `${String(document.title || '').toLowerCase().trim()}|${String(document.summary || document.overview || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 300)}`;
+      if (seenDocuments.has(fingerprint)) return false;
+      seenDocuments.add(fingerprint);
+      return true;
+    }).slice(0, boundedLimit);
 
     retrievalCache.set(cacheKey, ranked);
     return ranked;
@@ -309,6 +328,11 @@ export default class KnowledgeBaseService {
         doc.warnings?.length ? `Warnings:\n${doc.warnings.map(item => `- ${item}`).join('\n')}` : '',
       ].filter(Boolean).join('\n');
     }).join('\n\n').slice(0, Number(process.env.AI_KNOWLEDGE_CONTEXT_LIMIT || 6_000));
+  }
+
+  static cacheStatus() {
+    const total = retrievalCacheStats.hits + retrievalCacheStats.misses;
+    return { ...retrievalCacheStats, entries: retrievalCache.keys().length, hitRatio: total ? retrievalCacheStats.hits / total : 0 };
   }
 
   static list(input = {}) {

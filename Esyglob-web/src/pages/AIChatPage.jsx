@@ -159,7 +159,7 @@ export default function AIChatPage() {
     const sentAttachments = attachments
     const streamMessageId = `stream-${++streamSequence.current}`
     setDraft(''); setAttachments([]); setError(''); setFailed(''); setBusy(true)
-    setMessages((current) => [...current, { role: 'user', content, createdAt: new Date().toISOString(), metadata: { attachmentUrls: sentAttachments } }, { _id: streamMessageId, role: 'assistant', content: '', streaming: true, createdAt: new Date().toISOString() }])
+    setMessages((current) => [...current, { role: 'user', content, createdAt: new Date().toISOString(), metadata: { attachmentUrls: sentAttachments } }, { _id: streamMessageId, role: 'assistant', content: '', statusText: 'Preparing your answer...', streaming: true, createdAt: new Date().toISOString() }])
     const controller = new AbortController()
     streamRef.current = controller
     let streamError = ''
@@ -169,7 +169,8 @@ export default function AIChatPage() {
       let streamCompleted = false
       await streamAIMessage({ message: content, displayMessage: content, chatId: chatId || undefined, role, conversationType: 'assistant', forceAI: true, context: { feature: 'AI Chatbot', sourcePath: '/ai-chat', attachments: attachmentUrls }, pluginPayload: attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null }, (event) => {
         if (event.type === 'start') { nextChatId = event.chatId || nextChatId; return }
-        if (event.type === 'token') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${event.content || ''}` } : item)); return }
+        if (event.type === 'status') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: event.message || 'Preparing your answer...' } : item)); return }
+        if (event.type === 'token') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${event.content || ''}` } : item)); return }
         if (event.type === 'done') {
           streamCompleted = true
           const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
@@ -353,9 +354,10 @@ function AIMessage({ item, user, onPrompt, onRegenerate }) {
   const suppliers = Array.isArray(metadata.topSuppliers || marketplace.topSuppliers) ? metadata.topSuppliers || marketplace.topSuppliers : []
   const rawSuggestions = metadata.suggestions || metadata.suggestedFollowUps || marketplace.suggestedFollowUps || []
   const suggestions = (Array.isArray(rawSuggestions) ? rawSuggestions : []).map((value) => typeof value === 'string' ? value : value?.prompt || value?.label || value?.title).filter(Boolean)
+  const sources = (Array.isArray(metadata.sources) ? metadata.sources : []).filter((source) => source?.url && source?.title).slice(0, 3)
   const attachmentUrls = metadata.attachmentUrls || metadata.pluginPayload?.attachmentUrls || []
-  const content = String(item.content || item.message || (item.streaming ? 'Thinking...' : ''))
-  return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{onRegenerate && <button onClick={onRegenerate}><RefreshCw /> Regenerate</button>}</footer></div></article>
+  const content = String(item.content || item.message || (item.streaming ? item.statusText || 'Preparing your answer...' : ''))
+  return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{onRegenerate && <button onClick={onRegenerate}><RefreshCw /> Regenerate</button>}</footer></div></article>
 }
 
 function RichMessage({ content, streaming }) {
@@ -383,7 +385,7 @@ function RichMessage({ content, streaming }) {
     if (line.trim()) nodes.push(<p key={`paragraph-${index}`}>{inlineMarkdown(line)}</p>)
     index += 1
   }
-  return <div className={streaming && !content ? 'ai-rich-message ai-stream-placeholder' : 'ai-rich-message'}>{nodes.length ? nodes : <p>Thinking...</p>}{streaming && content !== 'Thinking...' && <span className="ai-stream-cursor" />}</div>
+  return <div className={streaming && !content ? 'ai-rich-message ai-stream-placeholder' : 'ai-rich-message'}>{nodes.length ? nodes : <p>Preparing your answer...</p>}{streaming && <span className="ai-stream-cursor" />}</div>
 }
 
 function inlineMarkdown(value) {

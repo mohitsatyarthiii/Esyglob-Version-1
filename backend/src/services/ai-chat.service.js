@@ -388,10 +388,13 @@ class AIChatService {
     // Build system prompt
     const systemPrompt = AIService.buildMarketplaceSystemPrompt(
       roleContext,
-      `${platformContext.text}${this.formatSupportContext(body.context)}`
+      `${platformContext.text}${this.formatSupportContext(body.context)}`,
+      platformContext.snapshot.intelligence,
     );
 
-    const aiResult = await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
+    let aiResult = platformContext.snapshot.intelligence?.route === 'greeting'
+      ? { success: true, message: 'Hello! 👋\nWelcome to EsyGlob. How can I help you today?', tokensUsed: 0, provider: 'marketplace', model: null, fallback: false }
+      : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-20), systemPrompt);
 
     const intelligence = platformContext.snapshot.intelligence || {};
     let finalResponse = String(aiResult.message || '').trim();

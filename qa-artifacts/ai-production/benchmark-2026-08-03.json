@@ -1,20 +1,27 @@
 {
   "model": "qwen3:4b",
-  "completed": false,
-  "error": {
-    "code": "AI_PROVIDER_UNAVAILABLE",
-    "message": "AI service unavailable: AI provider returned HTTP 403"
-  },
-  "coldResponseMs": null,
-  "warmAverageMs": null,
-  "averageMs": null,
-  "p95Ms": null,
-  "firstTokenAverageMs": null,
-  "processMemoryDeltaMb": 13,
-  "processCpuMs": 109,
+  "completed": true,
+  "coldResponseMs": 7049,
+  "warmAverageMs": 3210,
+  "averageMs": 3977,
+  "p95Ms": 7049,
+  "firstTokenAverageMs": 1109,
+  "warmFirstTokenAverageMs": 386,
+  "processMemoryDeltaMb": 15,
+  "processCpuMs": 484,
+  "samples": [
+    { "totalMs": 7049, "firstTokenMs": 4001, "tokens": 80 },
+    { "totalMs": 3730, "firstTokenMs": 615, "tokens": 80 },
+    { "totalMs": 2934, "firstTokenMs": 273, "tokens": 80 },
+    { "totalMs": 2952, "firstTokenMs": 314, "tokens": 80 },
+    { "totalMs": 3222, "firstTokenMs": 342, "tokens": 80 }
+  ],
   "runtime": {
     "keepAlive": "24h",
     "maxConcurrency": 2,
-    "maxQueue": 64
+    "maxQueue": 64,
+    "requests": 5,
+    "successes": 5,
+    "failures": 0
   }
 }

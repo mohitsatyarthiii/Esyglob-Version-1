@@ -65,7 +65,7 @@ Legacy text-model references were removed from source, tests, environment model 
 
 ## Validation results
 
-- Backend: 65/65 tests pass.
+- Backend: 66/66 tests pass.
 - Added tests: fixed model payload, no hidden-reasoning stream exposure, bounded queue concurrency, live-search routing, and 100+ message memory.
 - Node syntax checks pass for the runtime, chat controller/service, AI facade, and market insights.
 - Mobile subscription screen: 0 lint errors; 3 existing inline-style warnings.
@@ -75,8 +75,8 @@ Legacy text-model references were removed from source, tests, environment model 
 
 The benchmark runner records cold response time, warm average, overall average, p95, first-token average, token counts, process RSS delta, process CPU, and runtime queue metrics.
 
-The 2026-08-03 workspace attempt could not obtain inference samples because `https://ai.esyglob.in/api/chat` returned HTTP 403. Observed client-process diagnostics before termination were +13 MB RSS and 109 ms CPU. Cold/warm/p95 inference values are intentionally reported as unavailable rather than estimated. Run `npm run benchmark:ai` from the authorized production backend network after the AI VPS proxy permits the backend host.
+The first 2026-08-03 baseline attempt was rejected by the AI proxy with HTTP 403, so a valid pre-optimization inference baseline was unavailable. The final attempt succeeded for five streamed 80-token responses: cold total 7,049 ms, warm total average 3,210 ms, overall average 3,977 ms, p95 7,049 ms, and warm first-token average 386 ms (615, 273, 314, and 342 ms). Client-process RSS increased by 15 MB and CPU usage was 484 ms. The warm first-token result is within the requested 300–800 ms experience target; cold model startup remains the largest latency outlier.
 
 ## Remaining operational limitation
 
-The code path is production-ready and fully tested with a mocked Ollama NDJSON stream, but real end-to-end inference and concurrency latency cannot be certified until the AI VPS/proxy authorization causing HTTP 403 is corrected. No fabricated performance numbers are included.
+Cold model activation took 4,001 ms to first token despite the keep-alive policy. Production should retain startup warming and monitor for proxy or Ollama restarts that evict the model. Total response latency remains bounded by generation speed and requested output length. End-to-end authenticated database timing should be monitored from the SSE timing payload in production because the standalone benchmark intentionally isolates Ollama inference.

@@ -188,7 +188,7 @@ static async downloadResearchPdf(req, res) {
     } catch (error) {
       console.error('[Market-Research-Stream] Error:', error);
       await refundUsage(req.user, 'marketInsights', 1, { ai: true }).catch(() => undefined);
-      send({ type: 'error', message: error.message || 'Research failed', status: error.statusCode || 500 });
+      send({ type: 'error', message: 'The market analysis could not be completed. Please retry in a moment.', status: error.statusCode || 500 });
     } finally {
       clearInterval(heartbeat);
       if (!res.writableEnded) res.end();

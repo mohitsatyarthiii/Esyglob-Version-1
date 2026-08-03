@@ -120,7 +120,7 @@ async function readStream(response, onToken) {
 class OllamaRuntimeService {
   static model = MODEL;
 
-  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.35, maxTokens = 520, jsonMode = false } = {}) {
+  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.3, topP = 0.85, repeatPenalty = 1.08, maxTokens = 520, jsonMode = false } = {}) {
     const queuedAt = Date.now();
     return enqueue(async () => {
       counters.requests += 1;
@@ -134,7 +134,13 @@ class OllamaRuntimeService {
             body: JSON.stringify({
               model: MODEL, messages, stream, think: false, keep_alive: KEEP_ALIVE,
               ...(jsonMode ? { format: 'json' } : {}),
-              options: { temperature, top_p: 0.9, num_predict: maxTokens },
+              options: {
+                temperature,
+                top_p: topP,
+                repeat_penalty: repeatPenalty,
+                num_ctx: Math.max(2_048, Number(process.env.OLLAMA_CONTEXT_SIZE || 8_192)),
+                num_predict: maxTokens,
+              },
             }),
           });
           if (!response.ok) throw runtimeError(`AI provider returned HTTP ${response.status}`, response.status >= 500 ? 503 : response.status);

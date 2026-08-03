@@ -551,7 +551,7 @@ export default class MarketResearchService {
     const fallback = fallbackAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, knowledge: knowledgeDocuments, global, marketplace });
     let generated;
     try {
-      this.step(emit, startedAt, 'AI Analyst', 'Reasoning across the evidence and planning the report', 48, 'running', sourceCount);
+      this.step(emit, startedAt, 'AI Analyst', 'Synthesizing verified evidence into the report', 48, 'running', sourceCount);
       const response = await AIChatService.callOllama(
         promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace }),
         [],

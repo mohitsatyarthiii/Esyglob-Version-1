@@ -4,6 +4,7 @@ import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
 import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import OllamaRuntimeService from '../services/ollama-runtime.service.js';
+import KnowledgeBaseService from '../services/knowledge-base.service.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
@@ -48,7 +49,12 @@ class AIChatController {
       if (error.statusCode === 404) {
         return res.status(404).json({ error: error.message });
       }
-      return res.status(500).json({ error: 'Failed to process chat', details: error.message });
+      return res.status(error.statusCode === 503 ? 503 : 500).json({
+        error: error.statusCode === 503
+          ? 'EsyGlob AI is temporarily unavailable. Please retry in a moment.'
+          : 'The AI response could not be completed. Please retry.',
+        code: error.code || 'AI_REQUEST_FAILED',
+      });
     }
   }
 
@@ -153,6 +159,12 @@ class AIChatController {
 
       sendSSE({ type: 'start', chatId: String(chat._id) });
       sendSSE({ type: 'typing' });
+      const statusMessage = /market insight|market research|industry analysis|country report|price trend/i.test(message)
+        ? 'Preparing market analysis...'
+        : AIChatService.needsMarketplaceContext(message)
+          ? 'Searching marketplace...'
+          : 'Preparing your answer...';
+      let loadingTimer = setTimeout(() => sendSSE({ type: 'status', message: statusMessage }), 500);
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) res.write(': keep-alive\n\n');
       }, 10_000);
@@ -172,7 +184,8 @@ class AIChatController {
         const promptStartedAt = Date.now();
         const systemPrompt = AIService.buildMarketplaceSystemPrompt(
           roleContext,
-          `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`
+          `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`,
+          platformContext.snapshot.intelligence,
         );
         const promptConstructionMs = Date.now() - promptStartedAt;
         const smartResponse = AIChatService.resolveSmartResponse({
@@ -182,7 +195,7 @@ class AIChatController {
           forceAI: Boolean(body.forceAI),
         });
 
-        const fastDirectRoute = ['greeting', 'general_knowledge'].includes(platformContext.snapshot.intelligence?.route);
+        const fastDirectRoute = platformContext.snapshot.intelligence?.route === 'general_knowledge';
         const isSimpleGreeting = platformContext.snapshot.intelligence?.route === 'greeting';
 
         let assistantText = '';
@@ -195,7 +208,7 @@ class AIChatController {
         const providerStartedAt = Date.now();
 
         // Try AI if not simple greeting
-        if (fastDirectRoute || (!isSimpleGreeting && smartResponse.shouldUseAI !== false)) {
+        if (!isSimpleGreeting && (fastDirectRoute || smartResponse.shouldUseAI !== false)) {
           try {
             const result = await OllamaRuntimeService.complete({
               messages: [
@@ -212,6 +225,7 @@ class AIChatController {
               temperature: 0.35,
               maxTokens: CHAT_MAX_TOKENS,
               onToken(token) {
+                if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
                 if (!firstTokenAt) firstTokenAt = Date.now();
                 assistantText += token;
                 draftWasStreamed = true;
@@ -237,7 +251,7 @@ class AIChatController {
             activeProvider = smartResponse.source || 'smart_intelligence';
             activeModel = null;
           } else if (isSimpleGreeting) {
-            fallbackText = 'Hello! How can I help you with your B2B sourcing needs today?';
+            fallbackText = 'Hello! 👋\nWelcome to EsyGlob. How can I help you today?';
             activeProvider = 'smart_intelligence';
             activeModel = null;
           } else {
@@ -305,6 +319,7 @@ class AIChatController {
 
         // Only the validated/repaired final response is streamed to the client.
         if (!draftWasStreamed) {
+          if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
           for (const word of cleanText.match(/\S+\s*|\n+/g) || []) {
             if (!firstTokenAt) firstTokenAt = Date.now();
             sendSSE({ type: 'token', content: word });
@@ -317,6 +332,11 @@ class AIChatController {
           snapshot: platformContext.snapshot,
         });
         const publicMarketplace = AIChatService.publicMarketplaceSnapshot(platformContext.snapshot);
+        const citedSources = (platformContext.snapshot.liveSources || []).slice(0, 3).map(source => ({
+          title: source.title,
+          url: source.url,
+          publishedDate: source.publishedDate || null,
+        }));
 
         // ── SINGLE database write ────────────────────────────────────────
         const persistenceStartedAt = Date.now();
@@ -342,6 +362,7 @@ class AIChatController {
               card: body.responseCard || undefined,
               marketplace: publicMarketplace,
               suggestedFollowUps,
+              sources: citedSources,
               validation: {
                 passed: validation.passed,
                 regenerated,
@@ -373,6 +394,7 @@ class AIChatController {
           tokensUsed,
           marketplace: publicMarketplace,
           suggestedFollowUps,
+          sources: citedSources,
           validation: {
             passed: validation.passed,
             regenerated,
@@ -391,8 +413,9 @@ class AIChatController {
         });
       } catch (error) {
         console.error('[Stream] Error:', error);
-        sendSSE({ type: 'error', message: 'An error occurred during streaming' });
+        sendSSE({ type: 'error', message: 'EsyGlob AI could not complete the response. Please retry in a moment.' });
       } finally {
+        if (loadingTimer) clearTimeout(loadingTimer);
         clearInterval(heartbeat);
         res.end();
       }
@@ -412,9 +435,11 @@ class AIChatController {
     const { status: statusOnly } = req.query;
 
     if (statusOnly === 'true') {
+      const health = await AIService.healthCheck();
       return res.json({
         status: 'operational',
         providers: { ollama: OllamaRuntimeService.status() },
+        cache: { responses: health.responseCache, knowledge: KnowledgeBaseService.cacheStatus() },
       });
     }
 

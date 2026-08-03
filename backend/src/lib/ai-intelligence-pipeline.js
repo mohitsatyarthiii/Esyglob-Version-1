@@ -31,7 +31,7 @@ export function analyzeRequest({ message, role = 'general', previousLanguage = '
   const language = detectLanguage(message, previousLanguage);
   const requiresPrivateData = PRIVATE.test(message);
   const greeting = /^(hi|hello|hey|namaste|hola|bonjour|thanks|thank you|shukriya|धन्यवाद|नमस्ते)[\s.!?]*$/iu.test(message);
-  const liveInformation = /\b(current|today|latest|right now|live|recent|new|breaking|202[5-9])\b.*\b(duty|tariff|rate|regulation|policy|news|price|statistics|score|weather|launch|government|company|geopolitic|exchange)|\b(news|stock|share price|cricket|sports score|weather|exchange rate|product launch|government policy|regulation|tariff|geopolitic)\b.*\b(current|today|latest|live|recent|now)\b/i.test(message);
+  const liveInformation = /\b202[4-9]\b/.test(message) || /\b(current|today|latest|right now|live|recent|new|breaking)\b.*\b(duty|tariff|rate|regulation|policy|news|price|statistics|score|weather|launch|government|company|geopolitic|exchange)|\b(news|stock|share price|cricket|sports score|weather|exchange rate|product launch|government policy|regulation|tariff|geopolitic)\b.*\b(current|today|latest|live|recent|now)\b/i.test(message);
   const platformIntent = ['rfq', 'quotation', 'order', 'shipping', 'trade_assurance', 'payment', 'membership', 'policy', 'platform_help', 'hs_code', 'market_research'].includes(intent);
   const hasMarketplaceDiscovery = /\b(find|show|search|compare|source|recommend)\b/i.test(message)
     && /\b(suppliers?|manufacturers?|factories|factory|products?|prices?|moq)\b/i.test(message);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { analyzeRequest, buildConversationMemory } from '../src/lib/ai-intelligence-pipeline.js';
 import OllamaRuntimeService from '../src/services/ollama-runtime.service.js';
+import AIService from '../src/lib/ai-service.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -17,7 +18,17 @@ test('100+ message conversations retain durable instructions and recent context 
 
 test('live search is reserved for explicitly current information', () => {
   assert.equal(analyzeRequest({ message: 'What is the latest cricket score today?' }).route, 'live_information');
+  assert.equal(analyzeRequest({ message: 'What regulations changed in 2024?' }).route, 'live_information');
   assert.notEqual(analyzeRequest({ message: 'Explain how cricket scoring works' }).route, 'live_information');
+});
+
+test('prompt modules inject only the instructions required by the request route', () => {
+  const general = AIService.buildMarketplaceSystemPrompt('buyer', '', { route: 'general_knowledge' });
+  const insights = AIService.buildMarketplaceSystemPrompt('buyer', 'verified evidence', { intent: 'market_research' });
+  assert.match(general, /stable facts through 2023/);
+  assert.doesNotMatch(general, /enterprise market-intelligence analyst/);
+  assert.match(insights, /enterprise market-intelligence analyst/);
+  assert.match(insights, /verified evidence/);
 });
 
 test('runtime always requests qwen3:4b and never streams hidden reasoning', async () => {
@@ -36,6 +47,8 @@ test('runtime always requests qwen3:4b and never streams hidden reasoning', asyn
     const result = await OllamaRuntimeService.complete({ messages: [{ role: 'user', content: 'test' }], stream: true, onToken: token => { streamed += token; } });
     assert.equal(payload.model, 'qwen3:4b');
     assert.equal(payload.think, false);
+    assert.equal(payload.options.repeat_penalty, 1.08);
+    assert.equal(payload.options.num_ctx, 8192);
     assert.equal(result.content, 'Final answer');
     assert.equal(streamed, 'Final answer');
   } finally {

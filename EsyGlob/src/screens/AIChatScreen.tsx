@@ -6,6 +6,7 @@ import {
   Dimensions,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -45,7 +46,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.82;
 
 type PluginMode = 'create-rfq' | 'send-quotation' | 'ai-support' | null;
-type LocalMessage = AIMessage & { localId?: string; streaming?: boolean };
+type LocalMessage = AIMessage & { localId?: string; streaming?: boolean; statusText?: string };
 
 function AIChatScreen() {
   const navigation = useNavigation<any>();
@@ -137,7 +138,7 @@ function AIChatScreen() {
         metadata: attachmentUrls.length ? { attachmentUrls } : undefined,
       };
       const assistantId = `a-${Date.now()}`;
-      setMessages(current => [...current, userMessage, { localId: assistantId, role: 'assistant', content: '', streaming: true }]);
+      setMessages(current => [...current, userMessage, { localId: assistantId, role: 'assistant', content: '', statusText: 'Preparing your answer...', streaming: true }]);
       setInput('');
       let nextChatId = chatId;
       let tokenBuffer = '';
@@ -149,7 +150,7 @@ function AIChatScreen() {
         flushTimer = null;
         if (!chunk) return;
         setMessages(current => current.map(item =>
-          item.localId === assistantId ? { ...item, content: `${item.content ?? ''}${chunk}` } : item
+          item.localId === assistantId ? { ...item, statusText: '', content: `${item.content ?? ''}${chunk}` } : item
         ));
       };
 
@@ -173,6 +174,11 @@ function AIChatScreen() {
           tokenBuffer += String(event.content ?? '');
           if (!flushTimer) flushTimer = setTimeout(flushTokens, 40);
         }
+        if (event.type === 'status') {
+          setMessages(current => current.map(item =>
+            item.localId === assistantId ? { ...item, statusText: String(event.message ?? 'Preparing your answer...') } : item
+          ));
+        }
         if (event.type === 'done') {
           if (flushTimer) clearTimeout(flushTimer);
           flushTimer = null;
@@ -188,7 +194,7 @@ function AIChatScreen() {
               ...item,
               content: `${item.content ?? ''}${finalChunk}`,
               streaming: false,
-              metadata: { ...(item.metadata ?? {}), marketplace: event.marketplace, suggestedFollowUps: event.suggestedFollowUps, provider: event.provider, model: event.model },
+              metadata: { ...(item.metadata ?? {}), marketplace: event.marketplace, suggestedFollowUps: event.suggestedFollowUps, sources: event.sources, provider: event.provider, model: event.model },
             } : item
           ));
         }
@@ -547,13 +553,16 @@ function Bubble({ item, onRegenerate, onSuggested }: { item: LocalMessage; onReg
   const mine = item.role === 'user';
   const text = item.content ?? item.message ?? '';
   const followUps = Array.isArray(item.metadata?.suggestedFollowUps) ? item.metadata.suggestedFollowUps.map(String).slice(0, 3) : [];
+  const sources = Array.isArray(item.metadata?.sources)
+    ? item.metadata.sources.filter((source: any) => source?.url && source?.title).slice(0, 3)
+    : [];
 
   return (
     <View style={[styles.bubble, mine ? styles.bubbleUser : styles.bubbleAI]}>
       <Text selectable style={[styles.bubbleText, mine ? styles.textUser : styles.textAI]}>
-        {text || (item.streaming ? '...' : '')}
+        {text}
       </Text>
-      {item.streaming && <CompactAIStatus />}
+      {item.streaming && !text && <CompactAIStatus steps={[item.statusText || 'Preparing your answer...']} />}
       {!mine && !item.streaming && text && (
         <View style={styles.actions}>
           <TouchableOpacity onPress={() => Share.share({ message: text })} style={styles.actBtn}>
@@ -572,6 +581,16 @@ function Bubble({ item, onRegenerate, onSuggested }: { item: LocalMessage; onReg
             <TouchableOpacity key={i} onPress={() => onSuggested(p)} style={styles.followChip}>
               <Text style={styles.followText}>{p}</Text>
               <Icon name="arrow-up-right" size={9} color="#3b82f6" />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      {!mine && sources.length > 0 && (
+        <View style={styles.followWrap}>
+          {sources.map((source: any, index: number) => (
+            <TouchableOpacity key={String(source.url)} onPress={() => Linking.openURL(String(source.url))} style={styles.followChip}>
+              <Text style={styles.followText}>Source {index + 1}: {String(source.title)}</Text>
+              <Icon name="open-in-new" size={9} color="#3b82f6" />
             </TouchableOpacity>
           ))}
         </View>
