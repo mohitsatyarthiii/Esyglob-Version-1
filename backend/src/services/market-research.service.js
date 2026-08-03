@@ -10,7 +10,7 @@ import { buildMarketInsightHtml } from '../lib/market-insight-html.js';
 import TradeIntentService from './trade-intent.service.js';
 import TradeKnowledgeService from './trade-knowledge.service.js';
 import { config } from '../config/env.js';
-import MarketInsightReportV2Service, { MARKET_INSIGHT_REPORT_VERSION } from './market-insight-report-v2.service.js';
+import MarketInsightReportV3Service, { MARKET_INSIGHT_REPORT_VERSION } from './market-insight-report-v3.service.js';
 
 const cache = new Map();
 const inFlight = new Map();
@@ -508,12 +508,12 @@ Return only valid JSON:
 export default class MarketResearchService {
   static architectureStatus() {
     return {
-      mode: config.marketInsightsRagEnabled ? 'structured-v2-with-evidence' : 'structured-v2-direct',
+      mode: config.marketInsightsRagEnabled ? 'executive-v3-with-evidence' : 'executive-v3-direct',
       ragEnabled: config.marketInsightsRagEnabled,
       product: 'market-insights',
       workflow: 'independent-from-chatbot',
-      schema: 'market-insight-v2',
-      pdfPipeline: 'backend-presentation-v2',
+      schema: 'market-insight-v3',
+      pdfPipeline: 'backend-presentation-v3',
     };
   }
 
@@ -541,7 +541,7 @@ export default class MarketResearchService {
     }
   }
 
-  static async execute({ userId, session = {}, query, productName = '', country = '', category = '', mode = 'product_rd', force = false, structuredIntent }, emit = () => {}) {
+  static async execute({ userId, session = {}, query, productName = '', country = '', company = '', category = '', mode = 'product_rd', force = false, structuredIntent }, emit = () => {}) {
     const startedAt = Date.now();
     const researchQuery = clean(query || [productName, category, country].filter(Boolean).join(' '));
     if (researchQuery.length < 3) throw Object.assign(new Error('Please provide a detailed research query'), { statusCode: 400 });
@@ -605,10 +605,11 @@ export default class MarketResearchService {
     let reportRuntime = {};
     try {
       this.step(emit, startedAt, 'Market Intelligence Analyst', 'Preparing the commissioned executive analysis', 48, 'running', sourceCount);
-      const generated = await MarketInsightReportV2Service.generate({
+      const generated = await MarketInsightReportV3Service.generate({
         query: researchQuery,
         productName: researchProduct,
         country: researchCountry,
+        company,
         intent: intelligence.intent,
         evidence: ragEnabled ? {
           knowledge,
@@ -619,7 +620,7 @@ export default class MarketResearchService {
       analysis = generated.report;
       reportRuntime = generated.runtime;
     } catch (error) {
-      console.error('[Market Insights] Structured v2 report generation failed:', error.message);
+      console.error('[Market Insights] Executive v3 report generation failed:', error.message);
       throw Object.assign(new Error('The commissioned market intelligence report could not be completed. Please retry.'), { cause: error, statusCode: error.statusCode || 503, code: error.code || 'MARKET_INSIGHT_GENERATION_FAILED' });
     }
     const verifiedEvidenceSections = ragEnabled ? evidenceSections(global, researchProduct, researchCountry) : [];
@@ -671,7 +672,7 @@ export default class MarketResearchService {
       country: researchCountry,
       category,
       reportVersion: REPORT_VERSION,
-      dataVersion: ragEnabled ? tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned' : 'gemma3-direct-v1',
+      dataVersion: ragEnabled ? tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned' : 'executive-v3-direct',
       structuredIntent,
       sections: analysis.sections,
       keyMetrics: [...asArray(analysis.keyMetrics), ...(ragEnabled ? [
@@ -686,8 +687,8 @@ export default class MarketResearchService {
       recommendations: asArray(analysis.recommendations),
       risks: asArray(analysis.risks),
       methodology: ragEnabled
-        ? 'Independent Market Insights v2 workflow: scope normalization, configured evidence collection, source ranking, structured analyst synthesis, comparative scoring, cross-validation and backend document composition.'
-        : 'Independent Market Insights v2 workflow: scope normalization, structured qualitative trade analysis, comparative scoring, commercial framework construction and backend document composition. Current figures require authoritative validation.',
+        ? 'Independent Market Insights v3 workflow: scope normalization, configured evidence collection, concise analyst synthesis, comparative scoring, cross-validation and backend executive document composition.'
+        : 'Independent Market Insights v3 workflow: scope normalization, concise qualitative trade analysis, comparative scoring and backend executive document composition. Current figures require authoritative validation.',
       references: [...asArray(analysis.references), ...sources],
       sources: [...asArray(analysis.references), ...sources],
       dataGaps: asArray(global.gaps),
@@ -714,6 +715,7 @@ export default class MarketResearchService {
       title: report.title,
       productName: researchProduct,
       country: researchCountry,
+      company,
       query: researchQuery,
       queryHash,
       reportVersion: REPORT_VERSION,

@@ -10,7 +10,7 @@ import AIChatService from '../src/services/ai-chat.service.js';
 import KnowledgeBaseService from '../src/services/knowledge-base.service.js';
 import EsyGlobAIGuideService from '../src/services/esyglob-ai-guide.service.js';
 import MarketResearchService from '../src/services/market-research.service.js';
-import MarketInsightReportV2Service, { buildMarketInsightV2Prompt, MARKET_INSIGHT_SECTION_TITLES, normalizeMarketInsightV2 } from '../src/services/market-insight-report-v2.service.js';
+import MarketInsightReportV3Service, { buildMarketInsightV3Prompt, MARKET_INSIGHT_V3_SECTIONS, normalizeMarketInsightV3 } from '../src/services/market-insight-report-v3.service.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -55,63 +55,67 @@ test('Gemma-first chat skips document RAG and loads the maintained guide only fo
     assert.match(policy.text, /EsyGlob platform guide:/);
     assert.match(policy.text, /Payments, refunds, and disputes/);
     assert.ok(EsyGlobAIGuideService.status().characters > 1_000);
-    assert.equal(MarketResearchService.architectureStatus().mode, 'structured-v2-direct');
+    assert.equal(MarketResearchService.architectureStatus().mode, 'executive-v3-direct');
     assert.equal(MarketResearchService.architectureStatus().workflow, 'independent-from-chatbot');
   } finally {
     KnowledgeBaseService.retrieve = originalRetrieve;
   }
 });
 
-test('Market Insights v2 has an independent analyst contract and complete structured schema', () => {
-  const prompt = buildMarketInsightV2Prompt({ query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India', intent: 'market_research' });
-  for (const section of MARKET_INSIGHT_SECTION_TITLES) {
-    assert.match(prompt, new RegExp(section, 'i'));
-  }
+test('Market Insights v3 has an independent, concise executive analyst contract', () => {
+  const prompt = buildMarketInsightV3Prompt({ query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India', intent: 'market_research' });
   assert.match(prompt, /Senior International Trade Market Intelligence Analyst/);
-  assert.match(prompt, /estimated comparative indices/);
-  assert.match(prompt, /Return only the final structured report/);
-  assert.equal(MarketResearchService.architectureStatus().pdfPipeline, 'backend-presentation-v2');
+  assert.match(prompt, /fit a premium 3-5 page executive PDF/);
+  assert.match(prompt, /Optimize for decision value, not length/);
+  assert.equal(MarketResearchService.architectureStatus().pdfPipeline, 'backend-presentation-v3');
 });
 
-test('Market Insights v2 normalizer creates all sections and backend-owned decision artifacts', () => {
-  const report = normalizeMarketInsightV2({
+test('Market Insights v3 normalizer creates five executive sections and bounded artifacts', () => {
+  const report = normalizeMarketInsightV3({
     title: 'Valve Market Intelligence',
-    sections: [{ title: 'Market Overview', paragraphs: ['A focused commercial overview.'] }],
-    indices: [{ label: 'Demand', score: 78, rationale: 'Industrial replacement demand.' }],
+    executiveSummary: 'Demand is attractive but qualification and channel execution determine commercial success.',
+    recommendedAction: 'Run a focused buyer and distributor validation sprint.', confidenceScore: 74, opportunityScore: 78,
+    snapshot: { demandLevel: 80, supplyAvailability: 70, competitionLevel: 75, regulatoryComplexity: 60 },
+    keyInsights: [{ topic: 'Demand', finding: 'Replacement demand is resilient.', businessImplication: 'Target maintenance-intensive industries.' }],
     rankings: { producers: [{ country: 'China', score: 82, rationale: 'Manufacturing scale.' }], importers: [], exporters: [] },
-    risks: [{ risk: 'Input volatility', likelihood: 'High', impact: 'Medium', score: 72, mitigation: 'Use indexed contracts.' }],
-    swot: { strengths: ['Installed supplier base'], weaknesses: ['Qualification cycle'], opportunities: ['Aftermarket'], threats: ['Price pressure'] },
-    requirements: { import: ['Confirm classification'], export: ['Origin documentation'], certifications: ['Destination standard'], hsCodes: [{ code: '8481', description: 'Valve family', validation: 'Confirm at tariff-line depth' }] },
+    opportunities: [{ title: 'Aftermarket', detail: 'Recurring replacement demand.', score: 80 }],
+    risks: [{ title: 'Qualification delay', detail: 'Approvals slow entry.', severity: 'High', score: 72, mitigation: 'Start testing early.' }],
+    recommendations: [{ action: 'Qualify a distributor', rationale: 'Accelerates buyer access.', priority: 'Immediate', timeline: '30 days' }],
+    certifications: [{ requirement: 'Destination standard', purpose: 'Market access', status: 'Verify' }],
+    tradeRoutes: [{ route: 'Shanghai–Nhava Sheva', mode: 'Sea', advantage: 'Scale', constraint: 'Lead time' }],
+    conclusion: 'Proceed through a controlled commercial pilot.',
   }, { query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India' });
-  assert.equal(report.schemaVersion, 'market-insight-v2');
-  assert.deepEqual(report.sections.map(section => section.title), MARKET_INSIGHT_SECTION_TITLES);
-  assert.ok(report.sections.find(section => section.title === 'Risk Assessment').tables.length);
-  assert.ok(report.sections.find(section => section.title === 'SWOT Analysis').tables.length);
-  assert.ok(report.sections.find(section => section.title === 'Recommended HS Codes').tables.length);
+  assert.equal(report.schemaVersion, 'market-insight-v3');
+  assert.deepEqual(report.sections.map(section => section.title), MARKET_INSIGHT_V3_SECTIONS);
+  assert.ok(report.charts.length <= 4);
+  assert.equal(report.opportunityScore, 78);
+  assert.ok(report.sections.find(section => section.title === 'Strategic Recommendations').tables.length);
 });
 
-test('Market Insights v2 runs bounded sequential segments without chatbot prompts', async () => {
+test('Market Insights v3 runs one bounded inference without chatbot prompts', async () => {
   const originalComplete = OllamaRuntimeService.complete;
   const calls = [];
   OllamaRuntimeService.complete = async options => {
     calls.push(options);
-    const required = options.messages[1].content.match(/Required sections for this segment, exactly once: (.+)\n/)?.[1].split(' | ') || [];
-    const sections = required.map(title => ({ title, paragraphs: [`Commercial analysis for ${title}.`], insights: ['Validate the decision inputs.'] }));
     return {
       message: JSON.stringify({
-        title: 'Structured report', subtitle: 'Independent analysis', executiveSummary: 'Executive assessment.',
-        sections: calls.length === 4 ? Object.fromEntries(sections.map(section => [section.title, { paragraphs: section.paragraphs, insights: section.insights }])) : sections,
+        title: 'Structured report', subtitle: 'Independent analysis', executiveSummary: 'Executive assessment.', recommendedAction: 'Proceed with a pilot.',
+        confidenceScore: 70, opportunityScore: 75, snapshot: {},
+        keyInsights: Array.from({ length: 4 }, (_, index) => ({ topic: `Insight ${index}`, finding: 'Commercial finding.', businessImplication: 'Decision impact.' })), rankings: {},
+        opportunities: Array.from({ length: 3 }, (_, index) => ({ title: `Opportunity ${index}`, detail: 'Commercial value.', score: 70 })),
+        risks: Array.from({ length: 3 }, (_, index) => ({ title: `Risk ${index}`, detail: 'Commercial exposure.', severity: 'Medium', score: 60 })),
+        recommendations: Array.from({ length: 3 }, (_, index) => ({ action: `Action ${index}`, rationale: 'Decision rationale.', priority: 'High', timeline: '30 days' })), conclusion: 'Validate then scale.',
       }),
       tokensUsed: 100,
       outputSanitized: false,
     };
   };
   try {
-    const result = await MarketInsightReportV2Service.generate({ query: 'Valves in India', productName: 'Valves', country: 'India', intent: 'market_research' });
-    assert.equal(calls.length, 8);
-    assert.equal(result.report.sections.length, MARKET_INSIGHT_SECTION_TITLES.length);
-    assert.equal(result.runtime.segments, 8);
-    assert.equal(result.runtime.tokensUsed, 800);
+    const result = await MarketInsightReportV3Service.generate({ query: 'Valves in India', productName: 'Valves', country: 'India', intent: 'market_research' });
+    assert.equal(calls.length, 1);
+    assert.equal(result.report.sections.length, 5);
+    assert.equal(result.runtime.segments, 1);
+    assert.equal(result.runtime.tokensUsed, 100);
     assert.ok(calls.every(call => call.contextSize === 4096 && call.retry === false));
     assert.ok(calls.every(call => !/customer support|chatbot/i.test(call.messages.map(item => item.content).join(' '))));
   } finally {

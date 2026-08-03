@@ -1,3 +1,5 @@
+import { buildMarketInsightV3Html } from './market-insight-v3-html.js';
+
 const escapeHtml = value => String(value ?? '')
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
@@ -79,6 +81,7 @@ function section(value, index) {
 }
 
 export function buildMarketInsightHtml(report, metadata = {}) {
+  if (report?.schemaVersion === 'market-insight-v3') return buildMarketInsightV3Html(report, metadata);
   const sections = asArray(report.sections).filter(item => clean(item?.title));
   const references = asArray(report.references || report.sources);
   const generatedAt = new Date(report.generatedAt || metadata.generatedAt || Date.now());
