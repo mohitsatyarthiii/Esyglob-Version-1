@@ -25,6 +25,16 @@ AI chat requests follow this path:
 
 The rewritten query is stored as diagnostic conversation context but is never returned as user-facing copy.
 
+## Market Insights v2
+
+Market Insights is a separate product pipeline, not a chatbot mode. `MarketInsightReportV2Service` calls the shared Ollama runtime directly with an independent Senior International Trade Market Intelligence Analyst contract. It returns a versioned `market-insight-v2` JSON document rather than presentation text.
+
+The backend normalizer guarantees the executive report structure and converts structured indices, rankings, forecasts, pricing, competitors, opportunities, risks, SWOT, PESTLE, ports, routes, requirements, HS candidates, strategies, and action plans into presentation artifacts. The HTML/PDF layer owns typography, tables, bar/pie/line/area charts, risk heatmaps, framework cards, contents, page numbers, branding, and decision-use notices.
+
+The default report path is direct structured analysis. Evidence collection remains optional behind `AI_RAG_ENABLED=true` and `MARKET_INSIGHTS_RAG_ENABLED=true`; enabling it enriches the same v2 schema instead of changing the document architecture. This boundary also supports future trade, pricing, shipping, government, and HS-code providers.
+
+On the 4-vCPU deployment, report synthesis uses eight compact sequential segments of five chapters each with a 4K context window. This avoids CPU contention and oversized JSON timeouts; each segment is validated immediately and the backend deterministically merges them into one report before rendering or persistence.
+
 ## Knowledge ingestion
 
 Admins can submit `multipart/form-data` to:

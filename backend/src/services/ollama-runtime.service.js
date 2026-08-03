@@ -164,7 +164,7 @@ class OllamaRuntimeService {
             tokens = data.eval_count || 0;
             firstTokenAt = Date.now();
           }
-          if (!stream) {
+          if (!stream && !jsonMode) {
             const safe = assertSafeAIOutput(content);
             content = safe.text;
             outputSanitized = safe.changed;

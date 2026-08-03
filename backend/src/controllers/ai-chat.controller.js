@@ -23,7 +23,7 @@ function debugLog(...args) {
 
 function inferenceBudget(route = {}, intelligence = {}, message = '') {
   const handling = route.handling || '';
-  if (handling === 'ai_market_insights' || intelligence.intent === 'market_research') return { maxTokens: CHAT_MAX_TOKENS, contextSize: 8_192 };
+  if (handling === 'ai_market_insights' || intelligence.intent === 'market_research') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 280), contextSize: 4_096 };
   if (handling === 'database_first' || intelligence.route === 'marketplace_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
   if (handling === 'ai_trade' || intelligence.route === 'knowledge_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
   return { maxTokens: Math.min(CHAT_MAX_TOKENS, String(message).length < 120 ? 220 : 320), contextSize: 4_096 };

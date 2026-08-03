@@ -1,5 +1,4 @@
 import crypto from 'crypto';
-import AIChatService from './ai-chat.service.js';
 import GlobalTradeResearchService from './global-trade-research.service.js';
 import KnowledgeBaseService from './knowledge-base.service.js';
 import MarketReportStorageService from './market-report-storage.service.js';
@@ -11,6 +10,7 @@ import { buildMarketInsightHtml } from '../lib/market-insight-html.js';
 import TradeIntentService from './trade-intent.service.js';
 import TradeKnowledgeService from './trade-knowledge.service.js';
 import { config } from '../config/env.js';
+import MarketInsightReportV2Service, { MARKET_INSIGHT_REPORT_VERSION } from './market-insight-report-v2.service.js';
 
 const cache = new Map();
 const inFlight = new Map();
@@ -18,7 +18,7 @@ const CACHE_TTL = Math.max(60_000, Number(process.env.MARKET_INSIGHT_MEMORY_TTL_
 const REPORT_REUSE_TTL = Math.max(60 * 60 * 1000, Number(process.env.MARKET_INSIGHT_REPORT_REUSE_TTL_MS || 8 * 24 * 60 * 60 * 1000));
 const CACHE_MAX_ENTRIES = Math.max(25, Number(process.env.MARKET_INSIGHT_MEMORY_CACHE_MAX || 250));
 const AI_SYNTHESIS_TIMEOUT_MS = Math.max(10_000, Number(process.env.MARKET_RESEARCH_AI_TIMEOUT_MS || 45_000));
-const REPORT_VERSION = '5.1';
+const REPORT_VERSION = MARKET_INSIGHT_REPORT_VERSION;
 
 const asArray = value => Array.isArray(value) ? value : [];
 const clean = value => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -508,9 +508,12 @@ Return only valid JSON:
 export default class MarketResearchService {
   static architectureStatus() {
     return {
-      mode: config.marketInsightsRagEnabled ? 'evidence-rag' : 'gemma-direct',
+      mode: config.marketInsightsRagEnabled ? 'structured-v2-with-evidence' : 'structured-v2-direct',
       ragEnabled: config.marketInsightsRagEnabled,
-      pdfPipeline: 'existing',
+      product: 'market-insights',
+      workflow: 'independent-from-chatbot',
+      schema: 'market-insight-v2',
+      pdfPipeline: 'backend-presentation-v2',
     };
   }
 
@@ -598,25 +601,27 @@ export default class MarketResearchService {
     const sourceCount = knowledgeDocuments.length + asArray(global.sources).length + Object.values(marketplace).reduce((sum, value) => sum + value, 0);
     this.step(emit, startedAt, ragEnabled ? 'Evidence Ranker' : 'Report Planner', ragEnabled ? `Merged and ranked ${knowledgeDocuments.length} knowledge sources` : 'Prepared the qualitative report structure', 35, 'success', sourceCount);
 
-    const fallback = fallbackAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, knowledge: knowledgeDocuments, global, marketplace });
-    let generated;
+    let analysis;
+    let reportRuntime = {};
     try {
-      this.step(emit, startedAt, 'AI Analyst', 'Synthesizing verified evidence into the report', 48, 'running', sourceCount);
-      const response = await AIChatService.callOllama(
-        ragEnabled
-          ? promptForAnalysis({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent, knowledge, global, marketplace })
-          : buildDirectMarketInsightPrompt({ query: researchQuery, productName: researchProduct, country: researchCountry, intent: intelligence.intent }),
-        [],
-        ragEnabled
-          ? 'You are EsyGlob AI Market Intelligence. Synthesize evidence into original executive analysis. Return valid JSON only.'
-          : 'You are EsyGlob AI Market Intelligence. Produce a qualitative, business-ready report without claiming live evidence. Return valid JSON only.',
-        { maxTokens: ragEnabled ? 7_000 : 900, contextSize: ragEnabled ? 16_384 : 4_096, temperature: .18, timeoutMs: ragEnabled ? AI_SYNTHESIS_TIMEOUT_MS : Math.max(AI_SYNTHESIS_TIMEOUT_MS, 120_000), jsonMode: true, retry: ragEnabled },
-      );
-      generated = extractJson(response?.message);
+      this.step(emit, startedAt, 'Market Intelligence Analyst', 'Preparing the commissioned executive analysis', 48, 'running', sourceCount);
+      const generated = await MarketInsightReportV2Service.generate({
+        query: researchQuery,
+        productName: researchProduct,
+        country: researchCountry,
+        intent: intelligence.intent,
+        evidence: ragEnabled ? {
+          knowledge,
+          trade: global,
+          marketplace,
+        } : null,
+      });
+      analysis = generated.report;
+      reportRuntime = generated.runtime;
     } catch (error) {
-      console.warn('[Market Insights] AI synthesis unavailable; using evidence-safe analytical fallback:', error.message);
+      console.error('[Market Insights] Structured v2 report generation failed:', error.message);
+      throw Object.assign(new Error('The commissioned market intelligence report could not be completed. Please retry.'), { cause: error, statusCode: error.statusCode || 503, code: error.code || 'MARKET_INSIGHT_GENERATION_FAILED' });
     }
-    const analysis = normalizeAnalysis(generated, fallback);
     const verifiedEvidenceSections = ragEnabled ? evidenceSections(global, researchProduct, researchCountry) : [];
     analysis.sections = [...analysis.sections, ...verifiedEvidenceSections];
     this.step(emit, startedAt, 'Quality Reviewer', 'Cross-validating claims and attaching only measured charts and tables', 72, 'success', sourceCount);
@@ -656,6 +661,7 @@ export default class MarketResearchService {
       id: researchId,
       reportType: ['product_rd', 'country_rd', 'opportunity_finder'].includes(mode) ? mode : 'product_rd',
       query: researchQuery,
+      schemaVersion: analysis.schemaVersion,
       title: analysis.title,
       subtitle: analysis.subtitle,
       executiveSummary: analysis.executiveSummary,
@@ -668,28 +674,29 @@ export default class MarketResearchService {
       dataVersion: ragEnabled ? tradeKnowledge?.dataVersion || global.collectionVersion || 'live-unversioned' : 'gemma3-direct-v1',
       structuredIntent,
       sections: analysis.sections,
-      keyMetrics: ragEnabled ? [
+      keyMetrics: [...asArray(analysis.keyMetrics), ...(ragEnabled ? [
         { label: 'Evidence quality', value: `${evidenceQuality.score}%`, note: evidenceQuality.grade },
         { label: 'Verified evidence rows', value: asArray(global.officialProductRows).length + asArray(global.historicalTrade).length + asArray(global.topImporters).length + asArray(global.topExporters).length, note: global.hsCode ? `HS ${global.hsCode}` : 'HS pending' },
         { label: 'Connected sources', value: relevantGlobalSources.length + knowledgeDocuments.length, note: 'Attributed and versioned' },
         { label: 'Historical periods', value: new Set(asArray(global.historicalTrade).map(row => row.period)).size, note: 'No interpolation' },
         { label: 'Marketplace matches', value: marketplace.products + marketplace.suppliers, note: 'Current snapshot' },
-      ] : [
-        { label: 'Analysis mode', value: 'Gemma direct', note: 'Qualitative market guidance' },
-        { label: 'Live evidence', value: 'Not requested', note: 'Validate current figures independently' },
-        { label: 'Report scope', value: researchCountry || 'Global', note: researchProduct },
-      ],
+      ] : [])].slice(0, 12),
+      tables: asArray(analysis.tables),
+      charts: asArray(analysis.charts),
       recommendations: asArray(analysis.recommendations),
       risks: asArray(analysis.risks),
       methodology: ragEnabled
-        ? 'Intent detection followed by configured evidence retrieval, relevance ranking, trade-data collection, marketplace retrieval, AI-assisted synthesis, cross-validation and document planning.'
-        : 'Direct Gemma3 qualitative market analysis using the requested product and country scope. No document, embedding, vector, knowledge-base or live trade-data retrieval was performed. Current figures require independent verification.',
-      references: sources,
-      sources,
+        ? 'Independent Market Insights v2 workflow: scope normalization, configured evidence collection, source ranking, structured analyst synthesis, comparative scoring, cross-validation and backend document composition.'
+        : 'Independent Market Insights v2 workflow: scope normalization, structured qualitative trade analysis, comparative scoring, commercial framework construction and backend document composition. Current figures require authoritative validation.',
+      references: [...asArray(analysis.references), ...sources],
+      sources: [...asArray(analysis.references), ...sources],
       dataGaps: asArray(global.gaps),
       evidenceQuality,
       sourceCount,
-      generatedBy: 'EsyGlob AI Market Intelligence',
+      verificationNotice: analysis.verificationNotice,
+      estimatedAnalysis: analysis.estimatedAnalysis,
+      runtimeMetrics: reportRuntime,
+      generatedBy: 'EsyGlob Market Intelligence',
       generatedAt,
       createdAt: generatedAt,
     };

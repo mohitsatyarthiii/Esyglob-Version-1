@@ -58,3 +58,18 @@ test('renders a complete, safe report HTML source with tables, charts and refere
   assert.match(html, /Market comparison/);
   assert.match(html, /UN Comtrade/);
 });
+
+test('renders v2 SWOT, PESTLE and risk datasets as backend presentation components', () => {
+  const html = buildMarketInsightHtml({
+    title: 'Structured Market Report', generatedAt: '2026-08-03T00:00:00.000Z',
+    sections: [
+      { title: 'SWOT Analysis', paragraphs: ['Decision framework.'], tables: [{ title: 'SWOT decision matrix', columns: ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'], rows: [['Scale', 'Concentration', 'Aftermarket', 'Volatility']] }] },
+      { title: 'PESTLE Analysis', paragraphs: ['External environment.'], tables: [{ title: 'PESTLE priority matrix', columns: ['Factor', 'Impact', 'Priority', 'Response'], rows: [['Legal', 'Certification exposure', 'High', 'Validate scope']] }] },
+      { title: 'Risk Assessment', paragraphs: ['Priority risks.'], charts: [{ type: 'risk', title: 'Risk priority heatmap', data: [{ label: 'Compliance', value: 80, likelihood: 'High', impact: 'High' }, { label: 'Freight', value: 55, likelihood: 'Medium', impact: 'Medium' }] }] },
+    ],
+    methodology: 'Structured analyst synthesis.',
+  });
+  assert.match(html, /class="swot-grid"/);
+  assert.match(html, /class="pestle-grid"/);
+  assert.match(html, /class="risk-grid"/);
+});

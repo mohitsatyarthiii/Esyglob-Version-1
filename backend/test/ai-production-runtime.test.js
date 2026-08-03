@@ -9,7 +9,8 @@ import AISemanticCacheService from '../src/services/ai-semantic-cache.service.js
 import AIChatService from '../src/services/ai-chat.service.js';
 import KnowledgeBaseService from '../src/services/knowledge-base.service.js';
 import EsyGlobAIGuideService from '../src/services/esyglob-ai-guide.service.js';
-import MarketResearchService, { buildDirectMarketInsightPrompt } from '../src/services/market-research.service.js';
+import MarketResearchService from '../src/services/market-research.service.js';
+import MarketInsightReportV2Service, { buildMarketInsightV2Prompt, MARKET_INSIGHT_SECTION_TITLES, normalizeMarketInsightV2 } from '../src/services/market-insight-report-v2.service.js';
 
 test('100+ message conversations retain durable instructions and recent context within budget', () => {
   const messages = Array.from({ length: 120 }, (_, index) => ({
@@ -34,7 +35,8 @@ test('prompt modules inject only the instructions required by the request route'
   const insights = AIService.buildMarketplaceSystemPrompt('buyer', 'verified evidence', { intent: 'market_research' });
   assert.match(general, /stable, non-time-sensitive facts/);
   assert.doesNotMatch(general, /enterprise market-intelligence analyst/);
-  assert.match(insights, /enterprise market-intelligence analyst/);
+  assert.doesNotMatch(insights, /enterprise market-intelligence analyst/);
+  assert.match(insights, /international trade adviser/);
   assert.match(insights, /verified evidence/);
 });
 
@@ -53,19 +55,68 @@ test('Gemma-first chat skips document RAG and loads the maintained guide only fo
     assert.match(policy.text, /EsyGlob platform guide:/);
     assert.match(policy.text, /Payments, refunds, and disputes/);
     assert.ok(EsyGlobAIGuideService.status().characters > 1_000);
-    assert.equal(MarketResearchService.architectureStatus().mode, 'gemma-direct');
+    assert.equal(MarketResearchService.architectureStatus().mode, 'structured-v2-direct');
+    assert.equal(MarketResearchService.architectureStatus().workflow, 'independent-from-chatbot');
   } finally {
     KnowledgeBaseService.retrieve = originalRetrieve;
   }
 });
 
-test('direct market insights request every required business section without RAG evidence claims', () => {
-  const prompt = buildDirectMarketInsightPrompt({ query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India', intent: 'market_research' });
-  for (const section of ['Executive Summary', 'Market Overview', 'Demand Trends', 'Supply Trends', 'Major Producing Countries', 'Major Importing Countries', 'Major Exporting Countries', 'Business Opportunities', 'Potential Risks', 'Recommendations', 'Conclusion']) {
+test('Market Insights v2 has an independent analyst contract and complete structured schema', () => {
+  const prompt = buildMarketInsightV2Prompt({ query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India', intent: 'market_research' });
+  for (const section of MARKET_INSIGHT_SECTION_TITLES) {
     assert.match(prompt, new RegExp(section, 'i'));
   }
-  assert.match(prompt, /Do not claim access to live statistics/);
-  assert.equal(MarketResearchService.architectureStatus().pdfPipeline, 'existing');
+  assert.match(prompt, /Senior International Trade Market Intelligence Analyst/);
+  assert.match(prompt, /estimated comparative indices/);
+  assert.match(prompt, /Return only the final structured report/);
+  assert.equal(MarketResearchService.architectureStatus().pdfPipeline, 'backend-presentation-v2');
+});
+
+test('Market Insights v2 normalizer creates all sections and backend-owned decision artifacts', () => {
+  const report = normalizeMarketInsightV2({
+    title: 'Valve Market Intelligence',
+    sections: [{ title: 'Market Overview', paragraphs: ['A focused commercial overview.'] }],
+    indices: [{ label: 'Demand', score: 78, rationale: 'Industrial replacement demand.' }],
+    rankings: { producers: [{ country: 'China', score: 82, rationale: 'Manufacturing scale.' }], importers: [], exporters: [] },
+    risks: [{ risk: 'Input volatility', likelihood: 'High', impact: 'Medium', score: 72, mitigation: 'Use indexed contracts.' }],
+    swot: { strengths: ['Installed supplier base'], weaknesses: ['Qualification cycle'], opportunities: ['Aftermarket'], threats: ['Price pressure'] },
+    requirements: { import: ['Confirm classification'], export: ['Origin documentation'], certifications: ['Destination standard'], hsCodes: [{ code: '8481', description: 'Valve family', validation: 'Confirm at tariff-line depth' }] },
+  }, { query: 'Industrial valves in India', productName: 'Industrial valves', country: 'India' });
+  assert.equal(report.schemaVersion, 'market-insight-v2');
+  assert.deepEqual(report.sections.map(section => section.title), MARKET_INSIGHT_SECTION_TITLES);
+  assert.ok(report.sections.find(section => section.title === 'Risk Assessment').tables.length);
+  assert.ok(report.sections.find(section => section.title === 'SWOT Analysis').tables.length);
+  assert.ok(report.sections.find(section => section.title === 'Recommended HS Codes').tables.length);
+});
+
+test('Market Insights v2 runs bounded sequential segments without chatbot prompts', async () => {
+  const originalComplete = OllamaRuntimeService.complete;
+  const calls = [];
+  OllamaRuntimeService.complete = async options => {
+    calls.push(options);
+    const required = options.messages[1].content.match(/Required sections for this segment, exactly once: (.+)\n/)?.[1].split(' | ') || [];
+    const sections = required.map(title => ({ title, paragraphs: [`Commercial analysis for ${title}.`], insights: ['Validate the decision inputs.'] }));
+    return {
+      message: JSON.stringify({
+        title: 'Structured report', subtitle: 'Independent analysis', executiveSummary: 'Executive assessment.',
+        sections: calls.length === 4 ? Object.fromEntries(sections.map(section => [section.title, { paragraphs: section.paragraphs, insights: section.insights }])) : sections,
+      }),
+      tokensUsed: 100,
+      outputSanitized: false,
+    };
+  };
+  try {
+    const result = await MarketInsightReportV2Service.generate({ query: 'Valves in India', productName: 'Valves', country: 'India', intent: 'market_research' });
+    assert.equal(calls.length, 8);
+    assert.equal(result.report.sections.length, MARKET_INSIGHT_SECTION_TITLES.length);
+    assert.equal(result.runtime.segments, 8);
+    assert.equal(result.runtime.tokensUsed, 800);
+    assert.ok(calls.every(call => call.contextSize === 4096 && call.retry === false));
+    assert.ok(calls.every(call => !/customer support|chatbot/i.test(call.messages.map(item => item.content).join(' '))));
+  } finally {
+    OllamaRuntimeService.complete = originalComplete;
+  }
 });
 
 test('final-answer boundary removes tagged and plain-language internal reasoning', () => {
@@ -134,6 +185,24 @@ test('runtime always requests gemma3:4b and never streams hidden reasoning', asy
     assert.equal(OllamaRuntimeService.requiresPeriodicWarmup(), false);
     assert.equal(result.content, 'Final answer');
     assert.equal(streamed, 'Final answer');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('structured JSON inference bypasses prose mutation and remains parseable', async () => {
+  const originalFetch = globalThis.fetch;
+  let payload;
+  const structured = { sections: [{ title: 'Market Overview', paragraphs: ['Decision-ready analysis.'] }] };
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ message: { content: JSON.stringify(structured) }, eval_count: 20 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const result = await OllamaRuntimeService.complete({ messages: [{ role: 'user', content: 'report' }], jsonMode: true, retry: false });
+    assert.equal(payload.format, 'json');
+    assert.deepEqual(JSON.parse(result.message), structured);
+    assert.equal(result.outputSanitized, false);
   } finally {
     globalThis.fetch = originalFetch;
   }

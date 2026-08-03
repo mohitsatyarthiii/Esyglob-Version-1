@@ -302,6 +302,7 @@ message -> language/role/intent classifier
 - Private retrieval is authorized by userId; marketplace snapshots cap product/supplier/category/RFQ/order counts before prompt construction.
 - Gemma-first mode skips document, embedding, vector, and ranking work for default chat. A compact maintained Markdown guide supplies EsyGlob-specific identity and policy context.
 - Knowledge RAG remains available behind `AI_RAG_ENABLED=true`; Market Insights RAG additionally requires `MARKET_INSIGHTS_RAG_ENABLED=true`.
+- Market Insights v2 is independent from chatbot prompts and behavior. Its dedicated analyst service produces versioned structured JSON; backend normalizers and renderers own report sections, comparative indices, decision tables, native charts, SWOT/PESTLE frameworks, risk heatmaps, branding, pagination, persistence, and PDF delivery.
 - Ollama is validated and warmed on startup, retained indefinitely by default, queued with bounded concurrency, and streamed with client cancellation.
 - Conversation memory combines durable user instructions, a rolling summary, and recent messages while persisted histories are capped at 160 messages.
 - Response validation checks empty/incomplete output, relevance, requested language, wrong retrieval, credential leakage, and malformed formatting.
