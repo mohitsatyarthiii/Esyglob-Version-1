@@ -246,7 +246,7 @@ class AIChatController {
                 { role: 'system', content: systemPrompt },
                 ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-10)).map(item => ({
                   role: item.role === 'user' ? 'user' : 'assistant',
-                  content: String(item.content || '').slice(0, 800),
+                  content: String(item.content || '').slice(0, 600),
                 })),
                 { role: 'user', content: message },
               ],

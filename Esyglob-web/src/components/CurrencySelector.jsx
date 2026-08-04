@@ -50,7 +50,6 @@ export default function CurrencySelector({ className = 'header-currency' }) {
   useEffect(() => {
     if (open) window.setTimeout(() => searchRef.current?.focus(), 0)
   }, [open])
-  useEffect(() => { setActive(0) }, [query])
   useEffect(() => {
     document.documentElement.setAttribute('lang', language)
     document.documentElement.setAttribute('dir', language.startsWith('ar') ? 'rtl' : 'ltr')
@@ -82,7 +81,7 @@ export default function CurrencySelector({ className = 'header-currency' }) {
       <ChevronDown />
     </button>
     {open && <div className="locale-selector__popover">
-      <label className="locale-selector__search"><Search /><input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Search language or currency" aria-label="Search language or currency" /></label>
+      <label className="locale-selector__search"><Search /><input ref={searchRef} value={query} onChange={event => { setQuery(event.target.value); setActive(0) }} placeholder="Search language or currency" aria-label="Search language or currency" /></label>
       <div className="locale-selector__list" role="listbox" aria-label="Language and currency">
         {options.map((item, index) => {
           const selected = item.type === 'language' ? language === item.code : selectedCurrency === item.code

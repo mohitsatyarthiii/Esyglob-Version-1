@@ -1,5 +1,5 @@
 import { Bell, BriefcaseBusiness, ChevronDown, Grid2X2, Heart, Home, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Settings, UserRound, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/auth-context'
 import Brand from './Brand'
@@ -29,18 +29,21 @@ export default function AppShell({ children }) {
   const accountName = profile?.fullName || profile?.name || user?.fullName || user?.name || 'My EsyGlob'
   const accountImage = profile?.avatarUrl || profile?.profileImage || profile?.avatar || profile?.image || user?.avatarUrl || user?.profileImage || user?.avatar || ''
   const authPath = (path) => authenticated ? path : '/login'
-  const syncAddress = async () => {
+  const syncAddress = useCallback(async () => {
     if (!authenticated) return setRegion('Select address')
     const addresses = await fetchAddresses().catch(() => [])
     const selected = addresses.find(item => item.isDefault) || addresses[0]
     setRegion(selected ? [selected.addressLabel, selected.city || selected.state || selected.country].filter(Boolean).join(' · ') : 'Select address')
-  }
+  }, [authenticated])
   useEffect(() => {
-    syncAddress()
+    const initialSync = window.setTimeout(syncAddress, 0)
     const sync = () => syncAddress()
     window.addEventListener('esyglob-address-change', sync)
-    return () => window.removeEventListener('esyglob-address-change', sync)
-  }, [authenticated])
+    return () => {
+      window.clearTimeout(initialSync)
+      window.removeEventListener('esyglob-address-change', sync)
+    }
+  }, [syncAddress])
   useEffect(() => {
     if (!authenticated || !navigator.permissions?.query || !navigator.geolocation) return
     const key = `esyglob.gps-address.${user?._id || user?.id || user?.email || 'session'}`
@@ -50,7 +53,7 @@ export default function AppShell({ children }) {
       sessionStorage.setItem(key, 'attempted')
       detectCurrentAddress({ persist: true }).then(syncAddress).catch(() => undefined)
     }).catch(() => undefined)
-  }, [authenticated, user?._id, user?.id, user?.email])
+  }, [authenticated, syncAddress, user?._id, user?.id, user?.email])
   useEffect(() => {
     if (!authenticated) return
     let live = true

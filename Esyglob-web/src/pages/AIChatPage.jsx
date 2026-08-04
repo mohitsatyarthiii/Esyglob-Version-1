@@ -25,7 +25,7 @@ export default function AIChatPage() {
   const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const [chats, setChats] = useState([])
   const [chatId, setChatId] = useState('')
-  const [messages, setMessages] = useState([]) 
+  const [messages, setMessages] = useState([])
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
@@ -61,8 +61,19 @@ export default function AIChatPage() {
   const streamTokenFrameRef = useRef(0)
   const sendingRef = useRef(false)
   const stickToBottomRef = useRef(true)
+  const sendActionRef = useRef(null)
+  const latestMessagesRef = useRef(messages)
   const shareTimerRef = useRef(null)
   const voiceRecognitionRef = useRef(null)
+
+  const promptFromMessage = useCallback((text) => sendActionRef.current?.(text), [])
+  const regenerateMessage = useCallback((messageIndex) => {
+    const previousUserMessage = latestMessagesRef.current
+      .slice(0, messageIndex)
+      .filter((message) => message.role === 'user')
+      .at(-1)?.content
+    if (previousUserMessage) sendActionRef.current?.(previousUserMessage)
+  }, [])
 
   const loadChats = useCallback(async () => {
     try { setChats(await fetchAIChats(role)) }
@@ -70,6 +81,10 @@ export default function AIChatPage() {
   }, [role])
 
   useEffect(() => { loadChats().catch((next) => setError(next.message)) }, [loadChats])
+  useEffect(() => {
+    sendActionRef.current = send
+    latestMessagesRef.current = messages
+  })
   useEffect(() => {
     try { window.localStorage.setItem('esyglob.ai.sidebar-collapsed', String(sidebarCollapsed)) }
     catch { /* Storage may be unavailable in privacy mode. */ }
@@ -124,7 +139,10 @@ export default function AIChatPage() {
   }, [chatId])
   useEffect(() => {
     if (!stickToBottomRef.current) return undefined
-    const frame = window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: busy ? 'auto' : 'smooth', block: 'end' }))
+    const frame = window.requestAnimationFrame(() => {
+      const element = messagesRef.current
+      element?.scrollTo({ top: element.scrollHeight, behavior: busy ? 'auto' : 'smooth' })
+    })
     return () => window.cancelAnimationFrame(frame)
   }, [messages, busy])
   useEffect(() => {
@@ -173,6 +191,10 @@ export default function AIChatPage() {
     streamTokenBufferRef.current = ''
     setDraft(''); setAttachments([]); setError(''); setFailed(''); setBusy(true)
     setMessages((current) => [...current, { role: 'user', content, createdAt: new Date().toISOString(), metadata: { attachmentUrls: sentAttachments } }, { _id: streamMessageId, role: 'assistant', content: '', statusText: 'Preparing your answer...', streaming: true, createdAt: new Date().toISOString() }])
+    window.requestAnimationFrame(() => {
+      globalThis.performance?.mark?.(`${streamMessageId}:optimistic-visible`)
+      clientTiming.optimisticRenderMs = globalThis.performance?.measure?.(`${streamMessageId}:optimistic-latency`, `${streamMessageId}:request`, `${streamMessageId}:optimistic-visible`)?.duration
+    })
     const controller = new AbortController()
     streamRef.current = controller
     let streamError = ''
@@ -248,7 +270,11 @@ export default function AIChatPage() {
       if (nextChatId && nextChatId !== chatId) setChatId(nextChatId)
       loadChats().catch(() => undefined)
     } catch (next) {
-      if (next.name !== 'AbortError') {
+      if (next.name === 'AbortError') {
+        const finalChunk = streamTokenBufferRef.current
+        streamTokenBufferRef.current = ''
+        setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${finalChunk}` || 'Response stopped.', statusText: '', streaming: false, metadata: { ...(item.metadata || {}), stopped: true } } : item))
+      } else {
         setMessages((current) => current.filter((item) => item._id !== streamMessageId))
         if (next.code === 'AI_CREDITS_EXHAUSTED' || next.status === 402) setCreditDialogOpen(true)
         else { setError(next.message); setFailed(content) }
@@ -260,6 +286,7 @@ export default function AIChatPage() {
       if (streamRef.current === controller) streamRef.current = null
       sendingRef.current = false
       setBusy(false)
+      window.setTimeout(() => clearChatPerformanceEntries(streamMessageId), 1_000)
     }
   }
 
@@ -389,7 +416,7 @@ export default function AIChatPage() {
           const element = event.currentTarget
           stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120
         }}
-      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">EsyGlob AI sourcing workspace</span><h2>All your sourcing tasks, one conversation.</h2><p>Discover products, evaluate verified suppliers, prepare RFQs and understand global markets with live EsyGlob context.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => send(text)}><Sparkles /><span>{text}</span></button>)}</div><div className="ai-welcome-capabilities" aria-label="EsyGlob AI capabilities"><span><Check /> Marketplace-aware</span><span><Check /> Procurement focused</span><span><Check /> Available 24/7</span></div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={send} onRegenerate={item.role === 'assistant' && !item.streaming ? () => { const last = messages.slice(0, index).filter((message) => message.role === 'user').at(-1)?.content; if (last) send(last) } : null} />)}<div ref={endRef} /></div>
+      >{conversationLoading ? <div className="ai-loading"><div className="ai-loading-orb"><Sparkles /></div><div className="typing-dots"><span /><span /><span /></div><p>Opening your conversation...</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><span className="eyebrow">EsyGlob AI sourcing workspace</span><h2>All your sourcing tasks, one conversation.</h2><p>Discover products, evaluate verified suppliers, prepare RFQs and understand global markets with live EsyGlob context.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => promptFromMessage(text)}><Sparkles /><span>{text}</span></button>)}</div><div className="ai-welcome-capabilities" aria-label="EsyGlob AI capabilities"><span><Check /> Marketplace-aware</span><span><Check /> Procurement focused</span><span><Check /> Available 24/7</span></div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={promptFromMessage} onRegenerate={regenerateMessage} regenerateIndex={item.role === 'assistant' && !item.streaming ? index : null} />)}<div ref={endRef} /></div>
       <div className="ai-composer-dock">
         {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
         {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
@@ -417,7 +444,7 @@ export default function AIChatPage() {
   </div></AppShell>
 }
 
-const AIMessage = memo(function AIMessage({ item, user, onPrompt, onRegenerate }) {
+const AIMessage = memo(function AIMessage({ item, user, onPrompt, onRegenerate, regenerateIndex }) {
   const metadata = item.metadata || {}
   const marketplace = metadata.marketplace || {}
   const products = Array.isArray(metadata.topProducts || marketplace.topProducts) ? metadata.topProducts || marketplace.topProducts : []
@@ -427,8 +454,15 @@ const AIMessage = memo(function AIMessage({ item, user, onPrompt, onRegenerate }
   const sources = (Array.isArray(metadata.sources) ? metadata.sources : []).filter((source) => source?.url && source?.title).slice(0, 3)
   const attachmentUrls = metadata.attachmentUrls || metadata.pluginPayload?.attachmentUrls || []
   const content = String(item.content || item.message || (item.streaming ? item.statusText || 'Preparing your answer...' : ''))
-  return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{content && !item.streaming && <button type="button" onClick={() => navigator.clipboard?.writeText(content)}><Copy /> Copy</button>}{onRegenerate && <button onClick={onRegenerate}><RefreshCw /> Regenerate</button>}</footer></div></article>
+  return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" loading="lazy" decoding="async" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{content && !item.streaming && <button type="button" onClick={() => navigator.clipboard?.writeText(content)}><Copy /> Copy</button>}{regenerateIndex !== null && <button onClick={() => onRegenerate(regenerateIndex)}><RefreshCw /> Regenerate</button>}</footer></div></article>
 })
+
+function clearChatPerformanceEntries(streamMessageId) {
+  const marks = ['request', 'optimistic-visible', 'first-token', 'first-visible', 'generation-complete', 'complete']
+  const measures = ['optimistic-latency', 'first-token-latency', 'first-visible-latency', 'generation-latency', 'total']
+  marks.forEach((name) => globalThis.performance?.clearMarks?.(`${streamMessageId}:${name}`))
+  measures.forEach((name) => globalThis.performance?.clearMeasures?.(`${streamMessageId}:${name}`))
+}
 
 const RichMessage = memo(function RichMessage({ content, streaming }) {
   if (streaming) return <div className="ai-rich-message ai-rich-message--streaming">{content || 'Preparing your answer...'}<span className="ai-stream-cursor" /></div>

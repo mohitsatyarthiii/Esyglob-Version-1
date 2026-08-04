@@ -39867,12 +39867,28 @@ button:disabled,
   }
 
   .auth-panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100vw;
     overflow-x: clip;
   }
 
   .auth-card {
+    width: 100%;
+    min-width: 0;
     margin-inline: auto;
-    max-width: 480px;
+    max-width: min(480px, 100%);
+  }
+
+  .auth-card form,
+  .auth-card .field,
+  .auth-card .field__control {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .auth-card__heading p {
+    overflow-wrap: anywhere;
   }
 
   .auth-card .button--full {
@@ -39909,6 +39925,11 @@ button:disabled,
     padding-inline: 15px;
   }
 
+  .auth-card .form-row {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
   .role-picker {
     gap: 7px;
   }
@@ -39922,6 +39943,18 @@ button:disabled,
 .site-shell--ai-chat .ai-rich-message--streaming {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* Long conversations keep their complete history while off-screen messages
+   skip layout and paint work until the browser needs them. */
+.site-shell--ai-chat .ai-messages article,
+.site-shell--ai-chat .ai-history-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 112px;
+}
+
+.site-shell--ai-chat .ai-history-row {
+  contain-intrinsic-size: auto 52px;
 }
 
 .site-shell--ai-chat .ai-chat--empty .ai-messages {
