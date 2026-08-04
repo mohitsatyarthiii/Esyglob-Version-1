@@ -165,6 +165,9 @@ export default function AIChatPage() {
     sendingRef.current = true
     const sentAttachments = attachments
     const streamMessageId = `stream-${++streamSequence.current}`
+    const clientTiming = {}
+    let firstRenderScheduled = false
+    globalThis.performance?.mark?.(`${streamMessageId}:request`)
     window.cancelAnimationFrame(streamTokenFrameRef.current)
     streamTokenFrameRef.current = 0
     streamTokenBufferRef.current = ''
@@ -186,13 +189,23 @@ export default function AIChatPage() {
       const attachmentUrls = sentAttachments.map((item) => item.url)
       let streamCompleted = false
       await streamAIMessage({ message: content, displayMessage: content, chatId: chatId || undefined, role, conversationType: 'assistant', forceAI: true, context: { feature: 'AI Chatbot', sourcePath: '/ai-chat', attachments: attachmentUrls }, pluginPayload: attachmentUrls.length ? { pluginId: 'file-analysis', attachmentUrls } : null }, (event) => {
+        if (event.type === 'transport') { clientTiming.responseHeadersMs = event.timing?.headersMs; return }
         if (event.type === 'start') { nextChatId = event.chatId || nextChatId; return }
         if (event.type === 'status') { setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: event.message || 'Preparing your answer...' } : item)); return }
         if (event.type === 'token') {
           const chunk = String(event.content || '')
           if (!hasVisibleToken) {
             hasVisibleToken = true
+            globalThis.performance?.mark?.(`${streamMessageId}:first-token`)
+            clientTiming.firstTokenReceivedMs = globalThis.performance?.measure?.(`${streamMessageId}:first-token-latency`, `${streamMessageId}:request`, `${streamMessageId}:first-token`)?.duration
             setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${chunk}` } : item))
+            if (!firstRenderScheduled) {
+              firstRenderScheduled = true
+              window.requestAnimationFrame(() => {
+                globalThis.performance?.mark?.(`${streamMessageId}:first-visible`)
+                clientTiming.firstVisibleRenderMs = globalThis.performance?.measure?.(`${streamMessageId}:first-visible-latency`, `${streamMessageId}:request`, `${streamMessageId}:first-visible`)?.duration
+              })
+            }
           } else {
             streamTokenBufferRef.current += chunk
             if (!streamTokenFrameRef.current) streamTokenFrameRef.current = window.requestAnimationFrame(flushStreamTokens)
@@ -205,13 +218,25 @@ export default function AIChatPage() {
           streamTokenBufferRef.current = ''
           setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: String(event.content || '') } : item)); return
         }
+        if (event.type === 'generation_complete') {
+          window.cancelAnimationFrame(streamTokenFrameRef.current)
+          streamTokenFrameRef.current = 0
+          const finalChunk = streamTokenBufferRef.current
+          streamTokenBufferRef.current = ''
+          globalThis.performance?.mark?.(`${streamMessageId}:generation-complete`)
+          clientTiming.generationCompleteMs = globalThis.performance?.measure?.(`${streamMessageId}:generation-latency`, `${streamMessageId}:request`, `${streamMessageId}:generation-complete`)?.duration
+          setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, statusText: '', content: `${item.content || ''}${finalChunk}`, streaming: false } : item))
+          return
+        }
         if (event.type === 'done') {
           window.cancelAnimationFrame(streamTokenFrameRef.current)
           streamTokenFrameRef.current = 0
           const finalChunk = streamTokenBufferRef.current
           streamTokenBufferRef.current = ''
           streamCompleted = true
-          const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
+          globalThis.performance?.mark?.(`${streamMessageId}:complete`)
+          try { clientTiming.completedMs = globalThis.performance?.measure?.(`${streamMessageId}:total`, `${streamMessageId}:request`, `${streamMessageId}:complete`)?.duration } catch { /* Performance marks are diagnostic only. */ }
+          const metadata = { ...event, timing: { ...(event.timing || {}), client: { ...clientTiming } }, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
           setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${finalChunk}`, streaming: false, metadata } : item))
           nextChatId = event.chatId || nextChatId
           creditState.apply(event.credits)

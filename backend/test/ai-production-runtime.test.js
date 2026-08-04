@@ -154,6 +154,10 @@ test('live filter handles split tags and releases tokens after a bounded safe pr
   assert.equal(earlySafeClause.process('MOQ is the minimum order a supplier accepts, '), 'MOQ is the minimum order a supplier accepts, ');
   assert.equal(earlySafeClause.process('and it can often be negotiated for different products and long-term buyer relationships.'), 'and it can often be negotiated for different products and long-term buyer relationships.');
   assert.equal(earlySafeClause.finish(), '');
+
+  const shortSafetyGate = new FinalAnswerStreamFilter();
+  assert.equal(shortSafetyGate.process('EsyGlob helps buyers source'), '');
+  assert.ok(shortSafetyGate.process(' verified suppliers worldwide').length > 0);
 });
 
 test('intent router serves greetings and FAQs without inference', async () => {
@@ -189,6 +193,8 @@ test('runtime always requests gemma3:4b and never streams hidden reasoning', asy
     assert.equal(OllamaRuntimeService.requiresPeriodicWarmup(), false);
     assert.equal(result.content, 'Final answer');
     assert.equal(streamed, 'Final answer');
+    assert.equal(typeof result.timing.firstProviderTokenMs, 'number');
+    assert.equal(typeof result.timing.firstSafeTokenMs, 'number');
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -179,6 +179,7 @@ export async function refundUsage(user, feature, amount = 1, options = {}) {
 export function requireSubscriptionFeature(feature, options = {}) {
   return async (req, res, next) => {
     try {
+      if (options.ai && !req.aiRequestReceivedAt) req.aiRequestReceivedAt = Date.now();
       req.subscriptionContext = options.ai
         ? await reserveAIUsage(req.user, feature, options.amount || 1, { ...options, requestId: req.get('x-ai-request-id') || req.id })
         : await consumeUsage(req.user, feature, options.amount || 1, options);

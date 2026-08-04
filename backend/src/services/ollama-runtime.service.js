@@ -71,7 +71,7 @@ function requestSignal(external, timeoutMs) {
 async function readStream(response, onSafeToken) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = ''; let content = ''; let tokens = 0; let firstTokenAt = 0;
+  let buffer = ''; let content = ''; let tokens = 0; let firstTokenAt = 0; let firstProviderTokenAt = 0;
   let sanitized = false;
   const filter = new FinalAnswerStreamFilter({
     onAnomaly(event) {
@@ -96,7 +96,10 @@ async function readStream(response, onSafeToken) {
     const data = JSON.parse(line);
     // Ollama may return reasoning separately. It is intentionally never forwarded.
     const token = data.message?.content || data.response || '';
-    if (token) emitSafe(filter.process(token));
+    if (token) {
+      if (!firstProviderTokenAt) firstProviderTokenAt = Date.now();
+      emitSafe(filter.process(token));
+    }
     if (data.eval_count) tokens = data.eval_count;
   };
   while (true) {
@@ -109,7 +112,7 @@ async function readStream(response, onSafeToken) {
   }
   if (buffer.trim()) processLine(buffer);
   emitSafe(filter.finish());
-  return { content, tokens, firstTokenAt, sanitized };
+  return { content, tokens, firstTokenAt, firstProviderTokenAt, sanitized };
 }
 
 class OllamaRuntimeService {
@@ -151,18 +154,19 @@ class OllamaRuntimeService {
             })();
             throw runtimeError(`AI provider returned HTTP ${response.status}${providerMessage ? `: ${providerMessage}` : ''}`, response.status >= 500 ? 503 : response.status);
           }
-          let content; let tokens; let firstTokenAt; let outputSanitized = false;
+          let content; let tokens; let firstTokenAt; let firstProviderTokenAt; let outputSanitized = false;
           if (stream) {
             const result = await readStream(response, chunk => {
               streamed = true;
               onToken?.(chunk);
             });
-            ({ content, tokens, firstTokenAt, sanitized: outputSanitized } = result);
+            ({ content, tokens, firstTokenAt, firstProviderTokenAt, sanitized: outputSanitized } = result);
           } else {
             const data = await response.json();
             content = data.message?.content || data.response || '';
             tokens = data.eval_count || 0;
             firstTokenAt = Date.now();
+            firstProviderTokenAt = firstTokenAt;
           }
           if (!stream && !jsonMode) {
             const safe = assertSafeAIOutput(content);
@@ -174,8 +178,15 @@ class OllamaRuntimeService {
           counters.successes += 1;
           counters.lastSuccessAt = new Date().toISOString();
           if (completedAt - queuedAt > Number(process.env.AI_SLOW_REQUEST_MS || 10_000)) counters.slowRequests += 1;
-          record({ queueMs: startedAt - queuedAt, firstTokenMs: firstTokenAt - startedAt, totalMs: completedAt - queuedAt, tokens });
-          return { success: true, message: content.trim(), content: content.trim(), tokensUsed: tokens, provider: 'ollama', model: MODEL, fallback: false, outputSanitized };
+          const timing = {
+            queueMs: startedAt - queuedAt,
+            firstProviderTokenMs: firstProviderTokenAt ? firstProviderTokenAt - startedAt : null,
+            firstSafeTokenMs: firstTokenAt ? firstTokenAt - startedAt : null,
+            generationMs: completedAt - startedAt,
+            totalMs: completedAt - queuedAt,
+          };
+          record({ queueMs: timing.queueMs, firstTokenMs: timing.firstSafeTokenMs || 0, totalMs: timing.totalMs, tokens });
+          return { success: true, message: content.trim(), content: content.trim(), tokensUsed: tokens, provider: 'ollama', model: MODEL, fallback: false, outputSanitized, timing };
         } catch (error) {
           const retryable = retry && !streamed && attempt === 0 && (error.code === 'AI_OUTPUT_UNSAFE' || error.name === 'TimeoutError' || error.name === 'AbortError' || error.statusCode >= 500);
           if (retryable && !signal?.aborted) { counters.retries += 1; continue; }

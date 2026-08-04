@@ -90,7 +90,7 @@ export function rewriteSearchQuery({ message = '', intelligence = {}, memory = {
 }
 
 export function buildConversationMemory({ messages = [], context = {}, language = 'en' } = {}) {
-  const maxChars = Math.max(3_000, Number(process.env.AI_MEMORY_MAX_CHARS || 6_000));
+  const maxChars = Math.max(2_400, Number(process.env.AI_MEMORY_MAX_CHARS || 3_600));
   const importantPattern = /\b(remember|always|never|prefer|my company|our company|budget|currency|country|language|call me|instruction|requirement|must|do not)\b/i;
   const durable = messages
     .slice(0, -10)
@@ -100,7 +100,7 @@ export function buildConversationMemory({ messages = [], context = {}, language 
   let used = 0;
   const recent = [];
   for (const item of selected.reverse()) {
-    const content = String(item.content || '').slice(0, 800);
+    const content = String(item.content || '').slice(0, 600);
     if (used + content.length > maxChars && recent.length >= 6) continue;
     recent.unshift({ ...item, content });
     used += content.length;

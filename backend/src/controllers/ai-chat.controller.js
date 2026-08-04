@@ -2,7 +2,6 @@ import AIChatService from '../services/ai-chat.service.js';
 import AIChatRepository from '../repositories/ai-chat.repository.js';
 import AIService from '../lib/ai-service.js';
 import mongoose from 'mongoose';
-import { buildRepairPrompt, validateAIResponse } from '../lib/ai-response-validator.js';
 import OllamaRuntimeService from '../services/ollama-runtime.service.js';
 import AIIntentRouterService from '../services/ai-intent-router.service.js';
 import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
@@ -115,7 +114,9 @@ class AIChatController {
    * POST - Stream chat (SSE)
    */
   static async streamChat(req, res) {
-    const requestStartedAt = Date.now();
+    const controllerEnteredAt = Date.now();
+    const requestStartedAt = req.aiRequestReceivedAt || controllerEnteredAt;
+    const requestId = req.get('x-ai-request-id') || req.id || String(requestStartedAt);
     const userId = req.user?._id;
     if (!userId) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -125,14 +126,15 @@ class AIChatController {
       const body = req.body;
       const message = body.message?.trim();
       const displayMessage = body.displayMessage?.trim() || message;
-      const routingStartedAt = Date.now();
-      const requestRoute = AIIntentRouterService.route(message);
-      const routingMs = Date.now() - routingStartedAt;
-
       // Validate message exists (only reject if no message at all)
       if (!message) {
         return res.status(400).json({ error: 'Message is required' });
       }
+
+      const validationMs = Date.now() - controllerEnteredAt;
+      const routingStartedAt = Date.now();
+      const requestRoute = AIIntentRouterService.route(message);
+      const routingMs = Date.now() - routingStartedAt;
 
       const roleContext = AIChatService.getRoleContext(body.role, req.user);
       let chat;
@@ -145,8 +147,7 @@ class AIChatController {
         if (!isObjectId(body.chatId)) {
           return res.status(404).json({ error: 'Chat not found' });
         }
-        const result = await AIChatService.getUserChats(userId, { chatId: body.chatId });
-        chat = result.chat;
+        chat = await AIChatRepository.findForStreaming(body.chatId, userId, 10);
         if (!chat) return res.status(404).json({ error: 'Chat not found' });
       } else {
         // NEW: Create empty chat directly — do NOT call sendMessage()
@@ -168,6 +169,7 @@ class AIChatController {
         'X-Accel-Buffering': 'no',
       });
       res.flushHeaders?.();
+      const acknowledgedMs = Date.now() - requestStartedAt;
 
       const sendSSE = (event) => {
         if (res.writableEnded || res.destroyed) return false;
@@ -209,20 +211,14 @@ class AIChatController {
         const contextAssemblyMs = Date.now() - contextStartedAt;
         const retrievalMs = cacheLookupMs + contextAssemblyMs;
         const promptStartedAt = Date.now();
-        const systemPrompt = AIService.buildMarketplaceSystemPrompt(
-          roleContext,
-          `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`,
-          platformContext.snapshot.intelligence,
-        );
+        const systemPrompt = requestRoute.handling === 'direct' || semanticCached
+          ? ''
+          : AIService.buildMarketplaceSystemPrompt(
+            roleContext,
+            `${platformContext.text}${AIChatService.formatSupportContext(body.context)}`,
+            platformContext.snapshot.intelligence,
+          );
         const promptConstructionMs = Date.now() - promptStartedAt;
-        const smartResponse = AIChatService.resolveSmartResponse({
-          message,
-          role: roleContext,
-          results: platformContext.results,
-          forceAI: Boolean(body.forceAI),
-        });
-
-        const fastDirectRoute = platformContext.snapshot.intelligence?.route === 'general_knowledge';
         const isSimpleGreeting = platformContext.snapshot.intelligence?.route === 'greeting';
         const budget = inferenceBudget(requestRoute, platformContext.snapshot.intelligence, message);
 
@@ -234,6 +230,7 @@ class AIChatController {
         let firstTokenAt = 0;
         let draftWasStreamed = false;
         let replaceStreamedDraft = false;
+        let ollamaTiming = null;
         const providerStartedAt = Date.now();
         if (requestRoute.handling === 'direct' || semanticCached) {
           assistantText = requestRoute.handling === 'direct' ? requestRoute.response : semanticCached.response;
@@ -242,7 +239,7 @@ class AIChatController {
         }
 
         // Try AI if not simple greeting
-        if (!assistantText && !isSimpleGreeting && (fastDirectRoute || smartResponse.shouldUseAI !== false)) {
+        if (!assistantText && !isSimpleGreeting) {
           try {
             const result = await OllamaRuntimeService.complete({
               messages: [
@@ -270,6 +267,7 @@ class AIChatController {
             activeProvider = result.provider;
             activeModel = result.model;
             tokensUsed = result.tokensUsed;
+            ollamaTiming = result.timing || null;
           } catch (error) {
             debugLog('[Stream] AI failed:', error.message);
             aiFailed = true;
@@ -279,14 +277,11 @@ class AIChatController {
           aiFailed = true;
         }
 
-        // Fallback to smart response
+        // Keep the latency-sensitive streaming path single-provider. A provider
+        // failure receives one stable user-facing response, never a repair pass.
         if (aiFailed || !assistantText.trim()) {
           let fallbackText;
-          if (!isSimpleGreeting && smartResponse.shouldUseAI === false && smartResponse.response) {
-            fallbackText = smartResponse.response.trim();
-            activeProvider = smartResponse.source || 'smart_intelligence';
-            activeModel = null;
-          } else if (isSimpleGreeting) {
+          if (isSimpleGreeting) {
             fallbackText = 'Hello! 👋\nWelcome to EsyGlob. How can I help you today?';
             activeProvider = 'smart_intelligence';
             activeModel = null;
@@ -304,67 +299,28 @@ class AIChatController {
         const sanitizationStartedAt = Date.now();
         const sanitized = sanitizeAIOutput(assistantText);
         const sanitizationMs = Date.now() - sanitizationStartedAt;
-        const validationStartedAt = Date.now();
+        const postprocessStartedAt = Date.now();
         let cleanText = sanitized.text || 'I can help with your request. Please try again.';
         if (draftWasStreamed && (sanitized.changed || sanitized.rejected)) replaceStreamedDraft = true;
         const intelligence = platformContext.snapshot.intelligence || {};
-        let validation = validateAIResponse({
-          message,
-          response: cleanText,
-          intelligence,
-          snapshot: platformContext.snapshot,
-        });
-        let regenerated = false;
-
-        // Never expose an unvalidated draft. One bounded repair pass prevents loops.
-        if (!validation.passed && !draftWasStreamed) {
-          try {
-            const repair = await AIChatService.callOllama(
-              buildRepairPrompt({ message, response: cleanText, validation, intelligence }),
-              chat.messages.slice(-4),
-              systemPrompt,
-              { maxTokens: CHAT_MAX_TOKENS, temperature: 0.15 },
-            );
-            const repairedText = String(repair.message || '').trim();
-            const repairedValidation = validateAIResponse({
-              message,
-              response: repairedText,
-              intelligence,
-              snapshot: platformContext.snapshot,
-            });
-            regenerated = true;
-            if (repairedValidation.passed) {
-              cleanText = repairedText;
-              validation = repairedValidation;
-              tokensUsed += Number(repair.tokensUsed || 0);
-              activeProvider = repair.provider || activeProvider;
-              activeModel = repair.model || activeModel;
-            } else {
-              validation = repairedValidation;
-            }
-          } catch (repairError) {
-            debugLog('[Validator] Repair failed:', repairError.message);
-          }
+        if (sanitized.rejected) {
+          cleanText = intelligence.language === 'hi'
+            ? 'मैं इस अनुरोध का सुरक्षित उत्तर नहीं दे सका। कृपया निजी जानकारी साझा किए बिना अनुरोध को दोबारा लिखें।'
+            : intelligence.language === 'hinglish'
+              ? 'Main is request ka safe answer generate nahi kar saka. Private details ke bina request dobara likhein.'
+              : 'I could not produce a safe answer for this request. Please rephrase it without private information.';
+          replaceStreamedDraft = draftWasStreamed;
         }
-        if (!validation.passed) {
-          const unsafe = validation.issues.some(issue => ['critical', 'high'].includes(issue.severity));
-          if (unsafe && (draftWasStreamed || !regenerated)) {
-            cleanText = intelligence.language === 'hi'
-              ? 'मैं इस अनुरोध का सुरक्षित और सत्यापित उत्तर नहीं दे सका। कृपया निजी जानकारी साझा किए बिना अनुरोध को दोबारा लिखें।'
-              : intelligence.language === 'hinglish'
-                ? 'Main is request ka safe aur verified answer generate nahi kar saka. Private details ke bina request dobara likhein.'
-                : 'I could not produce a safe, verified answer for this request. Please rephrase it without including private information.';
-            replaceStreamedDraft = draftWasStreamed;
-            validation = validateAIResponse({ message, response: cleanText, intelligence, snapshot: platformContext.snapshot });
-          }
-        }
-        const validationAndRepairMs = Date.now() - validationStartedAt;
+        const validation = { passed: !sanitized.rejected, issues: sanitized.rejected ? [{ code: 'AI_OUTPUT_UNSAFE' }] : [] };
+        const regenerated = false;
+        const validationAndRepairMs = Date.now() - postprocessStartedAt;
 
         if (!semanticCached && requestRoute.handling !== 'direct' && validation.passed && requestRoute.cacheCategory) {
           AISemanticCacheService.put(message, cleanText, requestRoute.cacheCategory).catch(() => undefined);
         }
 
-        // Only the validated/repaired final response is streamed to the client.
+        // Direct/cache/fallback responses are emitted here; Gemma tokens were
+        // already emitted through the runtime's single final-answer filter.
         if (!draftWasStreamed) {
           if (loadingTimer) { clearTimeout(loadingTimer); loadingTimer = null; }
           for (const word of cleanText.match(/\S+\s*|\n+/g) || []) {
@@ -374,6 +330,7 @@ class AIChatController {
         } else if (replaceStreamedDraft) {
           sendSSE({ type: 'replace', content: cleanText });
         }
+        sendSSE({ type: 'generation_complete' });
         const providerMs = Date.now() - providerStartedAt;
         const suggestedFollowUps = AIChatService.buildSuggestedFollowUps({
           message,
@@ -437,6 +394,30 @@ class AIChatController {
         const creditStartedAt = Date.now();
         const credits = await commitUsageReservation(req, { responseTokens: tokensUsed, responseTime: Date.now() - requestStartedAt });
         const creditSettlementMs = Date.now() - creditStartedAt;
+        const timing = {
+          requestId,
+          validationMs,
+          creditReservationMs: controllerEnteredAt - requestStartedAt,
+          routingMs,
+          chatLookupMs,
+          acknowledgedMs,
+          cacheLookupMs,
+          contextAssemblyMs,
+          promptConstructionMs,
+          promptChars: systemPrompt.length,
+          memoryMessages: platformContext.internal?.memory?.selectedMessages?.length || 0,
+          retrievalMs,
+          databaseLookupMs: retrievalMs,
+          providerMs,
+          ollamaInferenceMs: providerMs,
+          ollama: ollamaTiming,
+          sanitizationMs,
+          validationAndRepairMs,
+          persistenceMs,
+          creditSettlementMs,
+          timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
+          totalMs: Date.now() - requestStartedAt,
+        };
         sendSSE({
           type: 'done',
           chatId: String(chat._id),
@@ -452,24 +433,11 @@ class AIChatController {
             issues: validation.issues.map(issue => issue.code),
           },
           credits,
-          timing: {
-            routingMs,
-            chatLookupMs,
-            cacheLookupMs,
-            contextAssemblyMs,
-            promptConstructionMs,
-            retrievalMs,
-            databaseLookupMs: retrievalMs,
-            providerMs,
-            ollamaInferenceMs: providerMs,
-            sanitizationMs,
-            validationAndRepairMs,
-            persistenceMs,
-            creditSettlementMs,
-            timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
-            totalMs: Date.now() - requestStartedAt,
-          },
+          timing,
         });
+        if (process.env.AI_PERFORMANCE_LOGS !== 'false') {
+          console.info('[AI-Chat-Performance]', JSON.stringify(timing));
+        }
       } catch (error) {
         console.error('[Stream] Error:', error);
         await releaseUsageReservation(req, error).catch(() => undefined);

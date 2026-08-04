@@ -44,6 +44,7 @@ export async function fetchAIChat(chatId) {
 export async function sendAIMessage(input) { return unwrapData(await apiRequest('/ai-chat', { method: 'POST', body: input, headers: { 'X-AI-Request-Id': globalThis.crypto?.randomUUID?.() || `ai-${Date.now()}` } })) || {} }
 export async function streamAIMessage(input, onEvent, signal) {
   const requestId = globalThis.crypto?.randomUUID?.() || `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const transportStartedAt = globalThis.performance?.now?.() ?? Date.now()
   const response = await fetch(buildApiUrl('/ai-chat/stream'), {
     method: 'POST',
     credentials: 'include',
@@ -58,6 +59,7 @@ export async function streamAIMessage(input, onEvent, signal) {
     throw new ApiError(payload?.error || payload?.message || `Request failed with status ${response.status}`, response.status, payload)
   }
   if (!response.body) throw new ApiError('Streaming is not supported by this browser.', 0)
+  onEvent({ type: 'transport', requestId, timing: { headersMs: (globalThis.performance?.now?.() ?? Date.now()) - transportStartedAt } })
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''

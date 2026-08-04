@@ -132,7 +132,7 @@ function isSentenceBoundary(text, index, segmentStart = 0) {
 }
 
 export class FinalAnswerStreamFilter {
-  constructor({ initialSafetyChars = 96, onDiscard, ...options } = {}) {
+  constructor({ initialSafetyChars = 32, onDiscard, ...options } = {}) {
     this.reasoning = new ReasoningStreamFilter(options);
     this.initialSafetyChars = initialSafetyChars;
     this.onDiscard = onDiscard;
