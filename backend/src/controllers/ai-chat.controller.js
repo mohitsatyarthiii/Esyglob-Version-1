@@ -8,6 +8,7 @@ import AIIntentRouterService from '../services/ai-intent-router.service.js';
 import AISemanticCacheService from '../services/ai-semantic-cache.service.js';
 import { sanitizeAIOutput } from '../lib/ai-output-sanitizer.js';
 import EsyGlobAIGuideService from '../services/esyglob-ai-guide.service.js';
+import { commitUsageReservation, releaseUsageReservation } from '../lib/subscription-access.js';
 
 const CHAT_MAX_TOKENS = Number(process.env.AI_CHAT_MAX_TOKENS || 520);
 
@@ -51,8 +52,10 @@ class AIChatController {
   static async sendMessage(req, res) {
     try {
       const result = await AIChatService.sendMessage(req.user._id, req.body, req.user);
-      return res.json(result);
+      const credits = await commitUsageReservation(req, { responseTokens: result.tokensUsed });
+      return res.json({ ...result, credits });
     } catch (error) {
+      await releaseUsageReservation(req, error).catch(() => undefined);
       console.error('[AI-Chat-POST] Error:', error);
       if (error.statusCode === 400) {
         return res.status(400).json({ error: error.message });
@@ -431,6 +434,9 @@ class AIChatController {
         });
         const persistenceMs = Date.now() - persistenceStartedAt;
 
+        const creditStartedAt = Date.now();
+        const credits = await commitUsageReservation(req, { responseTokens: tokensUsed, responseTime: Date.now() - requestStartedAt });
+        const creditSettlementMs = Date.now() - creditStartedAt;
         sendSSE({
           type: 'done',
           chatId: String(chat._id),
@@ -445,6 +451,7 @@ class AIChatController {
             regenerated,
             issues: validation.issues.map(issue => issue.code),
           },
+          credits,
           timing: {
             routingMs,
             chatLookupMs,
@@ -458,12 +465,14 @@ class AIChatController {
             sanitizationMs,
             validationAndRepairMs,
             persistenceMs,
+            creditSettlementMs,
             timeToFirstTokenMs: firstTokenAt ? firstTokenAt - requestStartedAt : null,
             totalMs: Date.now() - requestStartedAt,
           },
         });
       } catch (error) {
         console.error('[Stream] Error:', error);
+        await releaseUsageReservation(req, error).catch(() => undefined);
         sendSSE({ type: 'error', message: 'EsyGlob AI could not complete the response. Please retry in a moment.' });
       } finally {
         if (loadingTimer) clearTimeout(loadingTimer);
@@ -472,6 +481,7 @@ class AIChatController {
       }
     } catch (error) {
       console.error('[Stream-POST] Error:', error);
+      await releaseUsageReservation(req, error).catch(() => undefined);
       if (!res.headersSent) {
         return res.status(500).json({ error: 'Failed to stream chat' });
       }

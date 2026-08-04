@@ -26,11 +26,17 @@ import {
 import AppShell from '../components/AppShell'
 import { PageHead } from '../components/PageHead'
 import { useConfirm } from '../components/EnterpriseUX'
+import { useAuth } from '../auth/auth-context'
+import { AICreditDialog, AICreditMeter, useAICredits } from '../components/AICredits'
 
 const PAGE_SIZE = 12
 
 export default function MarketInsightsPage() {
   const confirm = useConfirm()
+  const { user } = useAuth()
+  const role = user?.primaryRole || 'buyer'
+  const creditState = useAICredits(role)
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const abortRef = useRef(null)
   const previewAbortRef = useRef(null)
   const previewUrlRef = useRef('')
@@ -150,6 +156,7 @@ export default function MarketInsightsPage() {
     event.preventDefault()
     const researchQuery = query.trim()
     if (!researchQuery || busy) return
+    if (creditState.exhausted) { setCreditDialogOpen(true); return }
 
     setBusy(true)
     setError('')
@@ -182,6 +189,7 @@ export default function MarketInsightsPage() {
           if (eventData.type === 'error') {
             streamError = eventData.message || 'Report generation failed'
           }
+          if (eventData.type === 'done') creditState.apply(eventData.credits)
         },
         controller.signal
       )
@@ -208,7 +216,8 @@ export default function MarketInsightsPage() {
     } catch (next) {
       if (next.name !== 'AbortError') {
         console.error('Report generation failed:', next.message)
-        setError(next.message || 'Report generation failed')
+        if (next.code === 'AI_CREDITS_EXHAUSTED' || next.status === 402) setCreditDialogOpen(true)
+        else setError(next.message || 'Report generation failed')
       }
     } finally {
       abortRef.current = null
@@ -248,6 +257,7 @@ export default function MarketInsightsPage() {
 
   // ==================== REGENERATE REPORT ====================
   async function regenerate(report) {
+    if (creditState.exhausted) { setCreditDialogOpen(true); return }
     const id = reportId(report)
     if (!id || !isValidObjectId(id)) {
       setError('Cannot regenerate report: Invalid report ID')
@@ -259,7 +269,9 @@ export default function MarketInsightsPage() {
     setNotice('')
 
     try {
-      const regenerated = await regenerateMarketReport(id)
+      const regeneration = await regenerateMarketReport(id)
+      const regenerated = regeneration.report || regeneration
+      creditState.apply(regeneration.credits)
       if (!regenerated || !reportId(regenerated)) {
         throw new Error('Report regeneration returned empty result')
       }
@@ -269,7 +281,8 @@ export default function MarketInsightsPage() {
       setSelected(regenerated)
       setNotice('A refreshed report has been generated and saved.')
     } catch (next) {
-      setError(next.message || 'Failed to regenerate report')
+      if (next.code === 'AI_CREDITS_EXHAUSTED' || next.status === 402) setCreditDialogOpen(true)
+      else setError(next.message || 'Failed to regenerate report')
       console.error('Regenerate error:', next)
     } finally {
       setBusyReportId('')
@@ -365,6 +378,7 @@ export default function MarketInsightsPage() {
           title="Decision-ready market research"
           description="Turn a sourcing or expansion question into a professionally designed, evidence-aware PDF you can preview, share and revisit."
         />
+        <AICreditMeter state={creditState} role={role} />
 
         {/* Hero Form */}
         <section className="market-report-hero">
@@ -505,6 +519,7 @@ export default function MarketInsightsPage() {
           )}
         </section>
       </main>
+      <AICreditDialog open={creditDialogOpen} onClose={() => setCreditDialogOpen(false)} role={role} credits={creditState.credits} />
     </AppShell>
   )
 }

@@ -1,9 +1,12 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { CalendarClock, Check, CreditCard, Crown, History, RefreshCw, ShieldCheck } from 'lucide-react'
+import { CalendarClock, Check, CreditCard, Crown, History, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { createSubscriptionOrder, fetchSubscription, fetchSubscriptionPlans, setSubscriptionAutoRenew, verifySubscriptionPayment } from '../api/verification'
 import AppShell from '../components/AppShell'
 import { Money } from '../components/TradeUI'
+import { useAuth } from '../auth/auth-context'
+import { publishAICredits } from '../components/AICredits'
+import { useSearchParams } from 'react-router-dom'
 
 const features = (plan) => Array.isArray(plan.features) ? plan.features : [...(plan.features?.highlighted || []), ...(plan.features?.core || [])].slice(0, 8)
 
@@ -19,6 +22,9 @@ function loadRazorpay() {
 }
 
 export default function SubscriptionPage() {
+  const { user } = useAuth()
+  const [searchParams] = useSearchParams()
+  const role = searchParams.get('role') === 'seller' || searchParams.get('role') === 'buyer' ? searchParams.get('role') : user?.primaryRole === 'seller' ? 'seller' : 'buyer'
   const [data, setData] = useState(null)
   const [plans, setPlans] = useState([])
   const [duration, setDuration] = useState('monthly')
@@ -26,10 +32,11 @@ export default function SubscriptionPage() {
   const [message, setMessage] = useState('')
   const [terms, setTerms] = useState(false)
   const load = useCallback(async () => {
-    const [current, catalog] = await Promise.all([fetchSubscription('seller'), fetchSubscriptionPlans('seller')])
+    const [current, catalog] = await Promise.all([fetchSubscription(role), fetchSubscriptionPlans(role)])
     setData(current)
     setPlans(catalog?.plans || catalog || [])
-  }, [])
+    return current
+  }, [role])
   useEffect(() => { load().catch((error) => setMessage(error.message)) }, [load])
 
   async function checkout(plan) {
@@ -58,7 +65,8 @@ export default function SubscriptionPage() {
               duration,
             })
             setMessage('Payment verified. Your membership is active.')
-            await load()
+            const refreshed = await load()
+            publishAICredits(refreshed?.credits)
           } catch (error) {
             setMessage(error.message)
           }
@@ -76,10 +84,10 @@ export default function SubscriptionPage() {
   const subscription = data?.subscription || {}
   const current = data?.plan || {}
   return <AppShell><main className="container subscription-page">
-    <header className="subscription-hero"><Crown /><div><span className="eyebrow">Seller membership</span><h1>Grow with the right plan</h1><p>Verification visibility, sourcing tools, AI credits and seller limits in one transparent membership.</p></div></header>
+    <header className="subscription-hero"><Crown /><div><span className="eyebrow">{role === 'seller' ? 'Seller membership' : 'Buyer membership'}</span><h1>Grow with the right plan</h1><p>Sourcing tools, AI credits and account limits in one transparent membership.</p></div></header>
     {message && <div className="verification-alert">{message}<button onClick={() => setMessage('')}>Dismiss</button></div>}
     <section className="subscription-current">
-      <div><ShieldCheck /><span><small>Current plan</small><b>{current.name || subscription.sellerPlan || 'Free seller'}</b></span></div>
+      <div><ShieldCheck /><span><small>Current plan</small><b>{current.name || subscription[role === 'seller' ? 'sellerPlan' : 'buyerPlan'] || `Free ${role}`}</b></span></div>
       <div><CalendarClock /><span><small>Valid until</small><b>{subscription.expiryDate ? new Date(subscription.expiryDate).toLocaleDateString() : 'No expiry'}</b></span></div>
       <div><RefreshCw /><span><small>Auto renewal</small><b>{subscription.autoRenew ? 'Enabled' : 'Disabled'}</b></span><button onClick={async () => { await setSubscriptionAutoRenew(!subscription.autoRenew); load() }}>Change</button></div>
     </section>
@@ -89,11 +97,17 @@ export default function SubscriptionPage() {
       const priceEntry = plan.prices?.[duration]
       const price = priceEntry?.amount ?? priceEntry ?? 0
       const priceCurrency = priceEntry?.currency || plan.currency || 'INR'
-      const isCurrent = plan.key === subscription.planKey || plan.key === subscription.sellerPlan
+      const isCurrent = plan.key === subscription.planKey || plan.key === subscription[role === 'seller' ? 'sellerPlan' : 'buyerPlan']
+      const planCredits = Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0)
+      const months = duration === 'yearly' ? 12 : duration === 'quarterly' ? 3 : 1
+      const monthlyPrice = Number(plan.prices?.monthly?.amount ?? plan.prices?.monthly ?? price)
+      const savings = Math.max(0, (monthlyPrice * months) - Number(price || 0))
       return <article className={plan.isPopular || plan.recommended ? 'recommended' : ''} key={plan.key || plan.name}>
         {(plan.isPopular || plan.recommended) && <em>Recommended</em>}
         <h2>{plan.name}</h2><p>{plan.description || 'Built for global marketplace growth.'}</p>
         <strong><Money value={price} currency={priceCurrency} /><small> / {duration}</small></strong>
+        <div className="ai-plan-credit"><Sparkles /><span><b>{planCredits.toLocaleString()} AI credits</b><small>Approximately {planCredits.toLocaleString()} AI requests · instant activation</small></span></div>
+        {savings > 0 && <small className="ai-plan-saving">Save <Money value={savings} currency={priceCurrency} /> with {duration} billing</small>}
         <ul>{features(plan).map((feature) => <li key={String(feature)}><Check />{typeof feature === 'string' ? feature : feature.label}</li>)}</ul>
         <button className={`button ${isCurrent ? 'button--ghost' : 'button--primary'} button--full`} disabled={busy || isCurrent || Number(price) === 0 || !terms} onClick={() => checkout(plan)}>{isCurrent ? 'Current plan' : Number(price) > Number(current.prices?.[duration]?.amount || 0) ? 'Upgrade' : 'Change plan'}</button>
       </article>

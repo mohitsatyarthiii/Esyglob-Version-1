@@ -11,6 +11,7 @@ import { Money } from '../components/TradeUI'
 import { resolveId } from '../utils/trade'
 import UnifiedSearchInput from '../components/UnifiedSearchInput'
 import { useConfirm } from '../components/EnterpriseUX'
+import { AICreditDialog, AICreditMeter, useAICredits } from '../components/AICredits'
 
 const buyerPrompts = ['Find verified suppliers with low MOQ', 'Draft an RFQ for 500 units', 'Compare suppliers by trust, price and lead time', 'Explain shipping documents for my order']
 const sellerPrompts = ['Find RFQ opportunities for my products', 'How can I improve my product listings?', 'Prepare a professional quotation', 'Analyze demand for my category']
@@ -20,6 +21,8 @@ export default function AIChatPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const role = user?.primaryRole || 'buyer'
+  const creditState = useAICredits(role)
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const [chats, setChats] = useState([])
   const [chatId, setChatId] = useState('')
   const [messages, setMessages] = useState([]) 
@@ -157,6 +160,7 @@ export default function AIChatPage() {
   async function send(text = draft) {
     const content = text.trim() || (attachments.length ? 'Please analyze the attached files for my marketplace request.' : '')
     if (!content || busy || conversationLoading || sendingRef.current) return
+    if (creditState.exhausted) { setCreditDialogOpen(true); return }
     stickToBottomRef.current = true
     sendingRef.current = true
     const sentAttachments = attachments
@@ -210,17 +214,19 @@ export default function AIChatPage() {
           const metadata = { ...event, marketplace: event.marketplace || {}, suggestedFollowUps: event.suggestedFollowUps || [] }
           setMessages((current) => current.map((item) => item._id === streamMessageId ? { ...item, content: `${item.content || ''}${finalChunk}`, streaming: false, metadata } : item))
           nextChatId = event.chatId || nextChatId
+          creditState.apply(event.credits)
         }
         if (event.type === 'error') streamError = event.message || 'The AI response could not be completed.'
       }, controller.signal)
       if (streamError) throw new Error(streamError)
       if (!streamCompleted) throw new Error('The response connection closed before completion. Please retry.')
       if (nextChatId && nextChatId !== chatId) setChatId(nextChatId)
-      await loadChats()
+      loadChats().catch(() => undefined)
     } catch (next) {
       if (next.name !== 'AbortError') {
         setMessages((current) => current.filter((item) => item._id !== streamMessageId))
-        setError(next.message); setFailed(content)
+        if (next.code === 'AI_CREDITS_EXHAUSTED' || next.status === 402) setCreditDialogOpen(true)
+        else { setError(next.message); setFailed(content) }
       }
     } finally {
       window.cancelAnimationFrame(streamTokenFrameRef.current)
@@ -335,6 +341,7 @@ export default function AIChatPage() {
           <span><small>EsyGlob AI</small><h1>{active?.title || 'New conversation'}</h1><p><em /> Ready to help <span>· {role}</span></p></span>
         </div>
         <div className="ai-header-actions">
+          <AICreditMeter state={creditState} role={role} compact />
           <span className="ai-share-status" role="status">{shareStatus}</span>
           <button className="ai-header-tool ai-share-button" type="button" onClick={shareConversation} aria-label="Share conversation"><Share2 /><span>Share</span></button>
           <details className="ai-conversation-menu" ref={conversationMenuRef}>
@@ -381,6 +388,7 @@ export default function AIChatPage() {
         <small className="ai-disclaimer">AI can make mistakes. Verify important commercial and compliance details.</small>
       </div>
     </section>
+    <AICreditDialog open={creditDialogOpen} onClose={() => setCreditDialogOpen(false)} role={role} credits={creditState.credits} />
   </div></AppShell>
 }
 

@@ -43,6 +43,9 @@ const aiUsageSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    creditAmount: { type: Number, default: 1, min: 0 },
+    requestId: { type: String, trim: true },
+    completedAt: Date,
     
     // Counters (reset monthly)
     monthlySearchCount: {
@@ -64,7 +67,7 @@ const aiUsageSchema = new mongoose.Schema(
     // Status
     status: {
       type: String,
-      enum: ['success', 'failed', 'rate_limited'],
+      enum: ['pending', 'success', 'failed', 'rate_limited'],
       default: 'success',
     },
     errorMessage: String,
@@ -85,5 +88,7 @@ const aiUsageSchema = new mongoose.Schema(
     ],
   }
 );
+
+aiUsageSchema.index({ requestId: 1 }, { unique: true, sparse: true });
 
 export default mongoose.models.AIUsage || mongoose.model('AIUsage', aiUsageSchema);

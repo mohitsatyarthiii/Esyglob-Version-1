@@ -1,7 +1,7 @@
 import SubscriptionRepository from '../repositories/subscription.repository.js';
 import { getMonthsIncluded } from '../lib/subscription-pricing.js';
 import { getPlan, listPlans } from '../lib/subscription-plans.js';
-import { getSubscriptionContext } from '../lib/subscription-access.js';
+import { getAICreditSnapshot, getSubscriptionContext } from '../lib/subscription-access.js';
 import Payment from '../models/Payment.js';
 import Razorpay from 'razorpay';
 
@@ -17,9 +17,8 @@ class SubscriptionService {
     await subscription.populate({ path: 'paymentHistoryIds', select: 'amount currency status paymentMethod transactionId createdAt description', options: { sort: { createdAt: -1 }, limit: 50 } });
     const usage=subscription.usage||{};
     const limits=plan.restrictions||plan.limits||{};
-    const planCredits=Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0);
-    const allocated=Number(subscription.aiCreditsAllocated ?? planCredits);
-    return { subscription, plan, usage: { ...usage, aiCreditsRemaining: Math.max(0,allocated-Number(subscription.aiCreditsUsed||0)), aiCreditsUsed:Number(subscription.aiCreditsUsed||0), limits } };
+    const credits = await getAICreditSnapshot(user, userType);
+    return { subscription, plan, credits, usage: { ...usage, aiCreditsRemaining: credits.remaining, aiCreditsUsed: credits.used, aiCreditsToday: credits.todayUsed, limits } };
   }
 
   static async getPlans(user, role) { const resolved=role==='seller'?'seller':'buyer'; return {plans:await listPlans(resolved),role:resolved}; }

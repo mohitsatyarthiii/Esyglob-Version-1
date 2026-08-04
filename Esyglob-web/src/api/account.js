@@ -41,12 +41,13 @@ export async function fetchAIChat(chatId) {
   const data = unwrapData(await apiRequest('/ai-chat', { query: { chatId }, cache: false })) || {}
   return data.chat || data
 }
-export async function sendAIMessage(input) { return unwrapData(await apiRequest('/ai-chat', { method: 'POST', body: input })) || {} }
+export async function sendAIMessage(input) { return unwrapData(await apiRequest('/ai-chat', { method: 'POST', body: input, headers: { 'X-AI-Request-Id': globalThis.crypto?.randomUUID?.() || `ai-${Date.now()}` } })) || {} }
 export async function streamAIMessage(input, onEvent, signal) {
+  const requestId = globalThis.crypto?.randomUUID?.() || `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const response = await fetch(buildApiUrl('/ai-chat/stream'), {
     method: 'POST',
     credentials: 'include',
-    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json', 'X-AI-Request-Id': requestId },
     body: JSON.stringify(input),
     signal,
   })
@@ -91,10 +92,11 @@ export async function fetchMarketReport(reportId) {
   return data.report || data
 }
 export async function streamMarketResearch(input, onEvent, signal) {
+  const requestId = globalThis.crypto?.randomUUID?.() || `insight-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const response = await fetch(buildApiUrl('/market-insights/research/stream'), {
     method: 'POST',
     credentials: 'include',
-    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json' },
+    headers: { Accept: 'text/event-stream', 'Content-Type': 'application/json', 'X-AI-Request-Id': requestId },
     body: JSON.stringify(input),
     signal,
   })
@@ -150,8 +152,7 @@ export async function deleteMarketReport(reportId) {
   return unwrapData(await apiRequest(`/market-insights/reports/${reportId}`, { method: 'DELETE' })) || {}
 }
 export async function regenerateMarketReport(reportId) {
-  const data = unwrapData(await apiRequest(`/market-insights/reports/${reportId}/regenerate`, { method: 'POST' })) || {}
-  return data.report || data
+  return unwrapData(await apiRequest(`/market-insights/reports/${reportId}/regenerate`, { method: 'POST', headers: { 'X-AI-Request-Id': globalThis.crypto?.randomUUID?.() || `insight-${Date.now()}` } })) || {}
 }
 export async function generateMarketInsight(input) {
   const data = unwrapData(await apiRequest('/market-insights', { method: 'POST', body: input })) || {}

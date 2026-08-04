@@ -1,7 +1,7 @@
 import MarketInsightsService from '../services/market-insights.service.js';
 import MarketResearchService from '../services/market-research.service.js';
 import SavedResearchReport from '../models/SavedResearchReport.js';
-import { refundUsage } from '../lib/subscription-access.js';
+import { commitUsageReservation, releaseUsageReservation } from '../lib/subscription-access.js';
 import { buildMarketInsightPdf, sendMarketInsightPdf } from '../lib/market-insight-pdf.js';
 import MarketReportStorageService from '../services/market-report-storage.service.js';
 
@@ -157,9 +157,10 @@ static async downloadResearchPdf(req, res) {
         mode: existing.reportType,
         force: true,
       }, () => {});
-      return res.status(201).json({ report });
+      const credits = await commitUsageReservation(req);
+      return res.status(201).json({ report, credits });
     } catch (error) {
-      await refundUsage(req.user, 'marketInsights', 1, { ai: true }).catch(() => undefined);
+      await releaseUsageReservation(req, error).catch(() => undefined);
       return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to regenerate report' });
     }
   }
@@ -184,10 +185,11 @@ static async downloadResearchPdf(req, res) {
     const heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': keep-alive\n\n'); }, 10000);
     try {
       await MarketResearchService.run({ userId, session: req.user, ...req.body }, send);
-      send({ type: 'done' });
+      const credits = await commitUsageReservation(req);
+      send({ type: 'done', credits });
     } catch (error) {
       console.error('[Market-Research-Stream] Error:', error);
-      await refundUsage(req.user, 'marketInsights', 1, { ai: true }).catch(() => undefined);
+      await releaseUsageReservation(req, error).catch(() => undefined);
       send({ type: 'error', message: 'The market analysis could not be completed. Please retry in a moment.', status: error.statusCode || 500 });
     } finally {
       clearInterval(heartbeat);
