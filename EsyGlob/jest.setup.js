@@ -35,10 +35,14 @@ jest.mock('react-native-nitro-sound', () => ({
   default: { startRecorder: jest.fn(), stopRecorder: jest.fn(), pauseRecorder: jest.fn(), resumeRecorder: jest.fn(), startPlayer: jest.fn(), stopPlayer: jest.fn(), addRecordBackListener: jest.fn(), removeRecordBackListener: jest.fn() },
 }));
 jest.mock('react-native-razorpay', () => ({ __esModule: true, default: { open: jest.fn() } }));
+jest.mock('react-native-linear-gradient', () => {
+  const React = require('react');
+  return { __esModule: true, default: ({ children, ...props }) => React.createElement('LinearGradient', props, children) };
+});
 jest.mock('./src/components/AIChatBot', () => {
   const React = require('react');
   return { __esModule: true, default: () => React.createElement(React.Fragment) };
-});
+}, { virtual: true });
 
 jest.mock('react-native', () => {
   const React = require('react');
@@ -95,6 +99,7 @@ jest.mock('react-native', () => {
     TextInput: createHost('TextInput'),
     View: createHost('View'),
     useColorScheme: () => 'light',
+    useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
   };
 });
 
@@ -105,6 +110,16 @@ jest.mock('react-native-geolocation-service', () => ({
     watchPosition: jest.fn(() => 1),
     clearWatch: jest.fn(),
     stopObserving: jest.fn(),
+  },
+}));
+
+jest.mock('react-native-location', () => ({
+  __esModule: true,
+  default: {
+    checkPermission: jest.fn(async () => true),
+    requestPermission: jest.fn(async () => true),
+    configure: jest.fn(async () => undefined),
+    getLatestLocation: jest.fn(async () => ({ latitude: 28.6139, longitude: 77.209, accuracy: 10 })),
   },
 }));
 

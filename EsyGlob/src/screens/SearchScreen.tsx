@@ -4,6 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { FlashList } from '@shopify/flash-list';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import ProductCard from '../components/ProductCard';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
 import { fetchProducts } from '../api/products';
@@ -137,13 +138,13 @@ function SearchScreen() {
   const appliedCount = [category, subcategory, seller, verifiedOnly, minPrice, maxPrice].filter(Boolean).length;
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView edges={['top']} style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.backButton}>
           <Icon name="arrow-left" size={24} color={colors.ink} />
         </Pressable>
-        <View style={styles.headerCopy}><Text numberOfLines={1} style={styles.headerTitle}>{submittedQuery || categoryName || 'Products'}</Text><Text numberOfLines={1} style={styles.headerContext}>{[categoryName, subcategoryName].filter(Boolean).join(' · ') || 'EsyGlob marketplace'}</Text></View>
-        <Pressable onPress={() => setViewMode(current => current === 'grid' ? 'list' : 'grid')} style={styles.backButton}><Icon name={viewMode === 'grid' ? 'view-list-outline' : 'view-grid-outline'} size={22} color={colors.ink} /></Pressable>
+        <View style={styles.headerCopy}><Text numberOfLines={1} style={styles.headerTitle}>{submittedQuery || categoryName || 'Products'}</Text><Text numberOfLines={1} style={styles.headerContext}>{[categoryName, subcategoryName].filter(Boolean).join(' · ') || 'Global B2B marketplace'}</Text></View>
+        <Pressable accessibilityLabel={viewMode === 'grid' ? 'Use list view' : 'Use grid view'} onPress={() => setViewMode(current => current === 'grid' ? 'list' : 'grid')} style={styles.headerAction}><Icon name={viewMode === 'grid' ? 'view-list-outline' : 'view-grid-outline'} size={21} color={colors.ink} /></Pressable>
       </View>
       <View style={styles.searchShell}>
         <Icon name="magnify" size={22} color={colors.muted} />
@@ -152,7 +153,7 @@ function SearchScreen() {
           onChangeText={setQuery}
           onSubmitEditing={submitSearch}
           returnKeyType="search"
-          placeholder="Search products, suppliers, RFQs"
+          placeholder="Search products or suppliers"
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
@@ -168,12 +169,12 @@ function SearchScreen() {
             <Icon name="close-circle" size={20} color={colors.muted} />
           </Pressable>
         ) : null}
-        <Pressable onPress={submitSearch} style={styles.button}>
-          <Text style={styles.buttonText}>Go</Text>
+        <Pressable accessibilityLabel="Search" onPress={submitSearch} style={styles.button}>
+          <Icon name="arrow-right" size={19} color="#FFFFFF" />
         </Pressable>
       </View>
 
-      <View style={styles.summaryRow}><View><Text style={styles.resultCount}>Showing {resultCount} products</Text><Text style={styles.resultMeta}>{verifiedOnly ? 'Verified suppliers' : 'All suppliers'} · Updated marketplace results</Text></View><Pressable onPress={() => setFiltersOpen(true)} style={styles.filterButton}><Icon name="tune-variant" size={18} color="#fff" /><Text style={styles.filterButtonText}>Filters{appliedCount ? ` (${appliedCount})` : ''}</Text></Pressable></View>
+      <View style={styles.summaryRow}><View style={styles.summaryCopy}><Text style={styles.resultCount}>{resultCount.toLocaleString()} products</Text><Text style={styles.resultMeta}>{verifiedOnly ? 'Verified suppliers only' : 'Marketplace results'} · {sortOptions.find(option => option.value === sort)?.label}</Text></View><Pressable accessibilityLabel="Open product filters" onPress={() => setFiltersOpen(true)} style={[styles.filterButton, appliedCount > 0 && styles.filterButtonActive]}><Icon name="tune-variant" size={17} color={appliedCount ? '#FFFFFF' : colors.text} /><Text style={[styles.filterButtonText, appliedCount > 0 && styles.filterButtonTextActive]}>Filters{appliedCount ? ` ${appliedCount}` : ''}</Text></Pressable></View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {category ? (
           <Pressable onPress={clearCategory} style={styles.activeChip}>
@@ -245,20 +246,23 @@ function SearchScreen() {
           <Pressable onPress={() => setFiltersOpen(false)} style={styles.applyButton}><Text style={styles.applyText}>Show {resultCount} products</Text></Pressable>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: colors.background,
+    backgroundColor: '#F7F8FA',
     flex: 1,
-    paddingTop: spacing.lg,
   },
   header: {
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#EAECF0',
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
+    minHeight: 56,
+    paddingHorizontal: spacing.sm,
   },
   backButton: {
     alignItems: 'center',
@@ -266,54 +270,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 42,
   },
+  headerAction: {
+    alignItems: 'center',
+    backgroundColor: '#F4F5F7',
+    borderRadius: 10,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
   headerTitle: {
     color: colors.ink,
-    fontSize: 18,
-    fontWeight: '900',
+    fontSize: 16,
+    fontWeight: '800',
   },
-  headerCopy: { flex: 1, paddingHorizontal: spacing.sm },
-  headerContext: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 2 },
+  headerCopy: { flex: 1, minWidth: 0, paddingHorizontal: spacing.sm },
+  headerContext: { color: colors.muted, fontSize: 10, fontWeight: '600', marginTop: 2 },
   searchShell: {
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radii.pill,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D8DCE3',
+    borderRadius: 12,
+    borderWidth: 1,
     flexDirection: 'row',
-    margin: spacing.lg,
-    marginBottom: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.xs,
     paddingLeft: spacing.md,
     paddingRight: spacing.xs,
   },
   input: {
     color: colors.ink,
     flex: 1,
-    fontSize: 15,
-    fontWeight: '700',
-    minHeight: 50,
+    fontSize: 14,
+    fontWeight: '500',
+    minHeight: 46,
     paddingHorizontal: spacing.sm,
   },
   button: {
+    alignItems: 'center',
     backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    borderRadius: 10,
+    height: 38,
+    justifyContent: 'center',
+    width: 40,
   },
   clearSearch: { alignItems: 'center', height: 38, justifyContent: 'center', width: 34 },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '900',
-  },
   filters: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    gap: 7,
+    paddingHorizontal: spacing.md,
+    paddingBottom: 9,
   },
-  summaryRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  resultCount: { color: colors.ink, fontSize: 16, fontWeight: '900' },
-  resultMeta: { color: colors.muted, fontSize: 10, fontWeight: '700', marginTop: 3 },
-  filterButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, flexDirection: 'row', gap: 6, paddingHorizontal: spacing.md, paddingVertical: 10 },
-  filterButtonText: { color: '#fff', fontSize: 11, fontWeight: '900' },
+  summaryRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingVertical: 10 },
+  summaryCopy: { flex: 1, minWidth: 0, paddingRight: spacing.sm },
+  resultCount: { color: colors.ink, fontSize: 15, fontWeight: '800' },
+  resultMeta: { color: colors.muted, fontSize: 9.5, fontWeight: '600', marginTop: 2 },
+  filterButton: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#D8DCE3', borderRadius: 10, borderWidth: 1, flexDirection: 'row', gap: 5, minHeight: 38, paddingHorizontal: spacing.md },
+  filterButtonActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  filterButtonText: { color: colors.text, fontSize: 11, fontWeight: '800' },
+  filterButtonTextActive: { color: '#FFFFFF' },
   clearChip: { backgroundColor: '#FFF1F2', borderRadius: radii.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   clearChipText: { color: colors.rose, fontSize: 11, fontWeight: '900' },
   chip: {
@@ -322,7 +338,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     flexDirection: 'row',
     gap: spacing.xs,
-    minHeight: 38,
+    minHeight: 34,
     paddingHorizontal: spacing.md,
   },
   activeChip: {
@@ -332,7 +348,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
     maxWidth: 150,
-    minHeight: 38,
+    minHeight: 34,
     paddingHorizontal: spacing.md,
   },
   activeFilter: {
@@ -377,8 +393,8 @@ const styles = StyleSheet.create({
   },
   results: {
     paddingBottom: 116,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+    paddingHorizontal: 8,
+    paddingTop: 3,
   },
   column: {
     alignItems: 'stretch',
@@ -387,13 +403,13 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
   },
   backdrop: { backgroundColor: 'rgba(15,23,42,0.42)', flex: 1 },
-  filterSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, maxHeight: '78%', padding: spacing.lg, paddingBottom: spacing.xl },
+  filterSheet: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '78%', padding: spacing.lg, paddingBottom: spacing.xl },
   sheetHandle: { alignSelf: 'center', backgroundColor: '#CBD5E1', borderRadius: 3, height: 5, marginBottom: spacing.md, width: 44 },
   sheetHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg },
-  sheetTitle: { color: colors.ink, fontSize: 21, fontWeight: '900' },
-  sheetSubtitle: { color: colors.muted, fontSize: 11, fontWeight: '700', marginTop: 3 },
+  sheetTitle: { color: colors.ink, fontSize: 19, fontWeight: '800' },
+  sheetSubtitle: { color: colors.muted, fontSize: 10, fontWeight: '600', marginTop: 3 },
   resetText: { color: colors.primary, fontSize: 12, fontWeight: '900' },
-  filterLabel: { color: colors.ink, fontSize: 12, fontWeight: '900', marginBottom: spacing.sm, marginTop: spacing.md, textTransform: 'uppercase' },
+  filterLabel: { color: colors.ink, fontSize: 11, fontWeight: '800', marginBottom: spacing.sm, marginTop: spacing.md },
   sheetOption: { alignItems: 'center', backgroundColor: '#F8FAFC', borderColor: colors.faint, borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
   sheetOptionActive: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
   sheetOptionText: { color: colors.ink, flex: 1, fontSize: 13, fontWeight: '800' },
@@ -402,8 +418,8 @@ const styles = StyleSheet.create({
   sheetSortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   sheetSort: { backgroundColor: '#F8FAFC', borderColor: colors.faint, borderRadius: radii.pill, borderWidth: 1, flexBasis: '47%', flexGrow: 1, padding: spacing.md },
   sheetSortActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  applyButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: radii.pill, marginTop: spacing.lg, padding: spacing.md },
-  applyText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  applyButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, marginTop: spacing.lg, padding: spacing.md },
+  applyText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });
 
 export default SearchScreen;
