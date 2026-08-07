@@ -1,0 +1,247 @@
+/* The Phase 1 visual system is consolidated in index.css for one critical CSS request. */
+.product-create-switch {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  flex-wrap: wrap;
+}
+
+.product-form-mode-switch {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.bulk-product-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.bulk-product-page h2,
+.bulk-product-page h3,
+.bulk-product-page p {
+  margin-top: 0;
+}
+
+.bulk-template-panel,
+.bulk-section-title,
+.bulk-result-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.bulk-template-actions,
+.bulk-upload-actions {
+  display: flex;
+  gap: .65rem;
+  flex-wrap: wrap;
+}
+
+.bulk-section-title > label {
+  min-width: 220px;
+}
+
+.bulk-drop-zone {
+  width: 100%;
+  min-height: 180px;
+  margin: 1rem 0;
+  border: 2px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+
+.bulk-drop-zone:hover,
+.bulk-drop-zone.is-dragging {
+  border-color: var(--color-primary, #136f63);
+  background: #f0fdfa;
+}
+
+.bulk-drop-zone svg {
+  width: 36px;
+  height: 36px;
+}
+
+.bulk-drop-zone span,
+.bulk-field-grid span,
+.bulk-history article span,
+.bulk-preview-table small {
+  color: #64748b;
+  font-size: .85rem;
+}
+
+.bulk-upload-actions {
+  justify-content: flex-end;
+}
+
+.bulk-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+  margin: 1rem 0;
+}
+
+.bulk-summary-grid article {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: .85rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.bulk-summary-grid article b {
+  font-size: 1.5rem;
+}
+
+.bulk-summary-grid .is-success b,
+.bulk-row-valid {
+  color: #15803d;
+}
+
+.bulk-summary-grid .is-danger b,
+.bulk-row-errors {
+  color: #b91c1c;
+}
+
+.bulk-summary-grid .is-warning b {
+  color: #b45309;
+}
+
+.bulk-preview-table {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.bulk-preview-table table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.bulk-preview-table th,
+.bulk-preview-table td {
+  padding: .7rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.bulk-preview-table td small {
+  display: block;
+  margin-top: .2rem;
+}
+
+.bulk-preview-table tr.is-invalid {
+  background: #fff7f7;
+}
+
+.bulk-row-errors,
+.bulk-row-valid {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: .35rem;
+  font-size: .82rem;
+}
+
+.bulk-row-errors svg,
+.bulk-row-valid svg {
+  width: 15px;
+  min-width: 15px;
+}
+
+.bulk-result-panel {
+  justify-content: flex-start;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.bulk-result-panel > svg {
+  width: 42px;
+  height: 42px;
+  color: #15803d;
+}
+
+.bulk-format-guide details {
+  margin-top: 1rem;
+}
+
+.bulk-format-guide summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.bulk-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+  margin-top: .75rem;
+}
+
+.bulk-field-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: .7rem .8rem;
+}
+
+.bulk-field-grid em {
+  margin-left: .5rem;
+  color: #b91c1c;
+  font-size: .68rem;
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.bulk-history article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 170px 170px;
+  gap: 1rem;
+  padding: .75rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.bulk-history article div {
+  display: flex;
+  flex-direction: column;
+}
+
+.bulk-history article > strong {
+  text-transform: capitalize;
+}
+
+@media (max-width: 760px) {
+  .bulk-template-panel,
+  .bulk-section-title,
+  .bulk-result-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bulk-summary-grid,
+  .bulk-field-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bulk-history article {
+    grid-template-columns: 1fr;
+    gap: .25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .bulk-summary-grid,
+  .bulk-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
