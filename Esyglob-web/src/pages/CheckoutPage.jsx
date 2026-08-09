@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, CreditCard, Gift, MapPin, ShieldCheck, Tag, Truck, X } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, CreditCard, Gift, MapPin, ShieldCheck, Tag, Truck, X } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchAddresses } from '../api/account'
@@ -7,6 +7,7 @@ import { loadRazorpay } from '../api/services'
 import { createSampleOrder, createTradeOrder, fetchCheckoutQuote, initiatePayment, verifyPayment } from '../api/trade'
 import AppShell from '../components/AppShell'
 import { SafeImage } from '../components/MarketplaceCards'
+import ProviderBrand from '../components/ProviderBrand'
 import { Money } from '../components/TradeUI'
 import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
@@ -170,11 +171,12 @@ export default function CheckoutPage() {
           {addresses.length ? <div className="checkout-addresses">{addresses.map((item) => <button type="button" disabled={Boolean(pendingOrderId)} className={resolveId(address) === resolveId(item) ? 'active' : ''} key={resolveId(item)} onClick={() => setAddressId(resolveId(item))}><b>{item.fullName}</b><span>{item.address || item.line1}, {item.city}, {item.country}</span>{resolveId(address) === resolveId(item) && <CheckCircle2 />}</button>)}</div> : <div className="account-empty"><MapPin /><b>No saved delivery address</b><Link className="button button--primary" to="/addresses">Add address</Link></div>}
         </section>
         <section className="module-panel">
-          <h2><Truck /> Logistics option</h2>
-          {quote.loading ? <p>Calculating available logistics…</p> : <div className="checkout-logistics">{pricing.logisticsOptions?.map((item, index) => {
+          <div className="checkout-shipping-heading"><h2><Truck /> Choose shipping method</h2><p>Select a provider service. Your server-calculated total updates before payment.</p></div>
+          {quote.loading ? <div className="checkout-logistics" aria-live="polite">{Array.from({ length: 3 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div> : pricing.logisticsOptions?.length ? <div className="checkout-logistics" role="radiogroup" aria-label="Shipping methods">{pricing.logisticsOptions.map((item, index) => {
             const key = item.key || item.id || `option-${index}`
-            return <button type="button" disabled={Boolean(pendingOrderId)} className={logisticsKey === key ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><span><b>{item.provider || item.label || item.name || key.replaceAll('_', ' ')}</b><small>{item.eta || item.estimatedDelivery || item.deliveryTime || 'Delivery estimate after booking'} · {item.incoterm || 'DAP'}</small></span><strong><Money value={item.amount || item.price || item.charge || 0} currency={pricing.currency} /></strong></button>
-          })}</div>}
+            const selected = logisticsKey === key
+            return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId)} className={selected ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><ProviderBrand providerKey={item.providerKey} name /><span className="checkout-shipping-copy"><b>{item.label || item.name || item.providerLabel || key.replaceAll('_', ' ')}</b><small>Estimated delivery: {item.eta || item.estimatedDelivery || item.deliveryTime || 'Available after booking'}</small><em>{item.incoterm || 'DAP'} terms{item.trackingAvailable ? ' · Tracking included' : ''}</em></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
+          })}</div> : <div className="checkout-shipping-unavailable"><Truck /><div><b>Shipping rates are currently unavailable</b><p>No provider returned a serviceable rate for this address. Update the delivery address or try again later.</p></div></div>}
         </section>
         <section className="module-panel"><h2>Order notes</h2><textarea value={notes} disabled={Boolean(pendingOrderId)} onChange={(event) => setNotes(event.target.value)} placeholder="Packaging, labeling or delivery instructions" /></section>
         <section className="module-panel checkout-promotions">

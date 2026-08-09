@@ -19,3 +19,6 @@ export const createSubscriptionOrder = (body) => apiRequest('/subscription/creat
 export const changeSubscriptionPlan = (body) => apiRequest('/subscription/change-plan', { method: 'POST', body }).then(unwrapData)
 export const verifySubscriptionPayment = (body) => apiRequest('/payments/verify/subscription', { method: 'POST', body }).then(unwrapData)
 export const setSubscriptionAutoRenew = (autoRenew) => apiRequest('/subscription/auto-renew', { method: 'PATCH', body: { autoRenew } }).then(unwrapData)
+export const fetchAICreditPackages = () => apiRequest('/subscription/credit-packages', { cache: false }).then(unwrapData)
+export const createAICreditOrder = (packageKey) => apiRequest('/subscription/credits/create-order', { method: 'POST', body: { packageKey } }).then(unwrapData)
+export const verifyAICreditPayment = (body) => apiRequest('/subscription/credits/verify', { method: 'POST', body }).then(unwrapData)

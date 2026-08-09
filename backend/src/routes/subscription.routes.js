@@ -12,9 +12,12 @@ router.use(requireAuth);
 // GET - Get subscription
 router.get('/', SubscriptionController.get);
 router.get('/plans', SubscriptionController.plans);
+router.get('/credit-packages', SubscriptionController.creditPackages);
 
 // POST - Create subscription payment order
 router.post('/create-order', SubscriptionController.createOrder);
+router.post('/credits/create-order', SubscriptionController.createCreditOrder);
+router.post('/credits/verify', SubscriptionController.verifyCreditPayment);
 router.post('/change-plan', SubscriptionController.changePlan);
 
 // PATCH - Toggle auto-renew

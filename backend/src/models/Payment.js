@@ -37,7 +37,7 @@ const paymentSchema = new mongoose.Schema({
   },
   paymentFor: {
     type: String,
-    enum: ['order', 'subscription', 'verification', 'service', 'other'],
+    enum: ['order', 'subscription', 'ai_credits', 'verification', 'service', 'other'],
     default: 'order',
   },
   orderId: {

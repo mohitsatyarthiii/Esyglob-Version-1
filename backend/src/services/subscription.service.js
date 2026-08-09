@@ -4,8 +4,52 @@ import { getPlan, listPlans } from '../lib/subscription-plans.js';
 import { getAICreditSnapshot, getSubscriptionContext } from '../lib/subscription-access.js';
 import Payment from '../models/Payment.js';
 import Razorpay from 'razorpay';
+import crypto from 'node:crypto';
+import Subscription from '../models/Subscription.js';
+import { getAICreditPackage, listAICreditPackages } from '../lib/ai-credit-packages.js';
 
 class SubscriptionService {
+  static creditPackages() { return { packages: listAICreditPackages() }; }
+
+  static async createCreditOrder(user, { packageKey } = {}) {
+    const creditPackage = getAICreditPackage(packageKey);
+    if (!creditPackage) throw Object.assign(new Error('Select a valid configured credit package'), { statusCode: 422 });
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) throw Object.assign(new Error('Payment service is not configured'), { statusCode: 503 });
+    const userId = user.id || user._id;
+    const amountInPaise = Math.round(creditPackage.price * 100);
+    const existing = await Payment.findOne({ userId, paymentFor: 'ai_credits', status: { $in: ['initiated', 'pending'] }, 'metadata.packageKey': creditPackage.key }).sort({ createdAt: -1 });
+    if (existing?.razorpayOrderId && Math.round(existing.amount * 100) === amountInPaise) return creditOrderResponse(existing, creditPackage, user, true);
+    const gateway = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+    const order = await gateway.orders.create({ amount: amountInPaise, currency: creditPackage.currency, receipt: `credits_${Date.now()}`, notes: { userId: String(userId), purchaseType: 'ai_credits', packageKey: creditPackage.key } });
+    const payment = existing || new Payment({ userId, paymentFor: 'ai_credits', type: 'other', method: 'razorpay', paymentMethod: 'razorpay', gateway: 'razorpay' });
+    Object.assign(payment, { amount: creditPackage.price, currency: creditPackage.currency, razorpayOrderId: order.id, status: 'initiated', paymentDate: new Date(), description: `${creditPackage.name} AI credit purchase`, metadata: { packageKey: creditPackage.key, credits: creditPackage.credits, purchaseType: 'ai_credits', role: user.primaryRole === 'seller' ? 'seller' : 'buyer' } });
+    await payment.save();
+    return creditOrderResponse(payment, creditPackage, user, false);
+  }
+
+  static async verifyCreditPayment(user, body = {}) {
+    const { razorpayPaymentId, razorpayOrderId, razorpaySignature } = body;
+    if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature) throw Object.assign(new Error('Missing required payment fields'), { statusCode: 400 });
+    const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET || '').update(`${razorpayOrderId}|${razorpayPaymentId}`).digest('hex');
+    const left = Buffer.from(expected, 'hex'); const right = Buffer.from(String(razorpaySignature), 'hex');
+    if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) throw Object.assign(new Error('Invalid payment signature'), { statusCode: 400 });
+    const userId = user.id || user._id;
+    const payment = await Payment.findOne({ razorpayOrderId, userId, paymentFor: 'ai_credits' });
+    if (!payment) throw Object.assign(new Error('Credit payment order mismatch'), { statusCode: 403 });
+    const creditPackage = getAICreditPackage(payment.metadata?.packageKey);
+    if (!creditPackage || Number(payment.metadata?.credits) !== creditPackage.credits || Math.round(payment.amount * 100) !== Math.round(creditPackage.price * 100)) throw Object.assign(new Error('Credit package configuration mismatch'), { statusCode: 409 });
+    const role = payment.metadata?.role === 'seller' ? 'seller' : 'buyer';
+    if (payment.status === 'completed') return { success: true, message: 'Credits already added', credits: (await this.getSubscription(user, role)).credits };
+    const gateway = new Razorpay({ key_id: process.env.RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+    const captured = await gateway.payments.fetch(razorpayPaymentId);
+    if (captured.status !== 'captured' || captured.order_id !== razorpayOrderId || Number(captured.amount) !== Math.round(creditPackage.price * 100)) throw Object.assign(new Error('Payment was not captured for the configured package amount'), { statusCode: 400 });
+    const context = await getSubscriptionContext(user, role);
+    const credited = await Subscription.findOneAndUpdate({ _id: context.subscription._id, creditedPaymentIds: { $ne: payment._id } }, { $inc: { aiCreditsPurchased: creditPackage.credits, aiCreditsAllocated: creditPackage.credits }, $push: { creditedPaymentIds: payment._id } }, { new: true });
+    Object.assign(payment, { status: 'completed', razorpayPaymentId, gatewayPaymentId: razorpayPaymentId, razorpaySignature, transactionId: razorpayPaymentId, gatewayResponse: captured, paidAt: new Date(), completedAt: new Date(), subscriptionId: context.subscription._id });
+    await payment.save();
+    const result = await this.getSubscription(user, role);
+    return { success: true, added: credited ? creditPackage.credits : 0, message: credited ? 'Credits added successfully' : 'Credits already added', credits: result.credits };
+  }
   /**
    * Get user subscription
    */
@@ -163,7 +207,8 @@ class SubscriptionService {
     await SubscriptionRepository.findOrCreate(userId, role);
     const field = role === 'seller' ? 'sellerPlan' : 'buyerPlan';
     const durationField = role === 'seller' ? 'sellerDuration' : 'buyerDuration';
-    await SubscriptionRepository.update(userId, { userType: role, [field]: planType, [durationField]: duration, planKey: planType, billingCycle: duration, isActive: true, status: 'active', startDate: new Date(), expiryDate: null, renewalDate: null, amountPaid: 0, autoRenew: false, aiCreditsAllocated: Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0), aiCreditsUsed: 0 });
+    const existing = await Subscription.findOne({ userId }).lean();
+    await SubscriptionRepository.update(userId, { userType: role, [field]: planType, [durationField]: duration, planKey: planType, billingCycle: duration, isActive: true, status: 'active', startDate: new Date(), expiryDate: null, renewalDate: null, amountPaid: 0, autoRenew: false, aiCreditsAllocated: Number(plan.aiCredits?.monthly ?? plan.aiCredits ?? 0) + Number(existing?.aiCreditsPurchased || 0), aiCreditsUsed: 0 });
     if (role === 'seller') {
       const Seller = (await import('../models/Seller.js')).default;
       await Seller.findOneAndUpdate({ userId }, { $set: { subscriptionPlan: planType, subscriptionStatus: 'active', subscriptionExpiryDate: null } });
@@ -171,5 +216,7 @@ class SubscriptionService {
     return this.getSubscription(user, role);
   }
 }
+
+function creditOrderResponse(payment, creditPackage, user, reused) { return { key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID, orderId: payment.razorpayOrderId, paymentId: payment._id, amount: Math.round(creditPackage.price * 100), currency: creditPackage.currency, package: creditPackage, user: { name: user.fullName || user.name, email: user.email }, reused }; }
 
 export default SubscriptionService;

@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, BadgeCheck, CheckCircle2, Clock3, FileText, ShieldCheck, Sparkles } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
-import { getService } from '../api/services'
+import { getService, isServiceAvailable } from '../api/services'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { PageHead } from '../components/PageHead'
@@ -12,6 +12,7 @@ export default function ServiceDetailsPage() {
   const { serviceKey } = useParams(); const service = getService(serviceKey); const { status } = useAuth()
   if (!service) return <AppShell><div className="container module-page"><div className="empty-results"><FileText /><h1>Service not found</h1><Link to="/services">Browse services</Link></div></div></AppShell>
   const bookingPath = status === 'authenticated' ? `/services/${service.key}/book` : '/login'
+  const available = isServiceAvailable(service)
   return <AppShell><div className={`container service-detail-page service-accent service-accent--${service.key}`}>
     <PageHead title={`${service.title} | EsyGlob Trade Services`} description={service.description} />
     <Link className="back-link" to="/services"><ArrowLeft /> All services</Link>
@@ -21,7 +22,7 @@ export default function ServiceDetailsPage() {
         <h1>{service.title}</h1>
         <p>{service.description}</p>
         <div className="service-trust"><span><ShieldCheck /> Secure workflow</span><span><Clock3 /> Live status tracking</span><span><BadgeCheck /> Verified operations</span></div>
-        <div className="service-detail-actions"><Link className="button button--primary" to={bookingPath} state={status === 'authenticated' ? undefined : { from: `/services/${service.key}/book` }}>Book this service <ArrowRight /></Link><Link className="button button--secondary" to="/services/requests">Booking history</Link></div>
+        <div className="service-detail-actions">{available ? <Link className="button button--primary" to={bookingPath} state={status === 'authenticated' ? undefined : { from: `/services/${service.key}/book` }}>{service.key === 'shipping' ? 'View live rates' : 'Book this service'} <ArrowRight /></Link> : <button className="button button--coming-soon" type="button" disabled>Coming Soon — We'll notify you when available</button>}<Link className="button button--secondary" to="/services/requests">Booking history</Link></div>
       </div>
       <aside className="service-detail-quote">
         <span className="service-detail-quote__badge"><ShieldCheck /> EsyGlob assured workflow</span>
@@ -50,6 +51,6 @@ export default function ServiceDetailsPage() {
 
     <section className="service-detail-section service-detail-trust-section"><header><span>Trade with confidence</span><h2>Trust is built into the workflow</h2></header><ServiceTrustGrid /></section>
 
-    <section className="service-detail-final-cta"><div><span><BadgeCheck /> Professional trade support</span><h2>Ready to move this requirement forward?</h2><p>Start a secure request and keep every commercial detail, update and milestone in one place.</p></div><Link className="button button--primary" to={bookingPath} state={status === 'authenticated' ? undefined : { from: `/services/${service.key}/book` }}>Start service request <ArrowRight /></Link></section>
+    <section className="service-detail-final-cta"><div><span><BadgeCheck /> Professional trade support</span><h2>{available ? 'Ready to move this requirement forward?' : 'This service is coming soon'}</h2><p>{available ? 'Start a secure request and keep every commercial detail, update and milestone in one place.' : 'We are preparing a dependable partner workflow before opening requests.'}</p></div>{available ? <Link className="button button--primary" to={bookingPath} state={status === 'authenticated' ? undefined : { from: `/services/${service.key}/book` }}>Start service request <ArrowRight /></Link> : <button className="button button--coming-soon" type="button" disabled>Coming Soon</button>}</section>
   </div></AppShell>
 }

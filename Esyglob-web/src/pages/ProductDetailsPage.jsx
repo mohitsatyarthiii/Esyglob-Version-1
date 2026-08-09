@@ -28,7 +28,6 @@ export default function ProductDetailsPage() {
   const [enquiryOpen, setEnquiryOpen] = useState(false)
   const [variantIndex, setVariantIndex] = useState(0)
   const [quantity, setQuantity] = useState(1)
-  const [unit, setUnit] = useState('piece')
   const [action, setAction] = useState({ busy: false, message: '', error: '' })
   
   useEffect(() => { if (status === 'authenticated' && productId) trackRecentlyViewed(productId).catch(() => {}) }, [productId, status])
@@ -44,11 +43,11 @@ export default function ProductDetailsPage() {
   const originalPrice = Number(eligibleTier?.unitPrice || eligibleTier?.price || variant?.price || product.price || 0)
   const discountActive = ['active', 'scheduled'].includes(product.discount?.status) && (!product.discount.startsAt || new Date(product.discount.startsAt) <= new Date()) && (!product.discount.expiresAt || new Date(product.discount.expiresAt) > new Date())
   const price = Math.max(0, discountActive ? product.discount.type === 'fixed_amount' ? originalPrice - Number(product.discount.value || 0) : originalPrice * (1 - Number(product.discount.value || 0) / 100) : originalPrice)
-  const units = product.availableUnits?.length ? product.availableUnits : [product.unit || 'piece']
+  const unit = product.unit || 'piece'
   const sellerId = seller._id || seller.id
   const sellerUserId = seller.userId?._id || seller.userId || product.userId?._id || product.userId
   
-  useEffect(() => { setQuantity(moq); setUnit(product.unit || 'piece') }, [moq, product.unit])
+  useEffect(() => { setQuantity(moq) }, [moq])
   
   function authAction(callback) { if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname, notice: 'Sign in to contact suppliers and use account features.' } }); callback() }
   async function chat() { setAction({ busy: true, message: '', error: '' }); try { const created = await startProductChat({ otherUserId: sellerUserId, productId }); const id = created.chat?._id || created._id; navigate(id ? `/messages/${id}` : '/messages') } catch (error) { setAction({ busy: false, message: '', error: error.message }) } }
@@ -113,7 +112,7 @@ export default function ProductDetailsPage() {
                 </div>
                 <small>Minimum order {moq}</small>
               </div>
-              <label>Unit<select value={unit} onChange={(event) => setUnit(event.target.value)}>{units.map((item) => <option key={item}>{item}</option>)}</select></label>
+              <div className="fixed-product-unit"><span>Unit</span><b>{unit.replaceAll('_', ' ')}</b><small>Defined by the seller</small></div>
             </div>
             
             <div className="order-total">

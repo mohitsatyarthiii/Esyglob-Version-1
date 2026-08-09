@@ -31,6 +31,8 @@ export const SERVICE_CATALOG = [
   service('consulting', 'Trade Consulting', 'Advisory', 'both', 'Get specialist guidance for sourcing, logistics, compliance or market entry.', 'From INR 1,999', ['Business context', 'Expert review', 'Action plan'], [...contactFields(), field('subject', 'Consulting topic', 'text', true), field('details', 'What do you need help with?', 'textarea', true)]),
 ]
 
+export const COMING_SOON_SERVICE_KEYS = new Set(['trade-financing', 'insurance', 'quality-inspection'])
+
 function service(key, title, category, role, description, startingPrice, steps, fields) {
   const parsedPrice = /^From\s+([A-Z]{3})\s+([\d,]+(?:\.\d+)?)$/i.exec(startingPrice)
   return {
@@ -53,6 +55,7 @@ function commonFields(label) { return [...contactFields(), field('details', labe
 
 export function getService(key) { return SERVICE_CATALOG.find((item) => item.key === key) }
 export function servicesForRole(role) { return SERVICE_CATALOG.filter((item) => item.role === 'both' || item.role === role) }
+export function isServiceAvailable(serviceOrKey) { return !COMING_SOON_SERVICE_KEYS.has(typeof serviceOrKey === 'string' ? serviceOrKey : serviceOrKey?.key) }
 export function isServiceFieldVisible(fieldItem, values) {
   return !fieldItem.showWhen || Object.entries(fieldItem.showWhen).every(([key, value]) => values[key] === value)
 }

@@ -67,7 +67,7 @@ export const CategoryBubble = memo(function CategoryBubble({ category }) {
   return (
     <Link
       to={`/categories/${encodeURIComponent(id)}`}
-      className="group flex flex-col items-center gap-2 flex-shrink-0 w-[78px] transition-transform duration-200 hover:-translate-y-1"
+      className="category-bubble group relative flex flex-col items-center gap-2 flex-shrink-0 w-[78px] transition-transform duration-200 hover:-translate-y-1"
     >
       <SafeImage
         src={category.image || category.icon}
@@ -77,6 +77,7 @@ export const CategoryBubble = memo(function CategoryBubble({ category }) {
       <span className="text-[10px] font-semibold text-gray-700 text-center leading-tight max-w-[78px] truncate">
         {category.name}
       </span>
+      <span className="category-bubble__tooltip" role="tooltip">{category.name}</span>
     </Link>
   );
 });
@@ -155,7 +156,7 @@ export const ProductCard = memo(function ProductCard({ product }) {
               {!imageLoaded && <span className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100" aria-hidden="true" />}
               <img
                 key={image}
-                className={`h-full w-full object-cover transition duration-300 group-hover:scale-[1.02] ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                className={`h-full w-full object-contain p-2 transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                 src={resolveApiResourceUrl(image)}
                 alt={`${product.name || 'Product'}${images.length > 1 ? `, image ${imageIndex + 1} of ${images.length}` : ''}`}
                 onLoad={() => setImageLoaded(true)}

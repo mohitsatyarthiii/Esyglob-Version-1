@@ -1,5 +1,5 @@
 import { BarChart3, Bell, Bot, Boxes, CheckCircle2, ChevronRight, CircleUserRound, CreditCard, FileSignature, FileText, Heart, HelpCircle, LockKeyhole, LogOut, MapPin, MessageSquare, PackageCheck, Plus, Settings, ShieldCheck, Store, Target, Truck, WalletCards } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { fetchAccountSummary } from '../api/marketplace';
 import { fetchChats, fetchQuotations, fetchRfqs } from '../api/trade';
@@ -68,6 +68,7 @@ const sellerSections = [
       ['Wallet', '/wallet?role=seller', WalletCards, 'green'],
       ['Business Profile', '/seller/business-profile', ShieldCheck, 'sky'],
       ['Membership', '/subscriptions', CreditCard, 'violet'],
+      ['Saved Items', '/saved', Heart, 'rose'],
     ],
   },
   {
@@ -84,9 +85,7 @@ const sellerSections = [
 export default function AccountPage() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const roles = user?.roles || [user?.primaryRole || 'buyer'];
-  const canSell = roles.includes('seller');
-  const [role, setRole] = useState(canSell && user?.primaryRole === 'seller' ? 'seller' : 'buyer');
+  const role = user?.primaryRole === 'seller' ? 'seller' : 'buyer';
   const creditState = useAICredits(role);
   const { selectedCurrency, setCurrency } = useCurrency();
   const query = useAsyncData(
@@ -132,16 +131,6 @@ export default function AccountPage() {
           </span>
           <ChevronRight />
         </Link>
-        {canSell && (
-          <div className="role-switch mobile-account-role">
-            <button className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>
-              Buyer
-            </button>
-            <button className={role === 'seller' ? 'active' : ''} onClick={() => setRole('seller')}>
-              Seller
-            </button>
-          </div>
-        )}
         <AICreditMeter state={creditState} role={role} />
         {role === 'seller' && (
           <Link to="/seller/business-profile" className={`seller-verification-card ${verificationComplete ? 'complete' : ''}`}>

@@ -3,6 +3,8 @@ import {
   BadgeCheck,
   Building2,
   Clock3,
+  ChevronLeft,
+  ChevronRight,
   Factory,
   Heart,
   MapPin,
@@ -13,7 +15,7 @@ import {
   Sparkles,
   Star,
 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SafeImage } from './MarketplaceCards'
 import { normalizeSellerCategories } from './sellerPresentation'
@@ -44,7 +46,16 @@ const SellerListingCard = memo(function SellerListingCard({ seller }) {
   const description = seller.companyDescription || seller.description || seller.about || `Explore sourcing and manufacturing capabilities from ${name}.`
   const categories = normalizeSellerCategories(seller.businessCategories || seller.productCategories || seller.categories || seller.industries, seller.products)
   const productPreviews = Array.isArray(seller.products) ? seller.products.filter((product) => product.images?.[0] || product.image).slice(0, 4) : []
-  const hasMedia = productPreviews.length > 0 || Boolean(facilityImage)
+  const slides = [facilityImage && { src: facilityImage, label: 'Factory profile', href: `/sellers/${id}` }, ...productPreviews.map(product => ({ src: product.images?.[0] || product.image, label: product.name, href: `/products/${product._id || product.slug}` }))].filter(item => item?.src)
+  const [slide, setSlide] = useState(0)
+  const swipeStart = useRef(null)
+  const hasMedia = slides.length > 0
+  useEffect(() => {
+    if (slides.length < 2) return undefined
+    const timer = window.setInterval(() => setSlide(current => (current + 1) % slides.length), 5200)
+    return () => window.clearInterval(timer)
+  }, [slides.length])
+  const moveSlide = direction => setSlide(current => (current + direction + slides.length) % slides.length)
 
   return <article className="seller-list-card">
     <header className="seller-list-card__header">
@@ -81,17 +92,9 @@ const SellerListingCard = memo(function SellerListingCard({ seller }) {
         </div>
       </div>
 
-      {hasMedia && <div className="seller-card-visuals">
-        {facilityImage && <Link className="seller-list-card__media" to={`/sellers/${id}`} aria-label={`View ${name} manufacturing profile`}>
-          <SafeImage src={facilityImage} alt={`${name} facility`} className="h-full w-full object-cover" />
-          <span><Factory /> Factory profile</span>
-        </Link>}
-        {productPreviews.length > 0 && <div className="seller-product-previews" aria-label={`Products from ${name}`}>
-          {productPreviews.map((product) => <Link key={product._id || product.slug} to={`/products/${product._id || product.slug}`} title={product.name}>
-            <SafeImage src={product.images?.[0] || product.image} alt={product.name} className="h-full w-full object-cover" />
-            <span>{product.name}</span>
-          </Link>)}
-        </div>}
+      {hasMedia && <div className="seller-card-carousel" onPointerDown={event => { swipeStart.current = event.clientX }} onPointerUp={event => { if (swipeStart.current != null && Math.abs(event.clientX - swipeStart.current) > 38) moveSlide(event.clientX < swipeStart.current ? 1 : -1); swipeStart.current = null }} onPointerCancel={() => { swipeStart.current = null }}>
+        <Link to={slides[slide].href} aria-label={slides[slide].label}><SafeImage src={slides[slide].src} alt={slides[slide].label} className="h-full w-full object-contain" /><span>{slides[slide].label}</span></Link>
+        {slides.length > 1 && <><button type="button" className="seller-carousel-prev" onClick={() => moveSlide(-1)} aria-label="Previous image"><ChevronLeft /></button><button type="button" className="seller-carousel-next" onClick={() => moveSlide(1)} aria-label="Next image"><ChevronRight /></button><div className="seller-carousel-dots">{slides.map((item, index) => <button type="button" key={`${item.src}-${index}`} className={slide === index ? 'active' : ''} onClick={() => setSlide(index)} aria-label={`Show image ${index + 1}`} />)}</div></>}
       </div>}
     </div>
 

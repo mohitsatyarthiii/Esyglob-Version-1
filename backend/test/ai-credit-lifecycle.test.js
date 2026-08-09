@@ -66,3 +66,11 @@ test('credit snapshots expose remaining, usage percentage, and low balance state
   assert.equal(snapshot.low, true);
   assert.equal(snapshot.exhausted, false);
 });
+
+test('credit snapshots keep subscription and purchased credits separate', () => {
+  const snapshot = creditSnapshot({ aiCreditsAllocated: 1250, aiCreditsPurchased: 250, aiCreditsUsed: 100, aiCreditsReserved: 0 }, { aiCredits: { monthly: 1000 } });
+  assert.equal(snapshot.included, 1000);
+  assert.equal(snapshot.purchased, 250);
+  assert.equal(snapshot.allocated, 1250);
+  assert.equal(snapshot.remaining, 1150);
+});

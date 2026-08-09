@@ -14,12 +14,14 @@ function planCreditCount(plan) {
 }
 
 export function creditSnapshot(subscription, plan, todayUsed = null) {
-  const allocated = Number(subscription.aiCreditsAllocated ?? planCreditCount(plan));
+  const included = planCreditCount(plan);
+  const purchased = Number(subscription.aiCreditsPurchased || 0);
+  const allocated = Number(subscription.aiCreditsAllocated ?? included + purchased);
   const used = Number(subscription.aiCreditsUsed || 0);
   const reserved = Number(subscription.aiCreditsReserved || 0);
   const remaining = Math.max(0, allocated - used - reserved);
   return {
-    allocated,
+    allocated, included, purchased,
     used,
     reserved,
     remaining,
@@ -71,7 +73,7 @@ export async function getSubscriptionContext(user, requestedRole) {
     subscription.usage = {};
     subscription.aiCreditsUsed = 0;
     subscription.aiCreditsReserved = 0;
-    subscription.aiCreditsAllocated = planCreditCount(plan);
+    subscription.aiCreditsAllocated = planCreditCount(plan) + Number(subscription.aiCreditsPurchased || 0);
     subscription.usageResetAt = next;
     subscription.creditsResetAt = next;
     await subscription.save();

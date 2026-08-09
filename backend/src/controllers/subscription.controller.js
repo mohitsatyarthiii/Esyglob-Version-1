@@ -5,6 +5,9 @@ import crypto from 'crypto';
 import PaymentService from '../services/payment.service.js';
 
 class SubscriptionController {
+  static creditPackages(req,res){return res.json(SubscriptionService.creditPackages());}
+  static async createCreditOrder(req,res){try{return res.json(await SubscriptionService.createCreditOrder(req.user,req.body));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
+  static async verifyCreditPayment(req,res){try{return res.json(await SubscriptionService.verifyCreditPayment(req.user,req.body));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async plans(req,res){try{return res.json(await SubscriptionService.getPlans(req.user,req.query.role));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async adminPlans(req,res){try{return res.json({plans:await SubscriptionPlan.find().sort({role:1,priorityRanking:1}).lean()});}catch(error){return res.status(500).json({error:error.message});}}
   static async saveAdminPlan(req,res){try{const plan=await SubscriptionPlan.findOneAndUpdate({key:req.params.key},{$set:req.body},{new:true,upsert:true,runValidators:true});return res.json({plan});}catch(error){return res.status(422).json({error:error.message});}}

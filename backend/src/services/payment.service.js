@@ -345,6 +345,15 @@ class PaymentService {
       });
     }
 
+    if (payment.paymentFor === 'ai_credits') {
+      const SubscriptionService = (await import('./subscription.service.js')).default;
+      return SubscriptionService.verifyCreditPayment({ _id: payment.userId, id: payment.userId, primaryRole: payment.metadata?.role }, {
+        razorpayPaymentId: entity.id,
+        razorpayOrderId: entity.order_id,
+        razorpaySignature: signature,
+      });
+    }
+
     if (payment.paymentFor === 'service') {
       const ServiceRequestService = (await import('./service-request.service.js')).default;
       return ServiceRequestService.verifyPayment(
@@ -500,7 +509,7 @@ class PaymentService {
     subscription.autoRenew = true;
     subscription.status = 'active';
     subscription.planKey = configuredPlan?.key || planType;
-    subscription.aiCreditsAllocated = Number(configuredPlan?.aiCredits?.monthly ?? configuredPlan?.aiCredits ?? 0);
+    subscription.aiCreditsAllocated = Number(configuredPlan?.aiCredits?.monthly ?? configuredPlan?.aiCredits ?? 0) + Number(subscription.aiCreditsPurchased || 0);
     subscription.aiCreditsUsed = 0;
     subscription.usage = {};
     const usageResetAt = new Date(startDate); usageResetAt.setMonth(usageResetAt.getMonth()+1); subscription.usageResetAt=usageResetAt; subscription.creditsResetAt=usageResetAt;

@@ -1,11 +1,11 @@
 import {
-  ArrowLeft, BadgeCheck, Calculator, CheckCircle2, ChevronDown, Clock3, CreditCard,
+  ArrowLeft, BadgeCheck, Calculator, CheckCircle2, Clock3, CreditCard,
   FileUp, LoaderCircle, PackageCheck, ShieldCheck, Sparkles,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  createServiceRequest, fetchServiceQuote, getService, initiateServicePayment, isServiceFieldVisible,
+  createServiceRequest, fetchServiceQuote, getService, initiateServicePayment, isServiceAvailable, isServiceFieldVisible,
   loadRazorpay, searchServiceProviders, verifyServicePayment,
 } from '../api/services'
 import { fetchAddresses, fetchProfile } from '../api/account'
@@ -16,7 +16,7 @@ import { useToast } from '../components/EnterpriseUX'
 import ProviderBrand, { ProviderStrip } from '../components/ProviderBrand'
 import { AttachmentUploader, Money } from '../components/TradeUI'
 
-const SERVICE_LEVELS = ['standard', 'premium', 'enterprise']
+const SHIPPING_PROVIDERS = ['dhl', 'fedex', 'delhivery', 'shiprocket']
 
 function openServicePayment(session, requestId, serviceTitle) {
   return new Promise((resolve, reject) => {
@@ -79,7 +79,6 @@ export default function ServiceBookingPage() {
   const [quote, setQuote] = useState(null)
   const [providerResult, setProviderResult] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState(null)
-  const [serviceLevel, setServiceLevel] = useState('standard')
   const [providerStatus, setProviderStatus] = useState('idle')
   const [terms, setTerms] = useState(false)
   const [requestId, setRequestId] = useState('')
@@ -173,7 +172,6 @@ export default function ServiceBookingPage() {
       if (sequence !== providerRequest.current) return
       setProviderResult(result)
       setSelectedProvider(null)
-      setServiceLevel(levelForOption(result.providers?.find(item => item.recommended) || result.providers?.[0]))
       setProviderStatus('loaded')
     } catch (next) {
       if (sequence !== providerRequest.current) return
@@ -192,6 +190,7 @@ export default function ServiceBookingPage() {
   }, [providerFingerprint])
 
   if (!service) return <AppShell><div className="container module-page"><p className="inline-error">Service not found.</p></div></AppShell>
+  if (!isServiceAvailable(service)) return <AppShell><div className="container module-page"><div className="marketplace-empty marketplace-empty--soon"><i><Sparkles /></i><span>Coming Soon</span><h2>{service.title} is not open for booking yet</h2><p>We are completing the provider workflow before accepting requests.</p><Link className="button button--primary" to={`/services/${service.key}`}>View service details</Link></div></div></AppShell>
   if (service.role === 'seller' && !roles.includes('seller')) return <AppShell><div className="container module-page"><div className="empty-results"><ShieldCheck /><h2>Seller account required</h2><p>Complete seller onboarding before requesting business verification.</p><Link className="button button--primary" to="/profile">Review profile</Link></div></div></AppShell>
 
   function resetProviderDiscovery() {
@@ -311,7 +310,7 @@ export default function ServiceBookingPage() {
       <div>
         {sections.map(section => <FormSection key={section} title={section} fields={service.fields.filter(item => (item.step || 'Booking details') === section && isServiceFieldVisible(item, values))} values={values} errors={fieldErrors} disabled={Boolean(requestId)} onChange={change} onAddressSelect={applyAddress} />)}
         <details className="module-panel service-form-section optional-fields supporting-documents"><summary><span><FileUp /> Supporting documents</span><small>Optional</small></summary><p>Upload invoices, specifications, or other relevant evidence.</p><AttachmentUploader folder="service-requests" value={documents} onChange={setDocuments} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" /></details>
-        {isShipping && <ProviderSelection result={providerResult} status={providerStatus} level={serviceLevel} selected={selectedProvider} disabled={Boolean(requestId)} onLevel={next => { setServiceLevel(next); setSelectedProvider(current => levelForOption(current) === next ? current : null) }} onSelect={option => { setSelectedProvider(option); setError('') }} />}
+        {isShipping && <ProviderSelection result={providerResult} status={providerStatus} selected={selectedProvider} disabled={Boolean(requestId)} onSelect={option => { setSelectedProvider(option); setError('') }} />}
       </div>
       <aside className="module-panel service-quote-card"><ShieldCheck /><h2>Booking summary</h2><p>{service.title}</p>
         {selectedProvider && <div className="selected-provider-summary"><ProviderBrand providerKey={selectedProvider.providerKey} /><div><small>{selectedProvider.providerName}</small><b>{selectedProvider.serviceName}</b><span>{deliveryText(selectedProvider)}</span></div></div>}
@@ -333,29 +332,29 @@ function FormSection({ title, fields, values, errors, disabled, onChange, onAddr
   return <section className="module-panel service-form-section"><h2>{title}</h2><div className="form-grid">{required.map(render)}</div>{optional.length > 0 && <details className="optional-fields"><summary>Optional details <small>{optional.length}</small></summary><div className="form-grid">{optional.map(render)}</div></details>}</section>
 }
 
-function ProviderSelection({ result, status, level, selected, disabled, onLevel, onSelect }) {
-  if (status === 'idle') return <section className="module-panel provider-discovery-state"><PackageCheck /><div><h2>Available provider services</h2><p>Complete the required shipment fields to load providers automatically.</p></div></section>
-  if (status === 'loading') return <section className="module-panel provider-discovery-state is-loading"><LoaderCircle /><div><h2>Loading available providers</h2><p>Checking live services, prices, and delivery estimates for this route.</p></div></section>
-  if (status === 'error') return <section className="module-panel provider-discovery-state"><PackageCheck /><div><h2>No provider options loaded</h2><p>Review the route and shipment fields. Availability refreshes automatically.</p></div></section>
+function ProviderSelection({ result, status, selected, disabled, onSelect }) {
   const options = result?.providers || []
-  const visible = options.filter(option => levelForOption(option) === level)
   return <section className="module-panel service-form-section provider-results">
-    <header><div><span className="eyebrow">{result.routeType} route</span><h2>Choose service level</h2></div><small>Rates valid until {new Date(result.expiresAt).toLocaleTimeString()}</small></header>
-    <div className="service-level-selector">{SERVICE_LEVELS.map(item => {
-      const count = options.filter(option => levelForOption(option) === item).length
-      return <button type="button" className={level === item ? 'active' : ''} key={item} onClick={() => onLevel(item)}><span>{titleCase(item)}<small>{count} option{count === 1 ? '' : 's'}</small></span><ChevronDown /></button>
-    })}</div>
-    <div className="provider-option-list">{visible.length ? visible.map(option => <ProviderRow key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />) : <p className="provider-level-empty">No {level} services are currently available for this route. Choose another service level.</p>}</div>
+    <header><div><span className="eyebrow">Shipping rates</span><h2>Compare live provider rates</h2></div>{result?.expiresAt && <small>Rates valid until {new Date(result.expiresAt).toLocaleTimeString()}</small>}</header>
+    <p className="provider-rate-intro">{status === 'idle' ? 'Complete the required shipment fields to fetch live rates.' : status === 'loading' ? 'Fetching live rates…' : status === 'error' ? 'Rates are currently unavailable. Review the shipment details to retry.' : 'Choose a service and rate to continue.'}</p>
+    <div className="shipping-rate-table" role="table" aria-label="Shipping rates"><div className="shipping-rate-head" role="row"><span>Provider</span><span>Service</span><span>Estimated delivery</span><span>Price</span><span>Action</span></div>{SHIPPING_PROVIDERS.flatMap(providerKey => { const providerOptions = options.filter(option => option.providerKey === providerKey); return providerOptions.length ? providerOptions.map(option => <ProviderRow key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />) : [<ProviderPlaceholder key={providerKey} providerKey={providerKey} status={status} />] })}</div>
   </section>
 }
 
 function ProviderRow({ option, selected, disabled, onSelect }) {
-  return <article className={`provider-option-row${selected ? ' active' : ''}`}>
+  return <article role="row" tabIndex={disabled ? -1 : 0} aria-selected={selected} className={`provider-option-row shipping-rate-row${selected ? ' active' : ''}`} onClick={() => !disabled && onSelect()} onKeyDown={event => { if (!disabled && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelect() } }}>
     <ProviderBrand providerKey={option.providerKey} />
-    <div className="provider-option-copy"><b>{option.providerName}</b><span>{option.serviceName}</span><div className="provider-badges">{option.recommended && <em><Sparkles /> Recommended</em>}{option.fastest && <em><Clock3 /> Fastest</em>}{option.bestPrice && <em><BadgeCheck /> Best price</em>}</div></div>
-    <div className="provider-option-price"><strong><Money value={option.price} currency={option.currency} /></strong><small>{deliveryText(option)}</small></div>
-    <button type="button" className={selected ? 'button button--secondary' : 'button button--primary'} disabled={disabled} onClick={onSelect}>{selected ? <><CheckCircle2 /> Selected</> : 'Select'}</button>
+    <div className="provider-option-copy"><b>{option.serviceName}</b><div className="provider-badges">{option.recommended && <em><Sparkles /> Recommended</em>}{option.fastest && <em><Clock3 /> Fastest</em>}{option.bestPrice && <em><BadgeCheck /> Best price</em>}</div></div>
+    <span className="provider-delivery">{deliveryText(option)}</span>
+    <div className="provider-option-price"><strong><Money value={option.price} currency={option.currency} /></strong></div>
+    <button type="button" className={selected ? 'button button--secondary' : 'button button--primary'} disabled={disabled} onClick={event => { event.stopPropagation(); onSelect() }}>{selected ? <><CheckCircle2 /> Selected</> : 'Select'}</button>
   </article>
+}
+
+function ProviderPlaceholder({ providerKey, status }) {
+  const loading = status === 'loading'
+  const unavailable = status === 'loaded' || status === 'error'
+  return <div className="shipping-rate-row shipping-rate-placeholder" role="row"><ProviderBrand providerKey={providerKey} /><span>{loading ? <i className="rate-skeleton" /> : '—'}</span><span>{loading ? <i className="rate-skeleton" /> : '—'}</span><span>{loading ? <><i className="rate-skeleton" /><small>Fetching rates…</small></> : unavailable ? <b>Rate unavailable</b> : <small>Awaiting details</small>}</span><span>—</span></div>
 }
 
 function ProviderLoadSummary({ status, ready }) {
@@ -372,15 +371,8 @@ function ServiceField({ field, value, error, disabled, onChange, onAddressSelect
   return <label className={error ? 'field-invalid' : ''}><span>{field.label}{field.required && ' *'}</span>{addressField ? <AddressAutocomplete value={value} disabled={disabled} required={field.required} invalid={Boolean(error)} describedBy={error ? `${field.key}-error` : undefined} name={field.key} countryCodes={countryCode} onChange={onChange} onSelect={onAddressSelect} /> : field.type === 'select' ? <select {...props}><option value="">Select {field.label.toLowerCase()}</option>{field.options?.map(option => <option key={option} value={option}>{option.replaceAll('_', ' ')}</option>)}</select> : field.type === 'textarea' ? <textarea {...props} rows="2" /> : <input {...props} type={field.type === 'tel' ? 'tel' : field.type || 'text'} min={field.type === 'number' ? '0' : undefined} />}{error && <small id={`${field.key}-error`} className="field-error">{error}</small>}</label>
 }
 
-function levelForOption(option) {
-  const name = String(option?.serviceName || '').toLowerCase()
-  if (/first|priority|overnight|critical|same.day/.test(name)) return 'enterprise'
-  if (/economy|ground|standard|surface|saver/.test(name)) return 'standard'
-  return 'premium'
-}
 function deliveryText(option) {
   return option.estimatedDeliveryText || (option.estimatedDeliveryAt && new Date(option.estimatedDeliveryAt).toLocaleDateString()) || 'ETA after booking'
 }
-function titleCase(value) { return value.charAt(0).toUpperCase() + value.slice(1) }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) }
 function numberOrUndefined(value) { return value === '' || value == null ? undefined : Number(value) }

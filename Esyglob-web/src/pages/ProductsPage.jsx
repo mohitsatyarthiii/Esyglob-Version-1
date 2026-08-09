@@ -1,11 +1,11 @@
 // pages/ProductsPage.jsx
-import { ChevronDown, X, Package, Grid3X3, Filter, ArrowUpDown, Check, Star } from 'lucide-react';
+import { ChevronDown, X, Grid3X3, Filter, ArrowUpDown, Check, Star } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchProducts, fetchCategories } from '../api/marketplace';
 import AppShell from '../components/AppShell';
 import { ProductCard, SkeletonCards, SafeImage } from '../components/MarketplaceCards';
-import { MarketplaceError } from '../components/MarketplaceFeedback';
+import { MarketplaceEmpty, MarketplaceError } from '../components/MarketplaceFeedback';
 import { PageHead } from '../components/PageHead';
 import UnifiedSearchInput from '../components/UnifiedSearchInput';
 import useAsyncData from '../hooks/useAsyncData';
@@ -322,22 +322,7 @@ export default function ProductsPage() {
                   />
                 </div>
               </>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                  <Package size={32} className="text-gray-300" />
-                </div>
-                <h3 className="mt-4 text-sm font-bold text-gray-400">No products found</h3>
-                <p className="mt-1 text-[11px] text-gray-400">
-                  {hasActiveFilters ? 'Try adjusting your filters' : 'No products available yet'}
-                </p>
-                {hasActiveFilters && (
-                  <button onClick={clearAllFilters} className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-700">
-                    Clear all filters
-                  </button>
-                )}
-              </div>
-            )}
+            ) : <MarketplaceEmpty filtered={Boolean(q || priceRange || verifiedOnly || minRating || sort !== 'latest')} onReset={clearAllFilters} />}
           </div>
         </main>
       </div>

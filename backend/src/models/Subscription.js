@@ -102,6 +102,8 @@ const subscriptionSchema = new mongoose.Schema(
     status: { type: String, enum: ['active', 'expiring_soon', 'expired', 'cancelled', 'pending', 'payment_failed', 'grace_period'], default: 'active', index: true },
     planKey: String,
     aiCreditsAllocated: { type: Number, default: 0 }, aiCreditsUsed: { type: Number, default: 0 }, aiCreditsReserved: { type: Number, default: 0 }, creditsResetAt: Date,
+    aiCreditsPurchased: { type: Number, default: 0 },
+    creditedPaymentIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Payment' }],
     usage: { type: mongoose.Schema.Types.Mixed, default: {} }, usageResetAt: Date,
     gracePeriodEndsAt: Date,
   },
