@@ -134,7 +134,11 @@ export async function reserveAIUsage(user, feature, amount = 1, options = {}) {
     await AIUsage.updateOne({ _id: usageRecord._id }, { $set: { status: 'rate_limited', errorMessage: 'AI credits exhausted', completedAt: new Date() } });
     throw Object.assign(new Error('AI credits exhausted'), { statusCode: 402, code: 'AI_CREDITS_EXHAUSTED', credits: creditSnapshot(context.subscription, context.plan) });
   }
-  return { ...context, subscription, requestId, usageId: usageRecord._id, amount, feature };
+  const includedCredits = planCreditCount(context.plan);
+  const committedUsed = Number(subscription.aiCreditsUsed || 0);
+  const reservedAfter = Number(subscription.aiCreditsReserved || 0);
+  const purchasedAmount = Math.max(0, committedUsed + reservedAfter - includedCredits) - Math.max(0, committedUsed + reservedAfter - amount - includedCredits);
+  return { ...context, subscription, requestId, usageId: usageRecord._id, amount, purchasedAmount, feature };
 }
 
 export async function commitUsageReservation(req, metrics = {}) {
@@ -147,8 +151,10 @@ export async function commitUsageReservation(req, metrics = {}) {
     },
   }, { returnDocument: 'after' });
   if (!claimed) return req.aiCreditSnapshot || null;
+  const creditIncrements = { aiCreditsReserved: -reservation.amount, aiCreditsUsed: reservation.amount, [`usage.${reservation.feature}`]: reservation.amount };
+  if (Number(reservation.purchasedAmount || 0) > 0) creditIncrements.aiCreditsPurchased = -Number(reservation.purchasedAmount);
   const subscription = await Subscription.findByIdAndUpdate(reservation.subscription._id, {
-    $inc: { aiCreditsReserved: -reservation.amount, aiCreditsUsed: reservation.amount, [`usage.${reservation.feature}`]: reservation.amount },
+    $inc: creditIncrements,
   }, { returnDocument: 'after' });
   req.aiCreditSettled = true;
   req.aiCreditSnapshot = creditSnapshot(subscription, reservation.plan);

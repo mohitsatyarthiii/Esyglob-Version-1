@@ -74,3 +74,17 @@ test('credit snapshots keep subscription and purchased credits separate', () => 
   assert.equal(snapshot.allocated, 1250);
   assert.equal(snapshot.remaining, 1150);
 });
+
+test('committing usage debits purchased balance only when included credits are exhausted', async () => {
+  const originalUsageUpdate = AIUsage.findOneAndUpdate;
+  const originalSubscriptionUpdate = Subscription.findByIdAndUpdate;
+  AIUsage.findOneAndUpdate = async () => ({ _id: 'usage-1', status: 'success' });
+  let increments;
+  Subscription.findByIdAndUpdate = async (_id, update) => { increments = update.$inc; return { aiCreditsAllocated: 25, aiCreditsPurchased: 4, aiCreditsUsed: 21, aiCreditsReserved: 0 }; };
+  try {
+    const req = request(); req.aiCreditReservation.purchasedAmount = 1;
+    await commitUsageReservation(req);
+    assert.equal(increments.aiCreditsPurchased, -1);
+    assert.equal(increments.aiCreditsUsed, 1);
+  } finally { AIUsage.findOneAndUpdate = originalUsageUpdate; Subscription.findByIdAndUpdate = originalSubscriptionUpdate; }
+});
