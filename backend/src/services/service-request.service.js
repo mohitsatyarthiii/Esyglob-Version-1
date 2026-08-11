@@ -4,6 +4,7 @@ import ServiceRequest from '../models/ServiceRequest.js';
 import Payment from '../models/Payment.js';
 import Invoice from '../models/Invoice.js';
 import ServiceEngineService from './service-engine.service.js';
+import { operationalLog } from '../lib/operational-log.js';
 
 const BASE_PRICES = {
   shipping: 1499, 'customs-brokerage': 2499, warehousing: 999, insurance: 1199, consulting: 1999,
@@ -99,6 +100,7 @@ class ServiceRequestService {
       history: [{ status: requiresPayment ? 'payment_pending' : 'submitted', note: requiresPayment ? 'Booking details saved; secure payment required' : 'Booking submitted' }],
     });
     if (providerQuote) {
+      operationalLog('shipping_selection', { requestId: String(request._id), provider: providerQuote.providerKey, status: 'selected' });
       const booking = await ServiceEngineService.ensureBooking(request, providerQuote);
       request.bookingId = booking._id;
       await request.save();

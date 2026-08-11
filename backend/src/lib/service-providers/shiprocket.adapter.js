@@ -10,10 +10,26 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
   async token() {
     if (tokenCache?.expiresAt > Date.now() + 60000) return tokenCache.value;
     const { data } = await this.client({ baseURL: this.baseURL }).post('/auth/login', { email: process.env.SHIPROCKET_EMAIL, password: process.env.SHIPROCKET_PASSWORD });
+    if (!data?.token) throw Object.assign(new Error('Shiprocket authentication did not return a token'), { code: 'PROVIDER_AUTHENTICATION_FAILED' });
     tokenCache = { value: data.token, expiresAt: Date.now() + 9 * 24 * 60 * 60 * 1000 };
     return tokenCache.value;
   }
   async api() { return this.client({ baseURL: this.baseURL, headers: { Authorization: `Bearer ${await this.token()}` } }); }
+  async health() {
+    if (!this.configured) return super.health();
+    const startedAt = Date.now();
+    try {
+      const api = await this.api();
+      const { data } = await api.get('/settings/company/pickup');
+      const locations = data?.data?.shipping_address || data?.shipping_address || [];
+      const pickupName = String(process.env.SHIPROCKET_PICKUP_LOCATION || '').trim().toLowerCase();
+      const pickupConnected = locations.some(item => String(item.pickup_location || item.name || '').trim().toLowerCase() === pickupName);
+      return { provider: this.key, name: this.name, status: pickupConnected ? 'connected' : 'failed', configured: true, pickupConnected, durationMs: Date.now() - startedAt, code: pickupConnected ? undefined : 'PICKUP_LOCATION_NOT_FOUND' };
+    } catch (error) {
+      const wrapped = this.providerError(error, 'health check');
+      return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
+    }
+  }
   async search(input) {
     try {
       const { pickup, destination, shipment } = input;
@@ -22,21 +38,28 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
         pickup_postcode: pickup.postalCode,
         delivery_postcode: destination.postalCode,
         weight: shipment.weightKg,
+        length: dimensions(shipment).length,
+        breadth: dimensions(shipment).width,
+        height: dimensions(shipment).height,
         cod: 0,
         declared_value: shipment.declaredValue,
+        is_return: 0,
       } });
       return (data.data?.available_courier_companies || []).map(courier => ({
         providerKey: this.key, providerName: this.name,
         serviceCode: String(courier.courier_company_id || courier.id),
         serviceName: courier.courier_name || 'Shiprocket Courier',
+        serviceType: courier.mode || (courier.is_surface ? 'Surface' : 'Courier'),
         currency: 'INR', amount: Number(courier.rate || courier.freight_charge || 0),
         estimatedDeliveryAt: courier.etd ? new Date(courier.etd) : null,
         estimatedDeliveryText: courier.estimated_delivery_days ? `${courier.estimated_delivery_days} days` : courier.etd,
         trackingAvailable: courier.tracking_performance !== 0,
         insuranceAvailable: Boolean(courier.coverage_charges || courier.insurance),
         pickupAvailable: courier.pickup_availability !== '0',
+        pickupLocation: process.env.SHIPROCKET_PICKUP_LOCATION,
+        deliveryType: courier.mode || (courier.is_surface ? 'Surface' : 'Standard'),
         features: ['Shipment tracking', 'Courier pickup', courier.insurance && 'Insurance available'].filter(Boolean),
-        providerPayload: { courierCompanyId: courier.courier_company_id, courierName: courier.courier_name },
+        providerPayload: { courierCompanyId: courier.courier_company_id, courierName: courier.courier_name, pickupLocation: process.env.SHIPROCKET_PICKUP_LOCATION },
       })).filter(item => item.amount > 0 && item.pickupAvailable);
     } catch (error) { throw this.providerError(error, 'serviceability search'); }
   }
@@ -69,6 +92,7 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
       const shipmentId = order.shipment_id;
       const { data: assign } = await api.post('/courier/assign/awb', { shipment_id: shipmentId, courier_id: Number(quote.serviceCode) });
       const response = assign.response?.data || assign;
+      if (!shipmentId || !response.awb_code) throw new Error('Shiprocket did not confirm an AWB for the selected courier');
       return { providerReference: String(shipmentId || order.order_id), trackingNumber: response.awb_code, trackingUrl: response.awb_code ? `https://shiprocket.co/tracking/${response.awb_code}` : '', status: 'confirmed', providerPayload: { order, assign } };
     } catch (error) { throw this.providerError(error, 'booking'); }
   }

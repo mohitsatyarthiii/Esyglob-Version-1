@@ -176,6 +176,8 @@ app.use('/api/consulting', consultingRoutes);
 app.use('/api/buyer', buyerActivityRoutes);
 app.use('/api/support-tickets', supportTicketRoutes);
 app.use('/api/service-requests', serviceRequestRoutes);
+// Compatibility for already-deployed clients using the former singular path.
+app.use('/api/service-request', serviceRequestRoutes);
 app.use('/api/warehousing', warehouseRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/documents', documentRoutes);

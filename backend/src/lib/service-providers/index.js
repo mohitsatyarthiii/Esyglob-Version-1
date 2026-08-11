@@ -29,3 +29,11 @@ export function serviceProviderCapabilities() {
     ...adapter.capabilities,
   }));
 }
+
+let healthCache;
+export async function serviceProviderHealth({ refresh = false } = {}) {
+  if (!refresh && healthCache?.expiresAt > Date.now()) return healthCache.value;
+  const value = await Promise.all([...adapters.values()].map(adapter => adapter.health()));
+  healthCache = { value, expiresAt: Date.now() + 60_000 };
+  return value;
+}

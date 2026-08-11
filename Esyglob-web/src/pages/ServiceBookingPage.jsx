@@ -16,8 +16,6 @@ import { useToast } from '../components/EnterpriseUX'
 import ProviderBrand, { ProviderStrip } from '../components/ProviderBrand'
 import { AttachmentUploader, Money } from '../components/TradeUI'
 
-const SHIPPING_PROVIDERS = ['dhl', 'fedex', 'delhivery', 'shiprocket']
-
 function openServicePayment(session, requestId, serviceTitle) {
   return new Promise((resolve, reject) => {
     const checkout = new window.Razorpay({
@@ -181,14 +179,6 @@ export default function ServiceBookingPage() {
     }
   }
 
-  useEffect(() => {
-    if (!providerFingerprint) return undefined
-    const timer = window.setTimeout(() => { void loadProviders() }, 700)
-    return () => window.clearTimeout(timer)
-    // Provider loading intentionally follows the validated form fingerprint.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerFingerprint])
-
   if (!service) return <AppShell><div className="container module-page"><p className="inline-error">Service not found.</p></div></AppShell>
   if (!isServiceAvailable(service)) return <AppShell><div className="container module-page"><div className="marketplace-empty marketplace-empty--soon"><i><Sparkles /></i><span>Coming Soon</span><h2>{service.title} is not open for booking yet</h2><p>We are completing the provider workflow before accepting requests.</p><Link className="button button--primary" to={`/services/${service.key}`}>View service details</Link></div></div></AppShell>
   if (service.role === 'seller' && !roles.includes('seller')) return <AppShell><div className="container module-page"><div className="empty-results"><ShieldCheck /><h2>Seller account required</h2><p>Complete seller onboarding before requesting business verification.</p><Link className="button button--primary" to="/profile">Review profile</Link></div></div></AppShell>
@@ -293,7 +283,7 @@ export default function ServiceBookingPage() {
       if (!await loadRazorpay()) throw new Error('Secure checkout could not be loaded. Check your connection and retry.')
       const session = await initiateServicePayment(id)
       const paymentResult = await openServicePayment(session, id, service.title)
-      toast.update(toastId, { type: 'success', message: 'Payment completed and provider booking submitted.' })
+      toast.update(toastId, { type: 'success', message: paymentResult?.booking?.status === 'confirmed' ? 'Payment completed and the provider confirmed your shipment.' : 'Payment completed. Provider confirmation is still pending.' })
       navigate(`/services/requests/${id}`, { replace: true, state: { paymentComplete: true, paymentResult } })
     } catch (next) {
       setError(next.message || 'Payment could not be completed. Please retry.')
@@ -304,13 +294,13 @@ export default function ServiceBookingPage() {
   const pricing = selectedProvider?.pricing || quote
   return <AppShell><div className="container service-booking-page">
     <Link className="back-link" to={`/services/${service.key}`}><ArrowLeft /> {service.title}</Link>
-    <header><span className="eyebrow">Secure service booking</span><h1>Book {service.title}</h1><p>{isShipping ? 'Complete the shipment details. EsyGlob automatically loads eligible carrier services for your route.' : 'Provide the service details, review pricing and pay securely.'}</p>{isShipping && <ProviderStrip keys={service.providers} compact />}</header>
+    <header><span className="eyebrow">Secure service booking</span><h1>Book {service.title}</h1><p>{isShipping ? 'Complete the shipment details, request live rates, and select an available carrier service.' : 'Provide the service details, review pricing and pay securely.'}</p>{isShipping && <ProviderStrip keys={service.providers} compact />}</header>
     {roles.includes('seller') && service.role === 'both' && <div className="role-switch"><button className={role === 'buyer' ? 'active' : ''} onClick={() => setRole('buyer')}>Book as buyer</button><button className={role === 'seller' ? 'active' : ''} onClick={() => setRole('seller')}>Book as seller</button></div>}
     <form ref={formRef} noValidate onSubmit={submit} className="service-booking-layout">
       <div>
         {sections.map(section => <FormSection key={section} title={section} fields={service.fields.filter(item => (item.step || 'Booking details') === section && isServiceFieldVisible(item, values))} values={values} errors={fieldErrors} disabled={Boolean(requestId)} onChange={change} onAddressSelect={applyAddress} />)}
         <details className="module-panel service-form-section optional-fields supporting-documents"><summary><span><FileUp /> Supporting documents</span><small>Optional</small></summary><p>Upload invoices, specifications, or other relevant evidence.</p><AttachmentUploader folder="service-requests" value={documents} onChange={setDocuments} accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" /></details>
-        {isShipping && <ProviderSelection result={providerResult} status={providerStatus} selected={selectedProvider} disabled={Boolean(requestId)} onSelect={option => { setSelectedProvider(option); setError('') }} />}
+        {isShipping && <ProviderSelection result={providerResult} status={providerStatus} ready={Boolean(providerFingerprint)} selected={selectedProvider} disabled={Boolean(requestId)} onSearch={() => { if (validate()) void loadProviders() }} onSelect={option => { setSelectedProvider(option); setError('') }} />}
       </div>
       <aside className="module-panel service-quote-card"><ShieldCheck /><h2>Booking summary</h2><p>{service.title}</p>
         {selectedProvider && <div className="selected-provider-summary"><ProviderBrand providerKey={selectedProvider.providerKey} /><div><small>{selectedProvider.providerName}</small><b>{selectedProvider.serviceName}</b><span>{deliveryText(selectedProvider)}</span></div></div>}
@@ -332,12 +322,18 @@ function FormSection({ title, fields, values, errors, disabled, onChange, onAddr
   return <section className="module-panel service-form-section"><h2>{title}</h2><div className="form-grid">{required.map(render)}</div>{optional.length > 0 && <details className="optional-fields"><summary>Optional details <small>{optional.length}</small></summary><div className="form-grid">{optional.map(render)}</div></details>}</section>
 }
 
-function ProviderSelection({ result, status, selected, disabled, onSelect }) {
+function ProviderSelection({ result, status, ready, selected, disabled, onSearch, onSelect }) {
   const options = result?.providers || []
+  const providerStatuses = result?.providerStatuses || []
+  const providerKeys = [...new Set([...providerStatuses.map(item => item.provider), ...options.map(item => item.providerKey)])]
   return <section className="module-panel service-form-section provider-results">
     <header><div><span className="eyebrow">Shipping rates</span><h2>Compare live provider rates</h2></div>{result?.expiresAt && <small>Rates valid until {new Date(result.expiresAt).toLocaleTimeString()}</small>}</header>
-    <p className="provider-rate-intro">{status === 'idle' ? 'Complete the required shipment fields to fetch live rates.' : status === 'loading' ? 'Fetching live rates…' : status === 'error' ? 'Rates are currently unavailable. Review the shipment details to retry.' : 'Choose a service and rate to continue.'}</p>
-    <div className="shipping-rate-table" role="table" aria-label="Shipping rates"><div className="shipping-rate-head" role="row"><span>Provider</span><span>Service</span><span>Estimated delivery</span><span>Price</span><span>Action</span></div>{SHIPPING_PROVIDERS.flatMap(providerKey => { const providerOptions = options.filter(option => option.providerKey === providerKey); return providerOptions.length ? providerOptions.map(option => <ProviderRow key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />) : [<ProviderPlaceholder key={providerKey} providerKey={providerKey} status={status} />] })}</div>
+    {status !== 'loading' && <button type="button" className="button button--secondary" disabled={disabled || !ready} onClick={onSearch}>{status === 'loaded' || status === 'error' ? 'Refresh shipping rates' : 'Get shipping rates'}</button>}
+    {status === 'loading' && <div className="provider-load-summary is-loading"><LoaderCircle /><span><b>Finding available shipping services...</b><small>Checking each configured provider securely.</small></span></div>}
+    {status === 'loaded' && options.length === 0 && <div className="empty-results shipping-empty"><PackageCheck /><h3>No shipping services available</h3><p>We couldn't find an available shipping service for this shipment. Check the pickup address, destination and package details and try again.</p></div>}
+    <p className="provider-rate-intro">{status === 'idle' ? 'Complete the shipment details, then request live rates.' : status === 'loading' ? 'Finding available shipping services...' : status === 'error' ? 'Shipping providers are currently unavailable. Review the details and retry.' : options.length ? 'Choose a service and rate to continue.' : 'No shipping services are available for these details.'}</p>
+    {options.length > 0 && <div className="shipping-rate-table" role="table" aria-label="Shipping rates"><div className="shipping-rate-head" role="row"><span>Provider</span><span>Service</span><span>Estimated delivery</span><span>Price</span><span>Action</span></div>{providerKeys.flatMap(providerKey => options.filter(option => option.providerKey === providerKey).map(option => <ProviderRow key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />))}</div>}
+    {status === 'loaded' && providerStatuses.some(item => item.status === 'failed') && <p className="provider-partial-note">Some configured providers are currently unavailable. Available live rates are shown above.</p>}
   </section>
 }
 
@@ -351,14 +347,8 @@ function ProviderRow({ option, selected, disabled, onSelect }) {
   </article>
 }
 
-function ProviderPlaceholder({ providerKey, status }) {
-  const loading = status === 'loading'
-  const unavailable = status === 'loaded' || status === 'error'
-  return <div className="shipping-rate-row shipping-rate-placeholder" role="row"><ProviderBrand providerKey={providerKey} /><span>{loading ? <i className="rate-skeleton" /> : '—'}</span><span>{loading ? <i className="rate-skeleton" /> : '—'}</span><span>{loading ? <><i className="rate-skeleton" /><small>Fetching rates…</small></> : unavailable ? <b>Rate unavailable</b> : <small>Awaiting details</small>}</span><span>—</span></div>
-}
-
 function ProviderLoadSummary({ status, ready }) {
-  return <div className={`provider-load-summary is-${status}`}>{status === 'loading' ? <LoaderCircle /> : status === 'loaded' ? <CheckCircle2 /> : <PackageCheck />}<span><b>{status === 'loading' ? 'Loading provider services…' : status === 'loaded' ? 'Choose a provider' : ready ? 'Provider availability will retry automatically' : 'Complete shipment details'}</b><small>No manual provider search is required.</small></span></div>
+  return <div className={`provider-load-summary is-${status}`}>{status === 'loading' ? <LoaderCircle /> : status === 'loaded' ? <CheckCircle2 /> : <PackageCheck />}<span><b>{status === 'loading' ? 'Finding shipping services...' : status === 'loaded' ? 'Choose a provider' : ready ? 'Ready to get live rates' : 'Complete shipment details'}</b><small>Only live provider results can be selected.</small></span></div>
 }
 
 function PriceBreakdown({ pricing }) {

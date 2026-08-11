@@ -20,9 +20,9 @@ const shipmentSchema = z.object({
   description: z.string().trim().min(2).max(240),
   quantity: z.coerce.number().int().min(1).max(9999),
   weightKg: z.coerce.number().positive().max(100000),
-  lengthCm: z.coerce.number().positive().max(1000).optional(),
-  widthCm: z.coerce.number().positive().max(1000).optional(),
-  heightCm: z.coerce.number().positive().max(1000).optional(),
+  lengthCm: z.coerce.number().positive().max(1000),
+  widthCm: z.coerce.number().positive().max(1000),
+  heightCm: z.coerce.number().positive().max(1000),
   declaredValue: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
   currency: z.string().trim().length(3).transform(value => value.toUpperCase()).default('INR'),
   contents: z.enum(['documents', 'non_documents']).default('non_documents'),
@@ -50,6 +50,12 @@ export const providerSearchSchema = z.object({
   destination: addressSchema,
   shipment: shipmentSchema,
   pickupDate: z.coerce.date().optional(),
+}).superRefine((value, context) => {
+  for (const side of ['pickup', 'destination']) {
+    if (value[side].countryCode === 'IN' && !/^\d{6}$/.test(value[side].postalCode)) {
+      context.addIssue({ code: 'custom', path: [side, 'postalCode'], message: 'Enter a valid 6-digit Indian pincode' });
+    }
+  }
 });
 
 export const providerSelectionSchema = z.object({

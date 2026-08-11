@@ -2,8 +2,9 @@ import ServiceBooking from '../models/ServiceBooking.js';
 import ServiceProviderQuote from '../models/ServiceProviderQuote.js';
 import ServiceRequest from '../models/ServiceRequest.js';
 import mongoose from 'mongoose';
-import { getServiceProvider, providersForRoute, serviceProviderCapabilities } from '../lib/service-providers/index.js';
+import { getServiceProvider, providersForRoute, serviceProviderCapabilities, serviceProviderHealth } from '../lib/service-providers/index.js';
 import { parseProviderSearch } from '../validators/service-booking.validator.js';
+import { operationalLog } from '../lib/operational-log.js';
 
 const QUOTE_TTL_MS = Math.max(5, Number(process.env.SERVICE_QUOTE_TTL_MINUTES || 20)) * 60 * 1000;
 
@@ -33,12 +34,14 @@ export function applyQuoteBadges(options) {
 
 class ServiceEngineService {
   static capabilities() { return serviceProviderCapabilities(); }
+  static health(options) { return serviceProviderHealth(options); }
 
-  static async searchProviders(userId, serviceKey, body) {
+  static async searchProviders(userId, serviceKey, body, requestId = '') {
     if (serviceKey !== 'shipping') throw invalid('Live provider routing is currently available for Shipping & Logistics');
     const input = parseProviderSearch(body);
     const routeType = determineRouteType(input.pickup, input.destination);
     const providers = providersForRoute(routeType);
+    operationalLog('shipping_request', { requestId, routeType, providerCount: providers.length, status: 'started' });
     if (!providers.length) {
       const error = new Error(`No ${routeType} providers are configured`);
       error.statusCode = 503;
@@ -46,14 +49,39 @@ class ServiceEngineService {
       throw error;
     }
 
-    const settled = await Promise.allSettled(providers.map(adapter => adapter.search(input)));
-    const rawOptions = settled.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+    const settled = await Promise.allSettled(providers.map(async adapter => {
+      const startedAt = Date.now();
+      operationalLog('provider_request', { requestId, provider: adapter.key, status: 'started' });
+      try {
+        const rates = await adapter.search(input);
+        operationalLog('provider_response', { requestId, provider: adapter.key, duration: Date.now() - startedAt, status: 'success', rateCount: rates.length });
+        return { rates, duration: Date.now() - startedAt };
+      } catch (error) {
+        operationalLog('provider_failure', { requestId, provider: adapter.key, duration: Date.now() - startedAt, status: 'failed', errorCode: error.code || 'PROVIDER_REQUEST_FAILED' });
+        throw error;
+      }
+    }));
+    const rawOptions = settled.flatMap(result => result.status === 'fulfilled' ? result.value.rates : []);
     const options = applyQuoteBadges(rawOptions.filter(option => option.amount > 0 && option.pickupAvailable));
+    const providerStatuses = settled.map((result, index) => result.status === 'fulfilled' ? {
+      provider: providers[index].key,
+      name: providers[index].name,
+      status: result.value.rates.length ? 'connected' : 'no_rates',
+      durationMs: result.value.duration,
+    } : {
+      provider: providers[index].key,
+      name: providers[index].name,
+      status: 'failed',
+      code: result.reason?.code || 'PROVIDER_REQUEST_FAILED',
+    });
     if (!options.length) {
-      const error = new Error('No providers currently service this route and shipment');
-      error.statusCode = 404;
-      error.code = 'NO_SERVICEABLE_PROVIDERS';
-      error.providerErrors = settled.filter(result => result.status === 'rejected').map(result => result.reason?.message);
+      if (settled.some(result => result.status === 'fulfilled')) {
+        operationalLog('rate_normalization', { requestId, routeType, status: 'empty', rateCount: 0 });
+        return { routeType, providers: [], providerStatuses };
+      }
+      const error = new Error('No shipping providers are currently available. Please try again shortly.');
+      error.statusCode = 502;
+      error.code = 'ALL_PROVIDERS_FAILED';
       throw error;
     }
 
@@ -66,10 +94,12 @@ class ServiceEngineService {
       requestSnapshot: input,
       expiresAt,
     })));
+    operationalLog('rate_normalization', { requestId, routeType, status: 'success', rateCount: stored.length });
     return {
       routeType,
       expiresAt,
       providers: stored.map(quoteResponse),
+      providerStatuses,
     };
   }
 
@@ -177,11 +207,14 @@ class ServiceEngineService {
       providerPayload: booking.providerPayload,
     };
     const adapter = getServiceProvider(booking.providerKey);
+    const startedAt = Date.now();
+    operationalLog('booking_creation', { requestId: String(request._id), provider: adapter.key, status: 'started' });
     try {
       const result = await adapter.book({ quote, request, booking });
       Object.assign(booking, result, { bookingLockUntil: null, lastProviderSyncAt: new Date(), lastProviderError: '' });
       booking.timeline.push({ status: result.status || 'confirmed', message: `${booking.providerName} confirmed the booking` });
       await booking.save();
+      operationalLog('booking_creation', { requestId: String(request._id), provider: adapter.key, duration: Date.now() - startedAt, status: 'confirmed' });
       return booking;
     } catch (error) {
       booking.status = 'booking_pending';
@@ -189,6 +222,7 @@ class ServiceEngineService {
       booking.lastProviderError = error.message;
       booking.timeline.push({ status: 'booking_pending', message: 'Provider confirmation is pending and will be retried' });
       await booking.save();
+      operationalLog('booking_creation', { requestId: String(request._id), provider: adapter.key, duration: Date.now() - startedAt, status: 'failed', errorCode: error.code || 'PROVIDER_BOOKING_FAILED' });
       return booking;
     }
   }
@@ -249,7 +283,9 @@ function quoteResponse(quote) {
     providerKey: quote.providerKey,
     providerName: quote.providerName,
     serviceCode: quote.serviceCode,
+    providerServiceId: quote.serviceCode,
     serviceName: quote.serviceName,
+    serviceType: quote.serviceType,
     currency: quote.currency,
     price: quote.amount,
     estimatedDeliveryAt: quote.estimatedDeliveryAt,
@@ -257,6 +293,8 @@ function quoteResponse(quote) {
     trackingAvailable: quote.trackingAvailable,
     insuranceAvailable: quote.insuranceAvailable,
     pickupAvailable: quote.pickupAvailable,
+    pickupLocation: quote.pickupLocation,
+    deliveryType: quote.deliveryType,
     features: quote.features || [],
     recommended: quote.recommended,
     fastest: quote.fastest,

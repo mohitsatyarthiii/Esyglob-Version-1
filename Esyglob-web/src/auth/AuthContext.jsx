@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clearApiCache } from '../api/client'
 import { getCurrentUser, login, logout, signup } from '../api/auth'
+import { resetRealtimeClient } from '../realtime/socket'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }) {
@@ -49,6 +50,7 @@ export function AuthProvider({ children }) {
     clearApiCache()
     setError(null)
     const nextUser = await login(input)
+    resetRealtimeClient()
     setUser(nextUser)
     setStatus('authenticated')
     return nextUser
@@ -58,12 +60,14 @@ export function AuthProvider({ children }) {
     clearApiCache()
     setError(null)
     const nextUser = await signup(input)
+    resetRealtimeClient()
     setUser(nextUser)
     setStatus('authenticated')
     return nextUser
   }, [])
 
   const signOut = useCallback(async () => {
+    resetRealtimeClient()
     setUser(null)
     setStatus('guest')
     try {

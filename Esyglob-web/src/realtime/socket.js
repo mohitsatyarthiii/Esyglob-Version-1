@@ -1,6 +1,7 @@
 import { buildApiUrl } from '../api/client'
 
 let clientPromise
+let realtimeClient
 
 function socketOrigin() {
   const configured = String(import.meta.env.VITE_REALTIME_URL || '').trim()
@@ -34,8 +35,27 @@ export function getRealtimeClient() {
     const origin = socketOrigin()
     clientPromise = loadSocketClient(origin).then((io) => {
       if (!io) throw new Error('Realtime messaging is unavailable.')
-      return io(origin, { withCredentials: true, transports: ['websocket', 'polling'] })
+      realtimeClient = io(origin, {
+        path: '/socket.io/',
+        withCredentials: true,
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+        randomizationFactor: 0.5,
+        timeout: 20000,
+      })
+      return realtimeClient
     }).catch((error) => { clientPromise = null; throw error })
   }
   return clientPromise
+}
+
+export function resetRealtimeClient() {
+  realtimeClient?.removeAllListeners()
+  realtimeClient?.disconnect()
+  realtimeClient = undefined
+  clientPromise = undefined
 }

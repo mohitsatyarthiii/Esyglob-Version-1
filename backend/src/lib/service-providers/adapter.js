@@ -14,6 +14,14 @@ export class ServiceProviderAdapter {
   async search() { throw new Error(`${this.name} rate search is not implemented`); }
   async book() { throw new Error(`${this.name} booking is not implemented`); }
   async track() { throw new Error(`${this.name} tracking is not implemented`); }
+  async health() {
+    return {
+      provider: this.key,
+      name: this.name,
+      status: this.configured ? 'connected' : 'not_configured',
+      configured: this.configured,
+    };
+  }
 
   client(config = {}) {
     return axios.create({ timeout: this.timeout, ...config });
@@ -26,11 +34,20 @@ export class ServiceProviderAdapter {
       || error.message
       || `${this.name} ${action} failed`;
     const wrapped = new Error(`${this.name}: ${typeof message === 'string' ? message : `${action} failed`}`);
-    wrapped.code = 'SERVICE_PROVIDER_ERROR';
+    wrapped.code = providerErrorCode(error, action);
     wrapped.provider = this.key;
     wrapped.statusCode = error.response?.status || 502;
+    wrapped.publicMessage = `${this.name} is currently unavailable`;
     return wrapped;
   }
+}
+
+function providerErrorCode(error, action) {
+  const status = Number(error.response?.status || 0);
+  if (status === 401 || status === 403) return 'PROVIDER_AUTHENTICATION_FAILED';
+  if (status === 429) return 'PROVIDER_RATE_LIMITED';
+  if (error.code === 'ECONNABORTED' || /timeout/i.test(error.message || '')) return 'PROVIDER_TIMEOUT';
+  return `PROVIDER_${String(action || 'request').toUpperCase().replace(/[^A-Z0-9]+/g, '_')}_FAILED`;
 }
 
 export function futurePickupDate(input) {
@@ -40,9 +57,9 @@ export function futurePickupDate(input) {
 
 export function dimensions(shipment) {
   return {
-    length: Number(shipment.lengthCm || 10),
-    width: Number(shipment.widthCm || 10),
-    height: Number(shipment.heightCm || 10),
+    length: Number(shipment.lengthCm),
+    width: Number(shipment.widthCm),
+    height: Number(shipment.heightCm),
   };
 }
 

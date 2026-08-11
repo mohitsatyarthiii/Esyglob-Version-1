@@ -5,6 +5,7 @@ import User from '../models/User.js';
 import Chat from '../models/Chat.js';
 import Message from '../models/Message.js';
 import { config, isCorsOriginAllowed } from '../config/env.js';
+import { operationalLog } from './operational-log.js';
 
 function id(value) {
   return String(value?._id || value?.id || value || '');
@@ -19,13 +20,24 @@ function cookieValue(header, name) {
 
 export function initializeSocket(server) {
   const io = new Server(server, {
+    path: '/socket.io/',
     cors: {
-      origin(origin, callback) { callback(null, isCorsOriginAllowed(origin)); },
+      origin(origin, callback) {
+        if (isCorsOriginAllowed(origin)) return callback(null, true);
+        return callback(new Error('Origin is not allowed by the realtime CORS policy'));
+      },
       credentials: true,
     },
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
+    allowUpgrades: true,
     pingInterval: 25000,
     pingTimeout: 20000,
+    connectTimeout: 20000,
+    maxHttpBufferSize: 1e6,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: false,
+    },
   });
 
   io.use(async (socket, next) => {
@@ -49,6 +61,8 @@ export function initializeSocket(server) {
   io.on('connection', socket => {
     const userId = socket.data.userId;
     socket.join(`user_${userId}`);
+    operationalLog('socket_connection', { requestId: socket.id, status: 'connected', transport: socket.conn.transport.name });
+    socket.conn.on('upgrade', transport => operationalLog('socket_upgrade', { requestId: socket.id, status: 'success', transport: transport.name }));
     io.emit('presence_updated', { userId, online: true, at: new Date().toISOString() });
 
     socket.on('join_chat', async ({ chatId } = {}, acknowledge = () => {}) => {
@@ -80,7 +94,8 @@ export function initializeSocket(server) {
       socket.to(`chat_${chatId}`).emit('messages_read', { chatId, userId, readAt: new Date().toISOString() });
     });
 
-    socket.on('disconnect', async () => {
+    socket.on('disconnect', async reason => {
+      operationalLog('socket_connection', { requestId: socket.id, status: 'disconnected', reason });
       const sockets = await io.in(`user_${userId}`).fetchSockets();
       if (sockets.length === 0) io.emit('presence_updated', { userId, online: false, at: new Date().toISOString() });
     });

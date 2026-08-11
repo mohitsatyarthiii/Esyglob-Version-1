@@ -7,34 +7,53 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
     return { services: ['domestic_shipping_india'], operations: ['rates', 'serviceability', 'booking', 'tracking', 'pickup'] };
   }
   api() { return this.client({ baseURL: this.baseURL, headers: { Authorization: `Token ${process.env.DELHIVERY_API_TOKEN}`, Accept: 'application/json' } }); }
+  async health() {
+    if (!this.configured) return super.health();
+    const startedAt = Date.now();
+    try {
+      const origin = String(process.env.DELHIVERY_HEALTH_PINCODE || '110001').trim();
+      const destination = String(process.env.DELHIVERY_HEALTH_DESTINATION_PINCODE || '400001').trim();
+      const { data } = await this.api().get('/api/kinko/v1/invoice/charges/.json', { params: { md: 'S', ss: 'Delivered', o_pin: origin, d_pin: destination, cgm: 500 } });
+      const connected = data !== undefined && data !== null && !data?.error;
+      return { provider: this.key, name: this.name, status: connected ? 'connected' : 'failed', configured: true, pickupConnected: Boolean(process.env.DELHIVERY_PICKUP_NAME), durationMs: Date.now() - startedAt, code: connected ? undefined : 'UNEXPECTED_HEALTH_RESPONSE' };
+    } catch (error) {
+      const wrapped = this.providerError(error, 'health check');
+      return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
+    }
+  }
   async search(input) {
     try {
       const { pickup, destination, shipment } = input;
       const api = this.api();
-      const [originPinResponse, destinationPinResponse, rateResponse] = await Promise.all([
+      const [originPinResponse, destinationPinResponse, ...rateResponses] = await Promise.all([
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: pickup.postalCode } }),
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: destination.postalCode } }),
-        api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: 'S', ss: 'Delivered', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: Math.ceil(shipment.weightKg * 1000) } }),
+        ...['E', 'S'].map(mode => api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: mode, ss: 'Delivered', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: Math.ceil(shipment.weightKg * 1000) } }).then(response => ({ mode, data: response.data })).catch(error => ({ mode, error }))),
       ]);
       const originPostal = originPinResponse.data.delivery_codes?.[0]?.postal_code;
       const destinationPostal = destinationPinResponse.data.delivery_codes?.[0]?.postal_code;
       const serviceable = originPostal && destinationPostal
         && originPostal.pickup !== 'N'
         && destinationPostal.pre_paid !== 'N';
-      const rate = Array.isArray(rateResponse.data) ? rateResponse.data[0] : rateResponse.data;
-      const amount = Number(rate?.total_amount || rate?.gross_amount || rate?.charge || 0);
-      if (!serviceable || amount <= 0) return [];
-      return [{
+      if (!serviceable) return [];
+      if (rateResponses.every(result => result.error)) throw rateResponses[0].error;
+      return rateResponses.flatMap(({ mode, data }) => {
+        const rates = Array.isArray(data) ? data : [data];
+        return rates.map(rate => ({
         providerKey: this.key, providerName: this.name,
-        serviceCode: String(rate?.service_type || 'DELHIVERY_SURFACE'),
-        serviceName: rate?.service_type === 'E' ? 'Delhivery Express' : 'Delhivery Surface',
-        currency: 'INR', amount,
+        serviceCode: `DELHIVERY_${mode === 'E' ? 'EXPRESS' : 'SURFACE'}`,
+        serviceName: mode === 'E' ? 'Delhivery Express' : 'Delhivery Surface',
+        serviceType: mode === 'E' ? 'Express' : 'Surface',
+        currency: 'INR', amount: Number(rate?.total_amount || rate?.gross_amount || rate?.charge || 0),
         estimatedDeliveryAt: null,
         estimatedDeliveryText: destinationPostal?.estimated_delivery_days ? `${destinationPostal.estimated_delivery_days} days` : 'ETA after booking',
         trackingAvailable: true, insuranceAvailable: Boolean(rate?.insurance), pickupAvailable: true,
+        pickupLocation: process.env.DELHIVERY_PICKUP_NAME,
+        deliveryType: mode === 'E' ? 'Express' : 'Surface',
         features: ['Shipment tracking', 'Courier pickup', rate?.insurance && 'Insurance available'].filter(Boolean),
-        providerPayload: { serviceType: rate?.service_type || 'S' },
-      }];
+        providerPayload: { serviceType: mode, pickupName: process.env.DELHIVERY_PICKUP_NAME },
+      })).filter(item => item.amount > 0);
+      });
     } catch (error) { throw this.providerError(error, 'serviceability search'); }
   }
   async book({ quote, booking }) {
@@ -53,12 +72,14 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
           shipment_length: dimensions(shipment).length, waybill, shipping_mode: quote.providerPayload?.serviceType || 'Surface',
           pickup_date: futurePickupDate(quote.requestSnapshot),
         }],
-        pickup_location: { name: process.env.DELHIVERY_PICKUP_NAME, add: pickup.line1, city: pickup.city, pin_code: pickup.postalCode, country: pickup.country, phone: pickup.phone },
+        pickup_location: { name: quote.providerPayload?.pickupName || process.env.DELHIVERY_PICKUP_NAME },
       };
       const body = new URLSearchParams({ format: 'json', data: JSON.stringify(payload) });
       const { data } = await this.api().post('/api/cmu/create.json', body, { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
       if (data.success === false) throw new Error(data.rmk || 'Delhivery rejected the shipment');
-      return { providerReference: data.packages?.[0]?.refnum || booking.bookingNumber, trackingNumber: data.packages?.[0]?.waybill || waybill, trackingUrl: `https://www.delhivery.com/track/package/${waybill}`, status: 'confirmed', providerPayload: data };
+      const trackingNumber = data.packages?.[0]?.waybill || waybill;
+      if (!trackingNumber) throw new Error('Delhivery did not confirm a waybill');
+      return { providerReference: data.packages?.[0]?.refnum || booking.bookingNumber, trackingNumber, trackingUrl: `https://www.delhivery.com/track/package/${trackingNumber}`, status: 'confirmed', providerPayload: data };
     } catch (error) { throw this.providerError(error, 'booking'); }
   }
   async track(trackingNumber) {
