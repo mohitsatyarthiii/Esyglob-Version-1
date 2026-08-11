@@ -1,6 +1,16 @@
 import { ServiceProviderAdapter, dimensions, futurePickupDate, normalizeTracking } from './adapter.js';
 
 let tokenCache;
+function validDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pickupAvailable(value) {
+  return ![0, '0', false, 'false', 'N', 'n', 'no'].includes(value);
+}
+
 export class ShiprocketAdapter extends ServiceProviderAdapter {
   constructor() { super('shiprocket', 'Shiprocket'); this.baseURL = process.env.SHIPROCKET_API_BASE_URL || 'https://apiv2.shiprocket.in/v1/external'; }
   get configured() { return Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD); }
@@ -53,11 +63,11 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
         serviceName: courier.courier_name || 'Shiprocket Courier',
         serviceType: courier.mode || (courier.is_surface ? 'Surface' : 'Courier'),
         currency: 'INR', amount: Number(courier.rate || courier.freight_charge || 0),
-        estimatedDeliveryAt: courier.etd ? new Date(courier.etd) : null,
+        estimatedDeliveryAt: validDate(courier.etd),
         estimatedDeliveryText: courier.estimated_delivery_days ? `${courier.estimated_delivery_days} days` : courier.etd,
         trackingAvailable: courier.tracking_performance !== 0,
         insuranceAvailable: Boolean(courier.coverage_charges || courier.insurance),
-        pickupAvailable: courier.pickup_availability !== '0',
+        pickupAvailable: pickupAvailable(courier.pickup_availability),
         pickupLocation: process.env.SHIPROCKET_PICKUP_LOCATION,
         deliveryType: courier.mode || (courier.is_surface ? 'Surface' : 'Standard'),
         features: ['Shipment tracking', 'Courier pickup', courier.insurance && 'Insurance available'].filter(Boolean),

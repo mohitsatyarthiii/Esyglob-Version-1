@@ -93,7 +93,7 @@ export default function AddressAutocompleteInput({
         <Icon name="map-marker" size={17} color="#2563EB" />
         <View style={styles.copy}><Text style={styles.primary}>{item.primaryText}</Text><Text style={styles.secondary}>{item.secondaryText}</Text></View>
       </Pressable>)}
-      <Text style={styles.credit}>Address data © OpenStreetMap contributors</Text>
+      <Text style={styles.credit}>Powered by Google</Text>
     </View> : null}
   </View>;
 }

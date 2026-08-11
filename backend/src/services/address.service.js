@@ -154,7 +154,7 @@ class AddressService {
     }
     geocoded = normalizeGeocodedAddress(geocoded);
     if (!isCompleteGeocodedAddress(geocoded)) {
-      throw Object.assign(new Error('We could not create a complete address for this location. Please try again or add the address manually.'), {
+      throw Object.assign(new Error('Unable to detect your location. Please select your location manually.'), {
         statusCode: 422,
         code: 'ADDRESS_GEOCODING_INCOMPLETE',
       });

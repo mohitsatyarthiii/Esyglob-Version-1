@@ -16,8 +16,9 @@ test('Shiprocket sends complete package dimensions and preserves each real couri
     get: async (_path, options) => {
       params = options.params;
       return { data: { data: { available_courier_companies: [
-        { courier_company_id: 10, courier_name: 'Courier Air', rate: 125, pickup_availability: '1', mode: 'Air' },
+        { courier_company_id: 10, courier_name: 'Courier Air', rate: 125, pickup_availability: '1', mode: 'Air', etd: 'not-a-date' },
         { courier_company_id: 43, courier_name: 'Courier Surface', freight_charge: 90, pickup_availability: '1', mode: 'Surface' },
+        { courier_company_id: 99, courier_name: 'Unavailable Courier', rate: 50, pickup_availability: 0, mode: 'Surface' },
       ] } } };
     },
   });
@@ -27,6 +28,7 @@ test('Shiprocket sends complete package dimensions and preserves each real couri
   assert.equal(rates.length, 2);
   assert.deepEqual(rates.map(rate => rate.serviceCode), ['10', '43']);
   assert.deepEqual(rates.map(rate => rate.amount), [125, 90]);
+  assert.equal(rates[0].estimatedDeliveryAt, null);
 });
 
 test('Delhivery isolates Express and Surface rate responses into selectable services', async () => {

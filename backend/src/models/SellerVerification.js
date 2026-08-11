@@ -138,6 +138,35 @@ const sellerVerificationSchema = new mongoose.Schema(
       default: false,
       
     },
+    verificationMethod: {
+      type: String,
+      enum: ['manual', 'digilocker'],
+      default: 'manual',
+      index: true,
+    },
+    digilocker: {
+      status: { type: String, enum: ['not_started', 'processed', 'document_unavailable', 'failed', 'cancelled'], default: 'not_started' },
+      provider: String,
+      consentedAt: Date,
+      verifiedAt: Date,
+      documents: [{
+        doctype: String,
+        type: String,
+        label: String,
+        category: { type: String, enum: ['business', 'identity'] },
+        issuer: String,
+        issuedAt: Date,
+        providerReferenceHash: String,
+        status: { type: String, enum: ['verified', 'unavailable', 'invalid'], default: 'verified' },
+        verifiedAt: Date,
+      }],
+      matches: [{
+        field: String,
+        documentType: String,
+        status: { type: String, enum: ['matched', 'partial', 'mismatch', 'unavailable'] },
+        checkedAt: Date,
+      }],
+    },
     completedFields: [{
       key: String,
       label: String,

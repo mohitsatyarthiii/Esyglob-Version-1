@@ -1,10 +1,10 @@
 import { reverseAddressCoordinates, updateCurrentAddress } from '../api/account'
 
 export function getDeviceCoordinates(options = {}) {
-  if (!navigator.geolocation) return Promise.reject(new Error('Current location is not supported by this browser.'))
+  if (!navigator.geolocation) return Promise.reject(new Error('Unable to detect your location. Please select your location manually.'))
   return new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(
     ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy }),
-    error => reject(new Error(error.code === 1 ? 'Allow location access to use your current address.' : 'Unable to read your current location.')),
+    error => reject(new Error(error.code === 1 ? 'Location permission was denied. Please select your location manually.' : 'Unable to detect your location. Please select your location manually.')),
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000, ...options },
   ))
 }
@@ -12,13 +12,15 @@ export function getDeviceCoordinates(options = {}) {
 export async function detectCurrentAddress({ persist = false } = {}) {
   const coordinates = await getDeviceCoordinates()
   let location
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const result = await reverseAddressCoordinates(coordinates.latitude, coordinates.longitude, attempt > 0)
-    location = normalizeLocation(result.location, coordinates)
-    if (!getMissingAddressFields(location).length) break
-  }
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await reverseAddressCoordinates(coordinates.latitude, coordinates.longitude, attempt > 0)
+      location = normalizeLocation(result.location, coordinates)
+      if (!getMissingAddressFields(location).length) break
+    }
+  } catch { throw new Error('Unable to detect your location. Please select your location manually.') }
   const missing = getMissingAddressFields(location)
-  if (missing.length) throw new Error('We could not create a complete address for this location. Please try again or add the address manually.')
+  if (missing.length) throw new Error('Unable to detect your location. Please select your location manually.')
   if (persist) {
     await updateCurrentAddress({
       ...coordinates,

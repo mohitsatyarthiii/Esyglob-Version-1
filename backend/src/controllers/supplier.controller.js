@@ -12,6 +12,7 @@ import {
   onboardingDraftSchema,
 } from '../validators/supplier.validator.js';
 import crypto from 'crypto';
+import * as digiLockerVerification from '../services/digilocker-verification.service.js';
 
 function invalidateSupplierCaches(sellerId) {
   invalidateMemoryCache('sellers:');
@@ -365,6 +366,34 @@ export async function uploadDocument(req, res, next) {
   } catch (error) {
     console.error('Verification document upload error:', error);
     return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to upload verification document' });
+  }
+}
+
+export async function startDigiLockerVerification(req, res) {
+  try {
+    return res.json(await digiLockerVerification.start(req.user));
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
+  }
+}
+
+export async function completeDigiLockerVerification(req, res) {
+  try {
+    const result = await digiLockerVerification.complete(req.user, req.query || {});
+    invalidateSupplierCaches(result.verification?.sellerId);
+    return res.redirect('/seller/business-profile?section=verification&digilocker=success');
+  } catch (error) {
+    const outcome = error.code === 'DIGILOCKER_CONSENT_CANCELLED' ? 'cancelled' : 'failed';
+    return res.redirect(`/seller/business-profile?section=verification&digilocker=${outcome}`);
+  }
+}
+
+export async function selectManualVerification(req, res) {
+  try {
+    const verification = await digiLockerVerification.selectManual(req.user);
+    return res.json({ success: true, verification });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message, code: error.code });
   }
 }
 

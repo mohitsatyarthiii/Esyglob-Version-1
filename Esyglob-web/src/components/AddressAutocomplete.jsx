@@ -107,7 +107,7 @@ export default function AddressAutocomplete({
         onMouseDown={event => event.preventDefault()}
         onClick={() => choose(item)}
       ><MapPin /><span><b>{item.primaryText}</b><small>{item.secondaryText}</small></span></button>)}
-      <small className="address-autocomplete__credit">Address data © OpenStreetMap contributors</small>
+      <small className="address-autocomplete__credit">Powered by Google</small>
     </span>}
   </span>
 }

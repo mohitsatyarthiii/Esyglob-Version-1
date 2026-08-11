@@ -12,6 +12,8 @@ export async function uploadVerificationDocument(type, file) {
 export const fetchVerificationReviews = (query = {}) => apiRequest('/suppliers/verification/admin/reviews', { query, cache: false }).then(unwrapData)
 export const reviewVerification = (id, body) => apiRequest(`/suppliers/verification/admin/reviews/${id}`, { method: 'PATCH', body }).then(unwrapData)
 export const reviewVerificationDocument = (id, body) => apiRequest(`/suppliers/verification/admin/documents/${id}`, { method: 'PATCH', body }).then(unwrapData)
+export const startDigiLockerVerification = () => apiRequest('/suppliers/verification/digilocker/start', { method: 'POST', cache: false }).then(unwrapData)
+export const selectManualVerification = () => apiRequest('/suppliers/verification/manual/select', { method: 'POST', cache: false }).then(unwrapData)
 
 export const fetchSubscription = (role = 'seller') => apiRequest('/subscription', { query: { role }, cache: false }).then(unwrapData)
 export const fetchSubscriptionPlans = (role = 'seller') => apiRequest('/subscription/plans', { query: { role } }).then(unwrapData)

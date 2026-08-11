@@ -33,21 +33,21 @@ export default function AdminAddressAutocomplete({ value = '', onChange, onSelec
 
   function locate() {
     setNotice('')
-    if (!navigator.geolocation) { setNotice('Location is unavailable in this browser.'); return }
+    if (!navigator.geolocation) { setNotice('Unable to detect your location. Please select your location manually.'); return }
     setBusy(true)
     navigator.geolocation.getCurrentPosition(async ({ coords }) => {
       try {
         const location = await reverseAddressCoordinates(coords.latitude, coords.longitude)
         onChange(location?.formattedAddress || '')
         onSelect?.(location)
-      } catch (error) { setNotice(error.message) }
+      } catch { setNotice('Unable to detect your location. Please select your location manually.') }
       finally { setBusy(false) }
-    }, () => { setBusy(false); setNotice('Allow location access or search manually.') }, { enableHighAccuracy: true, timeout: 15000 })
+    }, error => { setBusy(false); setNotice(error.code === 1 ? 'Location permission was denied. Please select your location manually.' : 'Unable to detect your location. Please select your location manually.') }, { enableHighAccuracy: true, timeout: 15000 })
   }
 
   return <span className="admin-address">
     <span><MapPin /><input value={value} onChange={event => onChange(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => window.setTimeout(() => setFocused(false), 180)} autoComplete="off" placeholder="Search a global address" /><button type="button" onMouseDown={event => event.preventDefault()} onClick={locate} aria-label="Use current location">{busy ? <LoaderCircle className="spin" /> : <LocateFixed />}</button></span>
     {notice && <small className="field-error">{notice}</small>}
-    {focused && String(value).trim().length >= 3 && items.length > 0 && <span className="admin-address__menu">{items.map(item => <button type="button" key={item.placeId} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}><MapPin /><span><b>{item.primaryText}</b><small>{item.secondaryText}</small></span></button>)}<small>Address data © OpenStreetMap contributors</small></span>}
+    {focused && String(value).trim().length >= 3 && items.length > 0 && <span className="admin-address__menu">{items.map(item => <button type="button" key={item.placeId} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}><MapPin /><span><b>{item.primaryText}</b><small>{item.secondaryText}</small></span></button>)}<small>Powered by Google</small></span>}
   </span>
 }

@@ -3,6 +3,7 @@ import { getSellerCompletionSummary } from '../lib/seller-verification.js';
 import { buildVerificationCenterSummary, VERIFICATION_STEPS } from '../lib/verification-center.js';
 import { buildSellerQuery, sellerSortField, stripUndefined } from '../lib/supplier-helpers.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
+import { capabilities as digiLockerCapabilities } from './digilocker-verification.service.js';
 
 const PROTECTED_SELLER_STATUSES = new Set([
   'document_submitted',
@@ -146,6 +147,10 @@ export async function getOnboarding(user) {
     timeline,
     completion,
     verificationCenter,
+    verificationOptions: {
+      manual: { available: true },
+      digilocker: digiLockerCapabilities(),
+    },
     draftAvailable: sellerApproved ? false : draftAvailable,
   };
 }

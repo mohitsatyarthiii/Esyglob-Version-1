@@ -38,6 +38,30 @@ router.get(
   supplierController.listVerificationReviews
 );
 
+router.post(
+  '/verification/digilocker/start',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.startDigiLockerVerification
+);
+
+router.get(
+  '/verification/digilocker/callback',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.completeDigiLockerVerification
+);
+
+router.post(
+  '/verification/manual/select',
+  authenticate,
+  requireAuth,
+  requireRole('seller'),
+  supplierController.selectManualVerification
+);
+
 router.patch(
   '/verification/admin/documents/:documentId',
   authenticate,

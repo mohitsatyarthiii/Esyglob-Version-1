@@ -296,6 +296,7 @@ export async function addDocumentToVerification(sellerId, userId, documentData) 
         sellerId,
         userId,
         status: 'document_submitted',
+        verificationMethod: 'manual',
         submittedAt: new Date(),
       },
       $push: {

@@ -29,6 +29,8 @@ const verificationAuditSchema = new mongoose.Schema(
         'document_rejected',
         'document_needs_update',
         'document_archived',
+        'digilocker_processed',
+        'verification_method_selected',
         'information_requested',
         'verification_approved',
         'verification_rejected',

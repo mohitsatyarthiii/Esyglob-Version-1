@@ -1,6 +1,5 @@
 import axios from 'axios';
 import NodeCache from 'node-cache';
-import crypto from 'node:crypto';
 
 const TIMEOUT_MS = Number(process.env.ADDRESS_SERVICE_TIMEOUT_MS || 6500);
 const CACHE_TTL_SECONDS = Number(process.env.ADDRESS_CACHE_TTL_SECONDS || 900);
@@ -11,48 +10,18 @@ const cache = new NodeCache({
   maxKeys: Number(process.env.ADDRESS_CACHE_MAX_KEYS || 5000),
 });
 
-function configuredUrl(name) {
-  const raw = String(process.env[name] || '').trim().replace(/\/+$/, '');
-  if (!raw) {
-    throw Object.assign(new Error('The self-hosted address service is not configured'), {
-      statusCode: 503,
-      code: 'ADDRESS_SERVICE_NOT_CONFIGURED',
-    });
-  }
-  let parsed;
-  try { parsed = new URL(raw); } catch {
-    throw Object.assign(new Error(`${name} must be a valid HTTP(S) URL`), { statusCode: 503 });
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw Object.assign(new Error(`${name} must use HTTP or HTTPS`), { statusCode: 503 });
-  }
-  const forbiddenPublicHosts = ['photon.komoot.io', 'nominatim.openstreetmap.org'];
-  if (forbiddenPublicHosts.includes(parsed.hostname.toLowerCase())) {
-    throw Object.assign(new Error(`${name} must point to the private EsyGlob geocoding stack`), { statusCode: 503 });
-  }
-  return raw;
-}
-
-function serviceClient(name) {
-  return axios.create({
-    baseURL: configuredUrl(name),
-    timeout: TIMEOUT_MS,
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'EsyGlob-Address-Service/1.0',
-    },
-  });
+function apiKey() {
+  const value = String(process.env.GOOGLE_PLACES_API_KEY || '').trim();
+  if (!value) throw Object.assign(new Error('Address lookup is temporarily unavailable'), { statusCode: 503, code: 'ADDRESS_SERVICE_NOT_CONFIGURED' });
+  return value;
 }
 
 class AddressAutocompleteService {
   static capabilities() {
     return {
-      configured: Boolean(process.env.PHOTON_BASE_URL && process.env.NOMINATIM_BASE_URL),
-      provider: 'esyglob_osm',
-      autocomplete: 'photon',
-      geocoder: 'nominatim',
-      attribution: '© OpenStreetMap contributors',
-      supportsReverseGeocoding: true,
+      configured: Boolean(String(process.env.GOOGLE_PLACES_API_KEY || '').trim()),
+      provider: 'google', autocomplete: 'google_places', geocoder: 'google_geocoding',
+      attribution: 'Google', supportsReverseGeocoding: true,
     };
   }
 
@@ -60,65 +29,52 @@ class AddressAutocompleteService {
     const input = String(query.input || '').trim();
     if (input.length < 3) return response([]);
     if (input.length > 180) throw Object.assign(new Error('Address search is too long'), { statusCode: 422 });
-
-    const language = normalizeLanguage(query.languageCode);
+    const languageCode = normalizeLanguage(query.languageCode);
     const countryCodes = normalizeCountryCodes(query.countryCodes);
-    const cacheKey = `search:${language}:${countryCodes.join(',')}:${input.toLocaleLowerCase()}`;
+    const sessionToken = normalizeSessionToken(query.sessionToken);
+    const cacheKey = `google-search:${sessionToken}:${languageCode}:${countryCodes.join(',')}:${input.toLocaleLowerCase()}`;
     const cached = cache.get(cacheKey);
     if (cached) return cached;
-
-    const params = { q: input, limit: 8, lang: language };
-    if (countryCodes.length === 1) params.location_bias_scale = 0;
-    const { data } = await serviceClient('PHOTON_BASE_URL').get('/api', { params });
-    const suggestions = (data?.features || [])
-      .map(normalizePhotonFeature)
-      .filter(item => item && (!countryCodes.length || countryCodes.includes(item.location.countryCode.toLowerCase())))
-      .slice(0, 8)
-      .map(({ location, osm }) => ({
-        placeId: encodePlaceToken({ ...osm, latitude: location.latitude, longitude: location.longitude }),
-        label: location.formattedAddress,
-        primaryText: location.placeName || location.line1 || location.city || location.formattedAddress,
-        secondaryText: [location.city, location.state, location.country, location.postalCode].filter(Boolean).join(', '),
-        city: location.city,
-        district: location.district,
-        state: location.state,
-        country: location.country,
-        postalCode: location.postalCode,
-      }));
+    const body = { input, languageCode, ...(sessionToken ? { sessionToken } : {}), ...(countryCodes.length ? { includedRegionCodes: countryCodes } : {}) };
+    const { data } = await axios.post('https://places.googleapis.com/v1/places:autocomplete', body, {
+      timeout: TIMEOUT_MS,
+      headers: {
+        'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey(),
+        'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text,suggestions.placePrediction.structuredFormat',
+      },
+    });
+    const suggestions = (data?.suggestions || []).flatMap(item => {
+      const prediction = item?.placePrediction;
+      if (!prediction?.placeId) return [];
+      const label = prediction.text?.text || '';
+      return [{
+        placeId: prediction.placeId,
+        label,
+        primaryText: prediction.structuredFormat?.mainText?.text || label,
+        secondaryText: prediction.structuredFormat?.secondaryText?.text || '',
+      }];
+    }).slice(0, 8);
     const result = response(suggestions);
     cache.set(cacheKey, result);
     return result;
   }
 
   static async resolve(query = {}) {
-    const token = decodePlaceToken(query.placeId);
-    const cacheKey = `resolve:${query.placeId}`;
+    const placeId = validPlaceId(query.placeId);
+    const languageCode = normalizeLanguage(query.languageCode);
+    const sessionToken = normalizeSessionToken(query.sessionToken);
+    const cacheKey = `google-place:${languageCode}:${placeId}`;
     const cached = cache.get(cacheKey);
     if (cached) return cached;
-
-    const params = {
-      format: 'jsonv2',
-      addressdetails: 1,
-      'accept-language': normalizeLanguage(query.languageCode),
-    };
-    let data;
-    if (token.osmType && token.osmId) {
-      const result = await serviceClient('NOMINATIM_BASE_URL').get('/lookup', {
-        params: { ...params, osm_ids: `${token.osmType}${token.osmId}` },
-      });
-      data = result.data?.[0];
-    }
-    if (!data) {
-      const result = await serviceClient('NOMINATIM_BASE_URL').get('/reverse', {
-        params: { ...params, lat: token.latitude, lon: token.longitude, zoom: 18 },
-      });
-      data = result.data;
-    }
-    const result = {
-      provider: 'esyglob_osm',
-      attribution: '© OpenStreetMap contributors',
-      location: normalizeNominatimPlace(data, query.placeId),
-    };
+    const { data } = await axios.get(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+      timeout: TIMEOUT_MS,
+      params: { languageCode, ...(sessionToken ? { sessionToken } : {}) },
+      headers: {
+        'X-Goog-Api-Key': apiKey(),
+        'X-Goog-FieldMask': 'id,displayName,formattedAddress,addressComponents,location',
+      },
+    });
+    const result = { provider: 'google', attribution: 'Google', location: normalizeGooglePlace(data) };
     cache.set(cacheKey, result);
     return result;
   }
@@ -127,174 +83,90 @@ class AddressAutocompleteService {
     const latitude = coordinate(query.latitude ?? query.lat, -90, 90, 'latitude');
     const longitude = coordinate(query.longitude ?? query.lon, -180, 180, 'longitude');
     const language = normalizeLanguage(query.languageCode);
-    const cacheKey = `reverse:${language}:${latitude.toFixed(5)}:${longitude.toFixed(5)}`;
+    const cacheKey = `google-reverse:${language}:${latitude.toFixed(5)}:${longitude.toFixed(5)}`;
     const cached = query.refresh ? null : cache.get(cacheKey);
     if (cached) return cached;
-    const { data } = await serviceClient('NOMINATIM_BASE_URL').get('/reverse', {
-      params: {
-        lat: latitude,
-        lon: longitude,
-        format: 'jsonv2',
-        addressdetails: 1,
-        zoom: 18,
-        'accept-language': language,
-      },
+    const { data } = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      timeout: TIMEOUT_MS,
+      params: { latlng: `${latitude},${longitude}`, language, key: apiKey() },
     });
-    if (!data || data.error) throw Object.assign(new Error('No address was found for this location'), { statusCode: 404 });
-    const result = {
-      provider: 'esyglob_osm',
-      attribution: '© OpenStreetMap contributors',
-      location: normalizeNominatimPlace(data),
-    };
-    if (isCompleteLocation(result.location)) cache.set(cacheKey, result);
+    if (data?.status !== 'OK' || !data.results?.length) {
+      if (data?.status && data.status !== 'ZERO_RESULTS') throw Object.assign(new Error('Address lookup is temporarily unavailable'), { statusCode: 502, code: 'ADDRESS_PROVIDER_UNAVAILABLE' });
+      throw Object.assign(new Error('No address was found for this location'), { statusCode: 404 });
+    }
+    const location = normalizeGoogleGeocode(data.results[0]);
+    location.latitude = latitude;
+    location.longitude = longitude;
+    const result = { provider: 'google', attribution: 'Google', location };
+    if (isCompleteLocation(location)) cache.set(cacheKey, result);
     return result;
   }
 }
 
-function response(suggestions) {
-  return {
-    provider: 'esyglob_osm',
-    attribution: '© OpenStreetMap contributors',
-    suggestions,
-  };
+function response(suggestions) { return { provider: 'google', attribution: 'Google', suggestions }; }
+
+function normalizeGooglePlace(place = {}) {
+  const components = componentMap(place.addressComponents);
+  return locationFromComponents({
+    placeId: place.id,
+    formattedAddress: place.formattedAddress,
+    placeName: place.displayName?.text,
+    components,
+    latitude: place.location?.latitude,
+    longitude: place.location?.longitude,
+  });
 }
 
-function normalizePhotonFeature(feature) {
-  const properties = feature?.properties || {};
-  const [longitude, latitude] = feature?.geometry?.coordinates || [];
-  if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) return null;
-  const placeName = properties.name || properties.street || properties.city || properties.locality || '';
-  const line1 = [properties.housenumber, properties.street].filter(Boolean).join(' ') || placeName;
-  const city = properties.city || properties.town || properties.village || properties.locality || '';
-  const district = properties.district || properties.county || properties.localadmin || '';
-  const state = properties.state || properties.region || '';
-  const country = properties.country || '';
-  const postalCode = properties.postcode || '';
-  const parts = unique([line1, district, city, state, postalCode, country]);
-  return {
-    osm: {
-      osmType: normalizeOsmType(properties.osm_type),
-      osmId: String(properties.osm_id || ''),
-    },
-    location: {
-      placeName,
-      formattedAddress: parts.join(', '),
-      line1,
-      street: properties.street || line1,
-      city,
-      district,
-      state,
-      country,
-      countryCode: String(properties.countrycode || properties.country_code || '').toUpperCase(),
-      postalCode,
-      latitude: Number(latitude),
-      longitude: Number(longitude),
-    },
-  };
+function normalizeGoogleGeocode(place = {}) {
+  const components = componentMap(place.address_components);
+  return locationFromComponents({
+    placeId: place.place_id,
+    formattedAddress: place.formatted_address,
+    components,
+    latitude: place.geometry?.location?.lat,
+    longitude: place.geometry?.location?.lng,
+  });
 }
 
-function normalizeNominatimPlace(place, placeId = '') {
-  if (!place) throw Object.assign(new Error('The selected address is no longer available'), { statusCode: 404 });
-  const address = place.address || {};
-  const road = address.road || address.pedestrian || address.footway || address.path || '';
-  const line1 = [address.house_number, road].filter(Boolean).join(' ')
-    || address.building || address.amenity || address.shop || place.name || '';
-  const city = address.city || address.town || address.village || address.municipality || address.locality || '';
-  const district = address.city_district || address.district || address.county || address.state_district || '';
-  return {
-    placeId: placeId || encodePlaceToken({
-      osmType: normalizeOsmType(place.osm_type),
-      osmId: String(place.osm_id || ''),
-      latitude: Number(place.lat),
-      longitude: Number(place.lon),
-    }),
-    placeName: place.name || line1 || city,
-    formattedAddress: place.display_name || unique([line1, district, city, address.state, address.postcode, address.country]).join(', '),
-    line1,
-    street: road || line1,
-    city,
-    district,
-    state: address.state || address.region || '',
-    postalCode: address.postcode || '',
-    country: address.country || '',
-    countryCode: String(address.country_code || '').toUpperCase(),
-    latitude: Number(place.lat),
-    longitude: Number(place.lon),
-  };
-}
-
-function encodePlaceToken(value) {
-  const body = Buffer.from(JSON.stringify(value)).toString('base64url');
-  const signature = crypto.createHash('sha256')
-    .update(`${body}:${process.env.ADDRESS_TOKEN_SECRET || process.env.JWT_SECRET || 'esyglob-address'}`)
-    .digest('base64url')
-    .slice(0, 16);
-  return `osm.${body}.${signature}`;
-}
-
-function decodePlaceToken(value) {
-  const match = /^osm\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{16})$/.exec(String(value || '').trim());
-  if (!match) throw Object.assign(new Error('Select a valid address suggestion'), { statusCode: 422 });
-  const expected = crypto.createHash('sha256')
-    .update(`${match[1]}:${process.env.ADDRESS_TOKEN_SECRET || process.env.JWT_SECRET || 'esyglob-address'}`)
-    .digest('base64url')
-    .slice(0, 16);
-  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(match[2]))) {
-    throw Object.assign(new Error('Select a valid address suggestion'), { statusCode: 422 });
-  }
-  try {
-    const parsed = JSON.parse(Buffer.from(match[1], 'base64url').toString('utf8'));
-    return {
-      osmType: normalizeOsmType(parsed.osmType),
-      osmId: /^\d+$/.test(String(parsed.osmId || '')) ? String(parsed.osmId) : '',
-      latitude: coordinate(parsed.latitude, -90, 90, 'latitude'),
-      longitude: coordinate(parsed.longitude, -180, 180, 'longitude'),
+function componentMap(values = []) {
+  const result = {};
+  for (const item of values || []) {
+    const types = item.types || [];
+    for (const type of types) result[type] = {
+      long: item.longText || item.long_name || '', short: item.shortText || item.short_name || '',
     };
-  } catch (error) {
-    if (error.statusCode) throw error;
-    throw Object.assign(new Error('Select a valid address suggestion'), { statusCode: 422 });
   }
+  return result;
 }
 
-function coordinate(value, minimum, maximum, label) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < minimum || number > maximum) {
-    throw Object.assign(new Error(`A valid ${label} is required`), { statusCode: 422 });
-  }
-  return number;
+function locationFromComponents({ placeId = '', formattedAddress = '', placeName = '', components = {}, latitude, longitude }) {
+  const number = (...types) => types.map(type => components[type]?.long).find(Boolean) || '';
+  const route = number('route');
+  const streetNumber = number('street_number');
+  const line1 = [streetNumber, route].filter(Boolean).join(' ') || placeName || number('premise', 'subpremise', 'neighborhood');
+  const city = number('locality', 'postal_town', 'administrative_area_level_3', 'sublocality_level_1');
+  return {
+    placeId, placeName: placeName || line1 || city, formattedAddress, line1, street: route || line1,
+    city,
+    district: number('administrative_area_level_2', 'sublocality_level_1'),
+    state: number('administrative_area_level_1'),
+    postalCode: number('postal_code'),
+    country: number('country'),
+    countryCode: String(components.country?.short || '').toUpperCase(),
+    latitude: Number(latitude), longitude: Number(longitude),
+  };
 }
 
-function normalizeLanguage(value) {
-  const language = String(value || 'en').trim().toLowerCase();
-  return /^[a-z]{2,3}(?:-[a-z]{2})?$/.test(language) ? language : 'en';
+function validPlaceId(value) {
+  const result = String(value || '').trim();
+  if (!/^[A-Za-z0-9_-]{10,255}$/.test(result)) throw Object.assign(new Error('Select a valid address suggestion'), { statusCode: 422 });
+  return result;
 }
+function coordinate(value, minimum, maximum, label) { const number = Number(value); if (!Number.isFinite(number) || number < minimum || number > maximum) throw Object.assign(new Error(`A valid ${label} is required`), { statusCode: 422 }); return number; }
+function normalizeLanguage(value) { const language = String(value || 'en').trim().toLowerCase(); return /^[a-z]{2,3}(?:-[a-z]{2})?$/.test(language) ? language : 'en'; }
+function normalizeCountryCodes(value) { return [...new Set(String(value || '').split(',').map(item => item.trim().toLowerCase()).filter(item => /^[a-z]{2}$/.test(item)))].slice(0, 15); }
+function normalizeSessionToken(value) { const token = String(value || '').trim(); return /^[A-Za-z0-9_-]{1,128}$/.test(token) ? token : ''; }
+function isCompleteLocation(location) { return Boolean(location?.formattedAddress && location?.city && location?.state && location?.country && /^[A-Z]{2}$/.test(String(location?.countryCode || ''))); }
 
-function normalizeCountryCodes(value) {
-  return [...new Set(String(value || '').split(',').map(item => item.trim().toLowerCase()).filter(item => /^[a-z]{2}$/.test(item)))].slice(0, 15);
-}
-
-function normalizeOsmType(value) {
-  return ({ node: 'N', way: 'W', relation: 'R', N: 'N', W: 'W', R: 'R' })[value] || '';
-}
-
-function unique(values) {
-  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
-}
-
-function isCompleteLocation(location) {
-  return Boolean(
-    location?.formattedAddress
-    && location?.city
-    && location?.state
-    && location?.country
-    && /^[A-Z]{2}$/.test(String(location?.countryCode || ''))
-  );
-}
-
-export {
-  decodePlaceToken,
-  encodePlaceToken,
-  normalizeNominatimPlace,
-  normalizePhotonFeature,
-};
+export { normalizeGoogleGeocode, normalizeGooglePlace };
 export default AddressAutocompleteService;

@@ -38,9 +38,10 @@ class AddressController {
       const result = await AddressService.upsertCurrentLocation(req.user._id, req.body);
       return res.json(result);
     } catch (error) {
-      console.error('[Addresses-Current] Error:', error);
+      console.error('[Addresses-Current]', { code: error.code, statusCode: error.statusCode || error.response?.status });
       if (error instanceof z.ZodError) return res.status(422).json({ error: 'Invalid GPS coordinates' });
-      return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to save current location' });
+      if (error.statusCode && error.statusCode < 500) return res.status(error.statusCode).json({ error: error.message });
+      return res.status(error.statusCode || 502).json({ error: 'Unable to detect your location. Please select your location manually.' });
     }
   }
 

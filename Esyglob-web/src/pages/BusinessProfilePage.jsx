@@ -13,6 +13,7 @@ import {
   FileText,
   Globe2,
   Image,
+  LockKeyhole,
   PackageCheck,
   Save,
   ShieldCheck,
@@ -29,6 +30,8 @@ import {
   fetchVerificationWorkspace,
   saveFactoryProfile,
   saveVerificationDraft,
+  selectManualVerification,
+  startDigiLockerVerification,
   uploadVerificationDocument,
 } from '../api/verification'
 import { uploadFiles } from '../api/trade'
@@ -79,6 +82,7 @@ const emptyFactory = {
 export default function BusinessProfilePage() {
   const [searchParams] = useSearchParams()
   const requestedSection = searchParams.get('section')
+  const digiLockerOutcome = searchParams.get('digilocker')
   const [data, setData] = useState(null)
   const [seller, setSeller] = useState(emptySeller)
   const [factory, setFactory] = useState(emptyFactory)
@@ -96,6 +100,11 @@ export default function BusinessProfilePage() {
   }, [requestedSection])
 
   useEffect(() => { load().catch((next) => setError(next.message)) }, [load])
+  useEffect(() => {
+    if (digiLockerOutcome === 'success') setMessage('DigiLocker documents were securely processed and added to this verification for review.')
+    if (digiLockerOutcome === 'cancelled') setMessage('DigiLocker consent was cancelled. You can continue with manual verification.')
+    if (digiLockerOutcome === 'failed') setError('DigiLocker verification is temporarily unavailable. You can continue with manual verification.')
+  }, [digiLockerOutcome])
 
   const docs = useMemo(() => (data?.verification?.documents || []).filter((item) => item.status !== 'archived'), [data])
   const progress = useMemo(() => profileProgress(seller, factory, docs), [seller, factory, docs])
@@ -137,6 +146,21 @@ export default function BusinessProfilePage() {
     if (!file) return
     setBusy(true); setError('')
     try { await uploadVerificationDocument(type, file); await load(); setMessage('Document uploaded for review.') }
+    catch (next) { setError(next.message) } finally { setBusy(false) }
+  }
+
+  async function startDigiLocker() {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const result = await startDigiLockerVerification()
+      if (!result?.authorizationUrl) throw new Error('DigiLocker verification is temporarily unavailable.')
+      window.location.assign(result.authorizationUrl)
+    } catch (next) { setError(`${next.message} You can continue with manual verification.`); setBusy(false) }
+  }
+
+  async function chooseManual() {
+    setBusy(true); setError(''); setMessage('')
+    try { await selectManualVerification(); await load(); setMessage('Manual verification selected. Upload documents below when ready.') }
     catch (next) { setError(next.message) } finally { setBusy(false) }
   }
 
@@ -182,7 +206,7 @@ export default function BusinessProfilePage() {
           {active === 'trade' && <TradeSection seller={seller} setSeller={setSeller} />}
           {active === 'factory' && <FactorySection factory={factory} setFactory={setFactory} />}
           {active === 'media' && <MediaSection seller={seller} setSeller={setSeller} factory={factory} setFactory={setFactory} busy={busy} upload={uploadMedia} />}
-          {active === 'verification' && <VerificationSection data={data} seller={seller} setSeller={setSeller} docs={docs} busy={busy} upload={uploadDocument} remove={async (id) => { await archiveVerificationDocument(id); await load() }} submit={() => save('verification', true)} />}
+          {active === 'verification' && <VerificationSection data={data} seller={seller} setSeller={setSeller} docs={docs} busy={busy} upload={uploadDocument} remove={async (id) => { await archiveVerificationDocument(id); await load() }} submit={() => save('verification', true)} startDigiLocker={startDigiLocker} chooseManual={chooseManual} />}
           {active === 'contacts' && <ContactsSection seller={seller} setSeller={setSeller} />}
           {active !== 'overview' && <footer className="business-profile-savebar"><span>Changes update your public Manufacturer page after saving.</span><button className="button button--primary" disabled={busy} onClick={() => save(active)}><Save /> Save {sectionLabel(active)}</button></footer>}
         </section>
@@ -253,11 +277,21 @@ function MediaSection({ seller, setSeller, factory, setFactory, busy, upload }) 
   </Section>
 }
 
-function VerificationSection({ data, seller, setSeller, docs, busy, upload, remove, submit }) {
+function VerificationSection({ data, seller, setSeller, docs, busy, upload, remove, submit, startDigiLocker, chooseManual }) {
   const status = data?.verification?.status || 'draft'
+  const method = data?.verification?.verificationMethod || 'manual'
+  const digiLocker = data?.verificationOptions?.digilocker || {}
+  const automated = data?.verification?.digilocker || {}
   const feedback = data?.verification?.sellerFeedback || data?.verification?.rejectionReason || data?.verification?.informationRequests?.at(-1)?.message
   return <Section title="Trust & verification" description="Verification validates the Business Profile. It does not create a separate public data record.">
+    <div className="verification-method-heading"><span>Complete business verification</span><h3>Choose how you want to verify your business</h3><p>Both methods use the same application, status history, admin review, and verified seller badge.</p></div>
+    <div className="verification-method-grid">
+      <article className={method === 'digilocker' ? 'active' : ''}><i><LockKeyhole /></i><div><span>Automatic verification</span><h3>Verify with DigiLocker</h3><p>Connect securely and share only eligible government-issued documents with your consent.</p><small>{digiLocker.configured ? `${digiLocker.documents?.length || 0} authorized document type(s) enabled` : 'Temporarily unavailable in this environment'}</small></div><button className="button button--primary" disabled={busy || !digiLocker.configured} onClick={startDigiLocker}>{method === 'digilocker' ? 'Reconnect DigiLocker' : 'Verify with DigiLocker'}</button></article>
+      <article className={method === 'manual' ? 'active' : ''}><i><FileCheck2 /></i><div><span>Upload documents</span><h3>Manual verification</h3><p>Continue with the existing document upload and administrator review workflow.</p><small>Always available</small></div><button className="button button--secondary" disabled={busy} onClick={chooseManual}>{method === 'manual' ? 'Manual selected' : 'Continue manually'}</button></article>
+    </div>
+    {!digiLocker.configured && <div className="digilocker-fallback"><CircleAlert /><span><b>DigiLocker verification is temporarily unavailable.</b><small>You can continue with manual verification without losing any existing documents or history.</small></span><button className="button button--secondary" disabled={busy} onClick={chooseManual}>Continue with manual verification</button></div>}
     <div className="business-verification-status"><ShieldCheck /><span><small>Application status</small><b>{formatStatus(status)}</b><p>Trust score {data?.verificationCenter?.overallTrustScore || 0}/100 · Level {data?.verificationCenter?.verificationLevel || 0}</p></span><button className="button button--primary" disabled={busy || ['submitted', 'under_review', 'approved'].includes(status)} onClick={submit}>Submit for review</button></div>
+    {automated.documents?.length > 0 && <div className="digilocker-results"><header><LockKeyhole /><div><span>Verification method</span><h3>DigiLocker</h3><p>Automatically processed documents. Final approval remains in the existing admin workflow.</p></div></header><div>{automated.documents.map((document) => <article key={`${document.doctype}-${document.providerReferenceHash}`}><FileCheck2 /><span><b>{document.label || formatStatus(document.type)}</b><small>{document.issuer || 'Government issuer'} · {formatStatus(document.category)}</small></span><strong>{formatStatus(document.status)}</strong></article>)}</div>{automated.matches?.length > 0 && <section><h4>Profile matching</h4>{automated.matches.map((item, index) => <span className={`match-${item.status}`} key={`${item.field}-${item.documentType}-${index}`}><b>{formatStatus(item.field)}</b><small>{formatStatus(item.status)}</small></span>)}</section>}</div>}
     {feedback && <div className="business-verification-feedback"><FileText /><div><b>Admin feedback</b><p>{feedback}</p><small>Update the requested information or replace rejected documents, then submit the same verification again.</small></div></div>}
     <div className="business-certification-editor"><ListField label="Company certifications" value={seller.certifications} onChange={(values) => setSeller({ ...seller, certifications: values.map((name) => ({ name, status: seller.certifications.find((item) => (item.name || item) === name)?.status || 'unverified' })) })} /><p>Add ISO, CE, BIS, GST, IEC, MSME, RoHS, FSSAI, or other credentials. Upload supporting evidence below for verification.</p></div>
     <div className="business-document-grid">{documentTypes.map(([type, label]) => { const item = [...docs].reverse().find((document) => document.type === type); return <article key={type}><i className={item ? `status-${item.status}` : ''}><FileCheck2 /></i><span><b>{label}</b><small>{item ? formatStatus(item.status) : 'PDF, JPG or PNG · max 5 MB'}</small></span>{item ? <><a href={item.downloadUrl || item.url} target="_blank" rel="noreferrer">View</a><button onClick={() => remove(item._id)}>Remove</button></> : <label><Upload /> Upload<input hidden type="file" disabled={busy} accept=".pdf,.png,.jpg,.jpeg" onChange={(event) => upload(type, event.target.files?.[0])} /></label>}</article> })}</div>

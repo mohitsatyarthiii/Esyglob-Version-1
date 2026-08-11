@@ -19,19 +19,26 @@ export async function hasLocationPermission() {
 }
 
 export async function detectCurrentAddress({ requestPermission = true, persist = false } = {}): Promise<StandardizedLocation> {
-  const allowed = await hasLocationPermission() || (requestPermission && await RNLocation.requestPermission(permissionOptions));
-  if (!allowed) throw new Error('Allow location access to use your current address.');
-  await RNLocation.configure({ distanceFilter: 0, desiredAccuracy: { ios: 'best', android: 'highAccuracy' } });
-  const position = await RNLocation.getLatestLocation({ timeout: 15_000 });
-  if (!position) throw new Error('Unable to read your current location.');
+  let allowed = false;
+  try { allowed = await hasLocationPermission() || Boolean(requestPermission && await RNLocation.requestPermission(permissionOptions)); }
+  catch { throw new Error('Unable to detect your location. Please select your location manually.'); }
+  if (!allowed) throw new Error('Location permission was denied. Please select your location manually.');
+  let position: Awaited<ReturnType<typeof RNLocation.getLatestLocation>>;
+  try {
+    await RNLocation.configure({ distanceFilter: 0, desiredAccuracy: { ios: 'best', android: 'highAccuracy' } });
+    position = await RNLocation.getLatestLocation({ timeout: 15_000 });
+  } catch { throw new Error('Unable to detect your location. Please select your location manually.'); }
+  if (!position) throw new Error('Unable to detect your location. Please select your location manually.');
   let result: StandardizedLocation | undefined;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const location = await reverseAddressCoordinates(position.latitude, position.longitude, attempt > 0);
-    result = normalizeLocation(location, position.latitude, position.longitude);
-    if (!missingAddressFields(result).length) break;
-  }
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const location = await reverseAddressCoordinates(position.latitude, position.longitude, attempt > 0);
+      result = normalizeLocation(location, position.latitude, position.longitude);
+      if (!missingAddressFields(result).length) break;
+    }
+  } catch { throw new Error('Unable to detect your location. Please select your location manually.'); }
   if (!result || missingAddressFields(result).length) {
-    throw new Error('We could not create a complete address for this location. Please try again or add the address manually.');
+    throw new Error('Unable to detect your location. Please select your location manually.');
   }
   if (persist) {
     await updateCurrentAddress({
