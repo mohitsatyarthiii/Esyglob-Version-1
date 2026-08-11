@@ -1,6 +1,6 @@
 import { ArrowLeft, CheckCircle, Download, Edit3, FileText, MessageSquare, PackageCheck, RefreshCw, ShieldCheck, Truck, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createChat, fetchQuotation, respondToQuotation, updateQuotation } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
@@ -15,11 +15,8 @@ import { TradeSkeleton } from './RfqsPage'
 export default function QuotationDetailsPage() {
   const { quotationId } = useParams()
   const { user } = useAuth()
-  const [params] = useSearchParams()
   const navigate = useNavigate()
-  const roles = user?.roles || ['buyer']
-  const requestedRole = params.get('role')
-  const sellerView = roles.includes('seller') && (requestedRole === 'seller' || (requestedRole !== 'buyer' && (user?.primaryRole === 'seller' || !roles.includes('buyer'))))
+  const sellerView = user?.primaryRole === 'seller'
   const openStatuses = sellerView
     ? ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised']
     : ['pending', 'submitted', 'negotiating', 'revised']

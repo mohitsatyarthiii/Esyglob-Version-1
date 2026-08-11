@@ -8,6 +8,8 @@ import CategoriesScreen from '../screens/CategoriesScreen';
 import HomeScreen from '../screens/HomeScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import ServicesScreen from '../screens/ServicesScreen';
+import SellerOnboardingScreen from '../screens/SellerOnboardingScreen';
+import SellerProductsScreen from '../screens/SellerProductsScreen';
 import { useAuth } from '../auth/AuthContext';
 import RemoteImage from '../components/RemoteImage';
 import { colors, shadow, spacing } from '../theme';
@@ -34,6 +36,7 @@ const tabMeta: Record<keyof RootTabParamList, { icon: string; activeIcon: string
 function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { status, user } = useAuth();
+  const sellerAccount = user?.primaryRole === 'seller';
   const accountImage = status === 'authenticated' ? firstImage(user?.profileImage, user?.avatar, user?.image) : null;
   const accountInitial = (user?.name ?? user?.fullName ?? user?.email ?? 'E').slice(0, 1).toUpperCase();
 
@@ -44,7 +47,16 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     }]}>
       {state.routes.map((route, index) => {
         const isFocused = state.index === index;
-        const meta = tabMeta[route.name as keyof RootTabParamList];
+        const baseMeta = tabMeta[route.name as keyof RootTabParamList];
+        const meta = sellerAccount && route.name === 'Home'
+          ? { ...baseMeta, label: 'Dashboard', icon: 'view-dashboard-outline', activeIcon: 'view-dashboard' }
+          : sellerAccount && route.name === 'Categories'
+            ? { ...baseMeta, label: 'Products', icon: 'package-variant-closed', activeIcon: 'package-variant' }
+            : sellerAccount && route.name === 'Messages'
+              ? { ...baseMeta, label: 'Messages' }
+              : sellerAccount && route.name === 'Account'
+                ? { ...baseMeta, label: 'Seller Account' }
+                : baseMeta;
 
         const onPress = () => {
           const event = navigation.emit({
@@ -118,13 +130,23 @@ function AppTabs() {
       initialRouteName="Home"
       screenOptions={{ headerShown: false, lazy: true }}
       tabBar={renderTabBar}>
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Categories" component={CategoriesScreen} />
+      <Tab.Screen name="Home" component={RoleHomeScreen} />
+      <Tab.Screen name="Categories" component={RoleProductsScreen} />
       <Tab.Screen name="Services" component={ServicesScreen} />
       <Tab.Screen name="Messages" component={MessagesScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
   );
+}
+
+function RoleHomeScreen() {
+  const { user } = useAuth();
+  return user?.primaryRole === 'seller' ? <SellerOnboardingScreen /> : <HomeScreen />;
+}
+
+function RoleProductsScreen() {
+  const { user } = useAuth();
+  return user?.primaryRole === 'seller' ? <SellerProductsScreen /> : <CategoriesScreen />;
 }
 
 const styles = StyleSheet.create({

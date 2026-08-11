@@ -1,6 +1,6 @@
 import { ArrowLeft, CheckCircle2, ClipboardCheck, CreditCard, Factory, FileText, MapPin, PackageCheck, ShieldCheck, Truck, XCircle } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { addProductionUpdate, buyerOrderAction, fetchOrder, initiatePayment, updateOrder, verifyPayment } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
@@ -13,8 +13,8 @@ import { TradeSkeleton } from './RfqsPage'
 const productionStages=['raw_material_procured','manufacturing_started','manufacturing','quality_inspection','packaging','production_completed']
 const label=value=>String(value||'').replaceAll('_',' ')
 export default function OrderDetailsPage(){
-  const {orderId}=useParams(),navigate=useNavigate(),{user}=useAuth(),[params]=useSearchParams(),query=useAsyncData(useCallback(()=>fetchOrder(orderId),[orderId]));const [payment,setPayment]=useState({busy:false,data:null,error:''}),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[notes,setNotes]=useState(''),[productionStage,setProductionStage]=useState('raw_material_procured'),[tracking,setTracking]=useState('')
-  const roles=user?.roles||['buyer'],sellerView=roles.includes('seller')&&(params.get('role')==='seller'||(!roles.includes('buyer')&&roles.includes('seller')))
+  const {orderId}=useParams(),navigate=useNavigate(),{user}=useAuth(),query=useAsyncData(useCallback(()=>fetchOrder(orderId),[orderId]));const [payment,setPayment]=useState({busy:false,data:null,error:''}),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),[notes,setNotes]=useState(''),[productionStage,setProductionStage]=useState('raw_material_procured'),[tracking,setTracking]=useState('')
+  const sellerView=user?.primaryRole==='seller'
   async function pay(){setPayment({busy:true,data:null,error:''});try{const session=await initiatePayment(orderId);await loadRazorpay();if(!session.keyId||!session.razorpayOrderId||!session.paymentId)throw new Error('Payment gateway did not return a complete checkout session.');await new Promise((resolve,reject)=>{const gateway=new window.Razorpay({key:session.keyId,amount:session.amount,currency:session.currency||'INR',name:'EsyGlob',description:`Payment for ${session.orderNumber||'order'}`,order_id:session.razorpayOrderId,handler:async result=>{try{await verifyPayment({paymentId:session.paymentId,razorpayPaymentId:result.razorpay_payment_id,razorpayOrderId:result.razorpay_order_id,razorpaySignature:result.razorpay_signature});resolve()}catch(e){reject(e)}},modal:{ondismiss:()=>reject(new Error('Payment was cancelled.'))}});gateway.on('payment.failed',result=>reject(new Error(result.error?.description||'Payment failed.')));gateway.open()});setPayment({busy:false,data:{success:true},error:''});await query.reload()}catch(e){setPayment({busy:false,data:null,error:e.message})}}
   async function perform(fn,success){setBusy(true);setError('');try{await fn();setMessage(success);setNotes('');await query.reload()}catch(e){setError(e.message)}finally{setBusy(false)}}
   if(query.loading)return <AppShell><div className="listing-page container"><TradeSkeleton/></div></AppShell>;if(query.error)return <AppShell><div className="listing-page container"><div className="inline-error">{query.error.message}</div></div></AppShell>

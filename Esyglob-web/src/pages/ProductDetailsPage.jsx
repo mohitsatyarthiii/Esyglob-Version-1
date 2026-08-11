@@ -15,7 +15,7 @@ import useAsyncData from '../hooks/useAsyncData'
 export default function ProductDetailsPage() {
   const { productId } = useParams()
   const details = useAsyncData(useCallback(() => fetchProductDetails(productId), [productId]))
-  const { status } = useAuth()
+  const { status, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   
@@ -46,13 +46,13 @@ export default function ProductDetailsPage() {
   const unit = product.unit || 'piece'
   const sellerId = seller._id || seller.id
   const sellerUserId = seller.userId?._id || seller.userId || product.userId?._id || product.userId
+  const buyerAccount = user?.primaryRole !== 'seller'
   
   useEffect(() => { setQuantity(moq) }, [moq])
   
   function authAction(callback) { if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname, notice: 'Sign in to contact suppliers and use account features.' } }); callback() }
   async function chat() { setAction({ busy: true, message: '', error: '' }); try { const created = await startProductChat({ otherUserId: sellerUserId, productId }); const id = created.chat?._id || created._id; navigate(id ? `/messages/${id}` : '/messages') } catch (error) { setAction({ busy: false, message: '', error: error.message }) } }
   async function share() { try { if (navigator.share) await navigator.share({ title: product.name, text: product.name, url: window.location.href }); else { await navigator.clipboard.writeText(window.location.href); setAction({ busy: false, message: 'Product link copied.', error: '' }) } } catch (error) { if (error.name !== 'AbortError') setAction({ busy: false, message: '', error: 'Unable to share this product.' }) } }
-  function enquiry() { authAction(() => setEnquiryOpen(true)) }
   function startRfq() { authAction(() => navigate('/rfqs/new', { state: { product: { ...product, requestedQuantity: quantity, requestedUnit: unit, selectedVariant: variant }, sellerUserId } })) }
   
   if (details.loading) return <AppShell><div className="detail-page container"><SkeletonCards count={4} /></div></AppShell>
@@ -151,10 +151,10 @@ export default function ProductDetailsPage() {
                   <Store size={15} /> Store
                 </Link>
               )}
-              <button className="button button--secondary" disabled={action.busy || !sellerUserId} onClick={() => authAction(chat)}>
+              <button className="button button--secondary" disabled={action.busy || !sellerUserId || (status === 'authenticated' && !buyerAccount)} onClick={() => authAction(chat)}>
                 <MessageSquare size={15} /> Chat Now
               </button>
-              <button className="button button--primary" disabled={!sellerUserId} onClick={startRfq}>
+              <button className="button button--primary" disabled={!sellerUserId || (status === 'authenticated' && !buyerAccount)} onClick={startRfq}>
                 <FileText size={15} /> Send RFQ
               </button>
             </div>
@@ -167,8 +167,8 @@ export default function ProductDetailsPage() {
         
         {/* Mobile: Sticky bottom bar */}
         <ProductTradeActions 
-          disabled={action.busy || !sellerUserId} 
-          onContact={enquiry}
+          disabled={action.busy || !sellerUserId || (status === 'authenticated' && !buyerAccount)}
+          onContact={() => authAction(chat)}
           onRfq={startRfq}
           sellerId={sellerId}
         />

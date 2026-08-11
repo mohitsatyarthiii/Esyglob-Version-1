@@ -540,16 +540,12 @@ function AccountScreen() {
   } = useCurrency();
   const nav = useNavigation<any>();
   const qc = useQueryClient();
-  const { activeRole, setActiveRole, signOut, status, user } = useAuth();
+  const { signOut, status, user } = useAuth();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [welcome, setWelcome] = useState(false);
   const [prevMode, setPrevMode] = useState<AuthMode | null>(null);
 
-  const roles = useMemo(
-    () => user?.roles?.filter(r => r === 'buyer' || r === 'seller') ?? [],
-    [user],
-  );
-  const role: Role = activeRole === 'seller' ? 'seller' : 'buyer';
+  const role: Role = user?.primaryRole === 'seller' ? 'seller' : 'buyer';
 
   const notifQ = useQuery({
     queryKey: ['acc-notif', role],
@@ -776,25 +772,6 @@ function AccountScreen() {
             <Pressable onPress={() => setWelcome(false)}>
               <Icon name="close" size={12} color={P.muted} />
             </Pressable>
-          </View>
-        )}
-
-        {/* Role Switcher */}
-        {roles.length > 1 && (
-          <View style={styles.roleRow}>
-            {roles.map(r => (
-              <Pressable
-                key={r}
-                onPress={() => setActiveRole(r)}
-                style={[styles.roleBtn, role === r && styles.roleBtnActive]}
-              >
-                <Text
-                  style={[styles.roleText, role === r && styles.roleTextActive]}
-                >
-                  {r === 'buyer' ? 'Buyer' : 'Seller'}
-                </Text>
-              </Pressable>
-            ))}
           </View>
         )}
 

@@ -547,7 +547,7 @@ function ProductDetailsScreen() {
 
   const isAuth = status === 'authenticated';
   const currentUserId = String(user?._id ?? user?.id ?? '');
-  const isBuyer = isAuth && activeRole === 'buyer';
+  const isBuyer = isAuth && user?.primaryRole !== 'seller' && activeRole === 'buyer';
   const isSelfContact = Boolean(currentUserId && sellerUserId && currentUserId === String(sellerUserId));
   const canAct = isBuyer && Boolean(sellerUserId) && !isSelfContact;
 
@@ -584,7 +584,7 @@ function ProductDetailsScreen() {
   const chatNow = useMutation({
     mutationFn: async () => {
       if (!product) throw new Error('Product not loaded.');
-      if (!isBuyer) throw new Error('Switch to buyer mode to contact this supplier.');
+      if (!isBuyer) throw new Error('Only buyer accounts can contact suppliers from a product.');
       if (isSelfContact) throw new Error('You cannot start a chat with your own seller account.');
       if (!sellerUserId) throw new Error('Seller contact not available.');
       
@@ -615,7 +615,7 @@ function ProductDetailsScreen() {
   const sendEnquiry = useMutation({
     mutationFn: async () => {
       if (!product) throw new Error('Product not loaded.');
-      if (!isBuyer) throw new Error('Switch to buyer mode to send an enquiry.');
+      if (!isBuyer) throw new Error('Only buyer accounts can send product enquiries.');
       if (isSelfContact) throw new Error('You cannot send an enquiry to your own seller account.');
       if (!sellerUserId) throw new Error('Seller information missing.');
       
@@ -1126,7 +1126,7 @@ function ProductDetailsScreen() {
               return; 
             } 
             if (!isBuyer) { 
-              Alert.alert('Switch Role', 'Please switch to buyer mode to chat.'); 
+              Alert.alert('Buyer account required', 'Only buyer accounts can contact suppliers from a product.');
               return; 
             } 
             chatNow.mutate(); 
@@ -1136,7 +1136,7 @@ function ProductDetailsScreen() {
         >
           <Icon name="message-text-outline" size={18} color={P.primary} />
           <Text style={styles.chatBtnText}>
-            {chatNow.isPending ? 'Opening…' : 'Chat'}
+            {chatNow.isPending ? 'Opening…' : 'Chat Now'}
           </Text>
         </TouchableOpacity>
 
@@ -1147,17 +1147,29 @@ function ProductDetailsScreen() {
               return; 
             } 
             if (!isBuyer) { 
-              Alert.alert('Switch Role', 'Please switch to buyer mode to send enquiry.'); 
+              Alert.alert('Buyer account required', 'Only buyer accounts can send an RFQ from a product.');
               return; 
             } 
-            setEnquiryOpen(true); 
+            navigation.navigate('RFQCreate', {
+              prefill: {
+                productId: product?._id || product?.id || productId,
+                productName: product?.name || product?.title || '',
+                sellerId: sellerRouteId,
+                sellerUserId,
+                supplierName: sellerName,
+                quantity,
+                unit: product?.unit || 'pcs',
+                targetPrice: targetPrice || undefined,
+                currency: product?.currency || selectedCurrency || 'INR',
+              },
+            });
           }} 
-          style={[styles.enquiryBtn, (!canAct || sendEnquiry.isPending) && styles.disabledBtn]} 
-          disabled={!canAct || sendEnquiry.isPending}
+          style={[styles.enquiryBtn, !canAct && styles.disabledBtn]}
+          disabled={!canAct}
         >
           <Icon name="send-outline" size={18} color="#FFF" />
           <Text style={styles.enquiryBtnText}>
-            {sendEnquiry.isPending ? 'Sending…' : 'Enquiry'}
+            Send RFQ
           </Text>
         </TouchableOpacity>
       </View>

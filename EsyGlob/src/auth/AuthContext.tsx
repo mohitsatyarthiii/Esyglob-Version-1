@@ -28,12 +28,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function pickInitialRole(user: CurrentUser | null): UserRole | null {
   const mobileRoles = user?.roles?.filter(role => role === 'buyer' || role === 'seller') ?? [];
-  if ((user?.primaryRole === 'seller' || user?.sellerId) && mobileRoles.includes('seller')) {
-    return 'seller';
-  }
-  return (user?.activeRole === 'buyer' || user?.activeRole === 'seller'
-    ? user.activeRole
-    : mobileRoles[0]) ?? null;
+  if (user?.primaryRole === 'seller') return 'seller';
+  if (user?.primaryRole === 'buyer') return 'buyer';
+  return mobileRoles[0] ?? null;
 }
 
 function getErrorMessage(error: unknown) {
@@ -131,10 +128,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [commitUser, destroyLocalSession]);
 
   const setActiveRole = useCallback((role: UserRole) => {
-    if (role === 'buyer' || role === 'seller') {
-      setActiveRoleState(role);
-    }
-  }, []);
+    const accountRole = pickInitialRole(user);
+    if (role === accountRole) setActiveRoleState(role);
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
