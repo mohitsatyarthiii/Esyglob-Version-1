@@ -10,6 +10,12 @@ function socketOrigin() {
   return api.origin === window.location.origin ? window.location.origin : api.origin
 }
 
+function realtimeTransports(origin) {
+  const websocketEnabled = String(import.meta.env.VITE_REALTIME_WEBSOCKET || 'true').toLowerCase() !== 'false'
+  if (!websocketEnabled && origin === window.location.origin) return ['polling']
+  return ['polling', 'websocket']
+}
+
 function loadSocketClient(origin) {
   if (window.io) return Promise.resolve(window.io)
   return new Promise((resolve, reject) => {
@@ -33,13 +39,14 @@ function loadSocketClient(origin) {
 export function getRealtimeClient() {
   if (!clientPromise) {
     const origin = socketOrigin()
+    const transports = realtimeTransports(origin)
     clientPromise = loadSocketClient(origin).then((io) => {
       if (!io) throw new Error('Realtime messaging is unavailable.')
       realtimeClient = io(origin, {
         path: '/socket.io/',
         withCredentials: true,
-        transports: ['polling', 'websocket'],
-        upgrade: true,
+        transports,
+        upgrade: transports.includes('websocket'),
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,

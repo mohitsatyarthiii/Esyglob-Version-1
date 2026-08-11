@@ -175,6 +175,9 @@ export default function ServiceBookingPage() {
       if (sequence !== providerRequest.current) return
       setProviderResult(null)
       setProviderStatus('error')
+      if (next.fieldErrors && Object.keys(next.fieldErrors).length) {
+        setFieldErrors(current => ({ ...current, ...providerFieldErrors(next.fieldErrors) }))
+      }
       setError(next.message)
     }
   }
@@ -205,7 +208,7 @@ export default function ServiceBookingPage() {
       const value = String(values[field.key] || '').trim()
       if (field.required && !value) errors[field.key] = `${field.label} is required.`
       else if (field.type === 'email' && value && !validEmail(value)) errors[field.key] = 'Enter a valid email address.'
-      else if (field.type === 'number' && value && !(Number(value) >= 0)) errors[field.key] = `${field.label} must be a valid number.`
+      else if (field.type === 'number' && value && !(Number(value) > 0)) errors[field.key] = `${field.label} must be greater than zero.`
     })
     setFieldErrors(errors)
     const first = Object.keys(errors)[0]
@@ -366,3 +369,14 @@ function deliveryText(option) {
 }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) }
 function numberOrUndefined(value) { return value === '' || value == null ? undefined : Number(value) }
+function providerFieldErrors(errors = {}) {
+  const fieldMap = {
+    'pickup.contactName': 'pickupContactName', 'pickup.phone': 'pickupPhone', 'pickup.email': 'pickupEmail',
+    'pickup.line1': 'pickupLine1', 'pickup.city': 'pickupCity', 'pickup.state': 'pickupState',
+    'pickup.postalCode': 'pickupPostalCode', 'pickup.country': 'pickupCountry', 'pickup.countryCode': 'pickupCountryCode',
+    'destination.contactName': 'destinationContactName', 'destination.phone': 'destinationPhone', 'destination.email': 'destinationEmail',
+    'destination.line1': 'destinationLine1', 'destination.city': 'destinationCity', 'destination.state': 'destinationState',
+    'destination.postalCode': 'destinationPostalCode', 'destination.country': 'destinationCountry', 'destination.countryCode': 'destinationCountryCode',
+  }
+  return Object.fromEntries(Object.entries(errors).map(([key, message]) => [fieldMap[key] || key.replace(/^shipment\./, ''), message]))
+}
