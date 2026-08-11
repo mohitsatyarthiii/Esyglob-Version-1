@@ -26,6 +26,8 @@ export function serviceProviderCapabilities() {
     key: adapter.key,
     name: adapter.name,
     configured: adapter.configured,
+    bookingConfigured: adapter.bookingConfigured,
+    pickupConfigured: adapter.pickupConfigured,
     ...adapter.capabilities,
   }));
 }

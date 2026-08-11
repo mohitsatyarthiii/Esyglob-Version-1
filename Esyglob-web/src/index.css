@@ -40173,6 +40173,33 @@ button:disabled,
 .shipping-rate-placeholder small { display: block; font-size: 10px; margin-top: 4px; }
 .rate-skeleton { animation: rate-pulse 1.2s ease-in-out infinite; background: #e5eaf0; border-radius: 6px; display: block; height: 12px; max-width: 90px; width: 80%; }
 @keyframes rate-pulse { 50% { opacity: .42; } }
+.shipping-provider-progress { display: grid; gap: 8px; grid-template-columns: repeat(2,minmax(0,1fr)); margin: 14px 0; }
+.shipping-provider-progress > div { align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; display: flex; gap: 10px; justify-content: space-between; min-height: 58px; padding: 9px 12px; }
+.shipping-provider-progress .provider-logo { background: #fff; }
+.shipping-provider-progress span { align-items: center; color: #64748b; display: flex; font-size: 10px; font-weight: 800; gap: 5px; }
+.shipping-provider-progress span svg { height: 14px; width: 14px; }
+.shipping-provider-progress .is-checking span svg { animation: spin .9s linear infinite; color: #f26a21; }
+.shipping-provider-progress .is-connected { background: #f0fdf4; border-color: #bbf7d0; }
+.shipping-provider-progress .is-connected span { color: #15803d; }
+.shipping-provider-progress .is-failed { background: #fff7f7; border-color: #fecaca; }
+.shipping-provider-progress .is-failed span { color: #b42318; }
+.shipping-rate-cards { display: grid; gap: 14px; grid-template-columns: repeat(2,minmax(0,1fr)); margin-top: 16px; }
+.shipping-rate-card { background: linear-gradient(150deg,#fff,#f8fafc); border: 1px solid #dbe3ed; border-radius: 18px; cursor: pointer; display: grid; gap: 16px; padding: 18px; transition: border-color .16s,box-shadow .16s,transform .16s; }
+.shipping-rate-card:hover { border-color: #9ebce2; box-shadow: 0 12px 28px rgba(31,55,84,.1); transform: translateY(-2px); }
+.shipping-rate-card:focus-visible { outline: 3px solid rgba(37,99,235,.24); outline-offset: 2px; }
+.shipping-rate-card.active { background: linear-gradient(150deg,#eff6ff,#fff); border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,.12),0 14px 30px rgba(37,99,235,.12); }
+.shipping-rate-card > header { align-items: flex-start; display: flex; justify-content: space-between; margin: 0; }
+.shipping-rate-service small,.shipping-rate-facts small,.shipping-rate-route small { color: #64748b; display: block; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.shipping-rate-service h3 { color: #152238; font-size: 16px; margin: 4px 0 0; }
+.shipping-rate-route { align-items: center; background: #fff; border: 1px solid #e6ebf1; border-radius: 12px; display: grid; gap: 8px; grid-template-columns: 18px 1fr auto 1fr; padding: 11px; }
+.shipping-rate-route > svg { color: #f26a21; height: 17px; width: 17px; }
+.shipping-rate-route > i { color: #94a3b8; font-style: normal; }
+.shipping-rate-route b { color: #334155; display: block; font-size: 11px; margin-top: 2px; }
+.shipping-rate-facts { align-items: end; display: flex; gap: 14px; justify-content: space-between; }
+.shipping-rate-facts b { color: #334155; display: block; font-size: 12px; margin-top: 4px; }
+.shipping-rate-price { text-align: right; }
+.shipping-rate-price strong { color: #0f172a; display: block; font-size: 24px; letter-spacing: -.03em; margin-top: 2px; }
+.shipping-rate-card > button { width: 100%; }
 
 .checkout-shipping-heading h2 { align-items: center; display: flex; gap: 8px; margin-bottom: 4px; }
 .checkout-shipping-heading p { color: #64748b; font-size: 11px; margin: 0 0 14px; }
@@ -40206,6 +40233,7 @@ button:disabled,
   .shipping-rate-row .provider-delivery { grid-column: 2 / 3; }
   .shipping-rate-row > button { grid-column: 3; grid-row: 2; min-height: 40px; }
   .shipping-rate-placeholder > span:nth-of-type(3), .shipping-rate-placeholder > span:nth-of-type(4) { display: none; }
+  .shipping-provider-progress,.shipping-rate-cards { grid-template-columns: 1fr; }
   .checkout-logistics button { grid-template-columns: 72px minmax(0,1fr) 22px; }
   .checkout-logistics .provider-logo { width: 72px; }
   .checkout-logistics button > strong { grid-column: 2; justify-self: start; }

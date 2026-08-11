@@ -49,3 +49,40 @@ test('provider failures expose a safe public message and a provider-specific cod
   assert.equal(wrapped.code, 'PROVIDER_AUTHENTICATION_FAILED');
   assert.equal(wrapped.publicMessage, 'Delhivery is currently unavailable');
 });
+
+test('rate lookup credentials do not require pickup mappings used only for booking', () => {
+  const previous = {
+    shiprocketEmail: process.env.SHIPROCKET_EMAIL,
+    shiprocketPassword: process.env.SHIPROCKET_PASSWORD,
+    shiprocketPickup: process.env.SHIPROCKET_PICKUP_LOCATION,
+    delhiveryToken: process.env.DELHIVERY_API_TOKEN,
+    delhiveryPickup: process.env.DELHIVERY_PICKUP_NAME,
+  };
+
+  try {
+    process.env.SHIPROCKET_EMAIL = 'rates@example.com';
+    process.env.SHIPROCKET_PASSWORD = 'rates-password';
+    delete process.env.SHIPROCKET_PICKUP_LOCATION;
+    process.env.DELHIVERY_API_TOKEN = 'rates-token';
+    delete process.env.DELHIVERY_PICKUP_NAME;
+
+    const shiprocket = new ShiprocketAdapter();
+    const delhivery = new DelhiveryAdapter();
+
+    assert.equal(shiprocket.configured, true);
+    assert.equal(shiprocket.bookingConfigured, false);
+    assert.equal(delhivery.configured, true);
+    assert.equal(delhivery.bookingConfigured, false);
+  } finally {
+    for (const [key, value] of Object.entries({
+      SHIPROCKET_EMAIL: previous.shiprocketEmail,
+      SHIPROCKET_PASSWORD: previous.shiprocketPassword,
+      SHIPROCKET_PICKUP_LOCATION: previous.shiprocketPickup,
+      DELHIVERY_API_TOKEN: previous.delhiveryToken,
+      DELHIVERY_PICKUP_NAME: previous.delhiveryPickup,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});

@@ -6,6 +6,7 @@ const router = Router();
 router.use(authenticate, requireAuth);
 router.get('/providers/capabilities', controller.capabilities);
 router.get('/providers/health', controller.providerHealth);
+router.post('/providers/search/:serviceKey/:providerKey', controller.providers);
 router.post('/providers/search/:serviceKey', controller.providers);
 router.post('/search/:serviceKey', controller.providers);
 router.post('/quote/:serviceKey', controller.quote);

@@ -64,6 +64,7 @@ export async function fetchServiceRequests(params = {}) { return normalizeList(a
 export async function fetchServiceRequest(id) { const data = unwrapData(await apiRequest(`/service-requests/${id}`, { cache: false })) || {}; return data.request || data }
 export async function fetchServiceQuote(serviceKey, requirements = {}) { return unwrapData(await apiRequest(`/service-requests/quote/${serviceKey}`, { method: 'POST', body: { requirements } })) || {} }
 export async function searchServiceProviders(serviceKey, input) { return unwrapData(await apiRequest(`/service-requests/providers/search/${serviceKey}`, { method: 'POST', body: input, cache: false })) || {} }
+export async function searchSingleServiceProvider(serviceKey, providerKey, input) { return unwrapData(await apiRequest(`/service-requests/providers/search/${serviceKey}/${providerKey}`, { method: 'POST', body: input, cache: false, toastErrors: false })) || {} }
 export async function fetchServiceProviderCapabilities() { return unwrapData(await apiRequest('/service-requests/providers/capabilities', { cache: false })) || {} }
 export async function fetchServiceBooking(id) { return unwrapData(await apiRequest(`/service-requests/${id}/booking`, { cache: false })) || {} }
 export async function retryServiceBooking(id) { return unwrapData(await apiRequest(`/service-requests/${id}/booking/retry`, { method: 'POST', cache: false })) || {} }

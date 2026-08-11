@@ -36,14 +36,14 @@ class ServiceEngineService {
   static capabilities() { return serviceProviderCapabilities(); }
   static health(options) { return serviceProviderHealth(options); }
 
-  static async searchProviders(userId, serviceKey, body, requestId = '') {
+  static async searchProviders(userId, serviceKey, body, requestId = '', providerKey = '') {
     if (serviceKey !== 'shipping') throw invalid('Live provider routing is currently available for Shipping & Logistics');
     const input = parseProviderSearch(body);
     const routeType = determineRouteType(input.pickup, input.destination);
-    const providers = providersForRoute(routeType);
+    const providers = providersForRoute(routeType).filter(adapter => !providerKey || adapter.key === String(providerKey).toLowerCase());
     operationalLog('shipping_request', { requestId, routeType, providerCount: providers.length, status: 'started' });
     if (!providers.length) {
-      const error = new Error(`No ${routeType} providers are configured`);
+      const error = new Error(providerKey ? `${providerKey} is not configured for live rates on this route` : `No ${routeType} providers are configured`);
       error.statusCode = 503;
       error.code = 'NO_PROVIDERS_CONFIGURED';
       throw error;
@@ -98,6 +98,8 @@ class ServiceEngineService {
     return {
       routeType,
       expiresAt,
+      origin: publicLocation(input.pickup),
+      destination: publicLocation(input.destination),
       providers: stored.map(quoteResponse),
       providerStatuses,
     };
@@ -283,13 +285,18 @@ function quoteResponse(quote) {
     providerKey: quote.providerKey,
     providerName: quote.providerName,
     serviceCode: quote.serviceCode,
+    serviceId: quote.serviceCode,
     providerServiceId: quote.serviceCode,
     serviceName: quote.serviceName,
+    courierName: quote.serviceName,
     serviceType: quote.serviceType,
     currency: quote.currency,
     price: quote.amount,
     estimatedDeliveryAt: quote.estimatedDeliveryAt,
     estimatedDeliveryText: quote.estimatedDeliveryText,
+    estimatedDelivery: quote.estimatedDeliveryText || quote.estimatedDeliveryAt,
+    origin: publicLocation(quote.requestSnapshot?.pickup),
+    destination: publicLocation(quote.requestSnapshot?.destination),
     trackingAvailable: quote.trackingAvailable,
     insuranceAvailable: quote.insuranceAvailable,
     pickupAvailable: quote.pickupAvailable,
@@ -301,6 +308,9 @@ function quoteResponse(quote) {
     bestPrice: quote.bestPrice,
     pricing: ServiceEngineService.pricingFromQuote(quote),
   };
+}
+function publicLocation(value = {}) {
+  return { city: value.city, state: value.state, postalCode: value.postalCode, country: value.country, countryCode: value.countryCode };
 }
 function invalid(message) { return Object.assign(new Error(message), { statusCode: 422 }); }
 function money(value) { return Math.round(Number(value || 0) * 100) / 100; }

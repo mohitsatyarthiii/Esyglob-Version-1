@@ -8,6 +8,8 @@ export class ServiceProviderAdapter {
   }
 
   get configured() { return false; }
+  get bookingConfigured() { return this.configured; }
+  get pickupConfigured() { return false; }
   get capabilities() {
     return { services: ['shipping'], operations: ['rates', 'booking', 'tracking'] };
   }
@@ -20,6 +22,8 @@ export class ServiceProviderAdapter {
       name: this.name,
       status: this.configured ? 'connected' : 'not_configured',
       configured: this.configured,
+      bookingConfigured: this.bookingConfigured,
+      pickupConfigured: this.pickupConfigured,
     };
   }
 

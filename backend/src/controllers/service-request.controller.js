@@ -3,7 +3,7 @@ import ServiceEngineService from '../services/service-engine.service.js';
 
 const run = handler => async (req, res) => { try { const result = await handler(req); res.status(result.statusCode || 200).json(result.body || result); } catch (error) { res.status(error.statusCode || 500).json({ error: error.publicMessage || safeMessage(error), code: error.code || 'SERVICE_REQUEST_FAILED', fieldErrors: error.fieldErrors, requestId: req.id }); } };
 export default {
-  providers: run(async req => ServiceEngineService.searchProviders(req.user._id, req.params.serviceKey, req.body, req.id)),
+  providers: run(async req => ServiceEngineService.searchProviders(req.user._id, req.params.serviceKey, req.body, req.id, req.params.providerKey)),
   capabilities: run(async () => ({ providers: ServiceEngineService.capabilities() })),
   providerHealth: run(async req => ({ providers: await ServiceEngineService.health({ refresh: req.query.refresh === 'true' }) })),
   quote: run(async req => ServiceRequestService.getQuote(req.params.serviceKey, req.body?.requirements)),

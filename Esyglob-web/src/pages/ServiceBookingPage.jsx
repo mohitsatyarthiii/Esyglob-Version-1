@@ -1,12 +1,12 @@
 import {
   ArrowLeft, BadgeCheck, Calculator, CheckCircle2, Clock3, CreditCard,
-  FileUp, LoaderCircle, PackageCheck, ShieldCheck, Sparkles,
+  FileUp, LoaderCircle, MapPin, PackageCheck, ShieldCheck, Sparkles,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   createServiceRequest, fetchServiceQuote, getService, initiateServicePayment, isServiceAvailable, isServiceFieldVisible,
-  loadRazorpay, searchServiceProviders, verifyServicePayment,
+  loadRazorpay, searchSingleServiceProvider, verifyServicePayment,
 } from '../api/services'
 import { fetchAddresses, fetchProfile } from '../api/account'
 import { useAuth } from '../auth/auth-context'
@@ -15,6 +15,8 @@ import AddressAutocomplete from '../components/AddressAutocomplete'
 import { useToast } from '../components/EnterpriseUX'
 import ProviderBrand, { ProviderStrip } from '../components/ProviderBrand'
 import { AttachmentUploader, Money } from '../components/TradeUI'
+
+const LIVE_SHIPPING_PROVIDERS = ['shiprocket', 'delhivery']
 
 function openServicePayment(session, requestId, serviceTitle) {
   return new Promise((resolve, reject) => {
@@ -163,23 +165,34 @@ export default function ServiceBookingPage() {
 
   async function loadProviders() {
     const sequence = ++providerRequest.current
+    const input = providerInput()
     setProviderStatus('loading')
+    setSelectedProvider(null)
+    setProviderResult({
+      providers: [],
+      providerStatuses: LIVE_SHIPPING_PROVIDERS.map(provider => ({ provider, status: 'checking' })),
+      origin: publicFormLocation(input.pickup),
+      destination: publicFormLocation(input.destination),
+    })
     setError('')
-    try {
-      const result = await searchServiceProviders(service.key, providerInput())
-      if (sequence !== providerRequest.current) return
-      setProviderResult(result)
-      setSelectedProvider(null)
-      setProviderStatus('loaded')
-    } catch (next) {
-      if (sequence !== providerRequest.current) return
-      setProviderResult(null)
-      setProviderStatus('error')
-      if (next.fieldErrors && Object.keys(next.fieldErrors).length) {
-        setFieldErrors(current => ({ ...current, ...providerFieldErrors(next.fieldErrors) }))
+    const results = await Promise.allSettled(LIVE_SHIPPING_PROVIDERS.map(async providerKey => {
+      try {
+        const result = await searchSingleServiceProvider(service.key, providerKey, input)
+        if (sequence === providerRequest.current) setProviderResult(current => mergeProviderResult(current, result, providerKey))
+        return result
+      } catch (next) {
+        if (sequence === providerRequest.current) {
+          setProviderResult(current => mergeProviderFailure(current, providerKey, next.code))
+          if (next.fieldErrors && Object.keys(next.fieldErrors).length) setFieldErrors(current => ({ ...current, ...providerFieldErrors(next.fieldErrors) }))
+        }
+        throw next
       }
-      setError(next.message)
-    }
+    }))
+    if (sequence !== providerRequest.current) return
+    const usableRates = results.flatMap(result => result.status === 'fulfilled' ? result.value.providers || [] : [])
+    const allFailed = !usableRates.length && results.every(result => result.status === 'rejected')
+    setProviderStatus(allFailed ? 'error' : 'loaded')
+    if (allFailed) setError('No shipping provider could return rates right now. Check the shipment details and try again.')
   }
 
   if (!service) return <AppShell><div className="container module-page"><p className="inline-error">Service not found.</p></div></AppShell>
@@ -333,20 +346,21 @@ function ProviderSelection({ result, status, ready, selected, disabled, onSearch
     <header><div><span className="eyebrow">Shipping rates</span><h2>Compare live provider rates</h2></div>{result?.expiresAt && <small>Rates valid until {new Date(result.expiresAt).toLocaleTimeString()}</small>}</header>
     {status !== 'loading' && <button type="button" className="button button--secondary" disabled={disabled || !ready} onClick={onSearch}>{status === 'loaded' || status === 'error' ? 'Refresh shipping rates' : 'Get shipping rates'}</button>}
     {status === 'loading' && <div className="provider-load-summary is-loading"><LoaderCircle /><span><b>Finding available shipping services...</b><small>Checking each configured provider securely.</small></span></div>}
+    {providerStatuses.length > 0 && <div className="shipping-provider-progress">{providerStatuses.map(item => <div key={item.provider} className={`is-${item.status}`}><ProviderBrand providerKey={item.provider} /><span>{item.status === 'checking' ? <><LoaderCircle /> Checking...</> : item.status === 'connected' ? <><CheckCircle2 /> Rates available</> : item.status === 'no_rates' ? 'No services for this route' : 'Currently unavailable'}</span></div>)}</div>}
     {status === 'loaded' && options.length === 0 && <div className="empty-results shipping-empty"><PackageCheck /><h3>No shipping services available</h3><p>We couldn't find an available shipping service for this shipment. Check the pickup address, destination and package details and try again.</p></div>}
     <p className="provider-rate-intro">{status === 'idle' ? 'Complete the shipment details, then request live rates.' : status === 'loading' ? 'Finding available shipping services...' : status === 'error' ? 'Shipping providers are currently unavailable. Review the details and retry.' : options.length ? 'Choose a service and rate to continue.' : 'No shipping services are available for these details.'}</p>
-    {options.length > 0 && <div className="shipping-rate-table" role="table" aria-label="Shipping rates"><div className="shipping-rate-head" role="row"><span>Provider</span><span>Service</span><span>Estimated delivery</span><span>Price</span><span>Action</span></div>{providerKeys.flatMap(providerKey => options.filter(option => option.providerKey === providerKey).map(option => <ProviderRow key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />))}</div>}
+    {options.length > 0 && <div className="shipping-rate-cards" aria-label="Available shipping services">{providerKeys.flatMap(providerKey => options.filter(option => option.providerKey === providerKey).map(option => <ProviderRateCard key={option.quoteId} option={option} selected={selected?.quoteId === option.quoteId} disabled={disabled} onSelect={() => onSelect(option)} />))}</div>}
     {status === 'loaded' && providerStatuses.some(item => item.status === 'failed') && <p className="provider-partial-note">Some configured providers are currently unavailable. Available live rates are shown above.</p>}
   </section>
 }
 
-function ProviderRow({ option, selected, disabled, onSelect }) {
-  return <article role="row" tabIndex={disabled ? -1 : 0} aria-selected={selected} className={`provider-option-row shipping-rate-row${selected ? ' active' : ''}`} onClick={() => !disabled && onSelect()} onKeyDown={event => { if (!disabled && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelect() } }}>
-    <ProviderBrand providerKey={option.providerKey} />
-    <div className="provider-option-copy"><b>{option.serviceName}</b><div className="provider-badges">{option.recommended && <em><Sparkles /> Recommended</em>}{option.fastest && <em><Clock3 /> Fastest</em>}{option.bestPrice && <em><BadgeCheck /> Best price</em>}</div></div>
-    <span className="provider-delivery">{deliveryText(option)}</span>
-    <div className="provider-option-price"><strong><Money value={option.price} currency={option.currency} /></strong></div>
-    <button type="button" className={selected ? 'button button--secondary' : 'button button--primary'} disabled={disabled} onClick={event => { event.stopPropagation(); onSelect() }}>{selected ? <><CheckCircle2 /> Selected</> : 'Select'}</button>
+function ProviderRateCard({ option, selected, disabled, onSelect }) {
+  return <article tabIndex={disabled ? -1 : 0} aria-selected={selected} className={`shipping-rate-card${selected ? ' active' : ''}`} onClick={() => !disabled && onSelect()} onKeyDown={event => { if (!disabled && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelect() } }}>
+    <header><ProviderBrand providerKey={option.providerKey} /><div className="provider-badges">{option.recommended && <em><Sparkles /> Recommended</em>}{option.fastest && <em><Clock3 /> Fastest</em>}{option.bestPrice && <em><BadgeCheck /> Best price</em>}</div></header>
+    <div className="shipping-rate-service"><small>{option.serviceType || option.deliveryType || 'Shipping service'}</small><h3>{option.courierName || option.serviceName}</h3></div>
+    <div className="shipping-rate-route"><MapPin /><span><small>From</small><b>{locationLabel(option.origin)}</b></span><i>→</i><span><small>To</small><b>{locationLabel(option.destination)}</b></span></div>
+    <div className="shipping-rate-facts"><span><small>Estimated delivery</small><b>{deliveryText(option)}</b></span><span className="shipping-rate-price"><small>Shipping price</small><strong><Money value={option.price} currency={option.currency} /></strong></span></div>
+    <button type="button" className={selected ? 'button button--secondary' : 'button button--primary'} disabled={disabled} onClick={event => { event.stopPropagation(); onSelect() }}>{selected ? <><CheckCircle2 /> Service selected</> : 'Select service'}</button>
   </article>
 }
 
@@ -365,10 +379,45 @@ function ServiceField({ field, value, error, disabled, onChange, onAddressSelect
 }
 
 function deliveryText(option) {
-  return option.estimatedDeliveryText || (option.estimatedDeliveryAt && new Date(option.estimatedDeliveryAt).toLocaleDateString()) || 'ETA after booking'
+  return option.estimatedDeliveryText || (option.estimatedDeliveryAt && new Date(option.estimatedDeliveryAt).toLocaleDateString()) || 'Not provided by carrier'
 }
+function locationLabel(value = {}) { return [value.city, value.postalCode].filter(Boolean).join(', ') || 'Location provided' }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) }
 function numberOrUndefined(value) { return value === '' || value == null ? undefined : Number(value) }
+function publicFormLocation(value = {}) { return { city: value.city, state: value.state, postalCode: value.postalCode, country: value.country, countryCode: value.countryCode } }
+function mergeProviderResult(current = {}, result = {}, providerKey) {
+  const providers = applyClientRateBadges([...(current.providers || []).filter(option => option.providerKey !== providerKey), ...(result.providers || [])])
+  const incomingStatus = result.providerStatuses?.find(item => item.provider === providerKey) || { provider: providerKey, status: providers.some(option => option.providerKey === providerKey) ? 'connected' : 'no_rates' }
+  return {
+    ...current,
+    ...result,
+    providers,
+    origin: result.origin || current.origin,
+    destination: result.destination || current.destination,
+    providerStatuses: (current.providerStatuses || []).map(item => item.provider === providerKey ? incomingStatus : item),
+    expiresAt: earliestExpiry(current.expiresAt, result.expiresAt),
+  }
+}
+function applyClientRateBadges(options) {
+  if (!options.length) return options
+  const lowest = Math.min(...options.map(option => Number(option.price)))
+  const etaValues = options.map(option => option.estimatedDeliveryAt ? new Date(option.estimatedDeliveryAt).getTime() : Number.POSITIVE_INFINITY)
+  const fastest = Math.min(...etaValues)
+  return options.map(option => ({
+    ...option,
+    bestPrice: Number(option.price) === lowest,
+    fastest: Number.isFinite(fastest) && option.estimatedDeliveryAt && new Date(option.estimatedDeliveryAt).getTime() === fastest,
+    recommended: Number(option.price) === lowest && option.trackingAvailable && option.pickupAvailable,
+  }))
+}
+function mergeProviderFailure(current = {}, providerKey, code) {
+  return { ...current, providerStatuses: (current.providerStatuses || []).map(item => item.provider === providerKey ? { provider: providerKey, status: 'failed', code } : item) }
+}
+function earliestExpiry(first, second) {
+  if (!first) return second
+  if (!second) return first
+  return new Date(first) < new Date(second) ? first : second
+}
 function providerFieldErrors(errors = {}) {
   const fieldMap = {
     'pickup.contactName': 'pickupContactName', 'pickup.phone': 'pickupPhone', 'pickup.email': 'pickupEmail',

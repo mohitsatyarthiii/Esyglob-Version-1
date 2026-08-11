@@ -2,7 +2,9 @@ import { ServiceProviderAdapter, dimensions, futurePickupDate, normalizeTracking
 
 export class DelhiveryAdapter extends ServiceProviderAdapter {
   constructor() { super('delhivery', 'Delhivery'); this.baseURL = process.env.DELHIVERY_API_BASE_URL || 'https://track.delhivery.com'; }
-  get configured() { return Boolean(process.env.DELHIVERY_API_TOKEN && process.env.DELHIVERY_PICKUP_NAME); }
+  get configured() { return Boolean(process.env.DELHIVERY_API_TOKEN); }
+  get pickupConfigured() { return Boolean(process.env.DELHIVERY_PICKUP_NAME); }
+  get bookingConfigured() { return this.configured && this.pickupConfigured; }
   get capabilities() {
     return { services: ['domestic_shipping_india'], operations: ['rates', 'serviceability', 'booking', 'tracking', 'pickup'] };
   }
@@ -15,7 +17,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
       const destination = String(process.env.DELHIVERY_HEALTH_DESTINATION_PINCODE || '400001').trim();
       const { data } = await this.api().get('/api/kinko/v1/invoice/charges/.json', { params: { md: 'S', ss: 'Delivered', o_pin: origin, d_pin: destination, cgm: 500 } });
       const connected = data !== undefined && data !== null && !data?.error;
-      return { provider: this.key, name: this.name, status: connected ? 'connected' : 'failed', configured: true, pickupConnected: Boolean(process.env.DELHIVERY_PICKUP_NAME), durationMs: Date.now() - startedAt, code: connected ? undefined : 'UNEXPECTED_HEALTH_RESPONSE' };
+      return { provider: this.key, name: this.name, status: connected ? 'connected' : 'failed', configured: true, bookingConfigured: this.bookingConfigured, pickupConnected: this.pickupConfigured, durationMs: Date.now() - startedAt, code: connected ? undefined : 'UNEXPECTED_HEALTH_RESPONSE' };
     } catch (error) {
       const wrapped = this.providerError(error, 'health check');
       return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
@@ -28,7 +30,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
       const [originPinResponse, destinationPinResponse, ...rateResponses] = await Promise.all([
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: pickup.postalCode } }),
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: destination.postalCode } }),
-        ...['E', 'S'].map(mode => api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: mode, ss: 'Delivered', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: Math.ceil(shipment.weightKg * 1000) } }).then(response => ({ mode, data: response.data })).catch(error => ({ mode, error }))),
+        ...['E', 'S'].map(mode => api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: mode, ss: 'Delivered', pt: 'Pre-paid', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: Math.ceil(shipment.weightKg * 1000) } }).then(response => ({ mode, data: response.data })).catch(error => ({ mode, error }))),
       ]);
       const originPostal = originPinResponse.data.delivery_codes?.[0]?.postal_code;
       const destinationPostal = destinationPinResponse.data.delivery_codes?.[0]?.postal_code;
@@ -46,7 +48,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
         serviceType: mode === 'E' ? 'Express' : 'Surface',
         currency: 'INR', amount: Number(rate?.total_amount || rate?.gross_amount || rate?.charge || 0),
         estimatedDeliveryAt: null,
-        estimatedDeliveryText: destinationPostal?.estimated_delivery_days ? `${destinationPostal.estimated_delivery_days} days` : 'ETA after booking',
+        estimatedDeliveryText: destinationPostal?.estimated_delivery_days ? `${destinationPostal.estimated_delivery_days} days` : '',
         trackingAvailable: true, insuranceAvailable: Boolean(rate?.insurance), pickupAvailable: true,
         pickupLocation: process.env.DELHIVERY_PICKUP_NAME,
         deliveryType: mode === 'E' ? 'Express' : 'Surface',
@@ -58,6 +60,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
   }
   async book({ quote, booking }) {
     try {
+      if (!this.bookingConfigured) throw Object.assign(new Error('Delhivery pickup location is not mapped for booking'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
       const { pickup, destination, shipment } = quote.requestSnapshot;
       const waybillResponse = await this.api().get('/waybill/api/bulk/json/', { params: { count: 1 } });
       const waybill = String(waybillResponse.data).split(',')[0].trim();

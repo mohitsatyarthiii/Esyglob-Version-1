@@ -3,7 +3,9 @@ import { ServiceProviderAdapter, dimensions, futurePickupDate, normalizeTracking
 let tokenCache;
 export class ShiprocketAdapter extends ServiceProviderAdapter {
   constructor() { super('shiprocket', 'Shiprocket'); this.baseURL = process.env.SHIPROCKET_API_BASE_URL || 'https://apiv2.shiprocket.in/v1/external'; }
-  get configured() { return Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD && process.env.SHIPROCKET_PICKUP_LOCATION); }
+  get configured() { return Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD); }
+  get pickupConfigured() { return Boolean(process.env.SHIPROCKET_PICKUP_LOCATION); }
+  get bookingConfigured() { return this.configured && this.pickupConfigured; }
   get capabilities() {
     return { services: ['domestic_shipping_india'], operations: ['rates', 'serviceability', 'booking', 'tracking', 'pickup'] };
   }
@@ -23,8 +25,8 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
       const { data } = await api.get('/settings/company/pickup');
       const locations = data?.data?.shipping_address || data?.shipping_address || [];
       const pickupName = String(process.env.SHIPROCKET_PICKUP_LOCATION || '').trim().toLowerCase();
-      const pickupConnected = locations.some(item => String(item.pickup_location || item.name || '').trim().toLowerCase() === pickupName);
-      return { provider: this.key, name: this.name, status: pickupConnected ? 'connected' : 'failed', configured: true, pickupConnected, durationMs: Date.now() - startedAt, code: pickupConnected ? undefined : 'PICKUP_LOCATION_NOT_FOUND' };
+      const pickupConnected = Boolean(pickupName) && locations.some(item => String(item.pickup_location || item.name || '').trim().toLowerCase() === pickupName);
+      return { provider: this.key, name: this.name, status: 'connected', configured: true, bookingConfigured: pickupConnected, pickupConnected, durationMs: Date.now() - startedAt, code: pickupName && !pickupConnected ? 'PICKUP_LOCATION_NOT_FOUND' : undefined };
     } catch (error) {
       const wrapped = this.providerError(error, 'health check');
       return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
@@ -65,6 +67,7 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
   }
   async book({ quote, booking }) {
     try {
+      if (!this.bookingConfigured) throw Object.assign(new Error('Shiprocket pickup location is not mapped for booking'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
       const { pickup, destination, shipment } = quote.requestSnapshot;
       const api = await this.api();
       const { data: order } = await api.post('/orders/create/adhoc', {
