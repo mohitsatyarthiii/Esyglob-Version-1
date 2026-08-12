@@ -52,6 +52,7 @@ export default function ProductDetailsPage() {
   
   function authAction(callback) { if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname, notice: 'Sign in to contact suppliers and use account features.' } }); callback() }
   async function chat() { setAction({ busy: true, message: '', error: '' }); try { const created = await startProductChat({ otherUserId: sellerUserId, productId }); const id = created.chat?._id || created._id; navigate(id ? `/messages/${id}` : '/messages') } catch (error) { setAction({ busy: false, message: '', error: error.message }) } }
+  function handleChatNow() { authAction(chat) }
   async function share() { try { if (navigator.share) await navigator.share({ title: product.name, text: product.name, url: window.location.href }); else { await navigator.clipboard.writeText(window.location.href); setAction({ busy: false, message: 'Product link copied.', error: '' }) } } catch (error) { if (error.name !== 'AbortError') setAction({ busy: false, message: '', error: 'Unable to share this product.' }) } }
   function startRfq() { authAction(() => navigate('/rfqs/new', { state: { product: { ...product, requestedQuantity: quantity, requestedUnit: unit, selectedVariant: variant }, sellerUserId } })) }
   
@@ -151,7 +152,7 @@ export default function ProductDetailsPage() {
                   <Store size={15} /> Store
                 </Link>
               )}
-              <button className="button button--secondary" disabled={action.busy || !sellerUserId || (status === 'authenticated' && !buyerAccount)} onClick={() => authAction(chat)}>
+              <button type="button" className="button button--secondary" disabled={action.busy || !sellerUserId || (status === 'authenticated' && !buyerAccount)} onClick={handleChatNow}>
                 <MessageSquare size={15} /> Chat Now
               </button>
               <button className="button button--primary" disabled={!sellerUserId || (status === 'authenticated' && !buyerAccount)} onClick={startRfq}>
@@ -168,7 +169,7 @@ export default function ProductDetailsPage() {
         {/* Mobile: Sticky bottom bar */}
         <ProductTradeActions 
           disabled={action.busy || !sellerUserId || (status === 'authenticated' && !buyerAccount)}
-          onContact={() => authAction(chat)}
+          onContact={handleChatNow}
           onRfq={startRfq}
           sellerId={sellerId}
         />
@@ -194,7 +195,7 @@ export default function ProductDetailsPage() {
               {certifications.map((item) => <span key={typeof item === 'string' ? item : item.name}><FileCheck2 /><b>{typeof item === 'string' ? item : item.name}</b><small>{typeof item === 'object' ? item.issuer || item.status : 'Product certification'}</small></span>)}
             </div>
           </InfoSection>
-          <SupplierSection seller={seller} sellerId={sellerId} sellerUserId={sellerUserId} chat={() => authAction(chat)} />
+          <SupplierSection seller={seller} sellerId={sellerId} sellerUserId={sellerUserId} chat={handleChatNow} />
         </div>
         
         <ProductReviews productId={productId} sellerId={sellerId} />
@@ -222,10 +223,10 @@ function ProductTradeActions({ disabled, onContact, onRfq, sellerId }) {
             <Store size={18} />
           </Link>
         )}
-        <button className="trade-chat-btn" disabled={disabled} onClick={onContact}>
+        <button type="button" className="trade-chat-btn" disabled={disabled} onClick={onContact}>
           <MessageSquare size={15} /> <span>Chat Now</span>
         </button>
-        <button className="trade-rfq-btn" disabled={disabled} onClick={onRfq}>
+        <button type="button" className="trade-rfq-btn" disabled={disabled} onClick={onRfq}>
           <FileText size={15} /> <span>Send RFQ</span>
         </button>
       </div>
