@@ -23,6 +23,7 @@ const shipmentSchema = z.object({
   lengthCm: z.coerce.number().positive().max(1000),
   widthCm: z.coerce.number().positive().max(1000),
   heightCm: z.coerce.number().positive().max(1000),
+  packageCount: z.coerce.number().int().min(1).max(9999).optional().default(1),
   declaredValue: z.coerce.number().nonnegative().max(1_000_000_000).default(0),
   currency: z.string().trim().length(3).transform(value => value.toUpperCase()).default('INR'),
   contents: z.enum(['documents', 'non_documents']).default('non_documents'),

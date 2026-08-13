@@ -31,16 +31,19 @@ export function checkoutShipmentForProduct(product = {}, shipment = {}, quantity
   return {
     ...shipment,
     quantity: Math.max(1, Number(quantity || 1)),
-    weightKg: storedWeight ? storedWeight * packageCount : Number(shipment.weightKg || 0),
-    lengthCm: storedDimensions?.[0] || Number(shipment.lengthCm || 0),
-    widthCm: storedDimensions?.[1] || Number(shipment.widthCm || 0),
-    heightCm: storedDimensions?.[2] || Number(shipment.heightCm || 0),
+    weightKg: storedWeight ? storedWeight * packageCount : 0,
+    lengthCm: storedDimensions?.[0] || 0,
+    widthCm: storedDimensions?.[1] || 0,
+    heightCm: storedDimensions?.[2] || 0,
     packageCount,
-    packageSource: storedWeight && storedDimensions ? 'product' : 'checkout',
+    packageSource: storedWeight && storedDimensions ? 'product' : 'missing',
   };
 }
 
-export function productPackageDefaults(product = {}, quantity = 1) {
-  const shipment = checkoutShipmentForProduct(product, {}, quantity);
-  return shipment.packageSource === 'product' ? shipment : null;
+export function requireProductShippingData(product = {}, shipment = {}) {
+  if (shipment.packageSource === 'product') return shipment;
+  const error = new Error('Shipping rate unavailable for this product. Please contact the manufacturer.');
+  error.statusCode = 422;
+  error.code = 'PRODUCT_SHIPPING_DATA_MISSING';
+  throw error;
 }

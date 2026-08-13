@@ -1,8 +1,9 @@
 import mongoose from 'mongoose';
 import * as checkoutRepository from '../repositories/checkout.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
-import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
-import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
+import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
+import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 
 export async function getCheckoutQuote(session, body) {
   const quantity = Math.max(Number(body.quantity || 1), 1);
@@ -46,27 +47,32 @@ export async function getCheckoutQuote(session, body) {
 
   // Resolve seller
   const sellerId = product?.sellerId?._id || product?.sellerId;
-  const seller = sellerId
+  const sellerRecord = sellerId
     ? await checkoutRepository.findSellerById(sellerId)
     : null;
+  const seller = await sellerWithCheckoutPickup(sellerRecord || {});
 
   let shipping = { options: [], providerStatuses: [] };
   let shippingError = null;
   try {
-    shipping = await getLiveCheckoutShipping({
-      userId: session._id || session.id,
-      seller: seller || {},
-      destination: body.destination || {},
-      shipment: checkoutShipmentForProduct(product, {
-        ...(body.shipment || {}),
-        description: body.shipment?.description || product.name,
-        declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
-        currency: body.shipment?.currency || product.currency || 'INR',
-        hsCode: body.shipment?.hsCode || product.hsCode,
-        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      }, quantity),
-      requestId: body.requestId || '',
-    });
+    if (!isIndianAddress(body.destination || {})) {
+      shipping = { routeType: 'international_unsupported', internationalUnsupported: true, options: [], providerStatuses: [] };
+    } else {
+      const productShipment = requireProductShippingData(product, checkoutShipmentForProduct(product, {
+        description: product.name,
+        declaredValue: Number(product.price || 0) * quantity,
+        currency: product.currency || 'INR',
+        hsCode: product.hsCode,
+        countryOfOrigin: product.countryOfOrigin,
+      }, quantity));
+      shipping = await getLiveCheckoutShipping({
+        userId: session._id || session.id,
+        seller: seller || {},
+        destination: body.destination || {},
+        shipment: productShipment,
+        requestId: body.requestId || '',
+      });
+    }
   } catch (error) {
     shippingError = { code: error.code || 'SHIPPING_RATES_UNAVAILABLE', message: error.message, fieldErrors: error.fieldErrors || null };
   }

@@ -1,4 +1,5 @@
 import ServiceEngineService from '../services/service-engine.service.js';
+import { hasPickupAddress } from './checkout-seller-pickup.js';
 
 const COUNTRY_CODES = { in: 'IN', india: 'IN', bharat: 'IN' };
 
@@ -29,7 +30,7 @@ export function isIndianAddress(input = {}) {
 }
 
 export async function getLiveCheckoutShipping({ userId, seller = {}, destination = {}, shipment = {}, requestId = '' }) {
-  const pickupSource = seller.address || seller.shippingAddress || {};
+  const pickupSource = hasPickupAddress(seller.address) ? seller.address : seller.shippingAddress || seller.address || {};
   const pickup = address(pickupSource, seller);
   const delivery = address(destination);
   if (!isIndianAddress(delivery)) {
@@ -67,9 +68,10 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
     options: (result.providers || []).map(rate => ({
       key: `${rate.providerKey}:${rate.serviceCode}`,
       quoteId: rate.quoteId || rate.id || rate._id,
-      label: rate.serviceName || rate.providerName,
+      label: String(rate.serviceName || '').replace(/^Delhivery\s+/i, '') || 'Shipping',
       providerKey: rate.providerKey,
-      providerLabel: rate.providerName,
+      providerLabel: 'EsyGlob Shipping',
+      providerName: 'EsyGlob Shipping',
       serviceCode: rate.serviceCode,
       serviceName: rate.serviceName,
       mode: rate.serviceType || rate.deliveryType || 'shipping',

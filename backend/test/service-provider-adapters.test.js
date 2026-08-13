@@ -45,6 +45,25 @@ test('Delhivery isolates Express and Surface rate responses into selectable serv
   assert.deepEqual(rates.map(rate => rate.amount), [180, 110]);
 });
 
+test('Delhivery rates use seller dimensions to send the higher volumetric chargeable weight', async () => {
+  const adapter = new DelhiveryAdapter();
+  const rateWeights = [];
+  adapter.api = () => ({
+    get: async (path, options) => {
+      if (path.includes('pin-codes')) return { data: { delivery_codes: [{ postal_code: { pickup: 'Y', pre_paid: 'Y' } }] } };
+      rateWeights.push(options.params.cgm);
+      return { data: [{ total_amount: 250 }] };
+    },
+  });
+
+  await adapter.search({
+    pickup: input.pickup,
+    destination: input.destination,
+    shipment: { ...input.shipment, weightKg: 1, lengthCm: 60, widthCm: 25, heightCm: 40, packageCount: 1 },
+  });
+  assert.deepEqual(rateWeights, [12000, 12000]);
+});
+
 test('provider failures expose a safe public message and a provider-specific code', () => {
   const adapter = new DelhiveryAdapter();
   const wrapped = adapter.providerError({ response: { status: 401, data: { message: 'sensitive upstream detail' } } }, 'rate search');

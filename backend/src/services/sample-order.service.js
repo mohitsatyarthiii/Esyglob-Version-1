@@ -1,10 +1,11 @@
 import SampleOrderRepository from '../repositories/sample-order.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
-import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
+import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
-import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
+import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 
 class SampleOrderService {
   /**
@@ -43,24 +44,27 @@ class SampleOrderService {
 
     // Get seller
     const sellerId = product.sellerId;
-    const seller = await SampleOrderRepository.findSeller(sellerId);
+    const seller = await sellerWithCheckoutPickup(await SampleOrderRepository.findSeller(sellerId) || {});
 
     if (!sellerId) {
       throw Object.assign(new Error('Seller not found'), { statusCode: 400 });
     }
 
+    if (!isIndianAddress(shippingAddress || {})) {
+      throw Object.assign(new Error('Shipping is currently available only within India. International shipping is coming soon.'), { statusCode: 422 });
+    }
+    const productShipment = requireProductShippingData(product, checkoutShipmentForProduct(product, {
+      description: product.name,
+      declaredValue: Number(product.price || 0) * orderQuantity,
+      currency: product.currency || 'INR',
+      hsCode: product.hsCode,
+      countryOfOrigin: product.countryOfOrigin,
+    }, orderQuantity));
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller: seller || {},
       destination: shippingAddress || {},
-      shipment: checkoutShipmentForProduct(product, {
-        ...(body.shipment || {}),
-        description: body.shipment?.description || product.name,
-        declaredValue: Number(body.shipment?.declaredValue ?? product.price * orderQuantity),
-        currency: body.shipment?.currency || product.currency || 'INR',
-        hsCode: body.shipment?.hsCode || product.hsCode,
-        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      }, orderQuantity),
+      shipment: productShipment,
     });
 
     if (liveShipping.internationalUnsupported) {

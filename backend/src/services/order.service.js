@@ -1,7 +1,7 @@
 import OrderRepository from '../repositories/order.repository.js';
 import NotificationService from './notification.service.js';
 import { buildCheckoutQuote, DEFAULT_LOGISTICS_RULES } from '../lib/checkout-quote.js';
-import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
+import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
 import mongoose from 'mongoose';
@@ -9,7 +9,8 @@ import { getIO } from '../lib/socket.js';
 import TradeWorkflowService from './trade-workflow.service.js';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
-import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
+import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -128,7 +129,7 @@ class OrderService {
       throw Object.assign(new Error('Product not found'), { statusCode: 404 });
     }
 
-    const seller = product.sellerId;
+    const seller = await sellerWithCheckoutPickup(product.sellerId);
     if (!seller?._id) {
       throw Object.assign(new Error('Seller not found for this product'), { statusCode: 400 });
     }
@@ -161,18 +162,22 @@ class OrderService {
       throw Object.assign(new Error(`Minimum order quantity is ${minimumQuantity}`), { statusCode: 400 });
     }
 
+    const shippingAddress = cleanAddress(body.shippingAddress);
+    if (!isIndianAddress(shippingAddress)) {
+      throw Object.assign(new Error('Shipping is currently available only within India. International shipping is coming soon.'), { statusCode: 422 });
+    }
+    const productShipment = requireProductShippingData(product, checkoutShipmentForProduct(product, {
+      description: product.name,
+      declaredValue: Number(product.price || 0) * quantity,
+      currency: product.currency || 'INR',
+      hsCode: product.hsCode,
+      countryOfOrigin: product.countryOfOrigin,
+    }, quantity));
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller,
-      destination: cleanAddress(body.shippingAddress),
-      shipment: checkoutShipmentForProduct(product, {
-        ...(body.shipment || {}),
-        description: body.shipment?.description || product.name,
-        declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
-        currency: body.shipment?.currency || product.currency || 'INR',
-        hsCode: body.shipment?.hsCode || product.hsCode,
-        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      }, quantity),
+      destination: shippingAddress,
+      shipment: productShipment,
     });
 
     if (liveShipping.internationalUnsupported) {
@@ -182,7 +187,7 @@ class OrderService {
     // Build quote from current live carrier prices.
     const quote = await buildCheckoutQuote({
       product, seller, quantity, orderType, orderSubType,
-      destination: cleanAddress(body.shippingAddress),
+      destination: shippingAddress,
       selectedLogisticsKey: logisticsOption,
       userId,
       couponCodes: body.couponCodes || body.couponCode,

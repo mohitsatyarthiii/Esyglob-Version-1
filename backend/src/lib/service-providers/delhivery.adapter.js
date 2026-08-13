@@ -27,10 +27,14 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
     try {
       const { pickup, destination, shipment } = input;
       const api = this.api();
+      const packageDimensions = dimensions(shipment);
+      const volumetricWeightKg = (packageDimensions.length * packageDimensions.width * packageDimensions.height / 5000)
+        * Math.max(1, Number(shipment.packageCount || 1));
+      const chargeableWeightGrams = Math.ceil(Math.max(Number(shipment.weightKg), volumetricWeightKg) * 1000);
       const [originPinResponse, destinationPinResponse, ...rateResponses] = await Promise.all([
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: pickup.postalCode } }),
         api.get('/c/api/pin-codes/json/', { params: { filter_codes: destination.postalCode } }),
-        ...['E', 'S'].map(mode => api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: mode, ss: 'Delivered', pt: 'Pre-paid', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: Math.ceil(shipment.weightKg * 1000) } }).then(response => ({ mode, data: response.data })).catch(error => ({ mode, error }))),
+        ...['E', 'S'].map(mode => api.get('/api/kinko/v1/invoice/charges/.json', { params: { md: mode, ss: 'Delivered', pt: 'Pre-paid', d_pin: destination.postalCode, o_pin: pickup.postalCode, cgm: chargeableWeightGrams } }).then(response => ({ mode, data: response.data })).catch(error => ({ mode, error }))),
       ]);
       const originPostal = originPinResponse.data.delivery_codes?.[0]?.postal_code;
       const destinationPostal = destinationPinResponse.data.delivery_codes?.[0]?.postal_code;
