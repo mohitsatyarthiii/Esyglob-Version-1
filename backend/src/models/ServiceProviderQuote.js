@@ -16,6 +16,7 @@ const serviceProviderQuoteSchema = new mongoose.Schema({
   trackingAvailable: { type: Boolean, default: true },
   insuranceAvailable: { type: Boolean, default: false },
   pickupAvailable: { type: Boolean, default: false },
+  bookingAvailable: { type: Boolean, default: true },
   pickupLocation: String,
   deliveryType: String,
   features: [String],

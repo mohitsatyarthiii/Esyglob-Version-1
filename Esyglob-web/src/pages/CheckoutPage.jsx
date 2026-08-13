@@ -63,6 +63,7 @@ export default function CheckoutPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pendingOrderId, setPendingOrderId] = useState('')
+  const [idempotencyKey] = useState(() => globalThis.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
   const base = useAsyncData(useCallback(async () => {
     const [details, addresses] = await Promise.all([fetchProductDetails(productId), fetchAddresses()])
@@ -127,6 +128,7 @@ export default function CheckoutPage() {
       orderSubType: mode === 'sample' ? 'sample_order' : 'direct_order',
       tradeInformation: { incoterms: 'DAP', shippingOption: logisticsKey },
       termsAccepted: true,
+      idempotencyKey,
     }
     return mode === 'sample' ? createSampleOrder(payload) : createTradeOrder(payload)
   }
@@ -189,7 +191,7 @@ export default function CheckoutPage() {
             const selected = logisticsKey === key
             const unavailable = item.bookingAvailable === false
             return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId)} className={selected ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><span className="checkout-shipping-brand"><b>EsyGlob Shipping</b><small>{item.providerLabel ? `${item.providerLabel} · ` : ''}{item.label || item.name || 'Shipping'}</small></span><span className="checkout-shipping-copy"><small>{unavailable ? 'Pickup booking unavailable for this seller location' : item.eta || item.estimatedDelivery || item.deliveryTime ? `Estimated delivery: ${item.eta || item.estimatedDelivery || item.deliveryTime}` : 'Delivery estimate currently unavailable'}</small></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
-          })}</div> : address ? <div className="checkout-shipping-unavailable"><Truck /><div><b>{pricing.shippingError?.code === 'PRODUCT_SHIPPING_DATA_MISSING' ? 'Shipping rate unavailable for this product' : 'Unable to calculate shipping right now. Please try again.'}</b><p>{pricing.shippingError?.message || 'Check the delivery address and pincode, then retry.'}</p><button type="button" className="button button--secondary checkout-rate-retry" onClick={quote.reload}>Retry shipping</button></div></div> : <div className="checkout-shipping-unavailable"><MapPin /><div><b>Select a delivery address</b><p>Add or select an Indian delivery address to calculate shipping.</p></div></div>}
+          })}</div> : address ? <div className="checkout-shipping-unavailable"><Truck /><div><b>{pricing.shippingSetupPending ? 'Shipping setup pending for this manufacturer' : pricing.shippingError?.code === 'PRODUCT_SHIPPING_DATA_MISSING' ? 'Shipping rate unavailable for this product' : 'Unable to calculate shipping right now. Please try again.'}</b><p>{pricing.shippingSetupPending ? 'The manufacturer’s pickup location is being connected to EsyGlob Shipping.' : pricing.shippingError?.message || 'Check the delivery address and pincode, then retry.'}</p><button type="button" className="button button--secondary checkout-rate-retry" onClick={quote.reload}>Retry shipping</button></div></div> : <div className="checkout-shipping-unavailable"><MapPin /><div><b>Select a delivery address</b><p>Add or select an Indian delivery address to calculate shipping.</p></div></div>}
           {logisticsKey && !shippingBookingAvailable && <p className="action-error">EsyGlob Shipping rates are available, but booking is temporarily unavailable. Payment is disabled until pickup service is restored.</p>}
         </section>
         {quote.error && <p className="action-error">{quote.error.message}</p>}

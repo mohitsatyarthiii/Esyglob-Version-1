@@ -30,7 +30,7 @@ import { useAuth } from "../auth/auth-context";
 import AppShell from "../components/AppShell";
 import AddressAutocomplete from "../components/AddressAutocomplete";
 import { useToast } from "../components/EnterpriseUX";
-import ProviderBrand, { ProviderStrip } from "../components/ProviderBrand";
+import { ProviderStrip } from "../components/ProviderBrand";
 import { AttachmentUploader, Money } from "../components/TradeUI";
 
 const LIVE_SHIPPING_PROVIDERS = ["shiprocket", "delhivery"];
@@ -596,10 +596,10 @@ export default function ServiceBookingPage() {
             <p>{service.title}</p>
             {selectedProvider && (
               <div className="selected-provider-summary">
-                <ProviderBrand providerKey={selectedProvider.providerKey} />
+                <b>EsyGlob Shipping</b>
                 <div>
-                  <small>{selectedProvider.providerName}</small>
-                  <b>{selectedProvider.serviceName}</b>
+                  <small>Selected live service</small>
+                  <b>{String(selectedProvider.serviceName || 'Shipping service').replace(/^Delhivery\s+/i, '')}</b>
                   <span>{deliveryText(selectedProvider)}</span>
                 </div>
               </div>
@@ -727,7 +727,7 @@ function ProviderSelection({
       <header>
         <div>
           <span className="eyebrow">Shipping rates</span>
-          <h2>Compare live provider rates</h2>
+          <h2>EsyGlob Shipping options</h2>
         </div>
         {result?.expiresAt && (
           <small>
@@ -760,7 +760,7 @@ function ProviderSelection({
         <div className="shipping-provider-progress">
           {providerStatuses.map((item) => (
             <div key={item.provider} className={`is-${item.status}`}>
-              <ProviderBrand providerKey={item.provider} />
+                    <b>EsyGlob Shipping</b>
               <span>
                 {item.status === "checking" ? (
                   <>
@@ -834,21 +834,22 @@ function ProviderSelection({
 }
 
 function ProviderRateCard({ option, selected, disabled, onSelect }) {
+  const unavailable = option.bookingAvailable === false
   return (
     <article
-      tabIndex={disabled ? -1 : 0}
+      tabIndex={disabled || unavailable ? -1 : 0}
       aria-selected={selected}
       className={`shipping-rate-card${selected ? " active" : ""}`}
-      onClick={() => !disabled && onSelect()}
+      onClick={() => !disabled && !unavailable && onSelect()}
       onKeyDown={(event) => {
-        if (!disabled && (event.key === "Enter" || event.key === " ")) {
+        if (!disabled && !unavailable && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           onSelect();
         }
       }}
     >
       <header>
-        <ProviderBrand providerKey={option.providerKey} />
+        <b>EsyGlob Shipping</b>
         <div className="provider-badges">
           {option.recommended && (
             <em>
@@ -871,7 +872,7 @@ function ProviderRateCard({ option, selected, disabled, onSelect }) {
         <small>
           {option.serviceType || option.deliveryType || "Shipping service"}
         </small>
-        <h3>{option.courierName || option.serviceName}</h3>
+        <h3>{String(option.courierName || option.serviceName || 'Shipping service').replace(/^Delhivery\s+/i, '')}</h3>
       </div>
       <div className="shipping-rate-route">
         <MapPin />
@@ -897,12 +898,13 @@ function ProviderRateCard({ option, selected, disabled, onSelect }) {
           </strong>
         </span>
       </div>
+      {unavailable && <p className="provider-partial-note">Pickup setup or mandatory shipment information is incomplete.</p>}
       <button
         type="button"
         className={
           selected ? "button button--secondary" : "button button--primary"
         }
-        disabled={disabled}
+        disabled={disabled || unavailable}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
@@ -935,12 +937,12 @@ function ProviderLoadSummary({ status, ready }) {
           {status === "loading"
             ? "Finding shipping services..."
             : status === "loaded"
-            ? "Choose a provider"
+            ? "Choose a shipping service"
             : ready
             ? "Ready to get live rates"
             : "Complete shipment details"}
         </b>
-        <small>Only live provider results can be selected.</small>
+        <small>Only live EsyGlob Shipping results can be selected.</small>
       </span>
     </div>
   );
@@ -950,7 +952,7 @@ function PriceBreakdown({ pricing }) {
   return (
     <div className="quote-breakdown">
       <span>
-        Provider price{" "}
+        Shipping price{" "}
         <b>
           <Money value={pricing.baseCost} currency={pricing.currency} />
         </b>

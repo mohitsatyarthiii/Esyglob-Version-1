@@ -140,6 +140,9 @@ const sellerSchema = new mongoose.Schema(
       handlingTime: String,
       shippingSupport: [String],
     },
+    shippingReady: { type: Boolean, default: false, index: true },
+    shippingReadiness: { type: String, enum: ['invalid', 'pending', 'partial', 'ready', 'failed'], default: 'pending', index: true },
+    shippingSetupUpdatedAt: Date,
     tradeCapabilities: {
       oem: { type: Boolean, default: false },
       odm: { type: Boolean, default: false },

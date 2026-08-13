@@ -32,6 +32,7 @@ const shipmentSchema = z.object({
   insuranceRequested: z.boolean().optional().default(false),
   incoterm: z.enum(['DAP', 'DDP', 'EXW', 'FCA', 'CPT', 'CIP']).optional().default('DAP'),
   hsCode: z.string().trim().max(18).optional(),
+  sellerGstNumber: z.string().trim().max(32).optional(),
   countryOfOrigin: z.string().trim().length(2).transform(value => value.toUpperCase()).optional(),
 }).superRefine((value, context) => {
   if (value.contents === 'non_documents' && !value.countryOfOrigin) {

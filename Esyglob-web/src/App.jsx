@@ -57,6 +57,9 @@ const MarketplaceDashboardPage = lazy(() => import('./pages/MarketplaceDashboard
 const BusinessProfilePage = lazy(() => import('./pages/BusinessProfilePage'))
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
 const VerificationAdminPage = lazy(() => import('./pages/VerificationAdminPage'))
+const ShippingSetupPage = lazy(() => import('./pages/ShippingSetupPage'))
+const AdminShippingSetupPage = lazy(() => import('./pages/AdminShippingSetupPage'))
+const AdminLogisticsPage = lazy(() => import('./pages/AdminLogisticsPage'))
 const SellerOrderQueuePage = lazy(() => import('./pages/SellerOrderQueuePage'))
 const TradeWorkspacePage = lazy(() => import('./pages/TradeWorkspacePage'))
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'))
@@ -136,6 +139,9 @@ export default function App() {
       <Route path="/seller/factory" element={<Navigate replace to="/seller/business-profile?section=factory" />} />
       <Route path="/subscriptions" element={<SubscriptionPage />} />
       <Route path="/admin/verifications" element={<VerificationAdminPage />} />
+      <Route path="/seller/shipping-setup" element={<ShippingSetupPage />} />
+      <Route path="/admin/shipping-setup" element={<AdminShippingSetupPage />} />
+      <Route path="/admin/logistics" element={<AdminLogisticsPage />} />
       <Route path="/seller/order-queue" element={<SellerOrderQueuePage />} />
       <Route path="/promotions" element={<PromotionsPage />} />
       <Route path="/admin/promotions" element={<PromotionsPage />} />

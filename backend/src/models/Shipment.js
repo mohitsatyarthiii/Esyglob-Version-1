@@ -2,18 +2,21 @@ import mongoose from 'mongoose';
 
 const shipmentSchema = new mongoose.Schema(
   {
-    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true, index: true },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order', required: true },
     buyerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', required: true, index: true },
     sellerUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
     provider: { type: String, trim: true, default: 'manual', index: true },
     courierName: String,
+    providerOrderId: { type: String, index: true },
     providerShipmentId: String,
-    trackingNumber: { type: String, index: true },
+    pickupRequestId: { type: String, index: true },
+    awbNumber: { type: String, index: true },
+    trackingNumber: String,
     serviceLevel: String,
     status: {
       type: String,
-      enum: ['pending', 'label_created', 'pickup_scheduled', 'picked_up', 'warehouse_processing', 'in_transit', 'custom_clearance', 'customs', 'out_for_delivery', 'delivered', 'exception', 'cancelled', 'returned'],
+      enum: ['pending', 'label_created', 'pickup_pending', 'pickup_scheduled', 'picked_up', 'warehouse_processing', 'in_transit', 'custom_clearance', 'customs', 'out_for_delivery', 'delivered', 'exception', 'cancelled', 'returned'],
       default: 'pending',
       index: true,
     },
@@ -35,7 +38,9 @@ const shipmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-shipmentSchema.index({ orderId: 1, createdAt: -1 });
+shipmentSchema.index({ orderId: 1 }, { unique: true });
+shipmentSchema.index({ provider: 1, providerShipmentId: 1 }, { unique: true, sparse: true });
+shipmentSchema.index({ provider: 1, trackingNumber: 1 }, { unique: true, sparse: true });
 shipmentSchema.index({ buyerId: 1, status: 1, createdAt: -1 });
 shipmentSchema.index({ sellerId: 1, status: 1, createdAt: -1 });
 shipmentSchema.index({ sellerUserId: 1, status: 1, createdAt: -1 });

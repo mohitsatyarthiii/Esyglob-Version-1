@@ -23,7 +23,23 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
       return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
     }
   }
-  async search(input) {
+  async findPickupLocation(_address, mapping = {}) {
+    if (mapping.status === 'active' && mapping.locationName) return { locationName: mapping.locationName, locationId: mapping.locationId || '' };
+    return null;
+  }
+  async registerPickup({ sellerId, address }) {
+    if (!this.configured) throw Object.assign(new Error('Delhivery credentials are not configured'), { code: 'PROVIDER_NOT_CONFIGURED' });
+    const name = `ESY${String(sellerId).slice(-8)}${String(address.postalCode).slice(-6)}`;
+    const { data } = await this.api().post('/api/backend/clientwarehouse/create/', {
+      name, registered_name: name, phone: address.phone, email: address.email,
+      address: address.line1, city: address.city, state: address.state, pin: address.postalCode, country: address.country || 'India',
+      return_address: address.line1, return_city: address.city, return_state: address.state,
+      return_pin: address.postalCode, return_country: address.country || 'India',
+    });
+    if (data?.success === false || data?.error) throw Object.assign(new Error('Delhivery rejected the pickup warehouse'), { code: 'PROVIDER_PICKUP_REGISTRATION_FAILED' });
+    return { locationName: name, locationId: String(data?.id || data?.warehouse_id || ''), metadata: { responseStatus: 'created' } };
+  }
+  async search(input, context = {}) {
     try {
       const { pickup, destination, shipment } = input;
       const api = this.api();
@@ -43,6 +59,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
         && destinationPostal.pre_paid !== 'N';
       if (!serviceable) return [];
       if (rateResponses.every(result => result.error)) throw rateResponses[0].error;
+      const mappedPickup = context.requireSellerMapping ? String(context.pickupMapping?.name || '') : process.env.DELHIVERY_PICKUP_NAME;
       return rateResponses.flatMap(({ mode, data }) => {
         const rates = Array.isArray(data) ? data : [data];
         return rates.map(rate => ({
@@ -54,18 +71,20 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
         estimatedDeliveryAt: null,
         estimatedDeliveryText: destinationPostal?.estimated_delivery_days ? `${destinationPostal.estimated_delivery_days} days` : '',
         trackingAvailable: true, insuranceAvailable: Boolean(rate?.insurance), pickupAvailable: true,
-        pickupLocation: process.env.DELHIVERY_PICKUP_NAME,
+        pickupLocation: mappedPickup,
+        bookingAvailable: Boolean(mappedPickup && shipment.hsCode && shipment.sellerGstNumber),
         deliveryType: mode === 'E' ? 'Express' : 'Surface',
         features: ['Shipment tracking', 'Courier pickup', rate?.insurance && 'Insurance available'].filter(Boolean),
-        providerPayload: { serviceType: mode, pickupName: process.env.DELHIVERY_PICKUP_NAME },
+        providerPayload: { serviceType: mode, pickupName: mappedPickup, pickupMappingId: context.pickupMapping?.mappingId },
       })).filter(item => item.amount > 0);
       });
     } catch (error) { throw this.providerError(error, 'serviceability search'); }
   }
   async book({ quote, booking }) {
     try {
-      if (!this.bookingConfigured) throw Object.assign(new Error('Delhivery pickup location is not mapped for booking'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
+      if (!this.configured || !quote.providerPayload?.pickupName) throw Object.assign(new Error('Delhivery pickup location is not mapped for booking'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
       const { pickup, destination, shipment } = quote.requestSnapshot;
+      if (!shipment.hsCode || !shipment.sellerGstNumber) throw Object.assign(new Error('Delhivery manifestation requires seller GST and product HSN details'), { code: 'PROVIDER_MANDATORY_SHIPMENT_DATA_MISSING' });
       const waybillResponse = await this.api().get('/waybill/api/bulk/json/', { params: { count: 1 } });
       const waybill = String(waybillResponse.data).split(',')[0].trim();
       const payload = {
@@ -74,6 +93,7 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
           pin: destination.postalCode, city: destination.city, state: destination.state, country: destination.country,
           phone: destination.phone, order: booking.bookingNumber, payment_mode: 'Prepaid',
           products_desc: shipment.description, total_amount: shipment.declaredValue,
+          hsn_code: shipment.hsCode, seller_gst_tin: shipment.sellerGstNumber,
           quantity: shipment.quantity, weight: Math.ceil(shipment.weightKg * 1000),
           shipment_width: dimensions(shipment).width, shipment_height: dimensions(shipment).height,
           shipment_length: dimensions(shipment).length, waybill, shipping_mode: quote.providerPayload?.serviceType || 'Surface',
@@ -86,8 +106,21 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
       if (data.success === false) throw new Error(data.rmk || 'Delhivery rejected the shipment');
       const trackingNumber = data.packages?.[0]?.waybill || waybill;
       if (!trackingNumber) throw new Error('Delhivery did not confirm a waybill');
-      return { providerReference: data.packages?.[0]?.refnum || booking.bookingNumber, trackingNumber, trackingUrl: `https://www.delhivery.com/track/package/${trackingNumber}`, status: 'confirmed', providerPayload: data };
+      let pickupResult = null; let pickupError = null;
+      try { pickupResult = await this.schedulePickup({ quote, packageCount: Math.max(1, Number(shipment.packageCount || 1)) }); }
+      catch (error) { pickupError = { code: error.code || 'PICKUP_REQUEST_FAILED', message: 'Pickup scheduling is pending' }; }
+      return { providerReference: data.packages?.[0]?.refnum || booking.bookingNumber, providerShipmentId: trackingNumber, pickupRequestId: pickupResult?.pickupRequestId || '', trackingNumber, trackingUrl: `https://www.delhivery.com/track/package/${trackingNumber}`, status: pickupResult ? 'pickup_scheduled' : 'confirmed', providerPayload: { manifestation: data, pickup: pickupResult?.providerPayload, pickupError } };
     } catch (error) { throw this.providerError(error, 'booking'); }
+  }
+  async schedulePickup({ quote, packageCount = 1 }) {
+    const pickupLocation = quote.providerPayload?.pickupName;
+    if (!pickupLocation) throw Object.assign(new Error('Delhivery pickup location is missing'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
+    const pickupDate = futurePickupDate(quote.requestSnapshot);
+    const { data } = await this.api().post('/fm/request/new/', {
+      pickup_date: pickupDate, pickup_time: '14:00:00', pickup_location: pickupLocation,
+      expected_package_count: Math.max(1, Number(packageCount || quote.requestSnapshot?.shipment?.packageCount || 1)),
+    });
+    return { pickupRequestId: String(data?.pickup_id || data?.request_id || data?.pr_exist || `${pickupLocation}:${pickupDate}`), providerPayload: data };
   }
   async track(trackingNumber) {
     try {

@@ -24,7 +24,9 @@
     "storage:cleanup": "node scripts/migrate-vps-storage-and-cleanup.js --execute --confirm=DELETE_MARKETPLACE_CONTENT",
     "storage:validate": "node scripts/validate-vps-storage-migration.js",
     "storage:validate:http": "node scripts/validate-storage-http.js",
-    "storage:validate:integrity": "node scripts/validate-media-integrity.js"
+    "storage:validate:integrity": "node scripts/validate-media-integrity.js",
+    "shipping:setup:dry-run": "node scripts/sync-seller-shipping-setups.js",
+    "shipping:setup:sync": "node scripts/sync-seller-shipping-setups.js --execute"
   },
   "keywords": [],
   "author": "",

@@ -46,6 +46,18 @@ test('Shiprocket maps booking only to a registered pickup with the seller origin
   assert.equal(rates[0].providerPayload.pickupLocation, 'Tamil Warehouse');
 });
 
+test('seller checkout uses its stored Shiprocket pickup mapping instead of a global warehouse', async () => {
+  const adapter = new ShiprocketAdapter();
+  adapter.api = async () => ({
+    get: async path => path.includes('/settings/company/pickup')
+      ? { data: { data: { shipping_address: [] } } }
+      : { data: { data: { available_courier_companies: [{ courier_company_id: 10, courier_name: 'Courier Air', rate: 125 }] } } },
+  });
+  const rates = await adapter.search(input, { requireSellerMapping: true, pickupMapping: { name: 'SELLER_TN', mappingId: 'mapping-1' } });
+  assert.equal(rates[0].pickupLocation, 'SELLER_TN');
+  assert.equal(rates[0].providerPayload.pickupLocation, 'SELLER_TN');
+});
+
 test('Delhivery isolates Express and Surface rate responses into selectable services', async () => {
   const adapter = new DelhiveryAdapter();
   adapter.api = () => ({
@@ -58,6 +70,18 @@ test('Delhivery isolates Express and Surface rate responses into selectable serv
   const rates = await adapter.search(input);
   assert.deepEqual(rates.map(rate => rate.serviceCode), ['DELHIVERY_EXPRESS', 'DELHIVERY_SURFACE']);
   assert.deepEqual(rates.map(rate => rate.amount), [180, 110]);
+});
+
+test('seller checkout embeds the seller-specific Delhivery warehouse in its quote snapshot', async () => {
+  const adapter = new DelhiveryAdapter();
+  adapter.api = () => ({
+    get: async (path, options) => path.includes('pin-codes')
+      ? { data: { delivery_codes: [{ postal_code: { pickup: 'Y', pre_paid: 'Y' } }] } }
+      : { data: [{ total_amount: options.params.md === 'E' ? 180 : 110 }] },
+  });
+  const rates = await adapter.search(input, { requireSellerMapping: true, pickupMapping: { name: 'SELLER_DELHIVERY_TN', mappingId: 'mapping-2' } });
+  assert.equal(rates[0].pickupLocation, 'SELLER_DELHIVERY_TN');
+  assert.equal(rates[0].providerPayload.pickupName, 'SELLER_DELHIVERY_TN');
 });
 
 test('Delhivery rates use seller dimensions to send the higher volumetric chargeable weight', async () => {

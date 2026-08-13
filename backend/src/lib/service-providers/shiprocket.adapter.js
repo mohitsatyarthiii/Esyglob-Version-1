@@ -17,6 +17,13 @@ function pickupNameForPostalCode(locations, postalCode) {
   return String(match?.pickup_location || match?.name || '').trim();
 }
 
+function pickupRecordForPostalCode(locations, postalCode, preferredName = '') {
+  const target = String(postalCode || '').trim();
+  const candidates = locations.filter(item => String(item.pin_code || item.pincode || item.postal_code || '').trim() === target);
+  const preferred = String(preferredName || '').trim().toLowerCase();
+  return candidates.find(item => String(item.pickup_location || item.name || '').trim().toLowerCase() === preferred) || candidates[0];
+}
+
 export class ShiprocketAdapter extends ServiceProviderAdapter {
   constructor() { super('shiprocket', 'Shiprocket'); this.baseURL = process.env.SHIPROCKET_API_BASE_URL || 'https://apiv2.shiprocket.in/v1/external'; }
   get configured() { return Boolean(process.env.SHIPROCKET_EMAIL && process.env.SHIPROCKET_PASSWORD); }
@@ -48,7 +55,38 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
       return { provider: this.key, name: this.name, status: 'failed', configured: true, pickupConnected: false, durationMs: Date.now() - startedAt, code: wrapped.code };
     }
   }
-  async search(input) {
+  async findPickupLocation(address, mapping = {}) {
+    if (!this.configured) return null;
+    const api = await this.api();
+    const { data } = await api.get('/settings/company/pickup');
+    const match = pickupRecordForPostalCode(pickupLocations(data), address.postalCode, mapping.locationName);
+    if (!match) return null;
+    return {
+      locationName: String(match.pickup_location || match.name || '').trim(),
+      locationId: String(match.id || match.pickup_location_id || ''),
+      metadata: { postalCode: String(match.pin_code || match.pincode || match.postal_code || '') },
+    };
+  }
+  async registerPickup({ sellerId, address }) {
+    if (!this.configured) throw Object.assign(new Error('Shiprocket credentials are not configured'), { code: 'PROVIDER_NOT_CONFIGURED' });
+    const pickupLocation = `ESY${String(sellerId).slice(-8)}${String(address.postalCode).slice(-6)}`.slice(0, 36);
+    const api = await this.api();
+    const { data } = await api.post('/settings/company/addpickup', {
+      pickup_location: pickupLocation,
+      name: address.contactName,
+      email: address.email,
+      phone: address.phone,
+      address: address.line1,
+      address_2: address.line2 || '',
+      city: address.city,
+      state: address.state,
+      country: address.country || 'India',
+      pin_code: Number(address.postalCode),
+    });
+    if (data?.success === false || data?.status_code >= 400) throw Object.assign(new Error('Shiprocket rejected the pickup location'), { code: 'PROVIDER_PICKUP_REGISTRATION_FAILED' });
+    return { locationName: pickupLocation, locationId: String(data?.pickup_id || data?.id || ''), metadata: { responseStatus: data?.status_code || 200 } };
+  }
+  async search(input, context = {}) {
     try {
       const { pickup, destination, shipment } = input;
       const api = await this.api();
@@ -66,7 +104,9 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
         } }),
         api.get('/settings/company/pickup').catch(() => ({ data: {} })),
       ]);
-      const pickupLocation = pickupNameForPostalCode(pickupLocations(locationsResponse.data), pickup.postalCode);
+      const pickupLocation = context.requireSellerMapping
+        ? String(context.pickupMapping?.name || '')
+        : pickupNameForPostalCode(pickupLocations(locationsResponse.data), pickup.postalCode);
       return (data.data?.available_courier_companies || []).map(courier => ({
         providerKey: this.key, providerName: this.name,
         serviceCode: String(courier.courier_company_id || courier.id),
@@ -81,6 +121,7 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
         // pickup_availability field can be the string "0" even for priced,
         // serviceable prepaid couriers, so it must not discard those rates.
         pickupAvailable: true,
+        bookingAvailable: Boolean(pickupLocation),
         pickupLocation,
         deliveryType: courier.mode || (courier.is_surface ? 'Surface' : 'Standard'),
         features: ['Shipment tracking', 'Courier pickup', courier.insurance && 'Insurance available'].filter(Boolean),
@@ -120,8 +161,17 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
       const { data: assign } = await api.post('/courier/assign/awb', { shipment_id: shipmentId, courier_id: Number(quote.serviceCode) });
       const response = assign.response?.data || assign;
       if (!shipmentId || !response.awb_code) throw new Error('Shiprocket did not confirm an AWB for the selected courier');
-      return { providerReference: String(shipmentId || order.order_id), trackingNumber: response.awb_code, trackingUrl: response.awb_code ? `https://shiprocket.co/tracking/${response.awb_code}` : '', status: 'confirmed', providerPayload: { order, assign } };
+      let pickupResult = null; let pickupError = null;
+      try { pickupResult = (await api.post('/courier/generate/pickup', { shipment_id: [shipmentId] })).data; }
+      catch (error) { pickupError = { code: error.code || 'PICKUP_REQUEST_FAILED', message: 'Pickup scheduling is pending' }; }
+      const pickupRequestId = pickupResult?.pickup_status || pickupResult?.response?.pickup_token_number || pickupResult?.pickup_token_number || '';
+      return { providerReference: String(order.order_id || shipmentId), providerShipmentId: String(shipmentId), pickupRequestId: String(pickupRequestId), trackingNumber: response.awb_code, trackingUrl: response.awb_code ? `https://shiprocket.co/tracking/${response.awb_code}` : '', status: pickupResult ? 'pickup_scheduled' : 'confirmed', providerPayload: { order, assign, pickup: pickupResult, pickupError } };
     } catch (error) { throw this.providerError(error, 'booking'); }
+  }
+  async schedulePickup({ shipment }) {
+    if (!shipment.providerShipmentId) throw Object.assign(new Error('Shiprocket shipment ID is missing'), { code: 'PROVIDER_SHIPMENT_ID_MISSING' });
+    const { data } = await (await this.api()).post('/courier/generate/pickup', { shipment_id: [Number(shipment.providerShipmentId)] });
+    return { pickupRequestId: String(data?.pickup_status || data?.response?.pickup_token_number || data?.pickup_token_number || ''), providerPayload: data };
   }
   async track(trackingNumber) {
     try {

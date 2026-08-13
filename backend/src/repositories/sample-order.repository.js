@@ -22,7 +22,7 @@ class SampleOrderRepository {
     if (!sellerId || !mongoose.Types.ObjectId.isValid(sellerId)) return null;
 
     return Seller.findById(sellerId)
-      .select('userId companyName address shippingAddress businessEmail businessPhone isVerified isTrustedSeller')
+      .select('userId companyName address shippingAddress businessEmail businessPhone gstNumber isVerified isTrustedSeller')
       .lean();
   }
 
@@ -38,8 +38,14 @@ class SampleOrderRepository {
    * Create order
    */
   static async createOrder(orderData) {
-    const order = new Order(orderData);
-    return order.save();
+    try { return await new Order(orderData).save(); }
+    catch (error) {
+      if (error.code === 11000 && orderData.checkout?.idempotencyKey) {
+        const existing = await Order.findOne({ 'checkout.idempotencyKey': orderData.checkout.idempotencyKey });
+        if (existing) return existing;
+      }
+      throw error;
+    }
   }
 
   /**

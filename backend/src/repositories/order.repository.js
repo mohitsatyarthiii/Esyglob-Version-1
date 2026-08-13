@@ -129,7 +129,14 @@ class OrderRepository {
    * Create order
    */
   static async create(data) {
-    return Order.create(data);
+    try { return await Order.create(data); }
+    catch (error) {
+      if (error.code === 11000 && data.checkout?.idempotencyKey) {
+        const existing = await Order.findOne({ 'checkout.idempotencyKey': data.checkout.idempotencyKey });
+        if (existing) return existing;
+      }
+      throw error;
+    }
   }
 
   /**

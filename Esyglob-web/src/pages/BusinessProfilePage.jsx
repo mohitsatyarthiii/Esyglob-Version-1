@@ -18,6 +18,7 @@ import {
   Save,
   ShieldCheck,
   Sparkles,
+  Truck,
   Upload,
   Users,
   Video,
@@ -229,6 +230,7 @@ function Overview({ data, seller, factory, progress, setActive }) {
     <div className="business-system-metrics">{metrics.map(([label, value, Icon]) => <article key={label}><i><Icon /></i><span><small>{label}</small><b>{value}</b></span></article>)}</div>
     <section><div><h3>Profile sections</h3><p>Complete each area once; EsyGlob reuses it everywhere buyers see your company.</p></div><div className="business-section-checklist">{sections.slice(1).map(([key, label, Icon]) => <button key={key} onClick={() => setActive(key)}><i className={progress.sections[key] ? 'done' : ''}>{progress.sections[key] ? <Check /> : <Icon />}</i><span><b>{label}</b><small>{progress.sections[key] ? 'Ready to publish' : 'Add required information'}</small></span><ChevronRight /></button>)}</div></section>
     {factory.inspection?.scheduledAt && <div className="business-inspection-note"><Factory /><span><b>Factory inspection scheduled</b><small>{new Date(factory.inspection.scheduledAt).toLocaleString()}</small></span></div>}
+    <div className="business-inspection-note"><Truck /><span><b>Seller pickup and carrier readiness</b><small>Review Delhivery and Shiprocket pickup registration.</small></span><Link className="button button--secondary" to="/seller/shipping-setup">Shipping setup</Link></div>
   </div>
 }
 

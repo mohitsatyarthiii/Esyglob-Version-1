@@ -20,7 +20,7 @@ export async function findProductById(productId) {
 
 export async function findSellerById(sellerId) {
   return Seller.findById(sellerId)
-    .select('userId address shippingAddress companyName businessPhone businessEmail')
+    .select('userId address shippingAddress companyName businessPhone businessEmail gstNumber')
     .lean()
     .exec();
 }

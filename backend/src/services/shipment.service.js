@@ -7,8 +7,10 @@ class ShipmentService {
   /**
    * Get shipments for authenticated user
    */
-  static async getShipments(userId) {
-    const shipments = await ShipmentRepository.findByUser(userId);
+  static async getShipments(userId, roles = [], query = {}) {
+    const shipments = roles.includes('admin')
+      ? await ShipmentRepository.findAll(query.limit)
+      : await ShipmentRepository.findByUser(userId);
     return { shipments };
   }
 
@@ -74,6 +76,7 @@ class ShipmentService {
         await TradeWorkflowService.transition({ order, toStatus: 'ready_to_ship', actorId: userId, actorRole: 'seller', note: 'Shipment created and label is ready', isAdmin: roles?.includes('admin') });
       }
     }
+    if (order.paymentStatus !== 'paid') throw Object.assign(new Error('A logistics shipment can be created only after verified payment'), { statusCode: 409 });
     await ShipmentRepository.saveOrder(order);
 
     return { shipment };

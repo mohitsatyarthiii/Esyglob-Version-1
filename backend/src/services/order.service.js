@@ -12,7 +12,9 @@ import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider, providerBookingSnapshot } from '../lib/order-provider-booking.js';
+import { activeProviderMappings } from './seller-shipping-setup.service.js';
 import Shipment from '../models/Shipment.js';
+import Order from '../models/Order.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -117,6 +119,12 @@ class OrderService {
     const chatId = toObjectId(body.chatId);
     const logisticsOption = String(body.logisticsOption || body.tradeInformation?.shippingOption || '').trim();
     const termsAccepted = body.termsAccepted === true;
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 120);
+
+    if (idempotencyKey) {
+      const existing = await Order.findOne({ buyerId: userId, 'checkout.idempotencyKey': idempotencyKey });
+      if (existing) return existing;
+    }
 
     if (!productId) {
       throw Object.assign(new Error('Valid product ID is required'), { statusCode: 400 });
@@ -175,11 +183,13 @@ class OrderService {
       hsCode: product.hsCode,
       countryOfOrigin: product.countryOfOrigin,
     }, quantity));
+    const providerMappings = await activeProviderMappings(seller._id);
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller,
       destination: shippingAddress,
       shipment: productShipment,
+      providerMappings,
     });
 
     if (liveShipping.internationalUnsupported) {
@@ -281,6 +291,7 @@ class OrderService {
       tradeAssurance: automation.tradeAssurance,
       shippingMethod: quote.selectedLogistics.key,
       checkout: {
+        idempotencyKey: idempotencyKey || undefined,
         logisticsSelected: true,
         logisticsOption: quote.selectedLogistics.key,
         logisticsSnapshot: quote.selectedLogistics,

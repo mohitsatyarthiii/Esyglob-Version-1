@@ -5,8 +5,15 @@ import mongoose from 'mongoose';
 import { getServiceProvider, providersForRoute, serviceProviderCapabilities, serviceProviderHealth } from '../lib/service-providers/index.js';
 import { parseProviderSearch } from '../validators/service-booking.validator.js';
 import { operationalLog } from '../lib/operational-log.js';
+import crypto from 'node:crypto';
 
 const QUOTE_TTL_MS = Math.max(5, Number(process.env.SERVICE_QUOTE_TTL_MINUTES || 20)) * 60 * 1000;
+const RATE_CACHE_TTL_MS = Math.max(10, Number(process.env.SERVICE_RATE_CACHE_SECONDS || 45)) * 1000;
+const rateCache = new Map();
+
+function rateCacheKey(provider, input, pickupMapping) {
+  return crypto.createHash('sha256').update(JSON.stringify({ provider, input, pickupMapping: pickupMapping || null })).digest('hex');
+}
 
 export function determineRouteType(pickup, destination) {
   const origin = String(pickup?.countryCode || '').toUpperCase();
@@ -36,11 +43,14 @@ class ServiceEngineService {
   static capabilities() { return serviceProviderCapabilities(); }
   static health(options) { return serviceProviderHealth(options); }
 
-  static async searchProviders(userId, serviceKey, body, requestId = '', providerKey = '') {
+  static async searchProviders(userId, serviceKey, body, requestId = '', providerKey = '', context = {}) {
     if (serviceKey !== 'shipping') throw invalid('Live provider routing is currently available for Shipping & Logistics');
     const input = parseProviderSearch(body);
     const routeType = determineRouteType(input.pickup, input.destination);
-    const providers = providersForRoute(routeType).filter(adapter => !providerKey || adapter.key === String(providerKey).toLowerCase());
+    const requestedProviders = Array.isArray(providerKey) ? providerKey.map(value => String(value).toLowerCase()) : [];
+    const providers = providersForRoute(routeType).filter(adapter => requestedProviders.length
+      ? requestedProviders.includes(adapter.key)
+      : !providerKey || adapter.key === String(providerKey).toLowerCase());
     operationalLog('shipping_request', { requestId, routeType, providerCount: providers.length, status: 'started' });
     if (!providers.length) {
       const error = new Error(providerKey ? `${providerKey} is not configured for live rates on this route` : `No ${routeType} providers are configured`);
@@ -53,7 +63,16 @@ class ServiceEngineService {
       const startedAt = Date.now();
       operationalLog('provider_request', { requestId, provider: adapter.key, status: 'started' });
       try {
-        const rates = await adapter.search(input);
+        const pickupMapping = context.providerMappings?.[adapter.key];
+        const cacheKey = rateCacheKey(adapter.key, input, pickupMapping);
+        const cached = rateCache.get(cacheKey);
+        let rates = cached?.expiresAt > Date.now() ? cached.rates : null;
+        if (!rates) rates = await adapter.search(input, {
+          requireSellerMapping: context.requireSellerMapping === true,
+          pickupMapping,
+        });
+        if (!cached || cached.expiresAt <= Date.now()) rateCache.set(cacheKey, { rates, expiresAt: Date.now() + RATE_CACHE_TTL_MS });
+        if (rateCache.size > 1000) for (const [key, entry] of rateCache) if (entry.expiresAt <= Date.now()) rateCache.delete(key);
         operationalLog('provider_response', { requestId, provider: adapter.key, duration: Date.now() - startedAt, status: 'success', rateCount: rates.length });
         return { rates, duration: Date.now() - startedAt };
       } catch (error) {
@@ -176,7 +195,7 @@ class ServiceEngineService {
   static async bookPaidRequest(request) {
     const existingBooking = await ServiceBooking.findOne({ serviceRequestId: request._id });
     if (!existingBooking) throw invalid('Provider booking record is missing');
-    if (existingBooking.providerReference && existingBooking.trackingNumber) return existingBooking;
+    if (existingBooking.providerReference && existingBooking.trackingNumber && existingBooking.pickupRequestId) return existingBooking;
     const booking = await ServiceBooking.findOneAndUpdate(
       {
         _id: existingBooking._id,
@@ -212,6 +231,16 @@ class ServiceEngineService {
     const startedAt = Date.now();
     operationalLog('booking_creation', { requestId: String(request._id), provider: adapter.key, status: 'started' });
     try {
+      if (booking.trackingNumber && booking.providerShipmentId && !booking.pickupRequestId && adapter.schedulePickup) {
+        const pickup = await adapter.schedulePickup({ quote, shipment: booking });
+        booking.pickupRequestId = pickup.pickupRequestId;
+        booking.status = 'pickup_scheduled';
+        booking.bookingLockUntil = null;
+        booking.providerPayload = { ...(booking.providerPayload || {}), pickup: pickup.providerPayload };
+        booking.timeline.push({ status: 'pickup_scheduled', message: 'Carrier pickup scheduled' });
+        await booking.save();
+        return booking;
+      }
       const result = await adapter.book({ quote, request, booking });
       Object.assign(booking, result, { bookingLockUntil: null, lastProviderSyncAt: new Date(), lastProviderError: '' });
       booking.timeline.push({ status: result.status || 'confirmed', message: `${booking.providerName} confirmed the booking` });
@@ -284,6 +313,7 @@ function quoteResponse(quote) {
     quoteId: String(quote._id),
     providerKey: quote.providerKey,
     providerName: quote.providerName,
+    displayName: 'EsyGlob Shipping',
     serviceCode: quote.serviceCode,
     serviceId: quote.serviceCode,
     providerServiceId: quote.serviceCode,
@@ -300,6 +330,7 @@ function quoteResponse(quote) {
     trackingAvailable: quote.trackingAvailable,
     insuranceAvailable: quote.insuranceAvailable,
     pickupAvailable: quote.pickupAvailable,
+    bookingAvailable: quote.bookingAvailable,
     pickupLocation: quote.pickupLocation,
     deliveryType: quote.deliveryType,
     features: quote.features || [],

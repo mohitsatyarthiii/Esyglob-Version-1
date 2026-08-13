@@ -10,6 +10,8 @@ const serviceBookingSchema = new mongoose.Schema({
   serviceName: String,
   routeType: { type: String, enum: ['domestic', 'international'] },
   providerReference: { type: String, index: true },
+  providerShipmentId: { type: String, index: true },
+  pickupRequestId: { type: String, index: true },
   trackingNumber: { type: String, index: true },
   trackingUrl: String,
   labelUrl: String,

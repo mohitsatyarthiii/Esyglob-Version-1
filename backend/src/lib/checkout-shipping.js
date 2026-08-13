@@ -37,7 +37,7 @@ export function isIndianAddress(input = {}) {
   return countryCode(input.country, input.countryCode) === 'IN';
 }
 
-export async function getLiveCheckoutShipping({ userId, seller = {}, destination = {}, shipment = {}, requestId = '' }) {
+export async function getLiveCheckoutShipping({ userId, seller = {}, destination = {}, shipment = {}, requestId = '', providerMappings = null }) {
   const pickupSource = hasPickupAddress(seller.address) ? seller.address : seller.shippingAddress || seller.address || {};
   const pickup = address(pickupSource, seller);
   const delivery = address(destination);
@@ -68,10 +68,24 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       insuranceRequested: shipment.insuranceRequested === true,
       incoterm: shipment.incoterm || 'DAP',
       hsCode: shipment.hsCode || undefined,
+      sellerGstNumber: seller.gstNumber || shipment.sellerGstNumber || undefined,
       countryOfOrigin: countryCode(shipment.countryOfOrigin, shipment.countryOfOriginCode) || undefined,
     },
   };
-  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId);
+  const providerKeys = providerMappings ? Object.keys(providerMappings) : '';
+  if (providerMappings && !providerKeys.length) {
+    return {
+      routeType: 'domestic', providers: [], options: [],
+      providerStatuses: [
+        { provider: 'delhivery', name: 'Delhivery', status: 'pickup_pending' },
+        { provider: 'shiprocket', name: 'Shiprocket', status: 'pickup_pending' },
+      ],
+      setupPending: true,
+    };
+  }
+  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId, providerKeys, {
+    requireSellerMapping: Boolean(providerMappings), providerMappings,
+  });
   return {
     ...result,
     options: (result.providers || []).map(rate => ({
@@ -92,7 +106,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       trackingAvailable: rate.trackingAvailable !== false,
       insuranceAvailable: rate.insuranceAvailable === true,
       pickupAvailable: rate.pickupAvailable === true,
-      bookingAvailable: Boolean(rate.pickupLocation),
+      bookingAvailable: rate.bookingAvailable !== false && Boolean(rate.pickupLocation),
       features: rate.features || [],
       recommended: rate.recommended === true,
       fastest: rate.fastest === true,

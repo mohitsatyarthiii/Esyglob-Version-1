@@ -141,24 +141,7 @@ class ShippingService {
     }
 
     if (action === 'book') {
-      shipment.status = 'booked';
-      shipment.carrier = 'DHL';
-      shipment.carrierService = 'Express Worldwide';
-      shipment.trackingNumber = `DHL${Date.now().toString(36).toUpperCase()}`;
-      shipment.estimatedDelivery = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-      await NotificationService.createNotification({
-        userId,
-        notificationType: 'shipment_booked',
-        title: 'Shipment Booked',
-        description: `Your shipment ${shipment.orderNumber} has been booked with ${shipment.carrier}.`,
-        data: {
-          relatedId: shipment._id,
-          relatedModel: 'ShippingOrder',
-          actionUrl: `/dashboard/buyer/shipping/${shipment._id}`,
-        },
-        priority: 'high',
-      }).catch(err => console.error('Shipping notification error:', err));
+      throw Object.assign(new Error('Select a live EsyGlob Shipping quote before booking. Legacy carrier assignment is disabled.'), { statusCode: 409 });
 
     } else if (action === 'cancel') {
       shipment.status = 'cancelled';

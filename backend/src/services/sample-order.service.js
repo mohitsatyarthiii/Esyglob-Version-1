@@ -7,6 +7,8 @@ import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions }
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { providerBookingSnapshot } from '../lib/order-provider-booking.js';
+import { activeProviderMappings } from './seller-shipping-setup.service.js';
+import Order from '../models/Order.js';
 
 class SampleOrderService {
   /**
@@ -21,6 +23,11 @@ class SampleOrderService {
       logisticsOption,
       notes,
     } = body;
+    const idempotencyKey = String(body.idempotencyKey || '').trim().slice(0, 120);
+    if (idempotencyKey) {
+      const existing = await Order.findOne({ buyerId: userId, 'checkout.idempotencyKey': idempotencyKey });
+      if (existing) return existing;
+    }
 
     // Validate terms acceptance
     if (termsAccepted !== true) {
@@ -61,11 +68,13 @@ class SampleOrderService {
       hsCode: product.hsCode,
       countryOfOrigin: product.countryOfOrigin,
     }, orderQuantity));
+    const providerMappings = await activeProviderMappings(sellerId);
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller: seller || {},
       destination: shippingAddress || {},
       shipment: productShipment,
+      providerMappings,
     });
 
     if (liveShipping.internationalUnsupported) {
@@ -153,6 +162,7 @@ class SampleOrderService {
       unit: product.unit || 'piece',
       shippingMethod: quote.selectedLogistics.key,
       checkout: {
+        idempotencyKey: idempotencyKey || undefined,
         logisticsSelected: true,
         logisticsOption: quote.selectedLogistics.key,
         logisticsSnapshot: quote.selectedLogistics,

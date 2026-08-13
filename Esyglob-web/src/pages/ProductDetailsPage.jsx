@@ -125,7 +125,7 @@ export default function ProductDetailsPage() {
             {/* Sample Order Link */}
             {product.sampleAvailable && (
               <div className="sample-order-link">
-                <button onClick={() => authAction(() => navigate(`/checkout?mode=sample&productId=${encodeURIComponent(productId)}&quantity=1`))} className="sample-order-btn">
+                <button disabled={product.sellerId?.shippingReady === false} onClick={() => authAction(() => navigate(`/checkout?mode=sample&productId=${encodeURIComponent(productId)}&quantity=1`))} className="sample-order-btn">
                   <PackageCheck size={15} className="text-blue-600 flex-shrink-0" />
                   <span className="flex-1 text-left font-semibold text-gray-700">Order sample</span>
                   <span className="text-blue-600 font-bold text-xs">
@@ -135,6 +135,7 @@ export default function ProductDetailsPage() {
                 </button>
               </div>
             )}
+            {product.sellerId?.shippingReady === false && <p className="action-error">Shipping setup is pending for this manufacturer.</p>}
             
             <div className="trust-row">
               <span><ShieldCheck /> Buyer protection</span>

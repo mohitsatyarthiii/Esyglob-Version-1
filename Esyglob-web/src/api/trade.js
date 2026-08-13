@@ -64,6 +64,11 @@ export async function updateOrder(id, input) { return entity(await apiRequest(`/
 export async function addProductionUpdate(id, input) { return entity(await apiRequest(`/orders/${id}/production-updates`, { method: 'POST', body: input }), 'order') }
 export async function buyerOrderAction(id, input) { return entity(await apiRequest(`/orders/${id}/buyer-action`, { method: 'POST', body: input }), 'order') }
 export async function retryOrderShippingBooking(id) { return unwrapData(await apiRequest(`/orders/${id}/retry-shipping-booking`, { method: 'POST' })) }
+export async function fetchMyShippingSetup() { return unwrapData(await apiRequest('/shipping/setup/me', { cache: false })) }
+export async function synchronizeMyShippingSetup() { return unwrapData(await apiRequest('/shipping/setup/me/sync', { method: 'POST' })) }
+export async function fetchAdminShippingSetups(query = {}) { return unwrapData(await apiRequest('/shipping/setup/admin', { query, cache: false })) }
+export async function retryAdminShippingSetup(sellerId, provider) { return unwrapData(await apiRequest(`/shipping/setup/admin/${sellerId}/retry`, { method: 'POST', body: { provider } })) }
+export async function updateAdminShippingMapping(sellerId, providerKey, body) { return unwrapData(await apiRequest(`/shipping/setup/admin/${sellerId}/${providerKey}`, { method: 'PATCH', body })) }
 export async function fetchTradeWorkspace(entityType, id) { return unwrapData(await apiRequest(`/trade-workspace/${entityType}/${id}`, { cache: false })) }
 export async function fetchUnifiedTradeWorkspace(entityType, id) { return unwrapData(await apiRequest(`/trade-workspace/trade/${entityType}/${id}`, { cache: false })) }
 export async function addTradeNote(entityType, id, input) { return unwrapData(await apiRequest(`/trade-workspace/${entityType}/${id}/notes`, { method: 'POST', body: input })) }

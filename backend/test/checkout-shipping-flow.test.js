@@ -115,7 +115,7 @@ test('a paid checkout books the selected Delhivery snapshot and stores tracking'
     adapter.book = async ({ quote, booking }) => {
       assert.equal(quote.serviceCode, 'DELHIVERY_SURFACE');
       assert.equal(booking.bookingNumber, 'SAM-1001');
-      return { providerReference: 'provider-1001', trackingNumber: 'WAYBILL1001', status: 'confirmed', providerPayload: { success: true } };
+      return { providerReference: 'provider-1001', providerShipmentId: 'shipment-1001', pickupRequestId: 'pickup-1001', trackingNumber: 'WAYBILL1001', status: 'pickup_scheduled', providerPayload: { success: true } };
     };
     const order = {
       _id: new mongoose.Types.ObjectId(),
@@ -140,7 +140,8 @@ test('a paid checkout books the selected Delhivery snapshot and stores tracking'
     assert.equal(result.booked, true);
     assert.equal(shipment.provider, 'delhivery');
     assert.equal(shipment.trackingNumber, 'WAYBILL1001');
-    assert.equal(shipment.status, 'label_created');
+    assert.equal(shipment.status, 'pickup_scheduled');
+    assert.equal(shipment.pickupRequestId, 'pickup-1001');
     assert.equal(order.trackingNumber, 'WAYBILL1001');
   } finally {
     adapter.book = originalBook;

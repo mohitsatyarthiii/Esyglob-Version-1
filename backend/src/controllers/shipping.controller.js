@@ -1,6 +1,11 @@
 import ShippingService from '../services/shipping.service.js';
+import { receiveProviderWebhook } from '../services/shipping-webhook.service.js';
 
 class ShippingController {
+  static async webhook(req, res) {
+    try { return res.json(await receiveProviderWebhook(String(req.params.provider || '').toLowerCase(), req.headers, req.body)); }
+    catch (error) { return res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Webhook processing failed' : error.message, code: error.code || 'WEBHOOK_FAILED' }); }
+  }
   /**
    * GET - List shipping orders
    */

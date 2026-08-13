@@ -4,6 +4,7 @@ import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
+import { activeProviderMappings } from './seller-shipping-setup.service.js';
 
 export async function getCheckoutQuote(session, body) {
   const quantity = Math.max(Number(body.quantity || 1), 1);
@@ -65,12 +66,14 @@ export async function getCheckoutQuote(session, body) {
         hsCode: product.hsCode,
         countryOfOrigin: product.countryOfOrigin,
       }, quantity));
+      const providerMappings = await activeProviderMappings(sellerId);
       shipping = await getLiveCheckoutShipping({
         userId: session._id || session.id,
         seller: seller || {},
         destination: body.destination || {},
         shipment: productShipment,
         requestId: body.requestId || '',
+        providerMappings,
       });
     }
   } catch (error) {
@@ -121,6 +124,7 @@ export async function getCheckoutQuote(session, body) {
       automatedServices: quote.automatedServices || [],
       providerStatuses: shipping.providerStatuses || [],
       internationalUnsupported: shipping.internationalUnsupported === true,
+      shippingSetupPending: shipping.setupPending === true,
       shippingError,
       subtotal: quote.productTotal || 0,
       totalAmount: quote.grandTotal || quote.productTotal || 0,

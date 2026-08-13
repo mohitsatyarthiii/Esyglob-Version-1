@@ -6,7 +6,7 @@ class ShipmentController {
    */
   static async list(req, res) {
     try {
-      const result = await ShipmentService.getShipments(req.user._id);
+      const result = await ShipmentService.getShipments(req.user._id, req.user.roles, req.query);
       return res.json(result);
     } catch (error) {
       console.error('[Shipments-GET] Error:', error);

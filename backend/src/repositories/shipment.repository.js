@@ -37,6 +37,13 @@ class ShipmentRepository {
       .sort({ createdAt: -1 })
       .lean();
   }
+  static async findAll(limit = 200) {
+    return Shipment.find({})
+      .populate('orderId', 'orderNumber status paymentStatus totalPrice currency shippingAddress timeline')
+      .populate('sellerId', 'companyName businessEmail businessPhone')
+      .populate('buyerId', 'fullName email companyName')
+      .sort({ updatedAt: -1 }).limit(Math.min(Number(limit) || 200, 500)).lean();
+  }
 
   /**
    * Create shipment

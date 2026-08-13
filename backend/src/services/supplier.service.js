@@ -4,6 +4,7 @@ import { buildVerificationCenterSummary, VERIFICATION_STEPS } from '../lib/verif
 import { buildSellerQuery, sellerSortField, stripUndefined } from '../lib/supplier-helpers.js';
 import * as supplierRepository from '../repositories/supplier.repository.js';
 import { capabilities as digiLockerCapabilities } from './digilocker-verification.service.js';
+import { synchronizeSellerShippingSetup } from './seller-shipping-setup.service.js';
 
 const PROTECTED_SELLER_STATUSES = new Set([
   'document_submitted',
@@ -82,6 +83,8 @@ export async function saveFactoryProfile(user, data) {
   }
 
   const factory = await supplierRepository.upsertFactoryProfile(seller._id, data);
+
+  synchronizeSellerShippingSetup(seller._id, { register: true }).catch(() => {});
 
   return factory;
 }
@@ -317,6 +320,8 @@ export async function submitOnboarding(user, data) {
     completedFieldCount: completion.completedCount,
     totalFieldCount: completion.totalCount,
   });
+
+  synchronizeSellerShippingSetup(seller._id, { register: true }).catch(() => {});
 
   return { sellerId: seller._id, redirectTo: '/dashboard/seller' };
 }
