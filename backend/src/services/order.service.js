@@ -11,6 +11,8 @@ import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions }
 import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
+import { bookPaidOrderWithProvider, providerBookingSnapshot } from '../lib/order-provider-booking.js';
+import Shipment from '../models/Shipment.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -198,6 +200,13 @@ class OrderService {
     if (!quote.selectedLogistics) {
       throw Object.assign(new Error('Please select a valid logistics option'), { statusCode: 400 });
     }
+    const bookingSnapshot = await providerBookingSnapshot(userId, quote.selectedLogistics.quoteId);
+    if (!bookingSnapshot) {
+      throw Object.assign(new Error('The selected shipping rate expired. Please refresh checkout and select shipping again.'), { statusCode: 409 });
+    }
+    if (bookingSnapshot.providerKey === 'delhivery' && !bookingSnapshot.providerPayload?.pickupName) {
+      throw Object.assign(new Error('EsyGlob Shipping booking is temporarily unavailable. Please try again later.'), { statusCode: 503 });
+    }
 
     // Build automation
     const automation = buildAutomatedOrderServices({ quote, seller, product, logisticsOption: quote.selectedLogistics });
@@ -324,6 +333,7 @@ class OrderService {
         acceptedPolicies: ['terms', 'privacy', 'return_policy', 'trade_rules'],
         platformFeeSlab: quote.platformFeeSlab,
         providerQuoteId: quote.selectedLogistics.quoteId,
+        providerBookingSnapshot: bookingSnapshot,
         providerStatuses: liveShipping.providerStatuses,
       },
     });
@@ -445,6 +455,22 @@ class OrderService {
     }
 
     return { order: payload };
+  }
+
+  static async retryShippingBooking(userId, roles, orderId) {
+    const order = await OrderRepository.findByIdFull(orderId);
+    if (!order) throw Object.assign(new Error('Order not found'), { statusCode: 404 });
+    const seller = await OrderRepository.findSellerByUserId(userId);
+    const authorized = String(order.buyerId?._id || order.buyerId || order.userId) === String(userId)
+      || String(order.sellerId?._id || order.sellerId || '') === String(seller?._id || '')
+      || roles?.includes('admin');
+    if (!authorized) throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+    if (order.paymentStatus !== 'paid') throw Object.assign(new Error('Shipping can be booked only after verified payment'), { statusCode: 409 });
+    const shipment = await Shipment.findOne({ orderId: order._id }).sort({ createdAt: -1 });
+    if (!shipment) throw Object.assign(new Error('Order shipment is not ready for booking'), { statusCode: 409 });
+    const result = await bookPaidOrderWithProvider(order, shipment, userId);
+    await OrderRepository.save(order);
+    return { success: result.booked || result.alreadyBooked, booking: result, shipment };
   }
 
   static async sellerQueue(userId, query = {}) {

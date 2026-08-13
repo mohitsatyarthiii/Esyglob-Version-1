@@ -117,8 +117,8 @@ const orderSchema = new mongoose.Schema({
   totalAmount: Number,
   currency: { type: String, default: 'INR' },
 
-  paymentMethod: { type: String, enum: ['bank_transfer', 'credit_card', 'escrow', 'letter_of_credit'] },
-  paymentStatus: { type: String, enum: ['pending', 'partial', 'paid', 'refunded'], default: 'pending' },
+  paymentMethod: { type: String, enum: ['razorpay', 'bank_transfer', 'credit_card', 'escrow', 'letter_of_credit'] },
+  paymentStatus: { type: String, enum: ['pending', 'partial', 'paid', 'failed', 'refunded'], default: 'pending' },
   paymentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payment' },
   escrowId: { type: mongoose.Schema.Types.ObjectId, ref: 'EscrowTransaction' },
   invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', index: true },

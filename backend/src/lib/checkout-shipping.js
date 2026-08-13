@@ -9,13 +9,21 @@ function countryCode(value, explicit) {
   return COUNTRY_CODES[String(value || '').trim().toLowerCase()] || '';
 }
 
+function text(...values) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
 function address(input = {}, fallback = {}) {
   const country = input.country || fallback.country || 'India';
+  const fallbackAddress = fallback.address && typeof fallback.address === 'object' ? fallback.address : {};
   return {
     contactName: input.contactName || input.fullName || input.name || fallback.contactName || fallback.companyName || 'EsyGlob seller',
     phone: input.phone || fallback.phone || fallback.businessPhone || '',
     email: input.email || fallback.email || fallback.businessEmail || '',
-    line1: input.line1 || input.address || input.street || fallback.line1 || fallback.address || fallback.street || '',
+    line1: text(input.line1, typeof input.address === 'string' ? input.address : '', input.street, fallback.line1, typeof fallback.address === 'string' ? fallback.address : '', fallback.street, fallbackAddress.line1, fallbackAddress.street, fallback.companyName, input.city, fallback.city),
     line2: input.line2 || fallback.line2 || '',
     city: input.city || fallback.city || '',
     state: input.state || fallback.state || '',
@@ -83,6 +91,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       trackingAvailable: rate.trackingAvailable !== false,
       insuranceAvailable: rate.insuranceAvailable === true,
       pickupAvailable: rate.pickupAvailable === true,
+      bookingAvailable: Boolean(rate.pickupLocation),
       features: rate.features || [],
       recommended: rate.recommended === true,
       fastest: rate.fastest === true,

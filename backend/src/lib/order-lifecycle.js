@@ -2,6 +2,7 @@ import Invoice from '../models/Invoice.js';
 import Notification from '../models/Notification.js';
 import Shipment from '../models/Shipment.js';
 import Seller from '../models/Seller.js';
+import { bookPaidOrderWithProvider } from './order-provider-booking.js';
 
 export const ORDER_STATUS = {
   DRAFT: 'draft',
@@ -181,7 +182,9 @@ export async function ensureOrderShipment(order, { status = 'pending', updatedBy
         sellerId: order.sellerId,
         sellerUserId: seller?.userId,
         provider,
-        courierName: selected.label || order.shippingMethod || 'EsyGlob Logistics',
+        courierName: selected.providerKey === 'delhivery'
+          ? `EsyGlob Shipping${selected.label ? ` - ${selected.label}` : ''}`
+          : selected.label || order.shippingMethod || 'EsyGlob Logistics',
         serviceLevel: selected.mode || order.shippingMethod || 'standard',
         sellerAddress: seller?.address || {},
         insuranceStatus: Number(order.insuranceCost || selected.internalBreakdown?.insurance || 0) > 0 ? 'included' : 'not_applicable',
@@ -230,11 +233,12 @@ export async function markOrderPaymentSucceeded({ order, payment, updatedBy }) {
   pushTimeline(order, 'invoice_generated', `Invoice ${invoice.invoiceNumber} generated automatically`, updatedBy);
 
   const shipment = await ensureOrderShipment(order, { status: 'pending', updatedBy });
-  pushTimeline(order, 'preparing_shipment', 'Shipment record created and awaiting seller dispatch', updatedBy);
+  const providerBooking = await bookPaidOrderWithProvider(order, shipment, updatedBy);
+  pushTimeline(order, providerBooking.booked ? 'shipment_booked' : 'preparing_shipment', providerBooking.booked ? 'EsyGlob Shipping booked successfully' : 'Shipment record created and provider booking pending', updatedBy);
 
   order.platformServices = (order.platformServices || []).map(service => {
     if (service.key === 'gst_invoice' || service.key === 'invoice_generation') return { ...service, status: 'issued' };
-    if (service.key === 'shipment_tracking') return { ...service, status: 'preparing_shipment' };
+    if (service.key === 'shipment_tracking') return { ...service, status: providerBooking.booked ? 'booked' : 'booking_pending' };
     if (service.key === 'escrow') return { ...service, status: 'funded' };
     return service;
   });

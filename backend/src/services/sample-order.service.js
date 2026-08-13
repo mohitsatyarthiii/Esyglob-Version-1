@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
+import { providerBookingSnapshot } from '../lib/order-provider-booking.js';
 
 class SampleOrderService {
   /**
@@ -92,6 +93,13 @@ class SampleOrderService {
         { statusCode: 400 }
       );
     }
+    const bookingSnapshot = await providerBookingSnapshot(userId, quote.selectedLogistics.quoteId);
+    if (!bookingSnapshot) {
+      throw Object.assign(new Error('The selected shipping rate expired. Please refresh checkout and select shipping again.'), { statusCode: 409 });
+    }
+    if (bookingSnapshot.providerKey === 'delhivery' && !bookingSnapshot.providerPayload?.pickupName) {
+      throw Object.assign(new Error('EsyGlob Shipping booking is temporarily unavailable. Please try again later.'), { statusCode: 503 });
+    }
 
     // Build automation services
     const automation = buildAutomatedOrderServices({
@@ -161,6 +169,7 @@ class SampleOrderService {
         acceptedPolicies: ['terms', 'privacy', 'return_policy', 'trade_rules'],
         platformFeeSlab: quote.platformFeeSlab,
         providerQuoteId: quote.selectedLogistics.quoteId,
+        providerBookingSnapshot: bookingSnapshot,
         providerStatuses: liveShipping.providerStatuses,
         notes: notes || '',
       },

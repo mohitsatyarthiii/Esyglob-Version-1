@@ -63,6 +63,7 @@ export async function startSellerOrder(input) { return entity(await apiRequest('
 export async function updateOrder(id, input) { return entity(await apiRequest(`/orders/${id}`, { method: 'PATCH', body: input }), 'order') }
 export async function addProductionUpdate(id, input) { return entity(await apiRequest(`/orders/${id}/production-updates`, { method: 'POST', body: input }), 'order') }
 export async function buyerOrderAction(id, input) { return entity(await apiRequest(`/orders/${id}/buyer-action`, { method: 'POST', body: input }), 'order') }
+export async function retryOrderShippingBooking(id) { return unwrapData(await apiRequest(`/orders/${id}/retry-shipping-booking`, { method: 'POST' })) }
 export async function fetchTradeWorkspace(entityType, id) { return unwrapData(await apiRequest(`/trade-workspace/${entityType}/${id}`, { cache: false })) }
 export async function fetchUnifiedTradeWorkspace(entityType, id) { return unwrapData(await apiRequest(`/trade-workspace/trade/${entityType}/${id}`, { cache: false })) }
 export async function addTradeNote(entityType, id, input) { return unwrapData(await apiRequest(`/trade-workspace/${entityType}/${id}/notes`, { method: 'POST', body: input })) }

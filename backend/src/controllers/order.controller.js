@@ -1,6 +1,7 @@
 import OrderService from '../services/order.service.js';
 
 class OrderController {
+  static async retryShippingBooking(req,res){try{return res.json(await OrderService.retryShippingBooking(req.user._id,req.user.roles,req.params.orderId));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async sellerQueue(req,res){try{return res.json(await OrderService.sellerQueue(req.user._id,req.query));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async startOrder(req,res){try{return res.status(201).json(await OrderService.startOrder(req.user._id,req.body));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async buyerAction(req,res){try{return res.json(await OrderService.buyerAction(req.user._id,req.params.orderId,req.body));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
@@ -37,7 +38,7 @@ class OrderController {
         return res.status(404).json({ error: error.message });
       }
 
-      if (error.statusCode === 422 || error.statusCode === 502 || error.statusCode === 503) {
+      if (error.statusCode === 409 || error.statusCode === 422 || error.statusCode === 502 || error.statusCode === 503) {
         return res.status(error.statusCode).json({ error: error.message });
       }
 

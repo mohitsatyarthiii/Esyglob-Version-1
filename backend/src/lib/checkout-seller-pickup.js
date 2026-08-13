@@ -1,4 +1,5 @@
 import FactoryProfile from '../models/FactoryProfile.js';
+import User from '../models/User.js';
 
 function hasPickupAddress(value = {}) {
   return Boolean(
@@ -10,13 +11,20 @@ function hasPickupAddress(value = {}) {
 }
 
 export async function sellerWithCheckoutPickup(seller = {}) {
-  if (hasPickupAddress(seller.address) || hasPickupAddress(seller.shippingAddress)) return seller;
   if (!seller._id) return seller;
-  const factory = await FactoryProfile.findOne({ sellerId: seller._id })
-    .select('address')
-    .lean()
-    .exec();
-  return factory?.address ? { ...seller, shippingAddress: factory.address } : seller;
+  const [factory, user] = await Promise.all([
+    hasPickupAddress(seller.address) || hasPickupAddress(seller.shippingAddress)
+      ? null
+      : FactoryProfile.findOne({ sellerId: seller._id }).select('address').lean().exec(),
+    seller.userId ? User.findById(seller.userId).select('phone email fullName').lean().exec() : null,
+  ]);
+  return {
+    ...seller,
+    shippingAddress: factory?.address || seller.shippingAddress,
+    businessPhone: seller.businessPhone || user?.phone || '',
+    businessEmail: seller.businessEmail || user?.email || '',
+    companyName: seller.companyName || user?.fullName || 'EsyGlob seller',
+  };
 }
 
 export { hasPickupAddress };

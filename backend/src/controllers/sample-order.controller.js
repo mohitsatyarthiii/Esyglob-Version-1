@@ -18,7 +18,7 @@ class SampleOrderController {
         return res.status(404).json({ error: error.message });
       }
 
-      if (error.statusCode === 422 || error.statusCode === 502 || error.statusCode === 503) {
+      if (error.statusCode === 409 || error.statusCode === 422 || error.statusCode === 502 || error.statusCode === 503) {
         return res.status(error.statusCode).json({ error: error.message });
       }
 

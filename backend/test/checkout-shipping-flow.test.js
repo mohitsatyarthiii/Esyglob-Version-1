@@ -3,6 +3,9 @@ import test from 'node:test';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../src/lib/checkout-package.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../src/lib/checkout-shipping.js';
 import { hasPickupAddress } from '../src/lib/checkout-seller-pickup.js';
+import { bookPaidOrderWithProvider } from '../src/lib/order-provider-booking.js';
+import { getServiceProvider } from '../src/lib/service-providers/index.js';
+import mongoose from 'mongoose';
 
 test('checkout recognizes India by country name or ISO country code', () => {
   assert.equal(isIndianAddress({ country: 'India' }), true);
@@ -85,4 +88,53 @@ test('buyer measurements cannot override complete seller product packaging', () 
   }, 1);
   assert.equal(shipment.weightKg, 2);
   assert.deepEqual([shipment.lengthCm, shipment.widthCm, shipment.heightCm], [40, 30, 20]);
+});
+
+test('a paid checkout books the selected Delhivery snapshot and stores tracking', async () => {
+  const previous = {
+    token: process.env.DELHIVERY_API_TOKEN,
+    pickup: process.env.DELHIVERY_PICKUP_NAME,
+  };
+  const adapter = getServiceProvider('delhivery');
+  const originalBook = adapter.book;
+  try {
+    process.env.DELHIVERY_API_TOKEN = 'test-token';
+    process.env.DELHIVERY_PICKUP_NAME = 'Registered Warehouse';
+    adapter.book = async ({ quote, booking }) => {
+      assert.equal(quote.serviceCode, 'DELHIVERY_SURFACE');
+      assert.equal(booking.bookingNumber, 'SAM-1001');
+      return { providerReference: 'provider-1001', trackingNumber: 'WAYBILL1001', status: 'confirmed', providerPayload: { success: true } };
+    };
+    const order = {
+      _id: new mongoose.Types.ObjectId(),
+      orderNumber: 'SAM-1001',
+      paymentStatus: 'paid',
+      trackingNumber: '',
+      timeline: [],
+      tradeInformation: { providerBookingSnapshot: {
+        providerKey: 'delhivery',
+        serviceCode: 'DELHIVERY_SURFACE',
+        serviceName: 'Delhivery Surface',
+        requestSnapshot: { pickup: {}, destination: {}, shipment: {} },
+        providerPayload: { pickupName: 'Registered Warehouse' },
+      } },
+    };
+    const shipment = {
+      _id: new mongoose.Types.ObjectId(),
+      events: [],
+      save: async function save() { return this; },
+    };
+    const result = await bookPaidOrderWithProvider(order, shipment, new mongoose.Types.ObjectId());
+    assert.equal(result.booked, true);
+    assert.equal(shipment.provider, 'delhivery');
+    assert.equal(shipment.trackingNumber, 'WAYBILL1001');
+    assert.equal(shipment.status, 'label_created');
+    assert.equal(order.trackingNumber, 'WAYBILL1001');
+  } finally {
+    adapter.book = originalBook;
+    if (previous.token === undefined) delete process.env.DELHIVERY_API_TOKEN;
+    else process.env.DELHIVERY_API_TOKEN = previous.token;
+    if (previous.pickup === undefined) delete process.env.DELHIVERY_PICKUP_NAME;
+    else process.env.DELHIVERY_PICKUP_NAME = previous.pickup;
+  }
 });

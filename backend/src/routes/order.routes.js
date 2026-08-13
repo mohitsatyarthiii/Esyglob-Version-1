@@ -20,6 +20,7 @@ router.get('/:orderId', OrderController.getById);
 
 router.post('/:orderId/production-updates', OrderController.addProductionUpdate);
 router.post('/:orderId/buyer-action', OrderController.buyerAction);
+router.post('/:orderId/retry-shipping-booking', OrderController.retryShippingBooking);
 
 // PATCH - Update order status
 router.patch('/:orderId', OrderController.updateStatus);

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const addressSchema = z.object({
   contactName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().min(6).max(30),
+  phone: z.string().trim().max(30).optional().default(''),
   email: z.string().trim().email().optional().or(z.literal('')),
   line1: z.string().trim().min(5).max(240),
   line2: z.string().trim().max(240).optional().default(''),
@@ -52,6 +52,12 @@ export const providerSearchSchema = z.object({
   shipment: shipmentSchema,
   pickupDate: z.coerce.date().optional(),
 }).superRefine((value, context) => {
+  if (String(value.destination.phone || '').length < 6) {
+    context.addIssue({ code: 'custom', path: ['destination', 'phone'], message: 'A valid delivery phone number is required' });
+  }
+  if ((value.pickup.countryCode !== 'IN' || value.destination.countryCode !== 'IN') && String(value.pickup.phone || '').length < 6) {
+    context.addIssue({ code: 'custom', path: ['pickup', 'phone'], message: 'A valid pickup phone number is required for international shipping' });
+  }
   for (const side of ['pickup', 'destination']) {
     if (value[side].countryCode === 'IN' && !/^\d{6}$/.test(value[side].postalCode)) {
       context.addIssue({ code: 'custom', path: [side, 'postalCode'], message: 'Enter a valid 6-digit Indian pincode' });
