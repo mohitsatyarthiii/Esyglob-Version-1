@@ -8,13 +8,43 @@ import { getServiceProvider } from '../lib/service-providers/index.js';
 const PROVIDERS = ['delhivery', 'shiprocket'];
 
 function clean(value) { return String(value || '').trim(); }
+function normalizeIndianPhone(value) {
+  const digits = clean(value).replace(/\D/g, '');
+  return digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+}
+export function normalizePickupAddress(address = {}) {
+  return {
+    contactName: clean(address.contactName),
+    phone: normalizeIndianPhone(address.phone),
+    email: clean(address.email).toLowerCase(),
+    line1: clean(address.line1),
+    line2: clean(address.line2),
+    city: clean(address.city),
+    state: clean(address.state),
+    postalCode: clean(address.postalCode),
+    country: clean(address.country || 'India'),
+    countryCode: 'IN',
+  };
+}
 function validAddress(address) {
-  return clean(address.line1).length >= 5 && clean(address.city).length >= 2
+  return clean(address.contactName).length >= 2 && clean(address.line1).length >= 5 && clean(address.city).length >= 2
     && clean(address.state).length >= 2 && /^\d{6}$/.test(clean(address.postalCode))
-    && clean(address.phone).replace(/\D/g, '').length >= 10 && /@/.test(clean(address.email));
+    && clean(address.phone).replace(/\D/g, '').length === 10 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(address.email));
+}
+export function validatePickupAddress(address) {
+  const errors = {};
+  if (clean(address.contactName).length < 2) errors.contactName = 'Enter the pickup contact name.';
+  if (clean(address.line1).length < 5) errors.line1 = 'Enter the complete street address.';
+  if (clean(address.city).length < 2) errors.city = 'Enter the city.';
+  if (clean(address.state).length < 2) errors.state = 'Enter the state.';
+  if (!/^\d{6}$/.test(clean(address.postalCode))) errors.postalCode = 'Enter a valid 6-digit Indian pincode.';
+  if (clean(address.phone).replace(/\D/g, '').length !== 10) errors.phone = 'Enter a valid 10-digit Indian phone number.';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(address.email))) errors.email = 'Enter a valid email address.';
+  return errors;
 }
 function hashAddress(address) {
   return crypto.createHash('sha256').update(JSON.stringify([
+    clean(address.contactName).toLowerCase(), clean(address.phone), clean(address.email).toLowerCase(),
     clean(address.line1).toLowerCase(), clean(address.line2).toLowerCase(), clean(address.city).toLowerCase(),
     clean(address.state).toLowerCase(), clean(address.postalCode), clean(address.countryCode).toUpperCase(),
   ])).digest('hex');
@@ -38,13 +68,17 @@ async function publishReadiness(setup) {
   } });
 }
 
-export async function sellerPickup(sellerId) {
+export async function sellerPickup(sellerId, existingSetup = null) {
   const seller = await Seller.findById(sellerId).lean();
   if (!seller) throw Object.assign(new Error('Seller not found'), { statusCode: 404 });
   const [factory, user] = await Promise.all([
     FactoryProfile.findOne({ sellerId }).select('name address').lean(),
     User.findById(seller.userId).select('fullName phone email').lean(),
   ]);
+  const manualAddress = existingSetup?.manualPickupAddress;
+  if (manualAddress && Object.keys(manualAddress).length) {
+    return { seller, pickupSource: 'manual', address: normalizePickupAddress(manualAddress) };
+  }
   const sellerAddress = seller.address || {};
   const factoryAddress = factory?.address || {};
   const useFactory = Boolean(factoryAddress.street && factoryAddress.city && factoryAddress.state && factoryAddress.pincode);
@@ -52,22 +86,22 @@ export async function sellerPickup(sellerId) {
   return {
     seller,
     pickupSource: useFactory ? 'factory' : source?.city ? 'seller' : 'none',
-    address: {
+    address: normalizePickupAddress({
       contactName: clean(factory?.name || seller.companyName || user?.fullName || 'EsyGlob seller'),
       phone: clean(seller.businessPhone || user?.phone),
       email: clean(seller.businessEmail || user?.email),
       line1: clean(source.street || source.line1 || source.address),
       line2: clean(source.line2), city: clean(source.city), state: clean(source.state),
-      postalCode: clean(source.pincode || source.postalCode), country: clean(source.country || 'India'), countryCode: 'IN',
-    },
+      postalCode: clean(source.pincode || source.postalCode), country: clean(source.country || 'India'),
+    }),
   };
 }
 
 export async function synchronizeSellerShippingSetup(sellerId, { register = false, providerKeys = PROVIDERS } = {}) {
-  const { pickupSource, address } = await sellerPickup(sellerId);
+  let setup = await SellerShippingSetup.findOne({ sellerId });
+  const { pickupSource, address } = await sellerPickup(sellerId, setup);
   const addressValid = validAddress(address);
   const addressHash = hashAddress(address);
-  let setup = await SellerShippingSetup.findOne({ sellerId });
   if (!setup) setup = new SellerShippingSetup({ sellerId, providers: PROVIDERS.map(providerKey => ({ providerKey })) });
   if (setup.addressHash && setup.addressHash !== addressHash) {
     setup.providers = PROVIDERS.map(providerKey => ({ providerKey, status: 'pending', addressHash }));
@@ -127,6 +161,26 @@ export async function getSellerShippingSetup(userId) {
   const seller = await Seller.findOne({ userId }).select('_id').lean();
   if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
   return synchronizeSellerShippingSetup(seller._id, { register: false });
+}
+
+export async function updateSellerShippingSetup(userId, input = {}) {
+  const seller = await Seller.findOne({ userId }).select('_id').lean();
+  if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
+  const address = normalizePickupAddress(input.pickupAddress || input);
+  const fieldErrors = validatePickupAddress(address);
+  if (Object.keys(fieldErrors).length) {
+    throw Object.assign(new Error('Please complete all required pickup details.'), {
+      statusCode: 422,
+      code: 'INVALID_PICKUP_ADDRESS',
+      fieldErrors,
+    });
+  }
+  await SellerShippingSetup.updateOne(
+    { sellerId: seller._id },
+    { $set: { manualPickupAddress: address, pickupSource: 'manual' }, $setOnInsert: { providers: PROVIDERS.map(providerKey => ({ providerKey })) } },
+    { upsert: true },
+  );
+  return synchronizeSellerShippingSetup(seller._id, { register: input.register !== false });
 }
 
 export async function listSellerShippingSetups(query = {}) {

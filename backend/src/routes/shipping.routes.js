@@ -10,6 +10,7 @@ router.use(authenticate);
 router.use(requireAuth);
 
 router.get('/setup/me', requireRole('seller'), ShippingSetupController.mine);
+router.put('/setup/me', requireRole('seller'), ShippingSetupController.updateMine);
 router.post('/setup/me/sync', requireRole('seller'), ShippingSetupController.syncMine);
 router.get('/setup/admin', requireRole('admin'), ShippingSetupController.adminList);
 router.post('/setup/admin/:sellerId/retry', requireRole('admin'), ShippingSetupController.adminRetry);

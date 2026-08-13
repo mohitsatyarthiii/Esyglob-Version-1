@@ -2,10 +2,11 @@ import * as setupService from '../services/seller-shipping-setup.service.js';
 
 function send(res, promise, status = 200) {
   return promise.then(data => res.status(status).json({ setup: data }))
-    .catch(error => res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Shipping setup is temporarily unavailable' : error.message, code: error.code || 'SHIPPING_SETUP_FAILED' }));
+    .catch(error => res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Shipping setup is temporarily unavailable' : error.message, code: error.code || 'SHIPPING_SETUP_FAILED', fieldErrors: error.fieldErrors }));
 }
 
 export function mine(req, res) { return send(res, setupService.getSellerShippingSetup(req.user._id)); }
+export function updateMine(req, res) { return send(res, setupService.updateSellerShippingSetup(req.user._id, req.body)); }
 export async function syncMine(req, res) {
   try {
     const current = await setupService.getSellerShippingSetup(req.user._id);

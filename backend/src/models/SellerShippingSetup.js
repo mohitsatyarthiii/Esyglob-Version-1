@@ -15,7 +15,8 @@ const providerMappingSchema = new mongoose.Schema({
 
 const sellerShippingSetupSchema = new mongoose.Schema({
   sellerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seller', required: true, unique: true },
-  pickupSource: { type: String, enum: ['seller', 'factory', 'none'], default: 'none' },
+  pickupSource: { type: String, enum: ['manual', 'seller', 'factory', 'none'], default: 'none' },
+  manualPickupAddress: mongoose.Schema.Types.Mixed,
   addressHash: { type: String, index: true },
   pickupAddress: mongoose.Schema.Types.Mixed,
   readiness: { type: String, enum: ['invalid', 'pending', 'partial', 'ready', 'failed'], default: 'pending', index: true },
