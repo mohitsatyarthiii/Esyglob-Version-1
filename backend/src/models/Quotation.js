@@ -270,5 +270,15 @@ quotationSchema.index({
   buyerMessage: 'text',
   sellerMessage: 'text',
 });
+quotationSchema.index(
+  { rfqId: 1, userId: 1 },
+  {
+    unique: true,
+    name: 'one_open_quotation_per_manufacturer_rfq',
+    partialFilterExpression: {
+      status: { $in: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'buyer_accepted', 'final_quotation_pending', 'final_quotation_signed'] },
+    },
+  }
+);
 
 export default mongoose.models.Quotation || mongoose.model('Quotation', quotationSchema);

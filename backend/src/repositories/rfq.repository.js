@@ -10,16 +10,16 @@ import { OPEN_RFQ_STATUSES } from '../lib/rfq-helpers.js';
 export async function findRfqs(query, sort, skip, limit) {
   return RFQ.find(query)
     .select(
-      'buyerId sellerId sellerUserId conversationId productId rfqType title description category subcategory specifications items quantity minimumOrderQuantity unit targetPrice currency deliveryCountry deliveryPort deliveryTimeline incoterms attachments images documents status quotationCount viewedBySellerIds repliedBySellerIds visibility isVerifiedSuppliersOnly lastQuotedAt tradeOrderId acceptedQuotationId createdAt updatedAt'
+      'buyerId sellerId sellerUserId conversationId productId rfqType title description category subcategory specifications items quantity minimumOrderQuantity unit targetPrice currency deliveryCountry deliveryPort deliveryTimeline deliveryDate shippingPreference incoterms attachments images documents status quotationCount viewedBySellerIds repliedBySellerIds visibility isVerifiedSuppliersOnly lastQuotedAt expiresAt tradeOrderId acceptedQuotationId createdAt updatedAt'
     )
     .populate(
       'buyerId',
-      'email name fullName firstName lastName avatarUrl avatar profileImage'
+      'name fullName firstName lastName avatarUrl avatar profileImage'
     )
     .populate('sellerId', 'companyName companyLogo logo logoUrl userId')
     .populate(
       'sellerUserId',
-      'email name fullName firstName lastName avatarUrl avatar profileImage'
+      'name fullName firstName lastName avatarUrl avatar profileImage'
     )
     .populate('conversationId', '_id lastMessageAt')
     .populate('productId', 'name images price samplePrice minimumOrderQuantity')
@@ -87,6 +87,7 @@ export async function findSellersForNotification(query, limit = 50) {
 export async function findQuotationsByRfq(rfqId, userId = null) {
   const query = { rfqId };
   if (userId) query.userId = userId;
+  else query.status = { $ne: 'draft' };
 
   return Quotation.find(query)
     .populate({
@@ -127,7 +128,16 @@ export async function chatExistsForRfq(rfqId, buyerId, sellerUserId) {
 
 // ─── Notifications ─────────────────────────────────────────
 export async function createNotifications(notifications) {
-  return Notification.insertMany(notifications);
+  if (!notifications.length) return [];
+  const operations = notifications.map((notification) => notification.eventKey ? {
+    updateOne: {
+      filter: { userId: notification.userId, eventKey: notification.eventKey },
+      update: { $setOnInsert: notification },
+      upsert: true,
+    },
+  } : { insertOne: { document: notification } });
+  await Notification.bulkWrite(operations, { ordered: false });
+  return notifications;
 }
 
 export async function createNotification(notification) {

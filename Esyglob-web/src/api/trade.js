@@ -6,7 +6,7 @@ function entity(payload, key) {
 }
 
 export async function fetchRfqs(params = {}) {
-  const payload = await apiRequest('/rfqs', { query: { ...params, q: params.q || params.search, scope: params.scope === 'public' ? undefined : params.scope, limit: params.limit || 30 }, cache: false })
+  const payload = await apiRequest('/rfqs', { query: { ...params, search: params.search || params.q, q: undefined, scope: params.scope === 'public' ? undefined : params.scope, limit: params.limit || 30 }, cache: false })
   const data = unwrapData(payload)
   return { rfqs: normalizeList(payload, ['rfqs', 'items', 'results']), pagination: data?.pagination }
 }

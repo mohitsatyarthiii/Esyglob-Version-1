@@ -2,6 +2,11 @@ import mongoose from 'mongoose';
 
 const notificationSchema = new mongoose.Schema(
   {
+    eventKey: {
+      type: String,
+      trim: true,
+      sparse: true,
+    },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -135,6 +140,7 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, isRead: 1 });
 notificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, eventKey: 1 }, { unique: true, sparse: true });
 notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index
 notificationSchema.index({
   title: 'text',

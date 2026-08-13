@@ -154,7 +154,7 @@ export async function getRfqs(session, searchParams) {
       throw error;
     }
     if (!session.roles?.includes(USER_ROLES.SELLER)) {
-      const error = new Error('Seller access required');
+      const error = new Error('Manufacturer access required');
       error.statusCode = 403;
       throw error;
     }
@@ -163,6 +163,7 @@ export async function getRfqs(session, searchParams) {
       status && status !== 'all'
         ? status
         : { $in: OPEN_RFQ_STATUSES };
+    query.expiresAt = { $gt: new Date() };
     const eligiblePublic = publicRfqMatchQuery(seller);
     query.$and = [{
       $or: [
@@ -176,10 +177,11 @@ export async function getRfqs(session, searchParams) {
     }
   } else {
     query.status =
-      status && status !== 'all'
+      status && status !== 'all' && OPEN_RFQ_STATUSES.includes(status)
         ? status
-        : { $in: ['active', 'viewed', 'replied', 'quoted', 'negotiating'] };
+        : { $in: OPEN_RFQ_STATUSES };
     query.visibility = 'public';
+    query.expiresAt = { $gt: new Date() };
   }
 
   if (category) query.category = category;
@@ -206,9 +208,18 @@ export async function getRfqs(session, searchParams) {
   ]);
 
   const pages = Math.ceil(total / limitNum);
+  const publicListing = !wantsBuyerScope && scope !== 'seller';
+  const safeRfqs = publicListing ? rfqs.map((item) => {
+    const result = { ...item };
+    delete result.buyerId;
+    delete result.sellerId;
+    delete result.sellerUserId;
+    delete result.conversationId;
+    return result;
+  }) : rfqs;
 
   return {
-    rfqs,
+    rfqs: safeRfqs,
     pagination: {
       page: pageNum,
       limit: limitNum,
@@ -277,7 +288,7 @@ export async function createRfq(session, body) {
       : null;
   }
   if ((requestedSellerId || requestedSellerUserId) && !targetSeller) {
-    const error = new Error('Selected supplier is not available');
+    const error = new Error('Selected manufacturer is not available');
     error.statusCode = 404;
     throw error;
   }
@@ -400,7 +411,7 @@ export async function createRfq(session, body) {
         targetPrice: rfq.targetPrice,
         status: rfq.status,
         date: rfq.createdAt,
-        actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+        actionUrl: `/rfqs/${rfq._id}?role=seller`,
       },
     });
     await Promise.all([
@@ -408,20 +419,21 @@ export async function createRfq(session, body) {
         $set: {
           rfqId: rfq._id,
           chatType: 'rfq_negotiation',
-          lastMessage: `Private RFQ: ${title}`,
+          lastMessage: `Private RFQ: ${resolvedTitle}`,
           lastMessageAt: new Date(),
         },
         $inc: { sellerUnreadCount: 1 },
       }),
       Notification.create({
+        eventKey: `private-rfq:${rfq._id}:${targetSeller.userId}`,
         userId: targetSeller.userId,
         notificationType: 'rfq_created',
         title: 'New private RFQ received',
-        description: title,
+        description: resolvedTitle,
         data: {
           relatedId: rfq._id,
           relatedModel: 'RFQ',
-          actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+          actionUrl: `/rfqs/${rfq._id}?role=seller`,
         },
         priority: 'high',
       }),
@@ -445,7 +457,7 @@ export async function createRfq(session, body) {
     if (preferredSuppliersCountries?.length) {
       sellerQuery['address.country'] = { $in: preferredSuppliersCountries };
     }
-    const matchTerms = [category, subcategory]
+    const matchTerms = [resolvedCategory, resolvedSubcategory]
       .map((value) => String(value || '').trim())
       .filter(Boolean);
     if (matchTerms.length) {
@@ -464,18 +476,27 @@ export async function createRfq(session, body) {
     if (sellers.length) {
       await rfqRepository.createNotifications(
         sellers.map((seller) => ({
+          eventKey: `public-rfq:${rfq._id}:${seller.userId}`,
           userId: seller.userId,
           notificationType: 'rfq_created',
           title: 'New RFQ matching your marketplace',
-          description: title,
+          description: resolvedTitle,
           data: {
             relatedId: rfq._id,
             relatedModel: 'RFQ',
-            actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+            actionUrl: `/rfqs/${rfq._id}?role=seller`,
           },
           priority: 'medium',
         }))
       );
+      const io = getIO();
+      if (io) {
+        sellers.forEach((seller) => io.to(`user_${seller.userId}`).emit('new_notification', {
+          type: 'rfq_created',
+          rfqId: String(rfq._id),
+          actionUrl: `/rfqs/${rfq._id}?role=seller`,
+        }));
+      }
     }
   }
 
@@ -493,7 +514,7 @@ export async function getRfqDetail(session, rfqId) {
   }
 
   const isPublicRead =
-    rfq.visibility === 'public' && OPEN_RFQ_STATUSES.includes(rfq.status);
+    rfq.visibility === 'public' && OPEN_RFQ_STATUSES.includes(rfq.status) && (!rfq.expiresAt || new Date(rfq.expiresAt) > new Date());
   const isOwner = session?.userId && idMatches(rfq.buyerId, session.userId);
   const isAdmin = session?.roles?.includes(USER_ROLES.ADMIN);
 
@@ -516,7 +537,13 @@ export async function getRfqDetail(session, rfqId) {
   let quotationQuery = { rfqId };
   if (!isOwner && !isAdmin) {
     if (!session?.userId) {
-      return { rfq, quotations: [], quotationCount: 0, chats: [] };
+      const publicRfq = rfq.toObject ? rfq.toObject() : { ...rfq };
+      delete publicRfq.buyerId;
+      delete publicRfq.sellerId;
+      delete publicRfq.sellerUserId;
+      delete publicRfq.specificSupplierIds;
+      delete publicRfq.conversationId;
+      return { rfq: publicRfq, quotations: [], quotationCount: Number(publicRfq.quotationCount || 0), chats: [] };
     }
     quotationQuery.userId = session.userId;
   }
@@ -533,9 +560,20 @@ export async function getRfqDetail(session, rfqId) {
 
   const actorRole = isOwner ? 'buyer' : isEligibleSeller ? 'seller' : isAdmin ? 'admin' : 'viewer';
   const rfqPayload = rfq.toObject ? rfq.toObject() : rfq;
+  if (!isOwner && !isAdmin) {
+    if (!session?.userId) {
+      delete rfqPayload.buyerId;
+    } else if (rfqPayload.buyerId && typeof rfqPayload.buyerId === 'object') {
+      rfqPayload.buyerId = {
+        _id: rfqPayload.buyerId._id,
+        fullName: rfqPayload.buyerId.fullName || rfqPayload.buyerId.name || 'Marketplace buyer',
+        avatarUrl: rfqPayload.buyerId.avatarUrl || rfqPayload.buyerId.avatar || rfqPayload.buyerId.profileImage,
+      };
+    }
+  }
   if (actorRole === 'seller') {
     const sellerEvents = (rfqPayload.activityTimeline || []).filter(event => idMatches(event.actorId, session.userId));
-    rfqPayload.sellerWorkflow = { accepted: sellerEvents.some(event => event.action === 'seller_accept') || rfqPayload.status === 'seller_accepted', rejected: sellerEvents.some(event => event.action === 'seller_reject'), informationRequested: sellerEvents.some(event => event.action === 'seller_request_information') };
+    rfqPayload.sellerWorkflow = { accepted: rfqPayload.visibility === 'public' || sellerEvents.some(event => event.action === 'seller_accept') || rfqPayload.status === 'seller_accepted', rejected: sellerEvents.some(event => event.action === 'seller_reject'), informationRequested: sellerEvents.some(event => event.action === 'seller_request_information') };
   }
   rfqPayload.lifecycle = lifecycleSnapshot('rfq', rfqPayload, actorRole);
   return {
@@ -565,7 +603,7 @@ export async function updateRfq(session, rfqId, body) {
       : null;
 
     if (!(await canSellerAccessRfq(rfq, session.userId, seller))) {
-      const error = new Error('Seller is not eligible for this RFQ');
+      const error = new Error('Manufacturer is not eligible for this RFQ');
       error.statusCode = 403;
       throw error;
     }
@@ -585,7 +623,7 @@ export async function updateRfq(session, rfqId, body) {
       : null;
 
     if (!(await canSellerAccessRfq(rfq, session.userId, seller))) {
-      const error = new Error('Seller is not eligible for this RFQ');
+      const error = new Error('Manufacturer is not eligible for this RFQ');
       error.statusCode = 403;
       throw error;
     }
@@ -603,18 +641,18 @@ export async function updateRfq(session, rfqId, body) {
 
   if (['decline', 'accept', 'request_information'].includes(action)) {
     const seller = session.roles?.includes(USER_ROLES.SELLER) ? await rfqRepository.findSellerByUserId(session.userId) : null;
-    if (!(await canSellerAccessRfq(rfq, session.userId, seller))) { const error = new Error('Seller is not eligible for this RFQ'); error.statusCode = 403; throw error; }
+    if (!(await canSellerAccessRfq(rfq, session.userId, seller))) { const error = new Error('Manufacturer is not eligible for this RFQ'); error.statusCode = 403; throw error; }
     const lifecycleAction = action === 'decline' ? 'reject' : action;
     let nextStatus = rfq.status;
     if (rfq.visibility === 'private') nextStatus = assertTransition({ type: 'rfq', status: rfq.status, action: lifecycleAction, actorRole: 'seller' });
     const previousStatus = rfq.status;
-    recordTransition(rfq, { type: 'rfq', action: `seller_${lifecycleAction}`, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: body.reason || body.notes || `Seller ${lifecycleAction}ed this RFQ`, documents: body.documents || [] });
+    recordTransition(rfq, { type: 'rfq', action: `seller_${lifecycleAction}`, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: body.reason || body.notes || `Manufacturer ${lifecycleAction}ed this RFQ`, documents: body.documents || [] });
     await rfq.save();
-    await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'supplier_response', title: action === 'request_information' ? 'Seller requested more information' : `Seller ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
+    await rfqRepository.createNotification({ userId: rfq.buyerId, notificationType: 'supplier_response', title: action === 'request_information' ? 'Manufacturer requested more information' : `Manufacturer ${action}ed RFQ`, description: body.reason || body.notes || 'Review the RFQ workflow update.', data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}` }, priority: 'high' });
     if (action === 'accept') {
       const { chat } = await findOrCreateConversation({ buyerId: rfq.buyerId, sellerId: session.userId, productId: rfq.productId, rfqId: rfq._id, chatType: 'rfq_negotiation' });
       const Message = (await import('../models/Message.js')).default;
-      const content = `RFQ ${rfq.rfqNumber || rfq.title} accepted by the Seller. Quotation preparation is now enabled.`;
+      const content = `RFQ ${rfq.rfqNumber || rfq.title} accepted by the manufacturer. Quotation preparation is now enabled.`;
       const message = await Message.create({ chatId: chat._id, senderId: session.userId, receiverId: rfq.buyerId, content, messageType: 'system', rfqDetails: { rfqId: rfq._id, title: rfq.title, quantity: rfq.quantity, unit: rfq.unit, status: 'accepted', actionUrl: `/rfqs/${rfq._id}` }, isRead: false });
       chat.lastMessage = content;
       chat.lastMessageAt = new Date();
@@ -884,7 +922,7 @@ export async function createProductEnquiry(session, body) {
       targetPrice: rfq.targetPrice,
       status: rfq.status,
       date: rfq.createdAt,
-      actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+      actionUrl: `/rfqs/${rfq._id}?role=seller`,
     },
   });
 
@@ -912,7 +950,7 @@ export async function createProductEnquiry(session, body) {
         targetPrice: rfq.targetPrice,
         status: rfq.status,
         date: rfq.createdAt,
-        actionUrl: `/dashboard/buyer/rfqs/${rfq._id}`,
+        actionUrl: `/rfqs/${rfq._id}`,
       },
     },
   ]);
@@ -943,7 +981,7 @@ export async function createProductEnquiry(session, body) {
       data: {
         relatedId: rfq._id,
         relatedModel: 'RFQ',
-        actionUrl: `/dashboard/seller/rfqs/${rfq._id}`,
+        actionUrl: `/rfqs/${rfq._id}?role=seller`,
       },
       priority: 'high',
     }),

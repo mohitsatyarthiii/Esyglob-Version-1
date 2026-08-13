@@ -19,10 +19,10 @@ import { createTradeDocument } from './trade-artifact.service.js';
 async function sellerCanQuote(rfq, seller, sellerUserId) {
   if (!seller?.isActive || seller.isSuspended) return false;
   if (!OPEN_RFQ_STATUSES.includes(rfq.status)) return false;
-  const sellerAccepted = rfq.status === 'seller_accepted' || rfq.repliedBySellerIds?.some(value => idMatches(value, sellerUserId)) || rfq.activityTimeline?.some(event => event.action === 'seller_accept' && idMatches(event.actorId, sellerUserId));
-  if (!sellerAccepted) return false;
 
   if (rfq.visibility === 'private') {
+    const sellerAccepted = rfq.status === 'seller_accepted' || rfq.repliedBySellerIds?.some(value => idMatches(value, sellerUserId)) || rfq.activityTimeline?.some(event => event.action === 'seller_accept' && idMatches(event.actorId, sellerUserId));
+    if (!sellerAccepted) return false;
     if (
       idMatches(rfq.sellerUserId, sellerUserId) ||
       idMatches(rfq.sellerId, seller._id) ||
@@ -54,6 +54,7 @@ async function sellerCanQuote(rfq, seller, sellerUserId) {
 export async function getQuotations(session, searchParams) {
   const {
     rfqId,
+    productId: offeredProductId,
     status,
     scope,
     page = 1,
@@ -106,6 +107,9 @@ export async function getQuotations(session, searchParams) {
     const buyerRfqIds = await RFQ.distinct('_id', { buyerId: session.userId });
     query.rfqId = { $in: buyerRfqIds };
   }
+  if (scope === 'buyer' || (!scope && session.roles?.includes(USER_ROLES.BUYER) && !session.roles?.includes(USER_ROLES.SELLER))) {
+    query.status = status && status !== 'draft' ? status : { $ne: 'draft' };
+  }
 
   let [quotations, total] = await Promise.all([
     quotationRepository.findQuotations(query, (pageNum - 1) * limitNum, limitNum),
@@ -133,6 +137,7 @@ export async function createQuotation(session, body) {
   const saveAsDraft = body.status === 'draft';
   const {
     rfqId,
+    productId: offeredProductId,
     unitPrice,
     totalPrice,
     currency,
@@ -216,9 +221,38 @@ export async function createQuotation(session, body) {
 
   const seller = await quotationRepository.findSellerByUserId(session.userId);
   if (!seller) {
-    const error = new Error('Seller profile not found');
+    const error = new Error('Manufacturer profile not found');
     error.statusCode = 404;
     throw error;
+  }
+
+  const rfqProduct = rfq.productId
+    ? await quotationRepository.findProductById(rfq.productId)
+    : null;
+  const manufacturerOwnsRfqProduct = Boolean(
+    rfqProduct && idMatches(rfqProduct.sellerId, seller._id)
+  );
+
+  let offeredProduct = null;
+  if (offeredProductId) {
+    if (!mongoose.Types.ObjectId.isValid(offeredProductId)) {
+      throw Object.assign(new Error('Select a valid manufacturer product for this quotation'), { statusCode: 422 });
+    }
+    offeredProduct = await quotationRepository.findProductById(offeredProductId);
+    if (!offeredProduct || !idMatches(offeredProduct.sellerId, seller._id) || !['published', 'active'].includes(offeredProduct.status)) {
+      throw Object.assign(new Error('The selected product is not an active product from your manufacturer catalogue'), { statusCode: 403 });
+    }
+  }
+
+  // A private, product-specific RFQ can reuse the requested product when it
+  // belongs to the invited manufacturer. Public marketplace respondents must
+  // link a product from their own catalogue so checkout never points at a
+  // different manufacturer's listing.
+  const quotationProductId = manufacturerOwnsRfqProduct
+    ? rfqProduct._id
+    : offeredProduct?._id;
+  if (!quotationProductId && !saveAsDraft) {
+    throw Object.assign(new Error('Select the manufacturer product linked to this quotation so accepted terms can continue to checkout'), { statusCode: 422 });
   }
 
   if (!(await sellerCanQuote(rfq, seller, session.userId))) {
@@ -234,6 +268,10 @@ export async function createQuotation(session, body) {
   );
 
   if (existingQuotation) {
+    if (!existingQuotation.productId && quotationProductId) {
+      existingQuotation.productId = quotationProductId;
+      await existingQuotation.save();
+    }
     return reviseExistingQuotation(
       existingQuotation,
       session,
@@ -246,7 +284,7 @@ export async function createQuotation(session, body) {
   // Create new quotation
   const quotation = await quotationRepository.createQuotation({
     rfqId,
-    productId: rfq.productId || null,
+    productId: quotationProductId || null,
     sellerId: seller._id,
     userId: session.userId,
     unitPrice: numericUnitPrice,
@@ -345,7 +383,7 @@ export async function createQuotation(session, body) {
       targetPrice: rfq.targetPrice,
       status: rfq.status,
       date: rfq.createdAt,
-      actionUrl: `/dashboard/buyer/rfqs/${rfq._id}`,
+      actionUrl: `/rfqs/${rfq._id}`,
     },
     quotationDetails: {
       quotationId: quotation._id,
@@ -357,7 +395,7 @@ export async function createQuotation(session, body) {
       leadTime: quotation.leadTime,
       leadTimeUnit: quotation.leadTimeUnit,
       status: quotation.status,
-      actionUrl: `/dashboard/buyer/quotations/${quotation._id}`,
+      actionUrl: `/quotations/${quotation._id}`,
     },
   });
 
@@ -368,14 +406,15 @@ export async function createQuotation(session, body) {
 
   // Notify buyer
   await quotationRepository.createNotification({
+    eventKey: `quotation-submitted:${quotation._id}:${rfq.buyerId}`,
     userId: rfq.buyerId,
     notificationType: 'quotation_received',
     title: 'New quotation received',
-    description: `${seller.companyName || 'A seller'} quoted ${quotation.currency} ${quotation.unitPrice} per unit for ${rfq.title}`,
+    description: `${seller.companyName || 'A manufacturer'} quoted ${quotation.currency} ${quotation.unitPrice} per unit for ${rfq.title}`,
     data: {
       relatedId: quotation._id,
       relatedModel: 'Quotation',
-      actionUrl: `/dashboard/buyer/rfqs/${rfq._id}`,
+      actionUrl: `/quotations/${quotation._id}`,
     },
     priority: 'high',
   });
@@ -455,7 +494,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     description: existingQuotation.description,
     specifications: existingQuotation.specifications,
     notes: existingQuotation.notes,
-    reason: 'Seller revised quotation',
+    reason: 'Manufacturer revised quotation',
     pricingTiers: existingQuotation.pricingTiers,
     shippingEstimate: existingQuotation.shippingEstimate,
     shippingTerms: existingQuotation.shippingTerms,
@@ -513,7 +552,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
   existingQuotation.negotiationHistory.push({
     action: 'seller_revision',
     actorId: session.userId,
-    message: sellerMessage || notes || 'Seller revised the quotation.',
+    message: sellerMessage || notes || 'Manufacturer revised the quotation.',
     unitPrice: existingQuotation.unitPrice,
     totalPrice: existingQuotation.totalPrice,
     minimumOrderQuantity: existingQuotation.minimumOrderQuantity,
@@ -534,11 +573,11 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     userId: rfq.buyerId,
     notificationType: 'quotation_revised',
     title: 'Quotation revised',
-    description: `${seller.companyName || 'A seller'} revised a quotation for ${rfq.title}`,
+    description: `${seller.companyName || 'A manufacturer'} revised a quotation for ${rfq.title}`,
     data: {
       relatedId: existingQuotation._id,
       relatedModel: 'Quotation',
-      actionUrl: `/dashboard/buyer/rfqs/${rfq._id}`,
+      actionUrl: `/rfqs/${rfq._id}`,
     },
     priority: 'high',
   });
@@ -577,7 +616,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
       leadTime: existingQuotation.leadTime,
       leadTimeUnit: existingQuotation.leadTimeUnit,
       status: existingQuotation.status,
-      actionUrl: `/dashboard/buyer/quotations/${existingQuotation._id}`,
+      actionUrl: `/quotations/${existingQuotation._id}`,
     },
   });
 
@@ -599,8 +638,9 @@ export async function getQuotationDetail(session, quotationId) {
     throw error;
   }
 
+  const isBuyer = quotation.rfqId.buyerId.toString() === session.userId;
   const isAuthorized =
-    quotation.rfqId.buyerId.toString() === session.userId ||
+    (isBuyer && quotation.status !== 'draft') ||
     quotation.userId._id.toString() === session.userId;
 
   if (!isAuthorized) {
@@ -654,6 +694,33 @@ export async function updateQuotation(session, quotationId, body) {
     quotation.status = action === 'withdraw' ? 'withdrawn' : 'submitted';
     quotation.activityTimeline.push({ action: action === 'withdraw' ? 'quotation_withdrawn' : 'quotation_sent', status: quotation.status, message: reason || body.sellerMessage || `Quotation ${action}`, actorId: session.userId, actorRole: 'seller' });
     await quotation.save();
+    if (action === 'send') {
+      const rfq = await quotationRepository.findRfqById(quotation.rfqId);
+      const seller = await quotationRepository.findSellerByUserId(session.userId);
+      if (!rfq || !(await sellerCanQuote(rfq, seller, session.userId))) {
+        quotation.status = 'draft';
+        quotation.activityTimeline.pop();
+        await quotation.save();
+        throw Object.assign(new Error('This RFQ is no longer open for quotations'), { statusCode: 409 });
+      }
+      if (!rfq.repliedBySellerIds.some((value) => idMatches(value, session.userId))) {
+        rfq.repliedBySellerIds.push(session.userId);
+        rfq.quotationCount = Number(rfq.quotationCount || 0) + 1;
+      }
+      rfq.status = ['viewed', 'pending', 'active', 'submitted', 'seller_accepted', 'ready_for_quotation'].includes(rfq.status) ? 'quoted' : rfq.status;
+      rfq.lastQuotedAt = new Date();
+      await rfq.save();
+      await quotationRepository.createNotification({
+        eventKey: `quotation-submitted:${quotation._id}:${rfq.buyerId}`,
+        userId: rfq.buyerId,
+        notificationType: 'quotation_received',
+        title: 'New quotation received',
+        description: `${seller.companyName || 'A manufacturer'} submitted a quotation for ${rfq.title}`,
+        data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` },
+        priority: 'high',
+      });
+      await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, content: `Quotation submitted: ${quotation.currency} ${quotation.unitPrice} per unit, MOQ ${quotation.minimumOrderQuantity}, lead time ${quotation.leadTime} ${quotation.leadTimeUnit}.` });
+    }
     return { quotation, message: action === 'withdraw' ? 'Quotation withdrawn' : 'Quotation sent to buyer' };
   }
   if (needsFinalQuotationDocument(quotation)) {
@@ -780,7 +847,7 @@ export async function updateQuotation(session, quotationId, body) {
       data: {
         relatedId: quotation._id,
         relatedModel: 'Quotation',
-        actionUrl: `/dashboard/seller/rfqs/${quotation.rfqId}`,
+        actionUrl: `/quotations/${quotation._id}?role=seller`,
       },
       priority: 'high',
     });
@@ -853,7 +920,7 @@ export async function updateQuotation(session, quotationId, body) {
 
   quotation.revisionNumber += 1;
   const previousStatus = quotation.status;
-  quotation.status = 'revised';
+  quotation.status = previousStatus === 'draft' ? 'draft' : 'revised';
   quotation.negotiationHistory.push({
     action: 'seller_revision',
     actorId: session.userId,
@@ -873,12 +940,12 @@ export async function updateQuotation(session, quotationId, body) {
       (quotation.shippingCost || 0);
 
   quotation.previousStatus = previousStatus;
-  quotation.activityTimeline.push({ action: 'seller_revision', status: 'revised', message: body.sellerMessage || body.notes || `Quotation version ${quotation.revisionNumber} submitted`, actorId: session.userId, actorRole: 'seller', metadata: { version: quotation.revisionNumber, documents: quotation.attachments || [] } });
+  quotation.activityTimeline.push({ action: previousStatus === 'draft' ? 'draft_updated' : 'seller_revision', status: quotation.status, message: body.sellerMessage || body.notes || `Quotation version ${quotation.revisionNumber} updated`, actorId: session.userId, actorRole: 'seller', metadata: { version: quotation.revisionNumber, documents: quotation.attachments || [] } });
 
   await quotation.save();
 
   const rfq = await quotationRepository.findRfqById(quotation.rfqId);
-  if (rfq) {
+  if (rfq && quotation.status !== 'draft') {
     rfq.status = 'negotiating';
     rfq.activityTimeline.push({ action: 'quotation_revised', status: 'negotiating', message: `Quotation version ${quotation.revisionNumber} is ready for buyer review`, actorId: session.userId, actorRole: 'seller', metadata: { quotationId: quotation._id } });
     await rfq.save();

@@ -2,6 +2,7 @@ import { Archive, ArrowLeft, Calendar, FileText, MapPin, MessageSquare, PackageC
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { archiveRfq, createChat, createQuotation, fetchRfq, updateRfq } from '../api/trade'
+import { fetchSellerProducts } from '../api/account'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
 import { AttachmentUploader, DetailItem, Money, StatusBadge } from '../components/TradeUI'
@@ -72,10 +73,14 @@ function QuotationPreview({ quote, onChat }) {
 }
 
 function QuotationForm({ rfq, onClose, onSuccess }) {
+  const productsQuery = useAsyncData(useCallback(() => fetchSellerProducts({ status: 'published', limit: 100 }), []))
+  const manufacturerProducts = productsQuery.data?.products || []
+  const fixedProductId = rfq.visibility === 'private' ? resolveId(rfq.productId) : ''
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
+    productId: fixedProductId,
     unitPrice: '',
     currency: rfq.currency || 'INR',
     minimumOrderQuantity: rfq.minimumOrderQuantity || 1,
@@ -96,6 +101,10 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
 
   async function submit(event, status = 'submitted') {
     event.preventDefault()
+    if (!form.productId) {
+      setError('Select the manufacturer product linked to this quotation.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
@@ -121,6 +130,7 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
 
   return <div className="modal-backdrop" onMouseDown={onClose}><form className="quotation-modal quotation-modal--compact" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}>
     <div className="compact-heading"><div><span className="eyebrow">Commercial response</span><h2>Prepare quotation</h2></div><button type="button" onClick={onClose}>×</button></div>
+    <Field label="Manufacturer product" required><select value={form.productId} onChange={(event) => update('productId', event.target.value)} required disabled={Boolean(fixedProductId)}><option value="">Select the catalogue product linked to this offer</option>{manufacturerProducts.map((product) => <option value={resolveId(product)} key={resolveId(product)}>{product.name}</option>)}</select>{productsQuery.error && <small>Unable to load your catalogue. Publish a product before quoting.</small>}</Field>
     <div className="form-grid form-grid--3">
       <Field label="Unit price" required><input type="number" min="0.01" step="0.01" value={form.unitPrice} onChange={(event) => update('unitPrice', event.target.value)} required /></Field>
       <Field label="MOQ" required><input type="number" min="1" value={form.minimumOrderQuantity} onChange={(event) => update('minimumOrderQuantity', event.target.value)} required /></Field>

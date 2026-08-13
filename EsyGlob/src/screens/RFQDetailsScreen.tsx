@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
-import { createQuotation, fetchRFQDetails, startProductChat, uploadFiles, type UploadAttachment } from '../api/marketplace';
+import { createQuotation, fetchRFQDetails, fetchSellerProducts, startProductChat, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
@@ -106,6 +106,7 @@ function RFQDetailsScreen() {
   const [quoteAttachments, setQuoteAttachments] = useState<UploadAttachment[]>([]);
   const [quoteUploading, setQuoteUploading] = useState(false);
   const [quoteForm, setQuoteForm] = useState({
+    productId: '',
     suppliedQuantity: '',
     minimumOrderQuantity: '1',
     unitPrice: '',
@@ -124,6 +125,13 @@ function RFQDetailsScreen() {
     queryFn: () => fetchRFQDetails(rfqId),
     enabled: Boolean(rfqId),
     staleTime: 30_000,
+  });
+
+  const sellerProducts = useQuery({
+    queryKey: ['manufacturer-products-for-rfq'],
+    queryFn: () => fetchSellerProducts({ status: 'published', limit: 100 }),
+    enabled: activeRole === 'seller',
+    staleTime: 60_000,
   });
 
   const uploadQuoteFiles = async (files: Array<{ uri: string; name: string; type: string }>) => {
@@ -165,10 +173,11 @@ function RFQDetailsScreen() {
       const productId = typeof item.productId === 'string'
         ? item.productId
         : (item.productId as any)?._id;
+      const fixedProductId = item.visibility === 'private' ? productId : undefined;
 
       return createQuotation({
         rfqId: getId(item) ?? '',
-        productId: productId ?? '',
+        productId: fixedProductId ?? quoteForm.productId,
         title: item.title ?? (item as any).productName ?? 'Quotation',
         suppliedQuantity: Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1) || 1,
         minimumOrderQuantity: Number(quoteForm.minimumOrderQuantity) || 1,
@@ -224,6 +233,8 @@ function RFQDetailsScreen() {
       return startProductChat({
         otherUserId,
         productId: typeof item.productId === 'string' ? item.productId : (item.productId as any)?._id ?? '',
+        rfqId,
+        chatType: 'rfq_negotiation',
         role: activeRole === 'seller' ? 'seller' : 'buyer',
         enquiry: false,
       });
@@ -255,6 +266,7 @@ function RFQDetailsScreen() {
   const title = item.title ?? item.productName ?? 'RFQ';
   const destination = item.destinationCountry ?? item.deliveryCountry;
   const productId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
+  const fixedQuotationProductId = item.visibility === 'private' ? productId : undefined;
   const statusCfg = getStatusConfig(item.status ?? 'active');
   const quotations: Quotation[] = (rfq.data as any)?.quotations ?? [];
   const chats: any[] = (rfq.data as any)?.chats ?? [];
@@ -405,6 +417,7 @@ function RFQDetailsScreen() {
               </Pressable>
             </View>
             <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+              {!fixedQuotationProductId && <View style={styles.formField}><Text style={styles.formLabel}>Manufacturer Product</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.productChoices}>{(sellerProducts.data?.products ?? []).map(product => { const id = getId(product); const selected = quoteForm.productId === id; return <Pressable key={id} onPress={() => setQuoteForm({ ...quoteForm, productId: id })} style={[styles.productChoice, selected && styles.productChoiceActive]}><Icon name={selected ? 'check-circle' : 'package-variant'} size={16} color={selected ? '#FFF' : P.accent} /><Text numberOfLines={1} style={[styles.productChoiceText, selected && styles.productChoiceTextActive]}>{product.name}</Text></Pressable>})}</ScrollView>{!sellerProducts.isLoading && !sellerProducts.data?.products?.length && <Text style={styles.productChoiceEmpty}>Publish a catalogue product before submitting this quotation.</Text>}</View>}
               <View style={styles.formRow}>
                 <FormField label={`Unit Price (${selectedCurrency})`} value={quoteForm.unitPrice} onChangeText={v => setQuoteForm({ ...quoteForm, unitPrice: v })} keyboardType="numeric" compact />
                 <FormField label="MOQ" value={quoteForm.minimumOrderQuantity} onChangeText={v => setQuoteForm({ ...quoteForm, minimumOrderQuantity: v })} keyboardType="numeric" compact />
@@ -436,9 +449,9 @@ function RFQDetailsScreen() {
               )}
 
               <Pressable
-                disabled={submitQuote.isPending}
+                disabled={submitQuote.isPending || (!fixedQuotationProductId && !quoteForm.productId)}
                 onPress={() => submitQuote.mutate()}
-                style={[styles.submitSheetBtn, submitQuote.isPending && styles.btnDisabled]}>
+                style={[styles.submitSheetBtn, (submitQuote.isPending || (!fixedQuotationProductId && !quoteForm.productId)) && styles.btnDisabled]}>
                 {submitQuote.isPending ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
@@ -572,6 +585,12 @@ const styles = StyleSheet.create({
   checkDesc: { color: P.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 2 },
   formField: { marginBottom: 12 },
   formFieldCompact: { flex: 1 },
+  productChoices: { gap: 8, paddingVertical: 4 },
+  productChoice: { alignItems: 'center', borderColor: P.border, borderRadius: 9, borderWidth: 1, flexDirection: 'row', gap: 6, maxWidth: 220, paddingHorizontal: 11, paddingVertical: 9 },
+  productChoiceActive: { backgroundColor: P.accent, borderColor: P.accent },
+  productChoiceText: { color: P.text, flexShrink: 1, fontSize: 12, fontWeight: '600' },
+  productChoiceTextActive: { color: '#FFF' },
+  productChoiceEmpty: { color: P.danger, fontSize: 11, marginTop: 5 },
   formLabel: { fontSize: 10, fontWeight: '600', color: P.muted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
   quoteAttachment: { alignItems: 'center', backgroundColor: P.inputBg, borderRadius: 9, flexDirection: 'row', gap: 8, marginBottom: 7, padding: 10 },
   quoteAttachmentName: { color: P.text, flex: 1, fontSize: 12, fontWeight: '600' },

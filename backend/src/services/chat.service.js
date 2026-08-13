@@ -713,6 +713,42 @@ export async function createChat(session, chatData) {
     throw error;
   }
 
+  let linkedRfq = null;
+  if (rfqId) {
+    linkedRfq = await chatRepository.findRfqById(rfqId);
+    const sellerProfile = await chatRepository.findSellerByUserIdLean(sellerId);
+    const privateRecipient = linkedRfq?.visibility !== 'private' ||
+      String(linkedRfq.sellerUserId || '') === String(sellerId) ||
+      String(linkedRfq.sellerId || '') === String(sellerProfile?._id || '') ||
+      linkedRfq.specificSupplierIds?.some((value) => String(value) === String(sellerProfile?._id || ''));
+    const publicOpen = linkedRfq?.visibility !== 'public' ||
+      (!linkedRfq.expiresAt || new Date(linkedRfq.expiresAt) > new Date()) &&
+      !['draft', 'closed', 'cancelled', 'archived', 'expired', 'rejected', 'converted'].includes(linkedRfq.status);
+    if (!linkedRfq || String(linkedRfq.buyerId) !== String(buyerId) || !privateRecipient || !publicOpen) {
+      const error = new Error('RFQ conversation access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  if (quotationId) {
+    const linkedQuotation = await chatRepository.findQuotationById(quotationId);
+    if (!linkedQuotation || String(linkedQuotation.userId) !== String(sellerId) ||
+      (rfqId && String(linkedQuotation.rfqId) !== String(rfqId))) {
+      const error = new Error('Quotation conversation access denied');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (!linkedRfq) {
+      linkedRfq = await chatRepository.findRfqById(linkedQuotation.rfqId);
+      if (!linkedRfq || String(linkedRfq.buyerId) !== String(buyerId)) {
+        const error = new Error('Quotation conversation access denied');
+        error.statusCode = 403;
+        throw error;
+      }
+    }
+  }
+
   const conversation = await findOrCreateConversation({
     buyerId,
     sellerId,
@@ -723,8 +759,8 @@ export async function createChat(session, chatData) {
   });
 
   if (rfqId) {
-    const rfq = await chatRepository.findRfqById(rfqId);
-    if (rfq && rfq.status === 'pending') {
+    const rfq = linkedRfq;
+    if (rfq && ['pending', 'submitted', 'active'].includes(rfq.status)) {
       rfq.status = 'viewed';
       rfq.viewedBySellerIds = rfq.viewedBySellerIds || [];
       if (!rfq.viewedBySellerIds.some((id) => id.toString() === sellerId)) {

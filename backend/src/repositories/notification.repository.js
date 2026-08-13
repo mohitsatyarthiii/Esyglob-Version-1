@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 // Notification type category mapping
 export const NOTIFICATION_CATEGORIES = {
   messages: ['message', 'message_received'],
-  enquiries: ['new_inquiry', 'rfq_created'],
+  enquiries: ['new_inquiry', 'rfq_created', 'quotation_received', 'quotation_accepted', 'quotation_rejected', 'quotation_counter_offer', 'quotation_revised', 'quotation_revision_requested'],
   orders: [
     'order_placed', 'order_pending', 'order_pending_approval',
     'order_awaiting_payment', 'order_pending_payment', 'order_payment_confirmed',
@@ -162,20 +162,24 @@ class NotificationRepository {
    * Create a notification
    */
   static async create(data) {
-    return Notification.create(data);
+    if (!data.eventKey) return Notification.create(data);
+    return Notification.findOneAndUpdate(
+      { userId: data.userId, eventKey: data.eventKey },
+      { $setOnInsert: data },
+      { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+    );
   }
 
   /**
    * Create notifications for multiple users
    */
   static async createForUsers(userIds, data) {
-    const notifications = userIds.map(userId => ({
+    return Promise.all(userIds.map(userId => this.create({
       ...data,
+      eventKey: data.eventKey ? `${data.eventKey}:${userId}` : undefined,
       userId,
       isRead: false,
-      createdAt: new Date(),
-    }));
-    return Notification.insertMany(notifications);
+    })));
   }
 }
 

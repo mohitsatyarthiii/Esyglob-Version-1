@@ -187,7 +187,7 @@ function RFQScreen() {
           <View style={styles.topBar}>
             <View style={styles.topBarLeft}>
               <Text style={styles.eyebrow}>
-                {role === 'seller' ? 'Seller Sourcing Desk' : 'Buyer Sourcing Desk'}
+                {role === 'seller' ? 'Manufacturer Sourcing Desk' : 'Buyer Sourcing Desk'}
               </Text>
               <Text style={styles.screenTitle}>RFQs & Quotations</Text>
             </View>

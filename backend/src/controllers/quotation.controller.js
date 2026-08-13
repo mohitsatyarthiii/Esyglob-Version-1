@@ -30,13 +30,16 @@ export async function createQuotation(req, res, next) {
     const session = await getSession(req);
 
     if (!session?.userId || !session?.roles?.includes('seller')) {
-      return res.status(403).json({ error: 'Only sellers can create quotations' });
+      return res.status(403).json({ error: 'Only manufacturers can create quotations' });
     }
 
     const result = await quotationService.createQuotation(session, req.body);
 
     return res.status(201).json(result);
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({ error: 'A quotation already exists for this RFQ. Open it to revise the existing quotation.' });
+    }
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         error: error.message,

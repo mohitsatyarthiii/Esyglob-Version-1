@@ -21,11 +21,12 @@ const filters = [
 ];
 
 export default function RfqsPage() {
-  const { user } = useAuth();
+  const { user, status: authStatus } = useAuth();
   const [params, setParams] = useSearchParams();
-  const role = user?.primaryRole === "seller" ? "seller" : "buyer";
+  const role = authStatus !== "authenticated" ? "public" : user?.primaryRole === "seller" ? "seller" : "buyer";
   const status = params.get("status") || "all";
   const q = params.get("q") || "";
+  const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
   const loader = useCallback(
     () =>
@@ -33,17 +34,22 @@ export default function RfqsPage() {
         scope: role,
         status: status === "all" ? undefined : status,
         q,
+        page,
+        limit: 20,
         sort: "createdAt",
         order: "desc",
       }),
-    [q, role, status]
+    [page, q, role, status]
   );
   const query = useAsyncData(loader);
   const rows = query.data?.rfqs || [];
-  const heading = role === "seller" ? "Available RFQs" : "My RFQs";
+  const pagination = query.data?.pagination || {};
+  const visibleFilters = role === "public" ? ["all", "submitted", "active", "quoted", "negotiating"] : filters;
+  const heading = role === "buyer" ? "My RFQs" : "Public RFQ Marketplace";
   const set = (key, value) => {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
+    if (key !== "page") next.delete("page");
     setParams(next);
   };
   return (
@@ -51,13 +57,13 @@ export default function RfqsPage() {
       <div className="listing-page container trade-page">
         <PageHead
           eyebrow={
-            role === "seller" ? "Seller opportunities" : "Buyer sourcing"
+            role === "buyer" ? "Buyer sourcing" : "Manufacturer opportunities"
           }
           title={heading}
           description={
-            role === "seller"
-              ? "Review relevant public requirements and respond with a quotation."
-              : "Create, track and manage sourcing requirements and seller responses."
+            role === "buyer"
+              ? "Create, track and manage sourcing requirements and manufacturer responses."
+              : "Discover active public requirements and submit a connected quotation."
           }
         />
         <div className="trade-page-actions">
@@ -66,12 +72,12 @@ export default function RfqsPage() {
               <Plus /> Create RFQ
             </Link>
           )}
-          <Link
+          {role !== "public" && <Link
             className="button button--secondary"
             to={`/quotations?role=${role}`}
           >
             Quotations <ArrowRight />
-          </Link>
+          </Link>}
         </div>
         <div className="trade-toolbar">
           <UnifiedSearchInput
@@ -88,7 +94,7 @@ export default function RfqsPage() {
               value={status}
               onChange={(e) => set("status", e.target.value)}
             >
-              {filters.map((item) => (
+              {visibleFilters.map((item) => (
                 <option key={item} value={item}>
                   {item.replaceAll("_", " ")}
                 </option>
@@ -97,7 +103,7 @@ export default function RfqsPage() {
           </label>
         </div>
         <div className="filter-chips">
-          {filters.slice(0, 7).map((item) => (
+          {visibleFilters.slice(0, 7).map((item) => (
             <button
               className={status === item ? "active" : ""}
               key={item}
@@ -126,11 +132,18 @@ export default function RfqsPage() {
             <Archive />
             <h2>No RFQs found</h2>
             <p>
-              {role === "seller"
+              {role !== "buyer"
                 ? "New matching buyer requirements will appear here."
-                : "Create an RFQ to start receiving supplier quotations."}
+                : "Create an RFQ to start receiving manufacturer quotations."}
             </p>
           </div>
+        )}
+        {!query.loading && !query.error && Number(pagination.pages || pagination.totalPages || 0) > 1 && (
+          <nav className="trade-page-actions" aria-label="RFQ pages">
+            <button className="button button--secondary" disabled={page <= 1} onClick={() => set("page", String(page - 1))}>Previous</button>
+            <span>Page {page} of {pagination.pages || pagination.totalPages}</span>
+            <button className="button button--secondary" disabled={!pagination.hasMore && page >= Number(pagination.pages || pagination.totalPages)} onClick={() => set("page", String(page + 1))}>Next</button>
+          </nav>
         )}
       </div>
     </AppShell>
@@ -187,7 +200,7 @@ export function RfqCard({ item, sellerView }) {
           {Number(item.quotationCount) === 1 ? "" : "s"}
         </span>
         <Link to={path}>
-          {sellerView ? "Review and quote" : "View responses"} <ArrowRight />
+          {sellerView ? "Review and quote" : "View manufacturer responses"} <ArrowRight />
         </Link>
       </div>
     </article>

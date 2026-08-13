@@ -5,6 +5,7 @@ import Notification from '../models/Notification.js';
 import Product from '../models/Product.js';
 import Seller from '../models/Seller.js';
 import RFQ from '../models/RFQ.js';
+import Quotation from '../models/Quotation.js';
 import User from '../models/User.js';
 
 // ─── Chat Queries ──────────────────────────────────────────
@@ -222,6 +223,10 @@ export async function findRfqProducts(buyerId, sellerUserId, chatId, chatRfqId, 
 
 export async function findRfqById(rfqId) {
   return RFQ.findById(rfqId).exec();
+}
+
+export async function findQuotationById(quotationId) {
+  return Quotation.findById(quotationId).select('rfqId userId').lean().exec();
 }
 
 // ─── User Queries ──────────────────────────────────────────

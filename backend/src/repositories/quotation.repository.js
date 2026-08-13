@@ -146,5 +146,10 @@ export async function createMessage(data) {
 
 // ─── Notification ──────────────────────────────────────────
 export async function createNotification(data) {
-  return Notification.create(data);
+  if (!data.eventKey) return Notification.create(data);
+  return Notification.findOneAndUpdate(
+    { userId: data.userId, eventKey: data.eventKey },
+    { $setOnInsert: data },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+  );
 }

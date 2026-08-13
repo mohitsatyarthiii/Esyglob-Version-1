@@ -55,6 +55,7 @@ export default function SellerDetailsPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [busy, setBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
   const [activeMedia, setActiveMedia] = useState(0)
 
   if (query.loading) return <AppShell><div className="listing-page container"><SkeletonCards count={3} variant="manufacturer" /></div></AppShell>
@@ -108,12 +109,15 @@ export default function SellerDetailsPage() {
   async function contactSupplier() {
     if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname } })
     if (busy) return
+    setActionError('')
     setBusy(true)
     try {
       const result = await createChat({ otherUserId: seller.userId?._id || seller.userId, role: 'buyer', chatType: 'general' })
-      navigate(`/messages/${result.chat?._id || result.chat?.id}`)
-    } catch {
-      navigate('/messages')
+      const chatId = result.chat?._id || result.chat?.id
+      if (!chatId) throw new Error('The manufacturer conversation could not be created.')
+      navigate(`/messages/${chatId}`)
+    } catch (error) {
+      setActionError(error.message || 'Unable to open this manufacturer conversation.')
     } finally {
       setBusy(false)
     }
@@ -137,6 +141,7 @@ export default function SellerDetailsPage() {
   return <AppShell>
     <main className="manufacturer-page manufacturer-page--premium">
       <div className="container manufacturer-shell manufacturer-shell--premium">
+        {actionError && <p className="inline-error" role="alert">{actionError}</p>}
         <section className="manufacturer-hero-v2">
           <div className="manufacturer-hero-v2__identity">
             <div className="manufacturer-hero-v2__brand">

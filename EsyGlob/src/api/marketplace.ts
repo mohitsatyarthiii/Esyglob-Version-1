@@ -185,6 +185,9 @@ export async function startProductChat(input: {
   productId?: string;
   role?: 'buyer' | 'seller';
   enquiry?: boolean;
+  rfqId?: string;
+  quotationId?: string;
+  chatType?: 'general' | 'product_enquiry' | 'rfq_negotiation' | 'order_support';
 }) {
   // FIXED: Ensure required fields
   if (!input.otherUserId) {
@@ -198,6 +201,9 @@ export async function startProductChat(input: {
       productId: input.productId || undefined,
       role: input.role || 'buyer',
       enquiry: input.enquiry || false,
+      rfqId: input.rfqId || undefined,
+      quotationId: input.quotationId || undefined,
+      chatType: input.chatType || undefined,
     },
   });
   

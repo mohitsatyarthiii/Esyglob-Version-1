@@ -114,7 +114,7 @@ function QuotationDetailsScreen() {
       totalPrice: Number((quotation.data as any)?.totalPrice || 0),
       leadTime: Number((quotation.data as any)?.leadTime || 1),
       paymentTerms: (quotation.data as any)?.paymentTerms || 'negotiable',
-      shippingTerms: (quotation.data as any)?.shippingTerms || (quotation.data as any)?.incoterms || 'Seller arranged',
+      shippingTerms: (quotation.data as any)?.shippingTerms || (quotation.data as any)?.incoterms || 'Manufacturer arranged',
       notes: (quotation.data as any)?.notes || (quotation.data as any)?.sellerMessage,
     }),
     onSuccess: async () => {
@@ -321,7 +321,7 @@ function QuotationDetailsScreen() {
         {/* Seller Info */}
         {!buyerView && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Seller Final Quotation</Text>
+            <Text style={styles.cardTitle}>Manufacturer Final Quotation</Text>
             {item.status === 'buyer_accepted' && <>
               <Pressable style={styles.directOrderRow} onPress={() => setEnableDirectOrder(value => !value)}>
                 <Icon name={enableDirectOrder ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} color={enableDirectOrder ? P.success : P.muted} />
@@ -331,7 +331,7 @@ function QuotationDetailsScreen() {
                 {prepareFinal.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <><Icon name="file-sign" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Prepare Final Quotation</Text></>}
               </Pressable>
             </>}
-            {item.status === 'final_quotation_pending' && <Pressable disabled={signFinal.isPending} onPress={() => setSignOpen(true)} style={[styles.acceptBtn, signFinal.isPending && styles.btnDisabled]}><Icon name="draw-pen" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Add Seller Signature</Text></Pressable>}
+            {item.status === 'final_quotation_pending' && <Pressable disabled={signFinal.isPending} onPress={() => setSignOpen(true)} style={[styles.acceptBtn, signFinal.isPending && styles.btnDisabled]}><Icon name="draw-pen" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Add Manufacturer Signature</Text></Pressable>}
             {!['buyer_accepted', 'final_quotation_pending'].includes(item.status) && <View style={styles.infoBanner}><Icon name="information" size={16} color={P.accent} /><Text style={styles.infoBannerText}>Final Quotation status: {getStatusConfig(item.status).label}</Text></View>}
           </View>
         )}
@@ -339,7 +339,7 @@ function QuotationDetailsScreen() {
         {buyerView && item.directOrderEnabled && item.status === 'final_quotation_signed' && (
           <View style={styles.directOrderCard}>
             <Icon name="flash" size={22} color={P.success} />
-            <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Direct Order ready</Text><Text style={styles.directOrderHint}>The Seller Final Quotation is signed and no additional approval is required.</Text></View>
+            <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Direct Order ready</Text><Text style={styles.directOrderHint}>The Manufacturer Final Quotation is signed and no additional approval is required.</Text></View>
             <Pressable disabled={placeOrder.isPending} onPress={() => placeOrder.mutate()} style={styles.placeOrderBtn}><Text style={styles.placeOrderText}>{placeOrder.isPending ? 'Opening…' : 'Place Order'}</Text></Pressable>
           </View>
         )}
@@ -371,7 +371,7 @@ function QuotationDetailsScreen() {
           <DetailRow icon="credit-card" label="Payment Terms" value={item.paymentTerms} />
           <DetailRow icon="truck-delivery" label="Incoterms" value={item.incoterms} />
           <DetailRow icon="cash-marker" label="Shipping" value={item.shippingCost ? formatPrice(Number(item.shippingCost), item.currency ?? 'INR') : undefined} />
-          {item.sellerMessage && <DetailRow icon="message-text" label="Seller Message" value={item.sellerMessage} multiline />}
+          {item.sellerMessage && <DetailRow icon="message-text" label="Manufacturer Message" value={item.sellerMessage} multiline />}
           <DetailRow icon="calendar" label="Created" value={item.createdAt ? new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : undefined} />
           <DetailRow icon="calendar-check" label="Valid Until" value={item.validUntil ? new Date(item.validUntil).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : item.validity ?? undefined} />
         </View>
@@ -399,7 +399,7 @@ function QuotationDetailsScreen() {
         {/* Supplier */}
         {seller && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Supplier</Text>
+            <Text style={styles.cardTitle}>Manufacturer</Text>
             <DetailRow icon="domain" label="Company" value={seller.companyName ?? seller.businessName} />
             <DetailRow icon="map-marker" label="Country" value={seller.country} />
             <DetailRow icon="shield-check" label="Verification" value={seller.isVerified ? 'Verified' : seller.verificationStatus ?? 'Pending'} />

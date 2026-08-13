@@ -30,7 +30,7 @@ const MessagesPage = lazy(() => import('./pages/MessagesPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const RfqsPage = lazy(() => import('./pages/RfqsPage'))
 const RfqCreatePage = lazy(() => import('./pages/RfqCreatePage'))
-const RfqDetailsPage = lazy(() => import('./pages/RfqDetailsPage'))
+const RfqRoutePage = lazy(() => import('./pages/RfqRoutePage'))
 const QuotationsPage = lazy(() => import('./pages/QuotationsPage'))
 const QuotationDetailsPage = lazy(() => import('./pages/QuotationDetailsPage'))
 const QuotationComparePage = lazy(() => import('./pages/QuotationComparePage'))
@@ -87,6 +87,8 @@ export default function App() {
     <Route path="/services" element={<ServicesPage />} />
     <Route path="/services/calculator" element={<TradeCalculatorPage />} />
     <Route path="/services/:serviceKey" element={<ServiceDetailsPage />} />
+    <Route path="/rfqs" element={<RfqsPage />} />
+    <Route path="/rfqs/:rfqId" element={<RfqRoutePage />} />
     <Route element={<ProtectedRoute />}>
       <Route path="/products/:productId/similar-search" element={<SimilarSearchPage />} />
       <Route path="/explore/image-search" element={<ImageSearchPage />} />
@@ -97,9 +99,7 @@ export default function App() {
       <Route path="/messages" element={<MessagesPage />} />
       <Route path="/chat" element={<Navigate replace to="/messages" />} />
       <Route path="/messages/:chatId" element={<ChatPage />} />
-      <Route path="/rfqs" element={<RfqsPage />} />
       <Route path="/rfqs/new" element={<RfqCreatePage />} />
-      <Route path="/rfqs/:rfqId" element={<RfqDetailsPage />} />
       <Route path="/quotations" element={<QuotationsPage />} />
       <Route path="/quotations/compare" element={<QuotationComparePage />} />
       <Route path="/quotations/:quotationId" element={<QuotationDetailsPage />} />
