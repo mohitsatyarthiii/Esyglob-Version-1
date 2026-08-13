@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../src/lib/checkout-package.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../src/lib/checkout-shipping.js';
-import { hasPickupAddress } from '../src/lib/checkout-seller-pickup.js';
+import { hasPickupAddress, sellerWithCheckoutPickup } from '../src/lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider } from '../src/lib/order-provider-booking.js';
 import { getServiceProvider } from '../src/lib/service-providers/index.js';
 import mongoose from 'mongoose';
@@ -18,6 +18,19 @@ test('checkout recognizes complete seller and factory pickup address shapes', ()
   assert.equal(hasPickupAddress({ street: 'Industrial Area', city: 'Delhi', state: 'Delhi', pincode: '110001' }), true);
   assert.equal(hasPickupAddress({ line1: 'Warehouse Road', city: 'Delhi', state: 'Delhi', postalCode: '110001' }), true);
   assert.equal(hasPickupAddress({ city: 'Delhi', state: 'Delhi' }), false);
+});
+
+test('checkout gives the seller shipping-setup address precedence over blank profile data', async () => {
+  const seller = await sellerWithCheckoutPickup({
+    _id: new mongoose.Types.ObjectId(), companyName: 'UrbanWood Industries', address: {},
+  }, {
+    contactName: 'UrbanWood Dispatch', phone: '9876543210', email: 'shipping@urbanwood.in',
+    line1: 'B-Wing, Flat 704', city: 'Bhuj', state: 'Gujarat', postalCode: '370001', country: 'India', countryCode: 'IN',
+  });
+
+  assert.equal(seller.shippingAddress.postalCode, '370001');
+  assert.equal(seller.shippingAddress.line1, 'B-Wing, Flat 704');
+  assert.equal(seller.businessPhone, '9876543210');
 });
 
 test('international checkout exits before any domestic provider lookup', async () => {

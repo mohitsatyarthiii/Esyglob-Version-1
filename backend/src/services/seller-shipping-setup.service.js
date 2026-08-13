@@ -68,14 +68,17 @@ async function publishReadiness(setup) {
   } });
 }
 
-export async function sellerPickup(sellerId, existingSetup = null) {
+export async function sellerPickup(sellerId, existingSetup = undefined) {
+  const savedSetup = existingSetup === undefined
+    ? await SellerShippingSetup.findOne({ sellerId }).select('manualPickupAddress').lean()
+    : existingSetup;
   const seller = await Seller.findById(sellerId).lean();
   if (!seller) throw Object.assign(new Error('Seller not found'), { statusCode: 404 });
   const [factory, user] = await Promise.all([
     FactoryProfile.findOne({ sellerId }).select('name address').lean(),
     User.findById(seller.userId).select('fullName phone email').lean(),
   ]);
-  const manualAddress = existingSetup?.manualPickupAddress;
+  const manualAddress = savedSetup?.manualPickupAddress;
   if (manualAddress && Object.keys(manualAddress).length) {
     return { seller, pickupSource: 'manual', address: normalizePickupAddress(manualAddress) };
   }
@@ -150,11 +153,20 @@ export async function synchronizeSellerShippingSetup(sellerId, { register = fals
 }
 
 export async function activeProviderMappings(sellerId) {
+  return (await sellerShippingCheckoutContext(sellerId)).providerMappings;
+}
+
+export async function sellerShippingCheckoutContext(sellerId) {
   let setup = await SellerShippingSetup.findOne({ sellerId });
   if (!setup) setup = await synchronizeSellerShippingSetup(sellerId, { register: false });
-  return Object.fromEntries(setup.providers
+  const providerMappings = Object.fromEntries(setup.providers
     .filter(item => item.status === 'active' && item.addressHash === setup.addressHash && item.locationName)
     .map(item => [item.providerKey, { id: item.locationId, name: item.locationName, mappingId: String(setup._id), addressHash: item.addressHash }]));
+  return {
+    pickupAddress: validAddress(setup.pickupAddress || {}) ? normalizePickupAddress(setup.pickupAddress) : null,
+    providerMappings,
+    readiness: setup.readiness,
+  };
 }
 
 export async function getSellerShippingSetup(userId) {

@@ -7,7 +7,7 @@ import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions }
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { providerBookingSnapshot } from '../lib/order-provider-booking.js';
-import { activeProviderMappings } from './seller-shipping-setup.service.js';
+import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
 import Order from '../models/Order.js';
 
 class SampleOrderService {
@@ -52,7 +52,8 @@ class SampleOrderService {
 
     // Get seller
     const sellerId = product.sellerId;
-    const seller = await sellerWithCheckoutPickup(await SampleOrderRepository.findSeller(sellerId) || {});
+    const shippingContext = await sellerShippingCheckoutContext(sellerId);
+    const seller = await sellerWithCheckoutPickup(await SampleOrderRepository.findSeller(sellerId) || {}, shippingContext.pickupAddress);
 
     if (!sellerId) {
       throw Object.assign(new Error('Seller not found'), { statusCode: 400 });
@@ -68,13 +69,12 @@ class SampleOrderService {
       hsCode: product.hsCode,
       countryOfOrigin: product.countryOfOrigin,
     }, orderQuantity));
-    const providerMappings = await activeProviderMappings(sellerId);
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller: seller || {},
       destination: shippingAddress || {},
       shipment: productShipment,
-      providerMappings,
+      providerMappings: shippingContext.providerMappings,
     });
 
     if (liveShipping.internationalUnsupported) {

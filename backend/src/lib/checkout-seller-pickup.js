@@ -10,8 +10,17 @@ function hasPickupAddress(value = {}) {
   );
 }
 
-export async function sellerWithCheckoutPickup(seller = {}) {
+export async function sellerWithCheckoutPickup(seller = {}, savedPickupAddress = null) {
   if (!seller._id) return seller;
+  if (hasPickupAddress(savedPickupAddress || {})) {
+    return {
+      ...seller,
+      shippingAddress: savedPickupAddress,
+      businessPhone: savedPickupAddress.phone || seller.businessPhone || '',
+      businessEmail: savedPickupAddress.email || seller.businessEmail || '',
+      companyName: seller.companyName || savedPickupAddress.contactName || 'EsyGlob seller',
+    };
+  }
   const [factory, user] = await Promise.all([
     hasPickupAddress(seller.address) || hasPickupAddress(seller.shippingAddress)
       ? null

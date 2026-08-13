@@ -73,6 +73,13 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
         trackingAvailable: true, insuranceAvailable: Boolean(rate?.insurance), pickupAvailable: true,
         pickupLocation: mappedPickup,
         bookingAvailable: Boolean(mappedPickup && shipment.hsCode && shipment.sellerGstNumber),
+        bookingUnavailableReason: !mappedPickup
+          ? 'Seller pickup location is not mapped with Delhivery.'
+          : !shipment.hsCode
+            ? 'The seller must add the product HSN code before Delhivery booking can be selected.'
+            : !shipment.sellerGstNumber
+              ? 'The seller must add a GST number before Delhivery booking can be selected.'
+              : '',
         deliveryType: mode === 'E' ? 'Express' : 'Surface',
         features: ['Shipment tracking', 'Courier pickup', rate?.insurance && 'Insurance available'].filter(Boolean),
         providerPayload: { serviceType: mode, pickupName: mappedPickup, pickupMappingId: context.pickupMapping?.mappingId },

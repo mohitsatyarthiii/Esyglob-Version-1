@@ -331,6 +331,7 @@ function quoteResponse(quote) {
     insuranceAvailable: quote.insuranceAvailable,
     pickupAvailable: quote.pickupAvailable,
     bookingAvailable: quote.bookingAvailable,
+    bookingUnavailableReason: quote.bookingUnavailableReason,
     pickupLocation: quote.pickupLocation,
     deliveryType: quote.deliveryType,
     features: quote.features || [],

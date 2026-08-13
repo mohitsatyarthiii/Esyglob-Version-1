@@ -12,7 +12,7 @@ import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider, providerBookingSnapshot } from '../lib/order-provider-booking.js';
-import { activeProviderMappings } from './seller-shipping-setup.service.js';
+import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
 import Shipment from '../models/Shipment.js';
 import Order from '../models/Order.js';
 
@@ -139,7 +139,10 @@ class OrderService {
       throw Object.assign(new Error('Product not found'), { statusCode: 404 });
     }
 
-    const seller = await sellerWithCheckoutPickup(product.sellerId);
+    const rawSeller = product.sellerId;
+    const sellerId = rawSeller?._id || rawSeller;
+    const shippingContext = await sellerShippingCheckoutContext(sellerId);
+    const seller = await sellerWithCheckoutPickup(rawSeller, shippingContext.pickupAddress);
     if (!seller?._id) {
       throw Object.assign(new Error('Seller not found for this product'), { statusCode: 400 });
     }
@@ -183,13 +186,12 @@ class OrderService {
       hsCode: product.hsCode,
       countryOfOrigin: product.countryOfOrigin,
     }, quantity));
-    const providerMappings = await activeProviderMappings(seller._id);
     const liveShipping = await getLiveCheckoutShipping({
       userId,
       seller,
       destination: shippingAddress,
       shipment: productShipment,
-      providerMappings,
+      providerMappings: shippingContext.providerMappings,
     });
 
     if (liveShipping.internationalUnsupported) {

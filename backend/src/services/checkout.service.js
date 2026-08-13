@@ -4,7 +4,7 @@ import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
 import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
-import { activeProviderMappings } from './seller-shipping-setup.service.js';
+import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
 
 export async function getCheckoutQuote(session, body) {
   const quantity = Math.max(Number(body.quantity || 1), 1);
@@ -51,7 +51,8 @@ export async function getCheckoutQuote(session, body) {
   const sellerRecord = sellerId
     ? await checkoutRepository.findSellerById(sellerId)
     : null;
-  const seller = await sellerWithCheckoutPickup(sellerRecord || {});
+  const shippingContext = sellerId ? await sellerShippingCheckoutContext(sellerId) : { pickupAddress: null, providerMappings: {} };
+  const seller = await sellerWithCheckoutPickup(sellerRecord || {}, shippingContext.pickupAddress);
 
   let shipping = { options: [], providerStatuses: [] };
   let shippingError = null;
@@ -66,14 +67,13 @@ export async function getCheckoutQuote(session, body) {
         hsCode: product.hsCode,
         countryOfOrigin: product.countryOfOrigin,
       }, quantity));
-      const providerMappings = await activeProviderMappings(sellerId);
       shipping = await getLiveCheckoutShipping({
         userId: session._id || session.id,
         seller: seller || {},
         destination: body.destination || {},
         shipment: productShipment,
         requestId: body.requestId || '',
-        providerMappings,
+        providerMappings: shippingContext.providerMappings,
       });
     }
   } catch (error) {

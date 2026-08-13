@@ -107,6 +107,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       insuranceAvailable: rate.insuranceAvailable === true,
       pickupAvailable: rate.pickupAvailable === true,
       bookingAvailable: rate.bookingAvailable !== false && Boolean(rate.pickupLocation),
+      bookingUnavailableReason: rate.bookingUnavailableReason || '',
       features: rate.features || [],
       recommended: rate.recommended === true,
       fastest: rate.fastest === true,
