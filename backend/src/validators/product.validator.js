@@ -86,6 +86,8 @@ export const productSchema = z.object({
     dimensions: z.string().trim().optional().default(''),
     unitsPerPackage: z.coerce.number().min(1).optional(),
     customizationAvailable: z.boolean().optional(),
+    shippingDataSource: z.enum(['seller', 'catalog_inferred_sample']).optional(),
+    shippingDataReviewedAt: z.coerce.date().optional(),
   }).optional().default({}),
   shipping: z.object({
     available: z.boolean().optional().default(false),

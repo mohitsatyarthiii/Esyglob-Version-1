@@ -171,6 +171,8 @@ const productSchema = new mongoose.Schema(
       dimensions: String,
       unitsPerPackage: Number,
       customizationAvailable: Boolean,
+      shippingDataSource: { type: String, enum: ['seller', 'catalog_inferred_sample'] },
+      shippingDataReviewedAt: Date,
     },
     certifications: [
       {

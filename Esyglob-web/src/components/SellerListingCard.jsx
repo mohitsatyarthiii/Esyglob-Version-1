@@ -16,7 +16,10 @@ import {
   Star,
 } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { createChat } from '../api/trade'
+import { useAuth } from '../auth/auth-context'
+import { resolveId } from '../utils/trade'
 import { SafeImage } from './MarketplaceCards'
 import { normalizeSellerCategories } from './sellerPresentation'
 
@@ -26,6 +29,11 @@ const SellerMetric = memo(function SellerMetric({ icon, label, value, tone }) {
 
 const SellerListingCard = memo(function SellerListingCard({ seller }) {
   const [saved, setSaved] = useState(false)
+  const [openingChat, setOpeningChat] = useState(false)
+  const [chatError, setChatError] = useState('')
+  const navigate = useNavigate()
+  const routeLocation = useLocation()
+  const { status } = useAuth()
   const id = seller._id || seller.id
   const name = seller.companyName || seller.businessName || seller.name || 'Marketplace supplier'
   const verified = Boolean(seller.isVerified || ['verified', 'approved'].includes(seller.verificationStatus))
@@ -56,6 +64,21 @@ const SellerListingCard = memo(function SellerListingCard({ seller }) {
     return () => window.clearInterval(timer)
   }, [slides.length])
   const moveSlide = direction => setSlide(current => (current + direction + slides.length) % slides.length)
+  async function openManufacturerChat() {
+    if (status !== 'authenticated') return navigate('/login', { state: { from: routeLocation.pathname } })
+    const otherUserId = resolveId(seller.userId)
+    if (!otherUserId || openingChat) return
+    setOpeningChat(true); setChatError('')
+    try {
+      const result = await createChat({ otherUserId, role: 'buyer', chatType: 'general' })
+      const chatId = resolveId(result.chat || result)
+      if (!chatId) throw new Error('The manufacturer conversation could not be opened.')
+      navigate(`/messages/${chatId}`)
+    } catch (error) {
+      setChatError(error.message || 'Unable to open this manufacturer conversation.')
+      setOpeningChat(false)
+    }
+  }
 
   return <article className="seller-list-card">
     <header className="seller-list-card__header">
@@ -99,9 +122,10 @@ const SellerListingCard = memo(function SellerListingCard({ seller }) {
     </div>
 
     <footer className="seller-list-card__footer">
+      {chatError && <p className="action-error">{chatError}</p>}
       <div className="seller-card-proof">{verified ? <><ShieldCheck /> Identity and business details verified</> : <><Building2 /> Marketplace business profile</>}</div>
       <div className="seller-card-actions">
-        <Link className="seller-card-action secondary" to={`/messages?participant=${id}`}><MessageCircle /> Chat now</Link>
+        <button type="button" className="seller-card-action secondary" disabled={openingChat || !resolveId(seller.userId)} onClick={openManufacturerChat}><MessageCircle /> {openingChat ? 'Opening chat…' : 'Chat now'}</button>
         <Link className="seller-card-action secondary" to={`/rfqs/new?sellerId=${id}`}><Send /> Send enquiry</Link>
         <Link className="seller-card-action primary" to={`/sellers/${id}`}>View profile <ArrowUpRight /></Link>
       </div>
