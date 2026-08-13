@@ -97,7 +97,10 @@ class SampleOrderService {
     if (!bookingSnapshot) {
       throw Object.assign(new Error('The selected shipping rate expired. Please refresh checkout and select shipping again.'), { statusCode: 409 });
     }
-    if (bookingSnapshot.providerKey === 'delhivery' && !bookingSnapshot.providerPayload?.pickupName) {
+    const providerPickup = bookingSnapshot.providerKey === 'delhivery'
+      ? bookingSnapshot.providerPayload?.pickupName
+      : bookingSnapshot.providerPayload?.pickupLocation;
+    if (!providerPickup) {
       throw Object.assign(new Error('EsyGlob Shipping booking is temporarily unavailable. Please try again later.'), { statusCode: 503 });
     }
 

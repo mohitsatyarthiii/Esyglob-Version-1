@@ -113,7 +113,10 @@ export async function buildCheckoutQuote({
     ? liveLogisticsOptions.filter(option => option && Number(option.amount ?? option.price) > 0)
     : [];
 
-  const selectedLogistics = logisticsOptions.find((option) => option.key === selectedLogisticsKey) || logisticsOptions[0] || null;
+  const selectedLogistics = logisticsOptions.find((option) => option.key === selectedLogisticsKey)
+    || logisticsOptions.find((option) => option.bookingAvailable !== false)
+    || logisticsOptions[0]
+    || null;
   const rawLogisticsCharges = Number(selectedLogistics?.amount || 0);
   const promotions = await calculatePromotions({
     userId,

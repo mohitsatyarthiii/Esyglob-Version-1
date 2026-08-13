@@ -45,7 +45,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
     return { routeType: 'international_unsupported', internationalUnsupported: true, providers: [], options: [], providerStatuses: [] };
   }
   if (!isIndianAddress(pickup)) {
-    const error = new Error('The seller pickup location must be in India for Delhivery checkout');
+    const error = new Error('The seller pickup location must be in India for domestic checkout');
     error.statusCode = 422;
     error.code = 'INVALID_PICKUP_COUNTRY';
     throw error;
@@ -60,6 +60,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       lengthCm: shipment.lengthCm,
       widthCm: shipment.widthCm,
       heightCm: shipment.heightCm,
+      packageCount: shipment.packageCount,
       declaredValue: shipment.declaredValue,
       currency: shipment.currency || 'INR',
       contents: shipment.contents || 'non_documents',
@@ -70,7 +71,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       countryOfOrigin: countryCode(shipment.countryOfOrigin, shipment.countryOfOriginCode) || undefined,
     },
   };
-  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId, 'delhivery');
+  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId);
   return {
     ...result,
     options: (result.providers || []).map(rate => ({
@@ -78,7 +79,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       quoteId: rate.quoteId || rate.id || rate._id,
       label: String(rate.serviceName || '').replace(/^Delhivery\s+/i, '') || 'Shipping',
       providerKey: rate.providerKey,
-      providerLabel: 'EsyGlob Shipping',
+      providerLabel: rate.providerKey === 'shiprocket' ? 'Shiprocket' : rate.providerKey === 'delhivery' ? 'Delhivery' : rate.providerName,
       providerName: 'EsyGlob Shipping',
       serviceCode: rate.serviceCode,
       serviceName: rate.serviceName,

@@ -9,7 +9,7 @@ const input = {
   shipment: { weightKg: 2, lengthCm: 20, widthCm: 15, heightCm: 10, declaredValue: 1200 },
 };
 
-test('Shiprocket sends complete package dimensions and preserves each real courier service', async () => {
+test('Shiprocket sends complete package dimensions and preserves every priced courier returned as available', async () => {
   const adapter = new ShiprocketAdapter();
   let params;
   adapter.api = async () => ({
@@ -25,10 +25,25 @@ test('Shiprocket sends complete package dimensions and preserves each real couri
 
   const rates = await adapter.search(input);
   assert.deepEqual({ length: params.length, breadth: params.breadth, height: params.height }, { length: 20, breadth: 15, height: 10 });
-  assert.equal(rates.length, 2);
-  assert.deepEqual(rates.map(rate => rate.serviceCode), ['10', '43']);
-  assert.deepEqual(rates.map(rate => rate.amount), [125, 90]);
+  assert.equal(rates.length, 3);
+  assert.deepEqual(rates.map(rate => rate.serviceCode), ['10', '43', '99']);
+  assert.deepEqual(rates.map(rate => rate.amount), [125, 90, 50]);
   assert.equal(rates[0].estimatedDeliveryAt, null);
+});
+
+test('Shiprocket maps booking only to a registered pickup with the seller origin pincode', async () => {
+  const adapter = new ShiprocketAdapter();
+  adapter.api = async () => ({
+    get: async path => path.includes('/settings/company/pickup')
+      ? { data: { data: { shipping_address: [{ pickup_location: 'Tamil Warehouse', pin_code: '602105' }] } } }
+      : { data: { data: { available_courier_companies: [{ courier_company_id: 10, courier_name: 'Courier Air', rate: 125, pickup_availability: '0' }] } } },
+  });
+
+  const rates = await adapter.search({ ...input, pickup: { postalCode: '602105' } });
+  assert.equal(rates.length, 1);
+  assert.equal(rates[0].pickupAvailable, true);
+  assert.equal(rates[0].pickupLocation, 'Tamil Warehouse');
+  assert.equal(rates[0].providerPayload.pickupLocation, 'Tamil Warehouse');
 });
 
 test('Delhivery isolates Express and Surface rate responses into selectable services', async () => {

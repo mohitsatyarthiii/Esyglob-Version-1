@@ -59,6 +59,18 @@ test('stored product packaging controls carrier measurements and scales package 
   });
 });
 
+test('seller weight ranges with attached units are normalized conservatively', () => {
+  const grams = checkoutShipmentForProduct({
+    packaging: { weight: 'Approx. 350 – 500g (including accessories)', dimensions: '18 x 10 x 6 cm' },
+  }, {}, 1);
+  const kilograms = checkoutShipmentForProduct({
+    packaging: { weight: 'Approx. 5–6 kg per Chair', dimensions: '50 x 50 x 100 cm' },
+  }, {}, 1);
+
+  assert.equal(grams.weightKg, 0.5);
+  assert.equal(kilograms.weightKg, 6);
+});
+
 test('buyer measurements cannot override missing seller product packaging', () => {
   const shipment = checkoutShipmentForProduct({ packaging: { weight: '', dimensions: '' } }, {
     weightKg: 4,

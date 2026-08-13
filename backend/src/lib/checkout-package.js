@@ -4,13 +4,18 @@ function firstNumber(value) {
 }
 
 function weightInKg(value) {
-  const amount = firstNumber(value);
-  if (!amount) return 0;
-  const unit = String(value || '').toLowerCase();
-  if (/\b(?:mg|milligram)/.test(unit)) return amount / 1_000_000;
-  if (/\b(?:g|gram)/.test(unit) && !/\b(?:kg|kilogram)/.test(unit)) return amount / 1000;
-  if (/\b(?:lb|pound)/.test(unit)) return amount * 0.45359237;
-  return amount;
+  const source = String(value || '').toLowerCase().replaceAll(',', '.');
+  const values = [...source.matchAll(/(\d+(?:\.\d+)?)(?:\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?))?\s*(milligrams?|mg|kilograms?|kgs?|kg|grams?|g|pounds?|lbs?|lb)\b/gi)]
+    .map(([, first, upper, unit]) => {
+      const amount = Number(upper || first);
+      if (/^(?:milligram|mg)/i.test(unit)) return amount / 1_000_000;
+      if (/^(?:gram|g)/i.test(unit)) return amount / 1000;
+      if (/^(?:pound|lb)/i.test(unit)) return amount * 0.45359237;
+      return amount;
+    })
+    .filter(Number.isFinite);
+  if (values.length) return Math.max(...values);
+  return firstNumber(source);
 }
 
 function dimensionsInCm(value) {

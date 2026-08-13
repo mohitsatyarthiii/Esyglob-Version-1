@@ -30,8 +30,11 @@ export async function bookPaidOrderWithProvider(order, shipment, updatedBy) {
     return recordPending(shipment, order, 'Selected shipping quote is unavailable for provider booking', 'PROVIDER_QUOTE_SNAPSHOT_MISSING', updatedBy);
   }
   const adapter = getServiceProvider(snapshot.providerKey);
-  if (!adapter.bookingConfigured) {
-    return recordPending(shipment, order, 'The Delhivery pickup location is not configured for booking', 'PROVIDER_PICKUP_NOT_CONFIGURED', updatedBy);
+  const providerPickup = snapshot.providerKey === 'delhivery'
+    ? snapshot.providerPayload?.pickupName
+    : snapshot.providerPayload?.pickupLocation;
+  if (!adapter.configured || !providerPickup) {
+    return recordPending(shipment, order, 'The selected shipping provider pickup location is not configured for booking', 'PROVIDER_PICKUP_NOT_CONFIGURED', updatedBy);
   }
   try {
     const result = await adapter.book({ quote: snapshot, booking: { bookingNumber: order.orderNumber }, order });

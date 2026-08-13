@@ -7,8 +7,14 @@ function validDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function pickupAvailable(value) {
-  return ![0, '0', false, 'false', 'N', 'n', 'no'].includes(value);
+function pickupLocations(data) {
+  return data?.data?.shipping_address || data?.shipping_address || [];
+}
+
+function pickupNameForPostalCode(locations, postalCode) {
+  const target = String(postalCode || '').trim();
+  const match = locations.find(item => String(item.pin_code || item.pincode || item.postal_code || '').trim() === target);
+  return String(match?.pickup_location || match?.name || '').trim();
 }
 
 export class ShiprocketAdapter extends ServiceProviderAdapter {
@@ -33,7 +39,7 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
     try {
       const api = await this.api();
       const { data } = await api.get('/settings/company/pickup');
-      const locations = data?.data?.shipping_address || data?.shipping_address || [];
+      const locations = pickupLocations(data);
       const pickupName = String(process.env.SHIPROCKET_PICKUP_LOCATION || '').trim().toLowerCase();
       const pickupConnected = Boolean(pickupName) && locations.some(item => String(item.pickup_location || item.name || '').trim().toLowerCase() === pickupName);
       return { provider: this.key, name: this.name, status: 'connected', configured: true, bookingConfigured: pickupConnected, pickupConnected, durationMs: Date.now() - startedAt, code: pickupName && !pickupConnected ? 'PICKUP_LOCATION_NOT_FOUND' : undefined };
@@ -46,17 +52,21 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
     try {
       const { pickup, destination, shipment } = input;
       const api = await this.api();
-      const { data } = await api.get('/courier/serviceability/', { params: {
-        pickup_postcode: pickup.postalCode,
-        delivery_postcode: destination.postalCode,
-        weight: shipment.weightKg,
-        length: dimensions(shipment).length,
-        breadth: dimensions(shipment).width,
-        height: dimensions(shipment).height,
-        cod: 0,
-        declared_value: shipment.declaredValue,
-        is_return: 0,
-      } });
+      const [{ data }, locationsResponse] = await Promise.all([
+        api.get('/courier/serviceability/', { params: {
+          pickup_postcode: pickup.postalCode,
+          delivery_postcode: destination.postalCode,
+          weight: shipment.weightKg,
+          length: dimensions(shipment).length,
+          breadth: dimensions(shipment).width,
+          height: dimensions(shipment).height,
+          cod: 0,
+          declared_value: shipment.declaredValue,
+          is_return: 0,
+        } }),
+        api.get('/settings/company/pickup').catch(() => ({ data: {} })),
+      ]);
+      const pickupLocation = pickupNameForPostalCode(pickupLocations(locationsResponse.data), pickup.postalCode);
       return (data.data?.available_courier_companies || []).map(courier => ({
         providerKey: this.key, providerName: this.name,
         serviceCode: String(courier.courier_company_id || courier.id),
@@ -67,23 +77,27 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
         estimatedDeliveryText: courier.estimated_delivery_days ? `${courier.estimated_delivery_days} days` : courier.etd,
         trackingAvailable: courier.tracking_performance !== 0,
         insuranceAvailable: Boolean(courier.coverage_charges || courier.insurance),
-        pickupAvailable: pickupAvailable(courier.pickup_availability),
-        pickupLocation: process.env.SHIPROCKET_PICKUP_LOCATION,
+        // Shiprocket already returns this collection as available couriers. Its
+        // pickup_availability field can be the string "0" even for priced,
+        // serviceable prepaid couriers, so it must not discard those rates.
+        pickupAvailable: true,
+        pickupLocation,
         deliveryType: courier.mode || (courier.is_surface ? 'Surface' : 'Standard'),
         features: ['Shipment tracking', 'Courier pickup', courier.insurance && 'Insurance available'].filter(Boolean),
-        providerPayload: { courierCompanyId: courier.courier_company_id, courierName: courier.courier_name, pickupLocation: process.env.SHIPROCKET_PICKUP_LOCATION },
-      })).filter(item => item.amount > 0 && item.pickupAvailable);
+        providerPayload: { courierCompanyId: courier.courier_company_id, courierName: courier.courier_name, pickupLocation, pickupAvailability: courier.pickup_availability },
+      })).filter(item => item.amount > 0);
     } catch (error) { throw this.providerError(error, 'serviceability search'); }
   }
   async book({ quote, booking }) {
     try {
-      if (!this.bookingConfigured) throw Object.assign(new Error('Shiprocket pickup location is not mapped for booking'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
+      const pickupLocation = String(quote.providerPayload?.pickupLocation || '').trim();
+      if (!this.configured || !pickupLocation) throw Object.assign(new Error('Shiprocket pickup location is not mapped for this seller origin'), { code: 'PROVIDER_PICKUP_NOT_CONFIGURED' });
       const { pickup, destination, shipment } = quote.requestSnapshot;
       const api = await this.api();
       const { data: order } = await api.post('/orders/create/adhoc', {
         order_id: booking.bookingNumber,
         order_date: new Date().toISOString().slice(0, 16).replace('T', ' '),
-        pickup_location: process.env.SHIPROCKET_PICKUP_LOCATION,
+        pickup_location: pickupLocation,
         billing_customer_name: destination.contactName,
         billing_address: destination.line1,
         billing_address_2: destination.line2,
