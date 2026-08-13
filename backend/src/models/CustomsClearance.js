@@ -106,13 +106,12 @@ const customsClearanceSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-customsClearanceSchema.pre('save', async function(next) {
+customsClearanceSchema.pre('save', async function setClearanceNumber() {
   if (this.isNew) {
     const count = await mongoose.model('CustomsClearance').countDocuments();
     this.clearanceNumber = `CUS${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.CustomsClearance || mongoose.model('CustomsClearance', customsClearanceSchema);

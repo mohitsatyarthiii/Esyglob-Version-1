@@ -109,13 +109,12 @@ const disputeSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-disputeSchema.pre('save', async function(next) {
+disputeSchema.pre('save', async function setDisputeNumber() {
   if (this.isNew) {
     const count = await mongoose.model('Dispute').countDocuments();
     this.disputeNumber = `DSP${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.Dispute || mongoose.model('Dispute', disputeSchema);

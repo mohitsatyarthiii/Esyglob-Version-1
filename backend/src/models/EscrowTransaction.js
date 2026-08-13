@@ -79,13 +79,12 @@ const escrowTransactionSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-escrowTransactionSchema.pre('save', async function(next) {
+escrowTransactionSchema.pre('save', async function setTransactionNumber() {
   if (this.isNew) {
     const count = await mongoose.model('EscrowTransaction').countDocuments();
     this.transactionNumber = `ESC${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.EscrowTransaction || mongoose.model('EscrowTransaction', escrowTransactionSchema);

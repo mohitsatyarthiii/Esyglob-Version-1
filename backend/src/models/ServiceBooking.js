@@ -36,11 +36,10 @@ const serviceBookingSchema = new mongoose.Schema({
   }],
 }, { timestamps: true });
 
-serviceBookingSchema.pre('validate', function setBookingNumber(next) {
+serviceBookingSchema.pre('validate', function setBookingNumber() {
   if (!this.bookingNumber) {
     this.bookingNumber = `ESY-SVC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   }
-  next();
 });
 
 export default mongoose.models.ServiceBooking

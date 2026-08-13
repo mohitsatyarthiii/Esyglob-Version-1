@@ -1,6 +1,7 @@
 import OrderRepository from '../repositories/order.repository.js';
 import NotificationService from './notification.service.js';
 import { buildCheckoutQuote, DEFAULT_LOGISTICS_RULES } from '../lib/checkout-quote.js';
+import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
 import mongoose from 'mongoose';
@@ -158,7 +159,22 @@ class OrderService {
       throw Object.assign(new Error(`Minimum order quantity is ${minimumQuantity}`), { statusCode: 400 });
     }
 
-    // Build quote
+    const liveShipping = await getLiveCheckoutShipping({
+      userId,
+      seller,
+      destination: cleanAddress(body.shippingAddress),
+      shipment: {
+        ...(body.shipment || {}),
+        description: body.shipment?.description || product.name,
+        quantity,
+        declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
+        currency: body.shipment?.currency || product.currency || 'INR',
+        hsCode: body.shipment?.hsCode || product.hsCode,
+        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
+      },
+    });
+
+    // Build quote from current live carrier prices.
     const quote = await buildCheckoutQuote({
       product, seller, quantity, orderType, orderSubType,
       destination: cleanAddress(body.shippingAddress),
@@ -166,6 +182,7 @@ class OrderService {
       userId,
       couponCodes: body.couponCodes || body.couponCode,
       giftCardCode: body.giftCardCode,
+      liveLogisticsOptions: liveShipping.options,
     });
 
     if (!quote.selectedLogistics) {
@@ -296,6 +313,8 @@ class OrderService {
         termsAccepted: true,
         acceptedPolicies: ['terms', 'privacy', 'return_policy', 'trade_rules'],
         platformFeeSlab: quote.platformFeeSlab,
+        providerQuoteId: quote.selectedLogistics.quoteId,
+        providerStatuses: liveShipping.providerStatuses,
       },
     });
 

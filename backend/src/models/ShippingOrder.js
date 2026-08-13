@@ -113,13 +113,12 @@ const shippingOrderSchema = new mongoose.Schema({
 });
 
 // Generate order number
-shippingOrderSchema.pre('save', async function(next) {
+shippingOrderSchema.pre('save', async function setOrderNumber() {
   if (this.isNew) {
     const count = await mongoose.model('ShippingOrder').countDocuments();
     this.orderNumber = `SHP${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.ShippingOrder || mongoose.model('ShippingOrder', shippingOrderSchema);

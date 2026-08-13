@@ -5,6 +5,7 @@ import Product from '../models/Product.js';
 import RFQ from '../models/RFQ.js';
 import Seller from '../models/Seller.js';
 import User from '../models/User.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 let cached = null;
 let expiresAt = 0;
@@ -13,12 +14,8 @@ export async function getMarketplaceStatistics() {
   if (cached && expiresAt > Date.now()) return cached;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const verifiedSellerQuery = {
-    $or: [
-      { isVerified: true },
-      { verificationStatus: { $in: ['approved', 'verified'] } },
-    ],
-  };
+  const verifiedSellerQuery = PUBLIC_SELLER_ELIGIBILITY;
+  const eligibleSellerIds = await Seller.distinct('_id', verifiedSellerQuery);
   const [
     verifiedManufacturers,
     activeBuyers,
@@ -32,7 +29,7 @@ export async function getMarketplaceStatistics() {
     Seller.countDocuments(verifiedSellerQuery),
     User.countDocuments({ roles: 'buyer', isActive: { $ne: false }, isBanned: { $ne: true } }),
     Seller.distinct('address.country', { ...verifiedSellerQuery, 'address.country': { $nin: ['', null] } }),
-    Product.countDocuments({ status: { $nin: ['deleted', 'archived', 'rejected'] } }),
+    Product.countDocuments({ ...PUBLIC_PRODUCT_ELIGIBILITY, sellerId: { $in: eligibleSellerIds } }),
     RFQ.countDocuments({ status: { $ne: 'draft' } }),
     Order.countDocuments({ status: { $in: ['delivered', 'completed'] } }),
     ContactLead.countDocuments({ createdAt: { $gte: today } }),

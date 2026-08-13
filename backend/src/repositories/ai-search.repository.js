@@ -13,6 +13,7 @@ import {
   rankProductsByVisualRelevance,
 } from '../lib/image-search.js';
 import { logImageSearch } from '../lib/image-search-logger.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 const PUBLIC_SERVICE_KEYS = new Set([
   'shipping', 'trade-assurance', 'escrow', 'quality-inspection',
@@ -62,6 +63,7 @@ function mergeDocuments(...groups) {
 }
 
 async function searchAtlasVisualProducts(profile, limit, requestId = '') {
+  const eligibleSellerIds = await Seller.distinct('_id', PUBLIC_SELLER_ELIGIBILITY);
   const index = process.env.MONGODB_ATLAS_PRODUCT_SEARCH_INDEX;
   if (!index || !profile.searchText) return [];
   try {
@@ -82,7 +84,7 @@ async function searchAtlasVisualProducts(profile, limit, requestId = '') {
           },
         },
       },
-      { $match: { status: { $in: ['active', 'published'] }, isVerifiedSeller: true, visibility: { $ne: 'private' } } },
+      { $match: { ...PUBLIC_PRODUCT_ELIGIBILITY, sellerId: { $in: eligibleSellerIds } } },
       { $addFields: { atlasSearchScore: { $meta: 'searchScore' } } },
       { $limit: limit },
     ]);
@@ -102,10 +104,10 @@ async function searchRegexVisualProducts(terms, limit) {
   const regex = buildRegex(terms);
   const conditions = productConditions(regex);
   if (!conditions.length) return [];
+  const eligibleSellerIds = await Seller.distinct('_id', PUBLIC_SELLER_ELIGIBILITY);
   return Product.find({
-    status: { $in: ['active', 'published'] },
-    isVerifiedSeller: true,
-    visibility: { $ne: 'private' },
+    ...PUBLIC_PRODUCT_ELIGIBILITY,
+    sellerId: { $in: eligibleSellerIds },
     $or: conditions,
   })
     .select(VISUAL_PRODUCT_FIELDS)
@@ -222,8 +224,7 @@ class AISearchRepository {
     ];
     const rawSellers = sellerOr.length
       ? await Seller.find({
-        isActive: true,
-        isSuspended: { $ne: true },
+        ...PUBLIC_SELLER_ELIGIBILITY,
         $or: sellerOr,
       })
         .select('companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos address isVerified verificationStatus verificationLevel isTrustedSeller badges trustScore rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate totalProducts totalOrders yearsInBusiness yearEstablished productCategories productSubcategories industries mainProducts userId')
@@ -316,18 +317,17 @@ class AISearchRepository {
       { deliveryCountry: { $regex: regex, $options: 'i' } },
     ] : [];
 
+    const eligibleSellerIds = await Seller.distinct('_id', PUBLIC_SELLER_ELIGIBILITY);
     const productQuery = {
-      status: { $in: ['active', 'published'] },
-      isVerifiedSeller: true,
+      ...PUBLIC_PRODUCT_ELIGIBILITY,
+      sellerId: { $in: eligibleSellerIds },
       ...(productOr.length ? { $or: productOr } : {}),
     };
     if (filters.lowMoq) productQuery.minimumOrderQuantity = { $lte: 100 };
     if (filters.targetPrice) productQuery.price = { $lte: filters.targetPrice };
 
     const sellerQuery = {
-      isActive: true,
-      isSuspended: { $ne: true },
-      ...(filters.requireVerified ? { isVerified: true } : {}),
+      ...PUBLIC_SELLER_ELIGIBILITY,
       ...(sellerOr.length ? { $or: sellerOr } : {}),
     };
 

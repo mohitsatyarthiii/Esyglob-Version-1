@@ -115,13 +115,12 @@ const supplierVerificationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-supplierVerificationSchema.pre('save', async function(next) {
+supplierVerificationSchema.pre('save', async function setApplicationNumber() {
   if (this.isNew) {
     const count = await mongoose.model('SupplierVerification').countDocuments();
     this.applicationNumber = `VRF${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.SupplierVerification || mongoose.model('SupplierVerification', supplierVerificationSchema);

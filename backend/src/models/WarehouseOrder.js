@@ -83,13 +83,12 @@ const warehouseOrderSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-warehouseOrderSchema.pre('save', async function(next) {
+warehouseOrderSchema.pre('save', async function setOrderNumber() {
   if (this.isNew) {
     const count = await mongoose.model('WarehouseOrder').countDocuments();
     this.orderNumber = `WHO${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.WarehouseOrder || mongoose.model('WarehouseOrder', warehouseOrderSchema);

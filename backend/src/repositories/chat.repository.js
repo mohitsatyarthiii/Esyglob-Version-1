@@ -24,7 +24,7 @@ export async function findChatByIdPopulated(chatId, after = false) {
     query.select('buyerId sellerId groupMembers chatType');
   } else {
     query
-      .populate('buyerId', 'email fullName avatarUrl')
+      .populate('buyerId', 'fullName avatarUrl metadata.companyName metadata.businessName metadata.city metadata.state metadata.country metadata.bio metadata.about')
       .populate('sellerId', 'email fullName avatarUrl')
       .populate('groupMembers', 'email fullName avatarUrl')
       .populate('groupCreatedBy', 'email fullName avatarUrl')
@@ -43,7 +43,7 @@ export async function findChatsByUser(userId, query, limit, sort) {
     .select(
       'pairKey buyerId sellerId groupName groupMembers groupCreatedBy productId rfqId quotationId chatType orderEligibility lastMessage lastMessageAt buyerUnreadCount sellerUnreadCount buyerArchivedAt sellerArchivedAt buyerPinnedAt sellerPinnedAt buyerMutedAt sellerMutedAt buyerFavoriteAt sellerFavoriteAt buyerSavedSupplierAt sellerSavedBuyerAt buyerLabel sellerLabel buyerBlockedAt sellerBlockedAt buyerDeletedAt sellerDeletedAt createdAt updatedAt'
     )
-    .populate('buyerId', 'email fullName avatarUrl')
+    .populate('buyerId', 'fullName avatarUrl metadata.companyName metadata.businessName metadata.city metadata.state metadata.country metadata.bio metadata.about')
     .populate('sellerId', 'email fullName avatarUrl')
     .populate('groupMembers', 'email fullName avatarUrl')
     .populate('groupCreatedBy', 'email fullName avatarUrl')

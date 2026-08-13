@@ -222,6 +222,16 @@ export async function getChatMessages(user, chatId, options = {}) {
   return {
     chat: after ? undefined : chat,
     messages,
+    buyerProfile: !after && chat.chatType !== 'group' ? {
+      _id: chat.buyerId?._id || chat.buyerId,
+      fullName: chat.buyerId?.fullName,
+      avatarUrl: chat.buyerId?.avatarUrl,
+      companyName: chat.buyerId?.metadata?.companyName || chat.buyerId?.metadata?.businessName,
+      city: chat.buyerId?.metadata?.city,
+      state: chat.buyerId?.metadata?.state,
+      country: chat.buyerId?.metadata?.country,
+      bio: chat.buyerId?.metadata?.bio || chat.buyerId?.metadata?.about,
+    } : null,
     sellerProfile,
     sellerProducts,
     rfqProducts,

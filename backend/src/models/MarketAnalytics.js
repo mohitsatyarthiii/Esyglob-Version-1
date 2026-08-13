@@ -84,9 +84,8 @@ const marketAnalyticsSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-marketAnalyticsSchema.pre('save', function(next) {
+marketAnalyticsSchema.pre('save', function setUpdatedAt() {
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.MarketAnalytics || mongoose.model('MarketAnalytics', marketAnalyticsSchema);

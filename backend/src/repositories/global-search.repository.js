@@ -3,6 +3,7 @@ import Seller from '../models/Seller.js';
 import Category from '../models/Category.js';
 import Subcategory from '../models/Subcategory.js';
 import RFQ from '../models/RFQ.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 class GlobalSearchRepository {
   /**
@@ -43,8 +44,7 @@ class GlobalSearchRepository {
    */
   static async searchProducts(regex, limit = 16) {
     const matchingSellers = await Seller.find({
-      isActive: true,
-      isSuspended: { $ne: true },
+      ...PUBLIC_SELLER_ELIGIBILITY,
       $or: [
         { companyName: { $regex: regex, $options: 'i' } },
         { companyDescription: { $regex: regex, $options: 'i' } },
@@ -58,8 +58,7 @@ class GlobalSearchRepository {
     return Product.aggregate([
       {
         $match: {
-          status: { $in: ['active', 'published'] },
-          visibility: { $ne: 'private' },
+          ...PUBLIC_PRODUCT_ELIGIBILITY,
           $or: [
             { name: { $regex: regex, $options: 'i' } },
             { category: { $regex: regex, $options: 'i' } },
@@ -85,6 +84,9 @@ class GlobalSearchRepository {
               $project: {
                 companyName: 1,
                 isVerified: 1,
+                verificationStatus: 1,
+                isActive: 1,
+                isSuspended: 1,
                 isTrustedSeller: 1,
                 badges: 1,
                 address: 1,
@@ -96,7 +98,8 @@ class GlobalSearchRepository {
           ],
         },
       },
-      { $unwind: { path: '$seller', preserveNullAndEmptyArrays: true } },
+      { $unwind: { path: '$seller', preserveNullAndEmptyArrays: false } },
+      { $match: { 'seller.isVerified': true, 'seller.verificationStatus': { $in: ['approved', 'verified'] }, 'seller.isActive': { $ne: false }, 'seller.isSuspended': { $ne: true } } },
       {
         $project: {
           name: 1,
@@ -124,8 +127,7 @@ class GlobalSearchRepository {
    */
   static async searchSuppliers(regex, limit = 16) {
     return Seller.find({
-      isActive: true,
-      isSuspended: { $ne: true },
+      ...PUBLIC_SELLER_ELIGIBILITY,
       $or: [
         { companyName: { $regex: regex, $options: 'i' } },
         { companyDescription: { $regex: regex, $options: 'i' } },

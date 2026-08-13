@@ -1,5 +1,6 @@
 import SampleOrderRepository from '../repositories/sample-order.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
+import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
@@ -47,7 +48,22 @@ class SampleOrderService {
       throw Object.assign(new Error('Seller not found'), { statusCode: 400 });
     }
 
-    // Build checkout quote
+    const liveShipping = await getLiveCheckoutShipping({
+      userId,
+      seller: seller || {},
+      destination: shippingAddress || {},
+      shipment: {
+        ...(body.shipment || {}),
+        description: body.shipment?.description || product.name,
+        quantity: orderQuantity,
+        declaredValue: Number(body.shipment?.declaredValue ?? product.price * orderQuantity),
+        currency: body.shipment?.currency || product.currency || 'INR',
+        hsCode: body.shipment?.hsCode || product.hsCode,
+        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
+      },
+    });
+
+    // Build checkout quote from current live carrier prices.
     const quote = await buildCheckoutQuote({
       product,
       seller,
@@ -59,6 +75,7 @@ class SampleOrderService {
       userId,
       couponCodes: body.couponCodes || body.couponCode,
       giftCardCode: body.giftCardCode,
+      liveLogisticsOptions: liveShipping.options,
     });
 
     if (!quote.selectedLogistics) {
@@ -135,6 +152,8 @@ class SampleOrderService {
         termsAccepted: true,
         acceptedPolicies: ['terms', 'privacy', 'return_policy', 'trade_rules'],
         platformFeeSlab: quote.platformFeeSlab,
+        providerQuoteId: quote.selectedLogistics.quoteId,
+        providerStatuses: liveShipping.providerStatuses,
         notes: notes || '',
       },
       documents: automation.documentsRequired.map(type => ({

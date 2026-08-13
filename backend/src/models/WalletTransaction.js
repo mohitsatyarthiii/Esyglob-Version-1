@@ -41,11 +41,10 @@ walletTransactionSchema.index({ walletId: 1, createdAt: -1 });
 walletTransactionSchema.index({ referenceModel: 1, referenceId: 1, type: 1, role: 1 });
 walletTransactionSchema.index({ holdUntil: 1, status: 1 });
 
-walletTransactionSchema.pre('validate', async function setTransactionNumber(next) {
-  if (this.transactionNumber) return next();
+walletTransactionSchema.pre('validate', async function setTransactionNumber() {
+  if (this.transactionNumber) return;
   const count = await mongoose.model('WalletTransaction').countDocuments();
   this.transactionNumber = `WTX${String(count + 1).padStart(9, '0')}`;
-  next();
 });
 
 export default mongoose.models.WalletTransaction ||

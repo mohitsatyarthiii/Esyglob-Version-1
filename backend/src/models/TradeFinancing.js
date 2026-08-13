@@ -99,13 +99,12 @@ const tradeFinancingSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-tradeFinancingSchema.pre('save', async function(next) {
+tradeFinancingSchema.pre('save', async function setApplicationNumber() {
   if (this.isNew) {
     const count = await mongoose.model('TradeFinancing').countDocuments();
     this.applicationNumber = `TFN${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.TradeFinancing || mongoose.model('TradeFinancing', tradeFinancingSchema);

@@ -2,6 +2,7 @@ import ProductRepository from '../repositories/product.repository.js';
 import mongoose from 'mongoose';
 import { productSchema, parseProductUpdate } from '../validators/product.validator.js';
 import { normalizePricingTiers } from './promotion.service.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 function normalizeProductInput(data, currentMinimum = 1, currentPrice = 0) {
   const normalized = { ...data };
@@ -218,10 +219,14 @@ class ProductService {
     }
 
     // Check visibility
+    const validImage = product.images?.some((image) => /^(?:https?:\/\/|\/api\/|\/storage\/|storage\/).+/i.test(String(image || '')));
     const isPublic =
-      ['active', 'published'].includes(product.status) &&
-      product.visibility !== 'private' &&
-      product.sellerId?.isVerified &&
+      PUBLIC_PRODUCT_ELIGIBILITY.status.$in.includes(product.status) &&
+      product.visibility === 'public' &&
+      product.isVerifiedSeller === true &&
+      Boolean(product.name && product.name !== 'Untitled product draft' && product.category && product.subcategory && product.description && Number(product.price) > 0 && validImage) &&
+      product.sellerId?.isVerified === PUBLIC_SELLER_ELIGIBILITY.isVerified &&
+      PUBLIC_SELLER_ELIGIBILITY.verificationStatus.$in.includes(product.sellerId?.verificationStatus) &&
       product.sellerId?.isActive !== false &&
       product.sellerId?.isSuspended !== true;
 

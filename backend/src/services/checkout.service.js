@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import * as checkoutRepository from '../repositories/checkout.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
+import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
 
 export async function getCheckoutQuote(session, body) {
   const quantity = Math.max(Number(body.quantity || 1), 1);
@@ -48,6 +49,28 @@ export async function getCheckoutQuote(session, body) {
     ? await checkoutRepository.findSellerById(sellerId)
     : null;
 
+  let shipping = { options: [], providerStatuses: [] };
+  let shippingError = null;
+  try {
+    shipping = await getLiveCheckoutShipping({
+      userId: session._id || session.id,
+      seller: seller || {},
+      destination: body.destination || {},
+      shipment: {
+        ...(body.shipment || {}),
+        description: body.shipment?.description || product.name,
+        quantity,
+        declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
+        currency: body.shipment?.currency || product.currency || 'INR',
+        hsCode: body.shipment?.hsCode || product.hsCode,
+        countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
+      },
+      requestId: body.requestId || '',
+    });
+  } catch (error) {
+    shippingError = { code: error.code || 'SHIPPING_RATES_UNAVAILABLE', message: error.message, fieldErrors: error.fieldErrors || null };
+  }
+
   const quote = await buildCheckoutQuote({
     product,
     seller,
@@ -60,6 +83,7 @@ export async function getCheckoutQuote(session, body) {
     userId: session._id || session.id,
     couponCodes: body.couponCodes || body.couponCode,
     giftCardCode: body.giftCardCode,
+    liveLogisticsOptions: shipping.options,
   });
 
   // Return standardized response
@@ -89,6 +113,8 @@ export async function getCheckoutQuote(session, body) {
       giftCard: quote.giftCard || null,
       grandTotal: quote.grandTotal || quote.productTotal || 0,
       automatedServices: quote.automatedServices || [],
+      providerStatuses: shipping.providerStatuses || [],
+      shippingError,
       subtotal: quote.productTotal || 0,
       totalAmount: quote.grandTotal || quote.productTotal || 0,
     },

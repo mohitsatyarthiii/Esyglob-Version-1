@@ -11,7 +11,7 @@ class SampleOrderRepository {
     if (!mongoose.Types.ObjectId.isValid(productId)) return null;
 
     return Product.findById(productId)
-      .select('sellerId userId name images price samplePrice currency unit minimumOrderQuantity directOrderEnabled orderType status category subcategory')
+      .select('sellerId userId name images price samplePrice currency unit minimumOrderQuantity directOrderEnabled orderType status category subcategory countryOfOrigin hsCode packaging')
       .lean();
   }
 
@@ -22,7 +22,7 @@ class SampleOrderRepository {
     if (!sellerId || !mongoose.Types.ObjectId.isValid(sellerId)) return null;
 
     return Seller.findById(sellerId)
-      .select('userId companyName address shippingAddress isVerified isTrustedSeller')
+      .select('userId companyName address shippingAddress businessEmail businessPhone isVerified isTrustedSeller')
       .lean();
   }
 

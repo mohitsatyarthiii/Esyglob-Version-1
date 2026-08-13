@@ -1,6 +1,5 @@
 import CommerceSettings from '../models/CommerceSettings.js';
 import { calculatePlatformFeeFromSettings, shouldApplyPlatformFee } from '../lib/platform-fees.js'
-import { getNormalizedLogisticsRates } from '../lib/integrations/logistics.js';
 import { calculatePromotions, productPriceForQuantity } from '../services/promotion.service.js';
 
 const roundMoney = value => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -81,14 +80,9 @@ export const AUTOMATED_PLATFORM_SERVICES = [
   { key: 'payment_validation', label: 'Payment Validation', buyerVisible: false, status: 'active', amount: 0 },
 ];
 
-function sumBreakdown(breakdown = {}) {
-  return Object.values(breakdown || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-}
-
 async function getCommerceSettings() {
   const settings = await CommerceSettings.findOne({ key: 'default' }).lean();
   return {
-    logisticsRules: settings?.logisticsRules?.length ? settings.logisticsRules.filter((rule) => rule.isActive !== false) : DEFAULT_LOGISTICS_RULES,
     gstRate: Number(settings?.gstRate ?? 0.18),
   };
 }
@@ -105,6 +99,7 @@ export async function buildCheckoutQuote({
   userId,
   couponCodes = [],
   giftCardCode,
+  liveLogisticsOptions = [],
 } = {}) {
   const settings = await getCommerceSettings();
   const qty = Math.max(Number(quantity || 1), 1);
@@ -114,49 +109,9 @@ export async function buildCheckoutQuote({
   const productTotal = Number(quotation?.totalPrice || unitPrice * qty || 0);
   const originalProductTotal = Number(quotation?.totalPrice || originalUnitPrice * qty || 0);
 
-  const activeRules = settings.logisticsRules
-    .filter((rule) => {
-      if (!rule.countries?.length || !destination?.country) return true;
-      return rule.countries.some((country) => country.toLowerCase() === String(destination.country).toLowerCase());
-    });
-  const normalizedRates = await getNormalizedLogisticsRates({
-    rules: activeRules,
-    origin: seller?.address || seller?.shippingAddress || {},
-    destination,
-    productTotal,
-  });
-  const normalizedByKey = new Map(normalizedRates.map((rate) => [rate.key, rate]));
-
-  const logisticsOptions = activeRules
-    .map((rule) => {
-      const normalized = normalizedByKey.get(rule.key) || {};
-      const percentageCharge = Math.round(productTotal * Number(rule.variableRate || 0) * 100) / 100;
-      const breakdownTotal = sumBreakdown(rule.internalBreakdown);
-      const amount = Math.max(Number(rule.baseCharge || 0) + percentageCharge, breakdownTotal);
-      return {
-        key: rule.key,
-        label: rule.label,
-        mode: rule.mode,
-        incoterm: rule.incoterm,
-        eta: rule.eta,
-        providerKey: normalized.providerKey || rule.providerKey || 'manual',
-        providerLabel: normalized.providerLabel || rule.providerKey || 'Manual Logistics Desk',
-        amount,
-        price: amount,
-        buyerLabel: amount ? `INR ${amount.toLocaleString('en-IN')}` : 'Included / seller arranged',
-        available: normalized.available !== false,
-        estimatedDelivery: rule.eta,
-        insuranceAmount: Number(rule.internalBreakdown?.insurance || 0),
-        warehousingCharges: Number(rule.internalBreakdown?.handling || 0),
-        customsCharges: Number(rule.internalBreakdown?.importCharges || rule.internalBreakdown?.exportCharges || 0),
-        internalBreakdown: {
-          ...(rule.internalBreakdown || {}),
-          variableCharge: percentageCharge,
-        },
-      };
-    })
-    .filter((option) => option.available !== false)
-    .sort((a, b) => Number(normalizedByKey.get(a.key)?.priority || 100) - Number(normalizedByKey.get(b.key)?.priority || 100));
+  const logisticsOptions = Array.isArray(liveLogisticsOptions)
+    ? liveLogisticsOptions.filter(option => option && Number(option.amount ?? option.price) > 0)
+    : [];
 
   const selectedLogistics = logisticsOptions.find((option) => option.key === selectedLogisticsKey) || logisticsOptions[0] || null;
   const rawLogisticsCharges = Number(selectedLogistics?.amount || 0);

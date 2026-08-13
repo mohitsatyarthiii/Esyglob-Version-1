@@ -138,9 +138,8 @@ subscriptionPlanSchema.index({ role: 1, tier: 1 });
 subscriptionPlanSchema.index({ key: 1, isActive: 1 });
 
 // Pre-save middleware
-subscriptionPlanSchema.pre('save', function(next) {
+subscriptionPlanSchema.pre('save', function setLastUpdated() {
   this.metadata.lastUpdated = new Date();
-  next();
 });
 
 // Static method to get active plans by role

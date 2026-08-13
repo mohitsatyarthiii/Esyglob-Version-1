@@ -66,9 +66,8 @@ const warehouseInventorySchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-warehouseInventorySchema.pre('save', function(next) {
+warehouseInventorySchema.pre('save', function setUpdatedAt() {
   this.updatedAt = new Date();
-  next();
 });
 warehouseInventorySchema.plugin(mediaIntegrityPlugin, { entity: 'warehouse inventory', paths: ['images'] });
 

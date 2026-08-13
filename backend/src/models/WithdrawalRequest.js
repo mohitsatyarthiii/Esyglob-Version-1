@@ -28,10 +28,9 @@ const withdrawalRequestSchema = new mongoose.Schema(
 withdrawalRequestSchema.index({ userId: 1, createdAt: -1 });
 withdrawalRequestSchema.index({ sellerId: 1, createdAt: -1 });
 
-withdrawalRequestSchema.pre('validate', async function setWithdrawalNumber(next) {
-  if (this.withdrawalNumber) return next();
+withdrawalRequestSchema.pre('validate', function setWithdrawalNumber() {
+  if (this.withdrawalNumber) return;
   this.withdrawalNumber = `WDR${Date.now().toString(36).toUpperCase()}${crypto.randomInt(1000, 10000)}`;
-  next();
 });
 
 export default mongoose.models.WithdrawalRequest ||

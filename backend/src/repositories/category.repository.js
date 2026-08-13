@@ -1,17 +1,19 @@
 import Category from '../models/Category.js';
 import Subcategory from '../models/Subcategory.js';
 import Product from '../models/Product.js';
+import Seller from '../models/Seller.js';
 import { MARKETPLACE_CATEGORIES, categoryImageSeed, slugifyCategory } from '../lib/marketplace-categories.js';
 import mongoose from 'mongoose';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 const EXPECTED_CATEGORY_SLUGS = MARKETPLACE_CATEGORIES.map((item) => item.slug);
 const CATEGORY_FIELDS = 'name slug description image icon metadata isActive createdAt updatedAt';
 const SUBCATEGORY_FIELDS = 'categoryId name slug description image icon metadata isActive createdAt updatedAt';
 
 // ─── Product Counts Aggregation ────────────────────────────
-export function productCountsPipeline() {
+export function productCountsPipeline(verifiedSellerIds = []) {
   return [
-    { $match: { status: { $in: ['active', 'published'] }, isVerifiedSeller: true } },
+    { $match: { ...PUBLIC_PRODUCT_ELIGIBILITY, sellerId: { $in: verifiedSellerIds } } },
     {
       $project: {
         categoryId: 1,
@@ -137,7 +139,8 @@ export async function findCategoryByIdOrSlug(categoryIdOrSlug, activeOnly = true
 }
 
 export async function fetchProductCounts() {
-  return Product.aggregate(productCountsPipeline()).allowDiskUse(false);
+  const sellerIds = await Seller.distinct('_id', PUBLIC_SELLER_ELIGIBILITY);
+  return Product.aggregate(productCountsPipeline(sellerIds)).allowDiskUse(false);
 }
 
 export async function fetchAllCategoryData(activeOnly, includeCounts) {

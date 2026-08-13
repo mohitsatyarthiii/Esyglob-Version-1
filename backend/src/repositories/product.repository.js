@@ -4,6 +4,7 @@ import Product from '../models/Product.js';
 import ProductCategoryMapping from '../models/ProductCategoryMapping.js';
 import Seller from '../models/Seller.js';
 import Subcategory from '../models/Subcategory.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY, publicProductQuery } from '../lib/marketplace-eligibility.js';
 
 const MAX_CACHE_ENTRIES = 500;
 const LISTING_CACHE_TTL = 30000;
@@ -20,6 +21,9 @@ function clearProductCaches() {
 }
 
 class ProductRepository {
+  static async verifiedSellerIds() {
+    return Seller.distinct('_id', PUBLIC_SELLER_ELIGIBILITY).exec();
+  }
   static isValidId(id) {
     return mongoose.Types.ObjectId.isValid(id);
   }
@@ -60,12 +64,8 @@ class ProductRepository {
       return cached.data;
     }
 
-    const count = await Product.countDocuments({
-      status: { $in: ['active', 'published'] },
-      isVerifiedSeller: true,
-      visibility: { $ne: 'private' },
-      ...filter,
-    }).exec();
+    const verifiedSellerIds = await this.verifiedSellerIds();
+    const count = await Product.countDocuments(publicProductQuery(filter, verifiedSellerIds)).exec();
 
     cache.counts[cacheKey] = { data: count, time: Date.now() };
 
@@ -86,12 +86,8 @@ class ProductRepository {
       return cached.data;
     }
 
-    const query = {
-      status: { $in: ['active', 'published'] },
-      isVerifiedSeller: true,
-      visibility: { $ne: 'private' },
-      ...filter,
-    };
+    const verifiedSellerIds = await this.verifiedSellerIds();
+    const query = publicProductQuery(filter, verifiedSellerIds);
 
     const listQuery = Product.find(query)
       .select('name slug images price currency unit minimumOrderQuantity category subcategory averageRating reviewCount totalOrders sellerId leadTime deliveryTime shipping countryOfOrigin discount badge isBestSeller createdAt')
@@ -158,11 +154,7 @@ class ProductRepository {
   static async getProductCategories(filter = {}) {
     const categories = await Product.aggregate([
       {
-        $match: {
-          status: { $in: ['active', 'published'] },
-          isVerifiedSeller: true,
-          ...filter,
-        },
+        $match: Object.keys(filter).length ? { $and: [PUBLIC_PRODUCT_ELIGIBILITY, filter] } : PUBLIC_PRODUCT_ELIGIBILITY,
       },
       {
         $group: {
@@ -209,17 +201,15 @@ class ProductRepository {
       : { slug: String(productId).toLowerCase() };
 
     return Product.findOne(query)
-      .populate('sellerId', 'name isVerified isActive isSuspended isTrustedSeller trustedSellerBadge badges logo companyName companyType industries productCategories productSubcategories city state userId')
+      .populate('sellerId', 'name isVerified verificationStatus isActive isSuspended isTrustedSeller trustedSellerBadge badges logo companyName companyType industries productCategories productSubcategories city state userId')
       .lean()
       .exec();
   }
 
   static async getSimilarProducts(productId, category, limit = 6) {
+    const verifiedSellerIds = await this.verifiedSellerIds();
     return Product.find({
-      _id: { $ne: productId },
-      category,
-      status: { $in: ['active', 'published'] },
-      isVerifiedSeller: true,
+      $and: [PUBLIC_PRODUCT_ELIGIBILITY, { _id: { $ne: productId }, category, sellerId: { $in: verifiedSellerIds } }],
     })
       .select('name slug images price averageRating minimumOrderQuantity')
       .limit(limit)
@@ -228,6 +218,7 @@ class ProductRepository {
   }
 
   static async getRelatedProductCandidates(product, limit = 80) {
+    const verifiedSellerIds = await this.verifiedSellerIds();
     const taxonomy = [];
     if (product.subcategoryId) taxonomy.push({ subcategoryId: product.subcategoryId });
     if (product.subcategory) taxonomy.push({ subcategory: product.subcategory });
@@ -248,9 +239,8 @@ class ProductRepository {
 
     return Product.find({
       _id: { $ne: product._id },
-      status: { $in: ['active', 'published'] },
-      isVerifiedSeller: true,
-      visibility: { $ne: 'private' },
+      ...PUBLIC_PRODUCT_ELIGIBILITY,
+      sellerId: { $in: verifiedSellerIds },
       $or: relevanceMatchers,
     })
       .select('name slug images price currency unit minimumOrderQuantity category categoryId subcategory subcategoryId brand description specifications productAttributes manufacturingDetails productType tags seo averageRating reviewCount totalOrders sellerId')

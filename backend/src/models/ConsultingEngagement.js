@@ -112,13 +112,12 @@ const consultingEngagementSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-consultingEngagementSchema.pre('save', async function(next) {
+consultingEngagementSchema.pre('save', async function setEngagementNumber() {
   if (this.isNew) {
     const count = await mongoose.model('ConsultingEngagement').countDocuments();
     this.engagementNumber = `CNS${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.ConsultingEngagement || mongoose.model('ConsultingEngagement', consultingEngagementSchema);

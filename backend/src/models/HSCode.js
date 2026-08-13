@@ -48,7 +48,7 @@ const hsCodeSchema = new mongoose.Schema({
   metadata: { datasetVersion: String, language: { type: String, default: 'en' }, confidence: Number, reviewedAt: Date, reviewedBy: mongoose.Schema.Types.ObjectId, extra: mongoose.Schema.Types.Mixed },
 }, { timestamps: true });
 
-hsCodeSchema.pre('validate', function setDerivedFields(next) {
+hsCodeSchema.pre('validate', function setDerivedFields() {
   this.code = String(this.code || '').replace(/\D/g, '');
   this.level = this.code.length;
   this.searchableText = [this.code, this.officialDescription, this.category, ...(this.industry || []), ...(this.keywords || []), ...(this.synonyms || []), ...(this.commonProductNames || []), ...(this.searchTerms || [])].filter(Boolean).join(' ').toLowerCase();

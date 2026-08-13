@@ -92,13 +92,12 @@ const qualityInspectionSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-qualityInspectionSchema.pre('save', async function(next) {
+qualityInspectionSchema.pre('save', async function setInspectionNumber() {
   if (this.isNew) {
     const count = await mongoose.model('QualityInspection').countDocuments();
     this.inspectionNumber = `QIN${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.QualityInspection || mongoose.model('QualityInspection', qualityInspectionSchema);

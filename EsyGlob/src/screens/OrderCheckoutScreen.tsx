@@ -87,6 +87,8 @@ type QuoteData = {
   subtotal?: number;
   totalAmount?: number;
   automatedServices?: Array<{ key: string; label: string; status: string; amount: number }>;
+  shippingError?: { code?: string; message?: string } | null;
+  providerStatuses?: Array<{ provider?: string; name?: string; status?: string }>;
 };
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -150,7 +152,11 @@ function OrderCheckoutScreen() {
   const [postalCode, setPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [logisticsOption, setLogisticsOption] = useState('esyglob_standard');
+  const [logisticsOption, setLogisticsOption] = useState('');
+  const [weightKg, setWeightKg] = useState('');
+  const [lengthCm, setLengthCm] = useState('');
+  const [widthCm, setWidthCm] = useState('');
+  const [heightCm, setHeightCm] = useState('');
   const [incoterm, setIncoterm] = useState('DAP');
   const [addressPickerOpen, setAddressPickerOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | undefined>();
@@ -221,6 +227,7 @@ function OrderCheckoutScreen() {
 
   const quoteInput = useMemo(() => {
     if (!resolvedProductId) return null;
+    const currentProduct = product.data as Product | undefined;
     return {
       productId: resolvedProductId,
       quantity: Number(quantity) || 1,
@@ -233,9 +240,17 @@ function OrderCheckoutScreen() {
         ? 'trade_order'
         : 'direct_order',
       logisticsOption,
-      destination: { country, city, postalCode },
+      destination: { contactName: fullName, phone, email, line1: address, line2: landmark, country, countryCode, city, state, postalCode },
+      shipment: {
+        description: currentProduct?.name ?? 'Marketplace product',
+        quantity: Number(quantity) || 1,
+        weightKg: Number(weightKg), lengthCm: Number(lengthCm), widthCm: Number(widthCm), heightCm: Number(heightCm),
+        declaredValue: Number(currentProduct?.price ?? 0) * (Number(quantity) || 1),
+        currency: currentProduct?.currency ?? 'INR', contents: 'non_documents', incoterm,
+        countryOfOrigin: currentProduct?.countryOfOrigin ?? 'India',
+      },
     };
-  }, [resolvedProductId, quantity, mode, chatId, quotationId, logisticsOption, country, city, postalCode]);
+  }, [resolvedProductId, quantity, mode, chatId, quotationId, logisticsOption, country, countryCode, fullName, phone, email, address, landmark, city, state, postalCode, weightKg, lengthCm, widthCm, heightCm, incoterm, product.data]);
 
   const quote = useQuery({
     queryKey: ['checkout-quote', quoteInput],
@@ -253,11 +268,12 @@ function OrderCheckoutScreen() {
 
       let orderId = pendingOrderId;
       if (!orderId) {
-        const shippingAddress = { fullName, name: fullName, company, email, phone, address, landmark, country, city, state, postalCode, zipCode: postalCode };
+        const shippingAddress = { fullName, name: fullName, company, email, phone, address, line1: address, line2: landmark, landmark, country, countryCode, city, state, postalCode, zipCode: postalCode };
         const basePayload = {
           productId: resolvedProductId,
           quantity: Number(quantity) || 1,
-          destination: { country, city, postalCode },
+          destination: quoteInput?.destination,
+          shipment: quoteInput?.shipment,
           shippingAddress,
           logisticsOption,
           paymentMethod: 'razorpay',
@@ -427,7 +443,17 @@ function OrderCheckoutScreen() {
           <Text style={styles.sectionTitle}>Order Settings</Text>
           <Field label="Quantity" value={quantity} onChangeText={setQuantity} keyboardType="numeric" />
           <View style={styles.checkboxRow}><Icon name="shield-lock-outline" size={18} color="#2563EB" /><Text style={styles.checkboxText}>Secure online payment by Razorpay</Text></View>
-          <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'CIF', 'FOB', 'EXW']} onChange={setIncoterm} />
+          <ChoiceField label="Trade Term" value={incoterm} options={['DAP', 'DDP', 'EXW', 'FCA', 'CPT', 'CIP']} onChange={setIncoterm} />
+          <Text style={styles.sectionTitle}>Packed parcel</Text>
+          <Text style={styles.helperText}>Enter actual packed dimensions to retrieve live Shiprocket and Delhivery prices.</Text>
+          <View style={styles.row}>
+            <View style={styles.half}><Field label="Weight (kg) *" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" /></View>
+            <View style={styles.half}><Field label="Length (cm) *" value={lengthCm} onChangeText={setLengthCm} keyboardType="decimal-pad" /></View>
+          </View>
+          <View style={styles.row}>
+            <View style={styles.half}><Field label="Width (cm) *" value={widthCm} onChangeText={setWidthCm} keyboardType="decimal-pad" /></View>
+            <View style={styles.half}><Field label="Height (cm) *" value={heightCm} onChangeText={setHeightCm} keyboardType="decimal-pad" /></View>
+          </View>
           <Field label="Notes (Optional)" value={notes} onChangeText={setNotes} multiline />
 
           <Pressable onPress={() => setTermsAccepted(v => !v)} style={styles.checkboxRow}>
@@ -560,6 +586,7 @@ function OrderCheckoutScreen() {
                     })}
                   </View>
                 )}
+                {!quote.isLoading && logisticsOptions.length === 0 ? <View style={styles.inclusionBox}><Text style={styles.inclusionTitle}>Live shipping rates unavailable</Text><Text style={styles.inclusionText}>{quoteData.shippingError?.message ?? 'Complete the parcel and delivery details, then retry.'}</Text>{quoteData.providerStatuses?.length ? <Text style={styles.providerText}>{quoteData.providerStatuses.map(item => `${item.name ?? item.provider}: ${item.status}`).join(' · ')}</Text> : null}</View> : null}
               </>
             )}
           </View>
@@ -656,6 +683,8 @@ const styles = StyleSheet.create({
   content: { padding: 12 },
   bottomSpacer: { height: 40 },
   row: { flexDirection: 'row', gap: 12 },
+  half: { flex: 1 },
+  helperText: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginBottom: 10 },
   flex1: { flex: 1 },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   sectionHint: { fontSize: 11, color: '#6B7280', marginTop: 2 },

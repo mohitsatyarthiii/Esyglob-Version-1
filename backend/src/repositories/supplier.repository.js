@@ -6,6 +6,7 @@ import SellerVerification from '../models/SellerVerification.js';
 import VerificationAudit from '../models/VerificationAudit.js';
 import Product from '../models/Product.js';
 import Review from '../models/Review.js';
+import { PUBLIC_PRODUCT_ELIGIBILITY, PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 // ─── Seller Listing ────────────────────────────────────────
 export async function findSellersAggregated(query, sortQuery, page, limit) {
@@ -36,8 +37,7 @@ export async function findSellersAggregated(query, sortQuery, page, limit) {
                 {
                   $match: {
                     $expr: { $eq: ['$sellerId', '$$supplierId'] },
-                    status: { $in: ['active', 'published'] },
-                    visibility: { $ne: 'private' },
+                    ...PUBLIC_PRODUCT_ELIGIBILITY,
                   },
                 },
                 { $sort: { totalOrders: -1, averageRating: -1, createdAt: -1 } },
@@ -110,8 +110,7 @@ export async function findPublicSellerById(sellerId) {
 
   return Seller.findOne({
     _id: sellerId,
-    isActive: true,
-    isSuspended: { $ne: true },
+    ...PUBLIC_SELLER_ELIGIBILITY,
   })
     .select('userId companyName companyType companyDescription companyLogo logo logoUrl coverImage companyPhotos companyVideos brochures companyWebsite yearEstablished employeeCount gstNumber panNumber businessRegistrationNumber importExportCode businessEmail businessPhone languages socialLinks teamContacts address shippingInfo tradeCapabilities isVerified isTrustedSeller trustedSellerBadge badges verificationStatus verificationLevel rating reviewCount responseRate averageResponseTimeHours onTimeDeliveryRate trustScore totalProducts totalOrders certifications productCategories productSubcategories industries mainProducts exportMarkets tradeHistorySummary createdAt')
     .populate('userId', 'fullName avatarUrl')
@@ -127,7 +126,7 @@ export async function findPublicSellerRelatedData(sellerId) {
   const [products, factoryProfile, reviews] = await Promise.all([
     Product.find({
       sellerId,
-      status: { $in: ['active', 'published'] },
+      ...PUBLIC_PRODUCT_ELIGIBILITY,
     })
       .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime certifications isVerifiedSeller createdAt')
       .sort({ createdAt: -1 })

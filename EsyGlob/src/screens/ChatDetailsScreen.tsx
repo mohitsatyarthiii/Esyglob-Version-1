@@ -81,6 +81,7 @@ const buyerActions = [
 ] as const;
 
 const sellerActions = [
+  ['account-outline', 'View Buyer Profile', 'buyer_profile'],
   ['camera-outline', 'Camera', 'media'],
   ['file-document-outline', 'Documents & Files', 'document'],
 ] as const;
@@ -447,6 +448,11 @@ function ChatDetailsScreen() {
   };
 
   const openAction = (action: string) => {
+    if (action === 'buyer_profile') {
+      setSheetMode(null);
+      setProfileActionsOpen(true);
+      return;
+    }
     if (action === 'media') {
       setSheetMode(null);
       Alert.alert('Camera', 'Take a photo or choose existing images.', [
@@ -758,12 +764,15 @@ function ChatDetailsScreen() {
               <View style={styles.groupInfoHero}><View style={styles.groupInfoAvatar}><Icon name="account-group" size={34} color="#FFF" /></View><Text style={styles.contactSheetTitle}>{chat.data?.chat?.groupName ?? 'Group chat'}</Text><Text style={styles.groupInfoMeta}>{groupMembers.length} members · Created {chat.data?.chat?.createdAt ? new Date(chat.data.chat.createdAt).toLocaleDateString() : 'recently'}</Text></View>
               <Text style={styles.groupMemberHeading}>Members</Text><ScrollView style={styles.groupMemberList}>{groupMembers.map(member => { const memberId = getUserId(member) ?? member.email ?? 'member'; const name = member.fullName ?? member.name ?? member.email ?? 'Group member'; const company = (member as any).companyName ?? (member as any).businessName; return <Pressable key={memberId} onPress={() => openMemberChat(member)} style={styles.groupMemberRow}><RemoteImage uri={firstImage(member.profileImage, member.avatarUrl, member.avatar, member.image)} width={46} height={46} style={styles.groupMemberAvatar} fallback={<View style={styles.groupMemberFallback}><Text style={styles.groupMemberInitial}>{name[0]?.toUpperCase() ?? 'M'}</Text></View>} /><View style={styles.groupMemberBody}><View style={styles.groupMemberNameRow}><Text numberOfLines={1} style={styles.groupMemberName}>{name}</Text>{(member as any).isVerified ? <Icon name="check-decagram" size={15} color="#2563EB" /> : null}</View><Text numberOfLines={1} style={styles.groupMemberCompany}>{company ?? String((member as any).role ?? 'Member')}</Text></View><Icon name="message-text-outline" size={20} color={WP.primaryDark} /></Pressable>; })}</ScrollView>
             </> : <>
-            <Text style={styles.contactSheetTitle}>{participant.name}</Text>
+            <Text style={styles.contactSheetTitle}>{activeRole === 'seller' ? 'Buyer Profile' : participant.name}</Text>
+            {activeRole === 'seller' ? <BuyerProfileCard profile={(chat.data as any)?.buyerProfile ?? (typeof chat.data?.chat?.buyerId === 'object' ? chat.data.chat.buyerId as any : undefined)} fallbackName={participant.name} /> : null}
             {[
-              ['account-outline', 'View Profile', () => chat.data?.sellerProfile?._id && navigation.navigate('SellerDetails', { sellerId: chat.data.sellerProfile._id })],
-              ['clipboard-list-outline', 'Create RFQ', () => navigation.navigate('RFQCreate', { prefill: { sellerId: chat.data?.sellerProfile?._id, supplierName: participant.name, productId: chatProduct ? getId(chatProduct) : undefined } })],
-              ['rocket-launch-outline', 'Start Order', () => chatProduct && navigation.navigate('OrderCheckout', { mode: 'trade', chatId, productId: getId(chatProduct) })],
-              ['package-variant', 'View Product', () => chatProduct && navigation.navigate('ProductDetails', { productId: getId(chatProduct) })],
+              ...(activeRole === 'buyer' ? [
+                ['account-outline', 'View Manufacturer Profile', () => chat.data?.sellerProfile?._id && navigation.navigate('SellerDetails', { sellerId: chat.data.sellerProfile._id })],
+                ['clipboard-list-outline', 'Create RFQ', () => navigation.navigate('RFQCreate', { prefill: { sellerId: chat.data?.sellerProfile?._id, supplierName: participant.name, productId: chatProduct ? getId(chatProduct) : undefined } })],
+                ['rocket-launch-outline', 'Start Order', () => chatProduct && navigation.navigate('OrderCheckout', { mode: 'trade', chatId, productId: getId(chatProduct) })],
+                ['package-variant', 'View Product', () => chatProduct && navigation.navigate('ProductDetails', { productId: getId(chatProduct) })],
+              ] : []),
               ['heart-outline', 'Favorite', () => contactAction.mutate({ action: 'favorite' })],
               [blockedAt ? 'account-check-outline' : 'block-helper', blockedAt ? 'Unblock User' : 'Block User', () => contactAction.mutate({ action: blockedAt ? 'unblock' : 'block' })],
               ['alert-octagon-outline', 'Report', () => Linking.openURL(`mailto:support@esyglob.com?subject=${encodeURIComponent(`Report chat ${chatId}`)}`)],
@@ -846,6 +855,12 @@ function ChatDetailsScreen() {
       </Modal>
     </KeyboardAvoidingView>
   );
+}
+
+function BuyerProfileCard({ profile, fallbackName }: { profile?: Record<string, any>; fallbackName: string }) {
+  const location = [profile?.city, profile?.state, profile?.country].filter(Boolean).join(', ');
+  const name = profile?.fullName || profile?.name || fallbackName;
+  return <View style={styles.buyerProfileCard}><RemoteImage uri={firstImage(profile?.avatarUrl, profile?.profileImage, profile?.avatar)} width={52} height={52} style={styles.buyerProfileAvatar} fallback={<View style={styles.buyerProfileFallback}><Text style={styles.buyerProfileInitial}>{name.slice(0, 1).toUpperCase()}</Text></View>} /><View style={styles.buyerProfileBody}><Text style={styles.buyerProfileName}>{name}</Text>{profile?.companyName ? <Text style={styles.buyerProfileMeta}>{profile.companyName}</Text> : null}{location ? <Text style={styles.buyerProfileMeta}>{location}</Text> : null}{profile?.bio ? <Text style={styles.buyerProfileBio}>{profile.bio}</Text> : null}</View></View>;
 }
 
 // ─── Business Panel ─────────────────────────────────────────────────────────
@@ -1448,6 +1463,14 @@ const styles = StyleSheet.create({
   contactSheetTitle: { fontSize: 18, fontWeight: '700', color: WP.textOther, marginBottom: 10 },
   contactSheetRow: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
   contactSheetText: { flex: 1, fontSize: 14, fontWeight: '600', color: WP.textOther },
+  buyerProfileCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, padding: 13, marginBottom: 10 },
+  buyerProfileAvatar: { borderRadius: 26 },
+  buyerProfileFallback: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DBEAFE' },
+  buyerProfileInitial: { color: '#1D4ED8', fontSize: 20, fontWeight: '800' },
+  buyerProfileBody: { flex: 1, minWidth: 0 },
+  buyerProfileName: { color: WP.textOther, fontSize: 15, fontWeight: '800' },
+  buyerProfileMeta: { color: '#64748B', fontSize: 12, marginTop: 4 },
+  buyerProfileBio: { color: '#475569', fontSize: 12, lineHeight: 18, marginTop: 7 },
   groupInfoHero: { alignItems: 'center', paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: WP.faint },
   groupInfoAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: WP.primaryDark, alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
   groupInfoMeta: { color: WP.muted, fontSize: 12, marginTop: -4 },

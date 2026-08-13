@@ -102,11 +102,10 @@ const serviceRequestSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-serviceRequestSchema.pre('validate', function setRequestNumber(next) {
+serviceRequestSchema.pre('validate', function setRequestNumber() {
   if (!this.requestNumber) {
     this.requestNumber = `SRV${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
-  next();
 });
 
 export default mongoose.models.ServiceRequest ||

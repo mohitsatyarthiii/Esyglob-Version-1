@@ -67,13 +67,12 @@ const tradeAssuranceSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
-tradeAssuranceSchema.pre('save', async function(next) {
+tradeAssuranceSchema.pre('save', async function setAssuranceNumber() {
   if (this.isNew) {
     const count = await mongoose.model('TradeAssurance').countDocuments();
     this.assuranceNumber = `TAS${String(count + 1).padStart(8, '0')}`;
   }
   this.updatedAt = new Date();
-  next();
 });
 
 export default mongoose.models.TradeAssurance || mongoose.model('TradeAssurance', tradeAssuranceSchema);

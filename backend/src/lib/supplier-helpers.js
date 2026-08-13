@@ -1,4 +1,5 @@
 import { COMPANY_TYPES } from './constants.js';
+import { PUBLIC_SELLER_ELIGIBILITY } from './marketplace-eligibility.js';
 
 export function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -37,9 +38,7 @@ export function buildSellerQuery(searchParams) {
   const region = searchParams.region;
   const yearEstablished = toNumber(searchParams.yearEstablished, 0);
 
-  const query = { isActive: true };
-
-  if (isVerified === 'true') query.isVerified = true;
+  const query = { ...PUBLIC_SELLER_ELIGIBILITY };
 
   if (companyType) {
     const companyTypes = companyType
