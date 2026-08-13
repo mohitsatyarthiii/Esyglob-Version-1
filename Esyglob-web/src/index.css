@@ -23112,7 +23112,25 @@ svg {
 
 /* Focused chat detail — responsive web parity with the native conversation screen. */
 .site-shell--chat-detail main {
-  min-height: 0
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden
+}
+
+@media (min-width:761px) {
+  html:has(.site-shell--chat-detail),
+  body:has(.site-shell--chat-detail),
+  #root:has(.site-shell--chat-detail) {
+    height: 100%;
+    overflow: hidden
+  }
+
+  .site-shell--chat-detail {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden
+  }
 }
 
 .chat-screen {
@@ -23122,11 +23140,13 @@ svg {
   box-shadow: 0 18px 48px rgba(15, 23, 42, .1);
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 150px);
-  margin-block: 18px 30px;
+  align-self: stretch;
+  flex: 1 1 auto;
+  height: auto;
+  margin-block: 12px;
   max-height: 920px;
   max-width: 1180px;
-  min-height: 580px;
+  min-height: 0;
   overflow: hidden;
   padding: 0
 }
@@ -23522,15 +23542,68 @@ svg {
   width: 18px
 }
 
+.chat-buyer-profile {
+  align-items: flex-start;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 14px
+}
+
+.chat-buyer-profile .conversation-avatar {
+  flex: 0 0 auto;
+  height: 50px;
+  overflow: hidden;
+  width: 50px
+}
+
+.chat-buyer-profile .conversation-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%
+}
+
+.chat-buyer-profile>div {
+  min-width: 0
+}
+
+.chat-buyer-profile b,
+.chat-buyer-profile small {
+  display: block
+}
+
+.chat-buyer-profile p {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  margin: 6px 0 0
+}
+
+.chat-buyer-profile p svg {
+  height: 15px;
+  width: 15px
+}
+
+.chat-buyer-profile small {
+  color: #475569;
+  line-height: 1.5;
+  margin-top: 9px
+}
+
 .chat-action-sheet>div:last-child {
   grid-template-columns: repeat(4, minmax(0, 1fr))
 }
 
 @media (max-width:900px) and (min-width:761px) {
   .chat-screen {
-    height: calc(100dvh - 116px);
-    margin-block: 12px 22px;
-    min-height: 520px
+    height: auto;
+    margin-block: 8px;
+    min-height: 0
   }
 
   .chat-history {
@@ -40278,3 +40351,10 @@ button:disabled,
   .checkout-logistics button { grid-template-columns: 62px minmax(0,1fr) 22px; padding: 11px; }
   .checkout-logistics .provider-logo { width: 62px; }
 }
+.payment-result{min-height:calc(100dvh - var(--header-height,72px));display:grid;place-items:center;padding-block:clamp(24px,6vw,72px)}
+.payment-result-card{width:min(620px,100%);background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:clamp(24px,5vw,48px);box-shadow:0 22px 60px rgba(15,23,42,.1);text-align:center}
+.payment-result-icon{width:76px;height:76px;border-radius:999px;display:grid;place-items:center;margin:0 auto 18px;background:#ecfdf5;color:#059669}
+.payment-result--failure .payment-result-icon{background:#fff1f2;color:#e11d48}.payment-result-icon svg{width:42px;height:42px}
+.payment-result-card>p{color:#64748b;line-height:1.65}.payment-result-card dl{margin:28px 0;text-align:left;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden}
+.payment-result-card dl div{display:flex;justify-content:space-between;gap:20px;padding:13px 16px;border-bottom:1px solid #eef2f7}.payment-result-card dl div:last-child{border-bottom:0}.payment-result-card dt{display:flex;gap:7px;align-items:center;color:#64748b}.payment-result-card dt svg{width:16px}.payment-result-card dd{margin:0;font-weight:700;text-transform:capitalize;text-align:right}
+.payment-result-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}.payment-help-link{display:inline-flex;align-items:center;gap:7px;padding:10px}.payment-result-card>small{display:block;margin-top:24px;color:#94a3b8}

@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { CalendarClock, Check, CreditCard, Crown, HelpCircle, History, RefreshCw, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { changeSubscriptionPlan, createSubscriptionOrder, fetchSubscription, fetchSubscriptionPlans, setSubscriptionAutoRenew, verifySubscriptionPayment } from '../api/verification'
 import AppShell from '../components/AppShell'
 import { Money } from '../components/TradeUI'
@@ -21,6 +22,7 @@ function loadRazorpay() {
 }
 
 export default function SubscriptionPage() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const role = user?.primaryRole === 'seller' ? 'seller' : 'buyer'
   const [data, setData] = useState(null)
@@ -66,12 +68,14 @@ export default function SubscriptionPage() {
             setMessage('Payment verified. Your membership is active.')
             const refreshed = await load()
             publishAICredits(refreshed?.credits)
+            navigate('/payment/success', { state: { kind: 'subscription', reference: order.orderId, amount: Number(order.amount || 0) / 100, currency: order.currency, returnTo: '/subscriptions' } })
           } catch (error) {
-            setMessage(error.message)
+            navigate('/payment/failure', { state: { kind: 'subscription', reference: order.orderId, amount: Number(order.amount || 0) / 100, currency: order.currency, returnTo: '/subscriptions', retryTo: '/subscriptions', message: error.message } })
           }
         },
+        modal: { ondismiss: () => navigate('/payment/failure', { state: { kind: 'subscription', reference: order.orderId, amount: Number(order.amount || 0) / 100, currency: order.currency, returnTo: '/subscriptions', retryTo: '/subscriptions', cancelled: true } }) },
       })
-      razorpay.on('payment.failed', (event) => setMessage(event.error?.description || 'Payment failed. Please retry.'))
+      razorpay.on('payment.failed', (event) => navigate('/payment/failure', { state: { kind: 'subscription', reference: order.orderId, amount: Number(order.amount || 0) / 100, currency: order.currency, returnTo: '/subscriptions', retryTo: '/subscriptions', message: event.error?.description || 'Payment failed. Please retry.' } }))
       razorpay.open()
     } catch (error) {
       setMessage(error.message)

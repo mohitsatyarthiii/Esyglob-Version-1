@@ -35,7 +35,7 @@ function payWithRazorpay(session, description) {
           reject(error)
         }
       },
-      modal: { ondismiss: () => reject(new Error('Payment was cancelled. Your order is saved and ready to retry.')) },
+      modal: { ondismiss: () => { const error = new Error('Payment was cancelled. Your order is saved and ready to retry.'); error.code = 'PAYMENT_CANCELLED'; reject(error) } },
       theme: { color: '#f26a21' },
     })
     checkout.on('payment.failed', (result) => reject(new Error(result.error?.description || 'Payment failed. Please retry.')))
@@ -61,6 +61,7 @@ export default function CheckoutPage() {
   const [giftCardInput, setGiftCardInput] = useState('')
   const [couponCode, setCouponCode] = useState('')
   const [giftCardCode, setGiftCardCode] = useState('')
+  const [parcel, setParcel] = useState({ weightKg: '', lengthCm: '', widthCm: '', heightCm: '' })
 
   const base = useAsyncData(useCallback(async () => {
     const [details, addresses] = await Promise.all([fetchProductDetails(productId), fetchAddresses()])
@@ -70,10 +71,30 @@ export default function CheckoutPage() {
   const addresses = base.data?.addresses || []
   const address = addresses.find((item) => resolveId(item) === addressId) || addresses.find((item) => item.isDefault) || addresses[0]
   const destination = useMemo(() => ({
+    contactName: address?.fullName || address?.name || '',
+    phone: address?.phone || '',
+    email: address?.email || '',
+    line1: address?.address || address?.line1 || '',
+    line2: address?.line2 || '',
     country: address?.country || 'India',
+    countryCode: address?.countryCode || ((address?.country || 'India').toLowerCase() === 'india' ? 'IN' : ''),
     city: address?.city || '',
+    state: address?.state || '',
     postalCode: address?.postalCode || address?.pincode || '',
   }), [address])
+  const shipment = useMemo(() => ({
+    description: product.name || 'Marketplace product',
+    quantity,
+    weightKg: Number(parcel.weightKg),
+    lengthCm: Number(parcel.lengthCm),
+    widthCm: Number(parcel.widthCm),
+    heightCm: Number(parcel.heightCm),
+    declaredValue: Number(product.price || 0) * quantity,
+    currency: product.currency || 'INR',
+    contents: 'non_documents',
+    incoterm: 'DAP',
+    countryOfOrigin: product.countryOfOrigin || 'India',
+  }), [parcel, product.countryOfOrigin, product.currency, product.name, product.price, quantity])
   const quote = useAsyncData(useCallback(() => productId
     ? fetchCheckoutQuote({
       productId,
@@ -82,10 +103,11 @@ export default function CheckoutPage() {
       orderSubType: mode === 'sample' ? 'sample_order' : 'direct_order',
       logisticsOption: logistics || undefined,
       destination,
+      shipment,
       couponCode: couponCode || undefined,
       giftCardCode: giftCardCode || undefined,
     })
-    : Promise.reject(new Error('Product is required')), [couponCode, destination, giftCardCode, logistics, mode, productId, quantity]))
+    : Promise.reject(new Error('Product is required')), [couponCode, destination, giftCardCode, logistics, mode, productId, quantity, shipment]))
   const pricing = quote.data || {}
   const logisticsKey = logistics || pricing.selectedLogistics?.key || pricing.logisticsOptions?.[0]?.key || ''
 
@@ -109,6 +131,7 @@ export default function CheckoutPage() {
       chatId: params.get('chatId') || undefined,
       destination,
       shippingAddress,
+      shipment,
       logisticsOption: logisticsKey,
       paymentMethod: 'razorpay',
       orderType: mode === 'sample' ? 'sample' : 'bulk',
@@ -128,6 +151,7 @@ export default function CheckoutPage() {
     if (!logisticsKey) return setError('Select a logistics option to continue.')
     setBusy(true)
     setError('')
+    let attemptedOrderId = pendingOrderId
     try {
       let orderId = pendingOrderId
       if (!orderId) {
@@ -136,8 +160,9 @@ export default function CheckoutPage() {
         if (!orderId) throw new Error('The order was created without a valid reference. Please contact support.')
         setPendingOrderId(orderId)
       }
+      attemptedOrderId = orderId
       if (Number(pricing.grandTotal || 0) <= 0) {
-        navigate(`/orders/${orderId}`, { replace: true, state: { paymentComplete: true } })
+        navigate('/payment/success', { replace: true, state: { kind: `${mode}_order`, reference: orderId, amount: 0, currency: pricing.currency, returnTo: `/orders/${orderId}` } })
         return
       }
       const loaded = await loadRazorpay()
@@ -145,9 +170,10 @@ export default function CheckoutPage() {
       const session = await initiatePayment(orderId)
       if (!session.keyId || !session.razorpayOrderId || !session.paymentId) throw new Error('Payment gateway returned an incomplete checkout session.')
       await payWithRazorpay(session, `${mode === 'sample' ? 'Sample' : 'Trade'} order payment`)
-      navigate(`/orders/${orderId}`, { replace: true, state: { paymentComplete: true } })
+      navigate('/payment/success', { replace: true, state: { kind: `${mode}_order`, reference: orderId, amount: pricing.grandTotal, currency: pricing.currency, returnTo: `/orders/${orderId}` } })
     } catch (next) {
-      setError(next.message || 'Payment could not be completed. Please retry.')
+      if (attemptedOrderId) navigate('/payment/failure', { state: { kind: `${mode}_order`, reference: attemptedOrderId, amount: pricing.grandTotal, currency: pricing.currency, returnTo: `/orders/${attemptedOrderId}`, retryTo: `/orders/${attemptedOrderId}`, cancelled: next.code === 'PAYMENT_CANCELLED', message: next.message } })
+      else setError(next.message || 'Payment could not be completed. Please retry.')
     } finally {
       setBusy(false)
     }
@@ -167,6 +193,12 @@ export default function CheckoutPage() {
           <label>Quantity<input type="number" min={mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum} value={quantity} disabled={Boolean(pendingOrderId)} onChange={(event) => setQuantity(Math.max(mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum, Number(event.target.value) || minimum))} /></label>
         </section>
         <section className="module-panel">
+          <div className="checkout-shipping-heading"><h2><Truck /> Parcel details</h2><p>Carrier prices require the packed parcel's actual weight and dimensions.</p></div>
+          <div className="form-grid checkout-parcel-fields">
+            {[['weightKg', 'Weight (kg)'], ['lengthCm', 'Length (cm)'], ['widthCm', 'Width (cm)'], ['heightCm', 'Height (cm)']].map(([name, label]) => <label key={name}>{label}<input type="number" min="0.01" step="0.01" disabled={Boolean(pendingOrderId)} value={parcel[name]} onChange={event => setParcel(current => ({ ...current, [name]: event.target.value }))} /></label>)}
+          </div>
+        </section>
+        <section className="module-panel">
           <div className="compact-heading"><h2><MapPin /> Delivery address</h2><Link to="/addresses">Add or edit</Link></div>
           {addresses.length ? <div className="checkout-addresses">{addresses.map((item) => <button type="button" disabled={Boolean(pendingOrderId)} className={resolveId(address) === resolveId(item) ? 'active' : ''} key={resolveId(item)} onClick={() => setAddressId(resolveId(item))}><b>{item.fullName}</b><span>{item.address || item.line1}, {item.city}, {item.country}</span>{resolveId(address) === resolveId(item) && <CheckCircle2 />}</button>)}</div> : <div className="account-empty"><MapPin /><b>No saved delivery address</b><Link className="button button--primary" to="/addresses">Add address</Link></div>}
         </section>
@@ -176,7 +208,7 @@ export default function CheckoutPage() {
             const key = item.key || item.id || `option-${index}`
             const selected = logisticsKey === key
             return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId)} className={selected ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><ProviderBrand providerKey={item.providerKey} name /><span className="checkout-shipping-copy"><b>{item.label || item.name || item.providerLabel || key.replaceAll('_', ' ')}</b><small>Estimated delivery: {item.eta || item.estimatedDelivery || item.deliveryTime || 'Available after booking'}</small><em>{item.incoterm || 'DAP'} terms{item.trackingAvailable ? ' · Tracking included' : ''}</em></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
-          })}</div> : <div className="checkout-shipping-unavailable"><Truck /><div><b>Shipping rates are currently unavailable</b><p>No provider returned a serviceable rate for this address. Update the delivery address or try again later.</p></div></div>}
+          })}</div> : <div className="checkout-shipping-unavailable"><Truck /><div><b>Shipping rates are currently unavailable</b><p>{pricing.shippingError?.message || 'Enter complete parcel details, update the delivery address, or try again later.'}</p>{pricing.providerStatuses?.length ? <small>{pricing.providerStatuses.map(item => `${item.name || item.provider}: ${item.status}`).join(' · ')}</small> : null}</div></div>}
         </section>
         <section className="module-panel"><h2>Order notes</h2><textarea value={notes} disabled={Boolean(pendingOrderId)} onChange={(event) => setNotes(event.target.value)} placeholder="Packaging, labeling or delivery instructions" /></section>
         <section className="module-panel checkout-promotions">

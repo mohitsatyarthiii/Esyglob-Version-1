@@ -60,6 +60,7 @@ const VerificationAdminPage = lazy(() => import('./pages/VerificationAdminPage')
 const SellerOrderQueuePage = lazy(() => import('./pages/SellerOrderQueuePage'))
 const TradeWorkspacePage = lazy(() => import('./pages/TradeWorkspacePage'))
 const PromotionsPage = lazy(() => import('./pages/PromotionsPage'))
+const PaymentResultPage = lazy(() => import('./pages/PaymentResultPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 function StartRoute() {
@@ -108,6 +109,8 @@ export default function App() {
       <Route path="/orders" element={<OrdersPage />} />
       <Route path="/orders/:orderId" element={<OrderDetailsPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
+      <Route path="/payment/success" element={<PaymentResultPage status="success" />} />
+      <Route path="/payment/failure" element={<PaymentResultPage status="failure" />} />
       <Route path="/addresses" element={<AddressesPage />} />
       <Route path="/location" element={<Navigate replace to="/addresses" />} />
       <Route path="/saved" element={<SavedItemsPage />} />
