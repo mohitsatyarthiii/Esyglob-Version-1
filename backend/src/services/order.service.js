@@ -9,6 +9,7 @@ import { getIO } from '../lib/socket.js';
 import TradeWorkflowService from './trade-workflow.service.js';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
+import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -36,6 +37,7 @@ function cleanAddress(address = {}) {
     city: address.city || '',
     state: address.state || '',
     country: address.country || 'India',
+    countryCode: address.countryCode || '',
     postalCode: address.postalCode || address.zipCode || '',
     zipCode: address.zipCode || address.postalCode || '',
   };
@@ -163,16 +165,19 @@ class OrderService {
       userId,
       seller,
       destination: cleanAddress(body.shippingAddress),
-      shipment: {
+      shipment: checkoutShipmentForProduct(product, {
         ...(body.shipment || {}),
         description: body.shipment?.description || product.name,
-        quantity,
         declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
         currency: body.shipment?.currency || product.currency || 'INR',
         hsCode: body.shipment?.hsCode || product.hsCode,
         countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      },
+      }, quantity),
     });
+
+    if (liveShipping.internationalUnsupported) {
+      throw Object.assign(new Error('Shipping is currently available only within India. International shipping is coming soon.'), { statusCode: 422 });
+    }
 
     // Build quote from current live carrier prices.
     const quote = await buildCheckoutQuote({

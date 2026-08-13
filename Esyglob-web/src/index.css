@@ -40322,6 +40322,10 @@ button:disabled,
 .checkout-shipping-skeleton i { animation: rate-pulse 1.2s ease-in-out infinite; background: #e8edf3; border-radius: 7px; display: block; height: 16px; }
 .checkout-shipping-skeleton > i:first-child { height: 42px; }.checkout-shipping-skeleton span { display: grid; gap: 9px; }.checkout-shipping-skeleton span i:last-child { height: 10px; width: 65%; }
 .checkout-shipping-unavailable { align-items: center; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; display: flex; gap: 12px; padding: 18px; }.checkout-shipping-unavailable svg { flex: 0 0 auto; }.checkout-shipping-unavailable b { color: #334155; }.checkout-shipping-unavailable p { font-size: 11px; margin: 4px 0 0; }
+.checkout-shipping-international { background: #fff8ed; border-color: #f3c98b; color: #8a5a16; }
+.checkout-shipping-international b { color: #7c4510; }
+.checkout-calculating { color: #475569; font-size: 12px; font-weight: 700; margin: 0 0 10px; }
+.checkout-rate-retry { display: flex; margin-top: 12px; width: max-content; }
 
 @media (max-width: 760px) {
   .home-product-row { gap: 10px; margin-inline: -16px; padding-inline: 16px; scroll-padding-inline: 16px; scroll-snap-type: x proximity; }

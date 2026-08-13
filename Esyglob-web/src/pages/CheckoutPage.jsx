@@ -13,6 +13,8 @@ import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
 
+const EMPTY_PRODUCT = {}
+
 function payWithRazorpay(session, description) {
   return new Promise((resolve, reject) => {
     const checkout = new window.Razorpay({
@@ -43,6 +45,31 @@ function payWithRazorpay(session, description) {
   })
 }
 
+function numberFrom(value) {
+  const match = String(value || '').replace(',', '.').match(/\d+(?:\.\d+)?/)
+  return match ? Number(match[0]) : 0
+}
+
+function productParcel(product, quantity) {
+  const packaging = product?.packaging || {}
+  let weight = numberFrom(packaging.weight)
+  const weightUnit = String(packaging.weight || '').toLowerCase()
+  if (/\b(?:g|gram)/.test(weightUnit) && !/\b(?:kg|kilogram)/.test(weightUnit)) weight /= 1000
+  if (/\b(?:lb|pound)/.test(weightUnit)) weight *= 0.45359237
+  const dimensions = String(packaging.dimensions || '').replaceAll(',', '.').match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number) || []
+  if (!weight || dimensions.length !== 3 || dimensions.some(value => !value)) return null
+  const dimensionUnit = String(packaging.dimensions || '').toLowerCase()
+  const multiplier = /\bmm\b|millimet/.test(dimensionUnit) ? 0.1 : /\b(?:in|inch)/.test(dimensionUnit) ? 2.54 : /\b(?:m|metre|meter)s?\b/.test(dimensionUnit) && !/\bcm\b|centimet/.test(dimensionUnit) ? 100 : 1
+  const packageCount = Math.max(1, Math.ceil(Number(quantity || 1) / Math.max(1, Number(packaging.unitsPerPackage || 1))))
+  return { weightKg: weight * packageCount, lengthCm: dimensions[0] * multiplier, widthCm: dimensions[1] * multiplier, heightCm: dimensions[2] * multiplier, packageCount }
+}
+
+function isIndia(address) {
+  const code = String(address?.countryCode || '').trim().toUpperCase()
+  if (code) return code === 'IN'
+  return ['in', 'india', 'bharat'].includes(String(address?.country || '').trim().toLowerCase())
+}
+
 export default function CheckoutPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -67,7 +94,7 @@ export default function CheckoutPage() {
     const [details, addresses] = await Promise.all([fetchProductDetails(productId), fetchAddresses()])
     return { details, addresses }
   }, [productId]))
-  const product = base.data?.details?.product || {}
+  const product = base.data?.details?.product || EMPTY_PRODUCT
   const addresses = base.data?.addresses || []
   const address = addresses.find((item) => resolveId(item) === addressId) || addresses.find((item) => item.isDefault) || addresses[0]
   const destination = useMemo(() => ({
@@ -82,20 +109,23 @@ export default function CheckoutPage() {
     state: address?.state || '',
     postalCode: address?.postalCode || address?.pincode || '',
   }), [address])
+  const storedParcel = useMemo(() => productParcel(product, quantity), [product, quantity])
+  const effectiveParcel = storedParcel || parcel
+  const international = Boolean(address) && !isIndia(address)
   const shipment = useMemo(() => ({
     description: product.name || 'Marketplace product',
     quantity,
-    weightKg: Number(parcel.weightKg),
-    lengthCm: Number(parcel.lengthCm),
-    widthCm: Number(parcel.widthCm),
-    heightCm: Number(parcel.heightCm),
+    weightKg: Number(effectiveParcel.weightKg),
+    lengthCm: Number(effectiveParcel.lengthCm),
+    widthCm: Number(effectiveParcel.widthCm),
+    heightCm: Number(effectiveParcel.heightCm),
     declaredValue: Number(product.price || 0) * quantity,
     currency: product.currency || 'INR',
     contents: 'non_documents',
     incoterm: 'DAP',
     countryOfOrigin: product.countryOfOrigin || 'India',
-  }), [parcel, product.countryOfOrigin, product.currency, product.name, product.price, quantity])
-  const quote = useAsyncData(useCallback(() => productId
+  }), [effectiveParcel, product.countryOfOrigin, product.currency, product.name, product.price, quantity])
+  const quote = useAsyncData(useCallback(() => productId && address
     ? fetchCheckoutQuote({
       productId,
       quantity,
@@ -107,9 +137,10 @@ export default function CheckoutPage() {
       couponCode: couponCode || undefined,
       giftCardCode: giftCardCode || undefined,
     })
-    : Promise.reject(new Error('Product is required')), [couponCode, destination, giftCardCode, logistics, mode, productId, quantity, shipment]))
+    : Promise.resolve({ logisticsOptions: [], awaitingAddress: true }), [address, couponCode, destination, giftCardCode, logistics, mode, productId, quantity, shipment]))
   const pricing = quote.data || {}
-  const logisticsKey = logistics || pricing.selectedLogistics?.key || pricing.logisticsOptions?.[0]?.key || ''
+  const availableOptions = pricing.logisticsOptions || []
+  const logisticsKey = availableOptions.some(item => item.key === logistics) ? logistics : pricing.selectedLogistics?.key || availableOptions[0]?.key || ''
 
   async function createOrder() {
     const shippingAddress = {
@@ -122,6 +153,7 @@ export default function CheckoutPage() {
       city: address.city,
       state: address.state,
       country: address.country,
+      countryCode: address.countryCode || destination.countryCode,
       postalCode: address.postalCode || address.pincode,
     }
     const payload = {
@@ -147,6 +179,7 @@ export default function CheckoutPage() {
 
   async function place() {
     if (!address) return setError('Add a delivery address before continuing.')
+    if (international || pricing.internationalUnsupported) return setError('Shipping is currently available only within India. International shipping is coming soon.')
     if (!terms) return setError('Accept the trade, payment and fulfillment terms to continue.')
     if (!logisticsKey) return setError('Select a logistics option to continue.')
     setBusy(true)
@@ -172,8 +205,7 @@ export default function CheckoutPage() {
       await payWithRazorpay(session, `${mode === 'sample' ? 'Sample' : 'Trade'} order payment`)
       navigate('/payment/success', { replace: true, state: { kind: `${mode}_order`, reference: orderId, amount: pricing.grandTotal, currency: pricing.currency, returnTo: `/orders/${orderId}` } })
     } catch (next) {
-      if (attemptedOrderId) navigate('/payment/failure', { state: { kind: `${mode}_order`, reference: attemptedOrderId, amount: pricing.grandTotal, currency: pricing.currency, returnTo: `/orders/${attemptedOrderId}`, retryTo: `/orders/${attemptedOrderId}`, cancelled: next.code === 'PAYMENT_CANCELLED', message: next.message } })
-      else setError(next.message || 'Payment could not be completed. Please retry.')
+      setError(next.message || (attemptedOrderId ? 'Payment could not be completed. Your order is saved and ready to retry.' : 'Payment could not be completed. Please retry.'))
     } finally {
       setBusy(false)
     }
@@ -192,23 +224,23 @@ export default function CheckoutPage() {
           <div><h2>{product.name}</h2><p>{product.sellerId?.companyName}</p><b><Money value={pricing.unitPrice || product.price} currency={pricing.currency || product.currency} /> / {product.unit || 'piece'}</b></div>
           <label>Quantity<input type="number" min={mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum} value={quantity} disabled={Boolean(pendingOrderId)} onChange={(event) => setQuantity(Math.max(mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum, Number(event.target.value) || minimum))} /></label>
         </section>
-        <section className="module-panel">
+        {!storedParcel && <section className="module-panel">
           <div className="checkout-shipping-heading"><h2><Truck /> Parcel details</h2><p>Carrier prices require the packed parcel's actual weight and dimensions.</p></div>
           <div className="form-grid checkout-parcel-fields">
             {[['weightKg', 'Weight (kg)'], ['lengthCm', 'Length (cm)'], ['widthCm', 'Width (cm)'], ['heightCm', 'Height (cm)']].map(([name, label]) => <label key={name}>{label}<input type="number" min="0.01" step="0.01" disabled={Boolean(pendingOrderId)} value={parcel[name]} onChange={event => setParcel(current => ({ ...current, [name]: event.target.value }))} /></label>)}
           </div>
-        </section>
+        </section>}
         <section className="module-panel">
           <div className="compact-heading"><h2><MapPin /> Delivery address</h2><Link to="/addresses">Add or edit</Link></div>
           {addresses.length ? <div className="checkout-addresses">{addresses.map((item) => <button type="button" disabled={Boolean(pendingOrderId)} className={resolveId(address) === resolveId(item) ? 'active' : ''} key={resolveId(item)} onClick={() => setAddressId(resolveId(item))}><b>{item.fullName}</b><span>{item.address || item.line1}, {item.city}, {item.country}</span>{resolveId(address) === resolveId(item) && <CheckCircle2 />}</button>)}</div> : <div className="account-empty"><MapPin /><b>No saved delivery address</b><Link className="button button--primary" to="/addresses">Add address</Link></div>}
         </section>
         <section className="module-panel">
           <div className="checkout-shipping-heading"><h2><Truck /> Choose shipping method</h2><p>Select a provider service. Your server-calculated total updates before payment.</p></div>
-          {quote.loading ? <div className="checkout-logistics" aria-live="polite">{Array.from({ length: 3 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div> : pricing.logisticsOptions?.length ? <div className="checkout-logistics" role="radiogroup" aria-label="Shipping methods">{pricing.logisticsOptions.map((item, index) => {
+          {international || pricing.internationalUnsupported ? <div className="checkout-shipping-unavailable checkout-shipping-international"><Truck /><div><b>International shipping coming soon</b><p>Shipping is currently available only within India. Payment is disabled for this address.</p></div></div> : quote.loading ? <><p className="checkout-calculating" aria-live="polite">Calculating shipping...</p><div className="checkout-logistics">{Array.from({ length: 2 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div></> : pricing.logisticsOptions?.length ? <div className="checkout-logistics" role="radiogroup" aria-label="Shipping methods">{pricing.logisticsOptions.map((item, index) => {
             const key = item.key || item.id || `option-${index}`
             const selected = logisticsKey === key
-            return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId)} className={selected ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><ProviderBrand providerKey={item.providerKey} name /><span className="checkout-shipping-copy"><b>{item.label || item.name || item.providerLabel || key.replaceAll('_', ' ')}</b><small>Estimated delivery: {item.eta || item.estimatedDelivery || item.deliveryTime || 'Available after booking'}</small><em>{item.incoterm || 'DAP'} terms{item.trackingAvailable ? ' · Tracking included' : ''}</em></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
-          })}</div> : <div className="checkout-shipping-unavailable"><Truck /><div><b>Shipping rates are currently unavailable</b><p>{pricing.shippingError?.message || 'Enter complete parcel details, update the delivery address, or try again later.'}</p>{pricing.providerStatuses?.length ? <small>{pricing.providerStatuses.map(item => `${item.name || item.provider}: ${item.status}`).join(' · ')}</small> : null}</div></div>}
+            return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId)} className={selected ? 'active' : ''} key={key} onClick={() => setLogistics(key)}><ProviderBrand providerKey={item.providerKey} name /><span className="checkout-shipping-copy"><b>{item.label || item.name || item.providerLabel || key.replaceAll('_', ' ')}</b><small>{item.eta || item.estimatedDelivery || item.deliveryTime ? `Estimated delivery: ${item.eta || item.estimatedDelivery || item.deliveryTime}` : 'ETA not provided by Delhivery'}</small><em>{item.incoterm || 'DAP'} terms{item.trackingAvailable ? ' · Tracking included' : ''}</em></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
+          })}</div> : address ? <div className="checkout-shipping-unavailable"><Truck /><div><b>Unable to calculate shipping right now. Please try again.</b><p>{pricing.shippingError?.message || 'Check the parcel details and delivery pincode, then retry.'}</p>{pricing.providerStatuses?.length ? <small>{pricing.providerStatuses.map(item => `${item.name || item.provider}: ${item.status}`).join(' · ')}</small> : null}<button type="button" className="button button--secondary checkout-rate-retry" onClick={quote.reload}>Retry shipping</button></div></div> : <div className="checkout-shipping-unavailable"><MapPin /><div><b>Select a delivery address</b><p>Add or select an Indian delivery address to calculate Delhivery shipping.</p></div></div>}
         </section>
         <section className="module-panel"><h2>Order notes</h2><textarea value={notes} disabled={Boolean(pendingOrderId)} onChange={(event) => setNotes(event.target.value)} placeholder="Packaging, labeling or delivery instructions" /></section>
         <section className="module-panel checkout-promotions">
@@ -227,7 +259,7 @@ export default function CheckoutPage() {
         <label className="check-field"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I accept the trade, payment and fulfillment terms.</label>
         {error && <p className="action-error">{error}</p>}
         {pendingOrderId && <p><CheckCircle2 /> Order saved. Complete payment to submit it to the seller.</p>}
-        <button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || Boolean(quote.error) || !logisticsKey || !terms}><CreditCard /> {busy ? 'Processing…' : Number(pricing.grandTotal || 0) <= 0 ? 'Place fully covered order' : pendingOrderId ? 'Retry payment' : 'Proceed to payment'}</button>
+        <button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || Boolean(quote.error) || international || pricing.internationalUnsupported || !logisticsKey || !terms}><CreditCard /> {busy ? 'Opening Razorpay…' : Number(pricing.grandTotal || 0) <= 0 ? 'Place fully covered order' : pendingOrderId ? 'Retry payment' : 'Place Order & Pay'}</button>
         <small>Razorpay verifies payment before fulfillment begins.</small>
       </aside>
     </div>

@@ -18,6 +18,10 @@ class SampleOrderController {
         return res.status(404).json({ error: error.message });
       }
 
+      if (error.statusCode === 422 || error.statusCode === 502 || error.statusCode === 503) {
+        return res.status(error.statusCode).json({ error: error.message });
+      }
+
       return res.status(500).json({
         error: 'Failed to create order',
         message: error.message,

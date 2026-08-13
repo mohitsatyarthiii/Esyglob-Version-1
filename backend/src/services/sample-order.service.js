@@ -4,6 +4,7 @@ import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
+import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
 
 class SampleOrderService {
   /**
@@ -52,16 +53,19 @@ class SampleOrderService {
       userId,
       seller: seller || {},
       destination: shippingAddress || {},
-      shipment: {
+      shipment: checkoutShipmentForProduct(product, {
         ...(body.shipment || {}),
         description: body.shipment?.description || product.name,
-        quantity: orderQuantity,
         declaredValue: Number(body.shipment?.declaredValue ?? product.price * orderQuantity),
         currency: body.shipment?.currency || product.currency || 'INR',
         hsCode: body.shipment?.hsCode || product.hsCode,
         countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      },
+      }, orderQuantity),
     });
+
+    if (liveShipping.internationalUnsupported) {
+      throw Object.assign(new Error('Shipping is currently available only within India. International shipping is coming soon.'), { statusCode: 422 });
+    }
 
     // Build checkout quote from current live carrier prices.
     const quote = await buildCheckoutQuote({

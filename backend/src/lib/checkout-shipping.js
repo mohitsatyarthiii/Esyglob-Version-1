@@ -1,6 +1,6 @@
 import ServiceEngineService from '../services/service-engine.service.js';
 
-const COUNTRY_CODES = { india: 'IN', bharat: 'IN' };
+const COUNTRY_CODES = { in: 'IN', india: 'IN', bharat: 'IN' };
 
 function countryCode(value, explicit) {
   const code = String(explicit || '').trim().toUpperCase();
@@ -24,10 +24,23 @@ function address(input = {}, fallback = {}) {
   };
 }
 
+export function isIndianAddress(input = {}) {
+  return countryCode(input.country, input.countryCode) === 'IN';
+}
+
 export async function getLiveCheckoutShipping({ userId, seller = {}, destination = {}, shipment = {}, requestId = '' }) {
   const pickupSource = seller.address || seller.shippingAddress || {};
   const pickup = address(pickupSource, seller);
   const delivery = address(destination);
+  if (!isIndianAddress(delivery)) {
+    return { routeType: 'international_unsupported', internationalUnsupported: true, providers: [], options: [], providerStatuses: [] };
+  }
+  if (!isIndianAddress(pickup)) {
+    const error = new Error('The seller pickup location must be in India for Delhivery checkout');
+    error.statusCode = 422;
+    error.code = 'INVALID_PICKUP_COUNTRY';
+    throw error;
+  }
   const input = {
     pickup,
     destination: delivery,
@@ -48,7 +61,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       countryOfOrigin: countryCode(shipment.countryOfOrigin, shipment.countryOfOriginCode) || undefined,
     },
   };
-  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId);
+  const result = await ServiceEngineService.searchProviders(userId, 'shipping', input, requestId, 'delhivery');
   return {
     ...result,
     options: (result.providers || []).map(rate => ({

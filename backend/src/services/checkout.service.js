@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import * as checkoutRepository from '../repositories/checkout.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { getLiveCheckoutShipping } from '../lib/checkout-shipping.js';
+import { checkoutShipmentForProduct } from '../lib/checkout-package.js';
 
 export async function getCheckoutQuote(session, body) {
   const quantity = Math.max(Number(body.quantity || 1), 1);
@@ -56,15 +57,14 @@ export async function getCheckoutQuote(session, body) {
       userId: session._id || session.id,
       seller: seller || {},
       destination: body.destination || {},
-      shipment: {
+      shipment: checkoutShipmentForProduct(product, {
         ...(body.shipment || {}),
         description: body.shipment?.description || product.name,
-        quantity,
         declaredValue: Number(body.shipment?.declaredValue ?? product.price * quantity),
         currency: body.shipment?.currency || product.currency || 'INR',
         hsCode: body.shipment?.hsCode || product.hsCode,
         countryOfOrigin: body.shipment?.countryOfOrigin || product.countryOfOrigin,
-      },
+      }, quantity),
       requestId: body.requestId || '',
     });
   } catch (error) {
@@ -114,6 +114,7 @@ export async function getCheckoutQuote(session, body) {
       grandTotal: quote.grandTotal || quote.productTotal || 0,
       automatedServices: quote.automatedServices || [],
       providerStatuses: shipping.providerStatuses || [],
+      internationalUnsupported: shipping.internationalUnsupported === true,
       shippingError,
       subtotal: quote.productTotal || 0,
       totalAmount: quote.grandTotal || quote.productTotal || 0,
