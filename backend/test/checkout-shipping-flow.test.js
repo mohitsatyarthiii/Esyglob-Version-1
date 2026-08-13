@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkoutShipmentForProduct, requireProductShippingData } from '../src/lib/checkout-package.js';
+import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../src/lib/checkout-package.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../src/lib/checkout-shipping.js';
 import { hasPickupAddress, sellerWithCheckoutPickup } from '../src/lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider } from '../src/lib/order-provider-booking.js';
@@ -113,6 +113,10 @@ test('buyer measurements cannot override complete seller product packaging', () 
   }, 1);
   assert.equal(shipment.weightKg, 2);
   assert.deepEqual([shipment.lengthCm, shipment.widthCm, shipment.heightCm], [40, 30, 20]);
+});
+
+test('checkout resolves the primary product HSN stored by the product schema', () => {
+  assert.equal(productHsCode({ hsCodes: [{ code: '94018000' }, { code: '94016100', isPrimary: true }] }), '94016100');
 });
 
 test('a paid checkout books the selected Delhivery snapshot and stores tracking', async () => {

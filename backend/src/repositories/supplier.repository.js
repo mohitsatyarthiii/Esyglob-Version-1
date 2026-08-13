@@ -128,7 +128,7 @@ export async function findPublicSellerRelatedData(sellerId) {
       sellerId,
       ...PUBLIC_PRODUCT_ELIGIBILITY,
     })
-      .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime certifications isVerifiedSeller createdAt')
+      .select('name slug images image price minPrice maxPrice currency minimumOrderQuantity moq unit category subcategory averageRating reviewCount totalOrders priceTiers variants sampleAvailable samplePrice leadTime certifications isVerifiedSeller packaging createdAt')
       .sort({ createdAt: -1 })
       .limit(60)
       .lean(),

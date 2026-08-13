@@ -11,7 +11,7 @@ class SampleOrderRepository {
     if (!mongoose.Types.ObjectId.isValid(productId)) return null;
 
     return Product.findById(productId)
-      .select('sellerId userId name images price samplePrice currency unit minimumOrderQuantity directOrderEnabled orderType status category subcategory countryOfOrigin hsCode packaging')
+      .select('sellerId userId name images price samplePrice currency unit minimumOrderQuantity directOrderEnabled orderType status category subcategory countryOfOrigin hsCodes packaging')
       .lean();
   }
 

@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import * as checkoutRepository from '../repositories/checkout.repository.js';
 import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
-import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
 
@@ -64,7 +64,7 @@ export async function getCheckoutQuote(session, body) {
         description: product.name,
         declaredValue: Number(product.price || 0) * quantity,
         currency: product.currency || 'INR',
-        hsCode: product.hsCode,
+        hsCode: productHsCode(product),
         countryOfOrigin: product.countryOfOrigin,
       }, quantity));
       shipping = await getLiveCheckoutShipping({

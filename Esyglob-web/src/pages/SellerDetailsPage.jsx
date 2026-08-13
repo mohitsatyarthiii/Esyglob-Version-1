@@ -97,7 +97,8 @@ export default function SellerDetailsPage() {
   const productCount = seller.totalProducts || products.length
   const reviewCount = seller.reviewCount || reviews.length
   const rating = Number(seller.rating || averageReviewRating(reviews) || 0)
-  const sampleProduct = products.find(product => product.sampleAvailable)
+  const sampleProduct = products.find(product => product.sampleAvailable && /\d/.test(String(product.packaging?.weight || '')) && (String(product.packaging?.dimensions || '').match(/\d+(?:\.\d+)?/g) || []).length >= 3)
+    || products.find(product => product.sampleAvailable)
   const trustItems = [
     verified && 'Business identity verified',
     factoryVerified && 'Factory profile verified',

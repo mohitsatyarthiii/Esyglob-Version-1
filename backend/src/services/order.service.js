@@ -9,7 +9,7 @@ import { getIO } from '../lib/socket.js';
 import TradeWorkflowService from './trade-workflow.service.js';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
 import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
-import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider, providerBookingSnapshot } from '../lib/order-provider-booking.js';
 import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
@@ -183,7 +183,7 @@ class OrderService {
       description: product.name,
       declaredValue: Number(product.price || 0) * quantity,
       currency: product.currency || 'INR',
-      hsCode: product.hsCode,
+      hsCode: productHsCode(product),
       countryOfOrigin: product.countryOfOrigin,
     }, quantity));
     const liveShipping = await getLiveCheckoutShipping({

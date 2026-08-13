@@ -52,3 +52,7 @@ export function requireProductShippingData(product = {}, shipment = {}) {
   error.code = 'PRODUCT_SHIPPING_DATA_MISSING';
   throw error;
 }
+
+export function productHsCode(product = {}) {
+  return String(product.hsCode || product.hsCodes?.find(item => item?.isPrimary)?.code || product.hsCodes?.[0]?.code || '').trim();
+}

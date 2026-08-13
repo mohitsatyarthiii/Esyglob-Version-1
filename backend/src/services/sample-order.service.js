@@ -4,7 +4,7 @@ import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shippi
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import mongoose from 'mongoose';
 import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions } from './promotion.service.js';
-import { checkoutShipmentForProduct, requireProductShippingData } from '../lib/checkout-package.js';
+import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
 import { providerBookingSnapshot } from '../lib/order-provider-booking.js';
 import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
@@ -66,7 +66,7 @@ class SampleOrderService {
       description: product.name,
       declaredValue: Number(product.price || 0) * orderQuantity,
       currency: product.currency || 'INR',
-      hsCode: product.hsCode,
+      hsCode: productHsCode(product),
       countryOfOrigin: product.countryOfOrigin,
     }, orderQuantity));
     const liveShipping = await getLiveCheckoutShipping({

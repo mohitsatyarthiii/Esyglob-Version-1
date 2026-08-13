@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 export const productSchema = z.object({
+  hsCodes: z.array(z.object({
+    code: z.string().trim().regex(/^\d{4,10}$/),
+    description: z.string().trim().optional(),
+    source: z.enum(['manual', 'ai_recommended', 'dataset_mapping', 'verified']).optional().default('manual'),
+    isPrimary: z.boolean().optional().default(false),
+  })).max(10).optional().default([]),
   name: z.string().trim().optional().default(''),
   categoryId: z.string().trim().optional().default(''),
   subcategoryId: z.string().trim().optional().default(''),

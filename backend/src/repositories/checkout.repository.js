@@ -6,14 +6,14 @@ import Seller from '../models/Seller.js';
 export async function findQuotationWithProduct(quotationId) {
   return Quotation.findById(quotationId)
     .select('productId unitPrice totalPrice currency')
-    .populate({ path: 'productId', select: 'sellerId name price samplePrice currency countryOfOrigin hsCode packaging' })
+    .populate({ path: 'productId', select: 'sellerId name price samplePrice currency countryOfOrigin hsCodes packaging' })
     .lean()
     .exec();
 }
 
 export async function findProductById(productId) {
   return Product.findById(productId)
-    .select('sellerId name price samplePrice currency countryOfOrigin hsCode packaging')
+    .select('sellerId name price samplePrice currency countryOfOrigin hsCodes packaging')
     .lean()
     .exec();
 }

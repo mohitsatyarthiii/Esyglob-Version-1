@@ -40317,6 +40317,12 @@ button:disabled,
 .checkout-shipping-copy b { color: #17243a; font-size: 13px; text-transform: none; }
 .checkout-shipping-copy small { font-size: 11px; }
 .checkout-shipping-copy em { color: #718096; font-size: 10px; font-style: normal; margin-top: 4px; }
+.checkout-provider-status { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.checkout-provider-status span { align-items: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; color: #64748b; display: inline-flex; font-size: 11px; gap: 6px; padding: 5px 9px; text-transform: capitalize; }
+.checkout-provider-status span i { background: #94a3b8; border-radius: 50%; height: 7px; width: 7px; }
+.checkout-provider-status span.is-connected { background: #ecfdf5; border-color: #a7f3d0; color: #047857; }
+.checkout-provider-status span.is-connected i { background: #10b981; }
+.checkout-logistics button.is-unavailable { opacity: .72; }
 .checkout-logistics button > strong { color: #14243b; font-size: 15px; white-space: nowrap; }
 .checkout-shipping-check { align-items: center; border: 1.5px solid #b6c2d0; border-radius: 50%; display: flex; height: 22px; justify-content: center; width: 22px; }
 .checkout-logistics button.active .checkout-shipping-check { background: #2563eb; border-color: #2563eb; color: #fff; }
