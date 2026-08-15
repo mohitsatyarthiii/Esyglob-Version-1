@@ -6,6 +6,7 @@ export async function fetchProfile() {
 }
 export async function updateProfile(input) { return unwrapData(await apiRequest('/profile', { method: 'PATCH', body: input })) }
 export async function updatePreferredCurrency(currency) { return unwrapData(await apiRequest('/profile/currency', { method: 'PATCH', body: { currency } })) }
+export async function updatePreferredLanguage(language) { return unwrapData(await apiRequest('/profile/language', { method: 'PATCH', body: { language } })) }
 export async function changePassword(input) { return unwrapData(await apiRequest('/profile/password', { method: 'PATCH', body: input })) }
 
 export async function fetchAddresses() { return normalizeList(await apiRequest('/addresses', { cache: false }), ['addresses', 'items']) }

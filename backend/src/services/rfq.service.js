@@ -22,6 +22,8 @@ import { validateNoContactInfo } from '../lib/contact-moderation.js';
 import { USER_ROLES } from '../lib/constants.js';
 import { normalizeCurrency } from '../lib/currency-metadata.js';
 import { assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
+import { resolveTaxonomyPair } from '../lib/taxonomy-validation.js';
+import { PUBLIC_SELLER_ELIGIBILITY } from '../lib/marketplace-eligibility.js';
 
 // ─── Seller Access Check ───────────────────────────────────
 async function isPrivateRfqRecipient(rfq, sessionUserId, seller) {
@@ -60,44 +62,23 @@ function normalized(value) {
   return String(resolved || '').trim().toLowerCase();
 }
 
-function sellerMatchesPublicRfq(seller, rfq) {
+export function sellerMatchesPublicRfq(seller, rfq) {
   const category = normalized(rfq.category);
   const subcategory = normalized(rfq.subcategory);
   const categories = (seller.productCategories || []).map(normalized).filter(Boolean);
   const subcategories = (seller.productSubcategories || []).map(normalized).filter(Boolean);
-  const industries = (seller.industries || []).map(normalized).filter(Boolean);
-  const rfqText = normalized([rfq.title, rfq.description, rfq.category, rfq.subcategory].filter(Boolean).join(' '));
-
-  return (
-    categories.includes(category) ||
-    categories.includes(subcategory) ||
-    subcategories.includes(subcategory) ||
-    industries.some((industry) => industry.length > 2 && rfqText.includes(industry))
-  );
+  return categories.includes(category) && (!subcategory || subcategories.includes(subcategory));
 }
 
 function publicRfqMatchQuery(seller) {
-  const exactTerms = [...new Set([
-    ...(seller?.productCategories || []),
-    ...(seller?.productSubcategories || []),
-  ].map((value) => normalized(value)).filter(Boolean))];
-  const industryTerms = [...new Set(
-    (seller?.industries || []).map((value) => normalized(value)).filter((value) => value.length > 2)
-  )];
-  const matchers = [];
-
-  exactTerms.forEach((term) => {
-    const exact = new RegExp(`^${escapeRegex(term)}$`, 'i');
-    matchers.push({ category: exact }, { subcategory: exact });
-  });
-  industryTerms.forEach((term) => {
-    const contains = new RegExp(escapeRegex(term), 'i');
-    matchers.push({ title: contains }, { description: contains }, { category: contains }, { subcategory: contains });
-  });
-
-  return matchers.length
-    ? { $and: [{ visibility: 'public' }, { $or: matchers }] }
-    : null;
+  const categories = [...new Set((seller?.productCategories || []).map(normalized).filter(Boolean))];
+  const subcategories = [...new Set((seller?.productSubcategories || []).map(normalized).filter(Boolean))];
+  if (!categories.length) return null;
+  return {
+    visibility: 'public',
+    category: { $in: categories.map((term) => new RegExp(`^${escapeRegex(term)}$`, 'i')) },
+    ...(subcategories.length ? { subcategory: { $in: subcategories.map((term) => new RegExp(`^${escapeRegex(term)}$`, 'i')) } } : {}),
+  };
 }
 
 // ─── Get RFQ List ──────────────────────────────────────────
@@ -105,7 +86,10 @@ export async function getRfqs(session, searchParams) {
   const {
     status,
     category,
+    subcategory,
     country,
+    dateFrom,
+    dateTo,
     search,
     deliveryTimeline,
     incoterms,
@@ -185,7 +169,17 @@ export async function getRfqs(session, searchParams) {
   }
 
   if (category) query.category = category;
+  if (subcategory) query.subcategory = subcategory;
   if (country) query.deliveryCountry = country;
+  if (dateFrom || dateTo) {
+    query.createdAt = {};
+    if (dateFrom) query.createdAt.$gte = new Date(dateFrom);
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      query.createdAt.$lte = end;
+    }
+  }
   if (deliveryTimeline) query.deliveryTimeline = deliveryTimeline;
   if (incoterms) query.incoterms = incoterms;
   if (verifiedOnly) query.isVerifiedSuppliersOnly = true;
@@ -273,8 +267,8 @@ export async function createRfq(session, body) {
   const simplifiedProduct = clean(body.productName || items?.[0]?.name);
   const resolvedTitle = clean(title || simplifiedProduct || linkedProduct?.name);
   const resolvedDescription = clean(description || body.notes) || `Buyer requested a quotation for ${resolvedTitle}.`;
-  const resolvedCategory = clean(category || linkedProduct?.category) || 'General';
-  const resolvedSubcategory = clean(subcategory || linkedProduct?.subcategory);
+  let resolvedCategory = clean(category || linkedProduct?.category) || 'General';
+  let resolvedSubcategory = clean(subcategory || linkedProduct?.subcategory);
   const resolvedUnit = VALID_UNITS.includes(unit) ? unit : VALID_UNITS.includes(items?.[0]?.unit) ? items[0].unit : linkedProduct?.unit || 'pcs';
   const resolvedQuantity = Number(quantity || items?.[0]?.quantity);
   const resolvedCurrency = normalizeCurrency(currency || linkedProduct?.currency || 'INR');
@@ -296,6 +290,13 @@ export async function createRfq(session, body) {
     const error = new Error('You cannot send an RFQ to yourself');
     error.statusCode = 400;
     throw error;
+  }
+
+  const requestedVisibility = targetSeller ? 'private' : (visibility || 'public');
+  if (requestedVisibility === 'public' && requestStatus !== 'draft') {
+    const taxonomy = await resolveTaxonomyPair(resolvedCategory, resolvedSubcategory, { requireSubcategory: true });
+    resolvedCategory = taxonomy.category;
+    resolvedSubcategory = taxonomy.subcategory;
   }
 
   const moderation = validateNoContactInfo({
@@ -377,7 +378,7 @@ export async function createRfq(session, body) {
     preferredSuppliersCountries: preferredSuppliersCountries || [],
     specificSupplierIds: targetSeller ? [targetSeller._id] : [],
     isVerifiedSuppliersOnly: isVerifiedSuppliersOnly || false,
-    visibility: targetSeller ? 'private' : (visibility || 'public'),
+    visibility: requestedVisibility,
     status: requestStatus === 'draft' ? 'draft' : 'submitted',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
     activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: resolvedTitle, actorId: session.userId, actorRole: 'buyer' }],
@@ -450,53 +451,86 @@ export async function createRfq(session, body) {
     return { rfq, chat, message: 'Private RFQ sent successfully' };
   }
 
-  // Notify matching sellers only for public marketplace RFQs.
+  // Deliver only after the public RFQ itself has been persisted. A delivery
+  // failure must never roll back or hide the public marketplace record.
   if (rfq.status === 'submitted' && rfq.visibility === 'public') {
-    const sellerQuery = { isActive: true, isSuspended: { $ne: true } };
+    const sellerQuery = { ...PUBLIC_SELLER_ELIGIBILITY };
     if (isVerifiedSuppliersOnly) sellerQuery.isVerified = true;
     if (preferredSuppliersCountries?.length) {
       sellerQuery['address.country'] = { $in: preferredSuppliersCountries };
     }
-    const matchTerms = [resolvedCategory, resolvedSubcategory]
-      .map((value) => String(value || '').trim())
-      .filter(Boolean);
-    if (matchTerms.length) {
-      const exact = matchTerms.map((term) => new RegExp(`^${escapeRegex(term)}$`, 'i'));
-      sellerQuery.$or = [
-        { productCategories: { $in: exact } },
-        { productSubcategories: { $in: exact } },
-        { industries: { $in: exact } },
-      ];
-    } else {
-      sellerQuery._id = null;
-    }
+    sellerQuery.productCategories = { $in: [new RegExp(`^${escapeRegex(resolvedCategory)}$`, 'i')] };
+    sellerQuery.productSubcategories = { $in: [new RegExp(`^${escapeRegex(resolvedSubcategory)}$`, 'i')] };
 
-    const sellers = await rfqRepository.findSellersForNotification(sellerQuery);
-
-    if (sellers.length) {
-      await rfqRepository.createNotifications(
-        sellers.map((seller) => ({
-          eventKey: `public-rfq:${rfq._id}:${seller.userId}`,
-          userId: seller.userId,
-          notificationType: 'rfq_created',
-          title: 'New RFQ matching your marketplace',
-          description: resolvedTitle,
-          data: {
-            relatedId: rfq._id,
-            relatedModel: 'RFQ',
-            actionUrl: `/rfqs/${rfq._id}?role=seller`,
+    try {
+      const sellers = await rfqRepository.findSellersForNotification(sellerQuery, 500);
+      const deliveryResults = await Promise.allSettled(sellers.map(async (seller) => {
+        const { chat } = await findOrCreateConversation({
+          buyerId: session.userId,
+          sellerId: seller.userId,
+          rfqId: rfq._id,
+          chatType: 'rfq_negotiation',
+        });
+        const Message = (await import('../models/Message.js')).default;
+        const deliveryKey = `public-rfq:${rfq._id}:${seller.userId}`;
+        const existingMessage = await Message.exists({ deliveryKey });
+        const message = await Message.findOneAndUpdate(
+          { deliveryKey },
+          {
+            $setOnInsert: {
+              deliveryKey,
+              chatId: chat._id,
+              senderId: session.userId,
+              receiverId: seller.userId,
+              content: `New public RFQ: ${resolvedTitle}\nCategory: ${resolvedCategory} / ${resolvedSubcategory}\nQuantity: ${resolvedQuantity} ${resolvedUnit}\nDestination: ${deliveryCountry}`,
+              messageType: 'rfq',
+              rfqDetails: {
+                rfqId: rfq._id,
+                title: rfq.title,
+                product: rfq.title,
+                quantity: rfq.quantity,
+                unit: rfq.unit,
+                targetPrice: rfq.targetPrice,
+                status: rfq.status,
+                date: rfq.createdAt,
+                actionUrl: `/rfqs/${rfq._id}?role=seller`,
+              },
+              isRead: false,
+            },
           },
-          priority: 'medium',
-        }))
-      );
+          { new: true, upsert: true, setDefaultsOnInsert: true }
+        );
+        await Promise.all([
+          Chat.updateOne({ _id: chat._id }, {
+            $set: { rfqId: rfq._id, chatType: 'rfq_negotiation', lastMessage: `New public RFQ: ${resolvedTitle}`, lastMessageAt: new Date() },
+            ...(!existingMessage ? { $inc: { sellerUnreadCount: 1 } } : {}),
+          }),
+          rfqRepository.createNotifications([{
+            eventKey: deliveryKey,
+            userId: seller.userId,
+            notificationType: 'rfq_created',
+            title: `New RFQ available in ${resolvedSubcategory}`,
+            description: `${resolvedTitle} · ${resolvedCategory} / ${resolvedSubcategory}`,
+            data: { relatedId: rfq._id, relatedModel: 'RFQ', actionUrl: `/rfqs/${rfq._id}?role=seller` },
+            priority: 'medium',
+          }]),
+        ]);
+        return { seller, chat, message };
+      }));
+
       const io = getIO();
-      if (io) {
-        sellers.forEach((seller) => io.to(`user_${seller.userId}`).emit('new_notification', {
-          type: 'rfq_created',
-          rfqId: String(rfq._id),
-          actionUrl: `/rfqs/${rfq._id}?role=seller`,
-        }));
-      }
+      if (io) deliveryResults.forEach((result) => {
+        if (result.status !== 'fulfilled') return;
+        const { seller, chat, message } = result.value;
+        io.to(`chat_${chat._id}`).emit('new_message', message);
+        io.to(`user_${seller.userId}`).emit('new_notification', {
+          type: 'rfq_created', rfqId: String(rfq._id), chatId: String(chat._id), actionUrl: `/rfqs/${rfq._id}?role=seller`,
+        });
+      });
+      const failed = deliveryResults.filter((result) => result.status === 'rejected');
+      if (failed.length) console.error(`Public RFQ ${rfq._id} delivery failed for ${failed.length} seller(s)`);
+    } catch (error) {
+      console.error(`Public RFQ ${rfq._id} matching failed:`, error);
     }
   }
 

@@ -192,6 +192,19 @@ export async function submitProductEnquiry({ otherUserId, productId, content, qu
   return { chatId }
 }
 
+export async function submitSellerEnquiry({ otherUserId, content, quantity, unit = 'pcs' }) {
+  const created = unwrapData(await apiRequest('/chat', {
+    method: 'POST',
+    body: { otherUserId, role: 'buyer', enquiry: true },
+  })) || {}
+  const chat = created.chat || created
+  const chatId = chat._id || chat.id
+  if (!chatId) throw new Error('The supplier conversation could not be created.')
+  const message = [content?.trim(), quantity ? `Requested quantity: ${quantity} ${unit}` : ''].filter(Boolean).join('\n\n')
+  await apiRequest(`/chat/${chatId}`, { method: 'POST', body: { content: message, messageType: 'text' } })
+  return { chatId }
+}
+
 export async function createProductEnquiry(input) {
   const payload = await apiRequest('/rfqs/product-enquiry', { method: 'POST', body: input })
   return unwrapData(payload) || {}

@@ -36,6 +36,7 @@ import {
   uploadVerificationDocument,
 } from '../api/verification'
 import { uploadFiles } from '../api/trade'
+import { fetchCategories } from '../api/marketplace'
 import AppShell from '../components/AppShell'
 import AddressAutocomplete from '../components/AddressAutocomplete'
 import { SafeImage } from '../components/MarketplaceCards'
@@ -91,6 +92,7 @@ export default function BusinessProfilePage() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [marketplaceCategories, setMarketplaceCategories] = useState([])
 
   const load = useCallback(async () => {
     const result = await fetchVerificationWorkspace()
@@ -101,6 +103,7 @@ export default function BusinessProfilePage() {
   }, [requestedSection])
 
   useEffect(() => { load().catch((next) => setError(next.message)) }, [load])
+  useEffect(() => { fetchCategories().then(setMarketplaceCategories).catch(() => setError('Unable to load marketplace categories.')) }, [])
   useEffect(() => {
     if (digiLockerOutcome === 'success') setMessage('DigiLocker documents were securely processed and added to this verification for review.')
     if (digiLockerOutcome === 'cancelled') setMessage('DigiLocker consent was cancelled. You can continue with manual verification.')
@@ -203,7 +206,7 @@ export default function BusinessProfilePage() {
         <section className="business-profile-workspace">
           {active === 'overview' && <Overview data={data} seller={seller} factory={factory} progress={progress} setActive={setActive} />}
           {active === 'company' && <CompanySection seller={seller} setSeller={setSeller} />}
-          {active === 'products' && <ProductsSection seller={seller} setSeller={setSeller} productCount={data?.seller?.totalProducts || 0} />}
+          {active === 'products' && <ProductsSection seller={seller} setSeller={setSeller} productCount={data?.seller?.totalProducts || 0} categories={marketplaceCategories} />}
           {active === 'trade' && <TradeSection seller={seller} setSeller={setSeller} />}
           {active === 'factory' && <FactorySection factory={factory} setFactory={setFactory} />}
           {active === 'media' && <MediaSection seller={seller} setSeller={setSeller} factory={factory} setFactory={setFactory} busy={busy} upload={uploadMedia} />}
@@ -242,10 +245,21 @@ function CompanySection({ seller, setSeller }) {
   </Section>
 }
 
-function ProductsSection({ seller, setSeller, productCount }) {
+function ProductsSection({ seller, setSeller, productCount, categories }) {
+  const toggleCategory = (category) => {
+    const selected = seller.productCategories.includes(category.name)
+    const removedSubcategories = new Set((category.subcategories || []).map((item) => item.name))
+    setSeller({
+      ...seller,
+      productCategories: selected ? seller.productCategories.filter((item) => item !== category.name) : [...seller.productCategories, category.name],
+      productSubcategories: selected ? seller.productSubcategories.filter((item) => !removedSubcategories.has(item)) : seller.productSubcategories,
+    })
+  }
+  const toggleSubcategory = (subcategory) => setSeller({ ...seller, productSubcategories: seller.productSubcategories.includes(subcategory.name) ? seller.productSubcategories.filter((item) => item !== subcategory.name) : [...seller.productSubcategories, subcategory.name] })
   return <Section title="Products, categories & industries" description="These selections influence marketplace ranking, related products, RFQ matching, and Manufacturer categories." action={<Link to="/seller/products">Manage {productCount} live products <ExternalLink /></Link>}>
-    <div className="business-form-grid"><ListField label="Categories" value={seller.productCategories} onChange={(value) => set(seller, setSeller, 'productCategories', value)} /><ListField label="Subcategories" value={seller.productSubcategories} onChange={(value) => set(seller, setSeller, 'productSubcategories', value)} /><ListField label="Industries served" value={seller.industries} onChange={(value) => set(seller, setSeller, 'industries', value)} /><ListField label="Main products" value={seller.mainProducts} onChange={(value) => set(seller, setSeller, 'mainProducts', value)} /></div>
-    <p className="business-field-note">Enter multiple values separated by commas. Published product categories are also calculated from your active product catalogue.</p>
+    <div className="business-taxonomy-picker">{categories.map((category) => { const active = seller.productCategories.includes(category.name); return <article className={active ? 'active' : ''} key={category._id || category.slug}><label><input type="checkbox" checked={active} onChange={() => toggleCategory(category)} /><b>{category.name}</b></label>{active && <div>{(category.subcategories || []).map((subcategory) => <label key={subcategory._id || subcategory.slug}><input type="checkbox" checked={seller.productSubcategories.includes(subcategory.name)} onChange={() => toggleSubcategory(subcategory)} /><span>{subcategory.name}</span></label>)}</div>}</article> })}</div>
+    <div className="business-form-grid"><ListField label="Industries served" value={seller.industries} onChange={(value) => set(seller, setSeller, 'industries', value)} /><ListField label="Main products" value={seller.mainProducts} onChange={(value) => set(seller, setSeller, 'mainProducts', value)} /></div>
+    <p className="business-field-note">Select one or more marketplace categories and their valid subcategories. These exact selections control public RFQ matching.</p>
   </Section>
 }
 

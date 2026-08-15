@@ -131,6 +131,28 @@ const quotationSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    negotiationVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    currentOffer: {
+      action: { type: String, enum: ['submitted', 'buyer_counter', 'seller_revision', 'seller_accepted_counter', 'accepted'] },
+      actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      actorRole: { type: String, enum: ['buyer', 'seller'] },
+      unitPrice: Number,
+      totalPrice: Number,
+      minimumOrderQuantity: Number,
+      suppliedQuantity: Number,
+      leadTime: Number,
+      leadTimeUnit: String,
+      paymentTerms: String,
+      incoterms: String,
+      notes: String,
+      previousUnitPrice: Number,
+      createdAt: Date,
+      sequence: Number,
+    },
     revisionHistory: [
       {
         version: Number,
@@ -171,10 +193,13 @@ const quotationSchema = new mongoose.Schema(
       {
         action: {
           type: String,
-          enum: ['submitted', 'buyer_counter', 'seller_revision', 'accepted', 'rejected', 'message'],
+          enum: ['submitted', 'buyer_counter', 'seller_revision', 'seller_accepted_counter', 'accepted', 'rejected', 'message'],
         },
+        idempotencyKey: String,
         actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        actorRole: { type: String, enum: ['buyer', 'seller'] },
         message: String,
+        previousUnitPrice: Number,
         unitPrice: Number,
         totalPrice: Number,
         minimumOrderQuantity: Number,
@@ -250,6 +275,7 @@ const quotationSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    optimisticConcurrency: true,
     indexes: [
       { rfqId: 1, status: 1 },
       { rfqId: 1, userId: 1, createdAt: -1 },

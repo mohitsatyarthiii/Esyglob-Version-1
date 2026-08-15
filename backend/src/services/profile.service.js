@@ -14,6 +14,16 @@ function splitName(fullName) {
 }
 
 class ProfileService {
+  static async updatePreferredLanguage(userId, language) {
+    const normalized = String(language || '').trim().toLowerCase();
+    if (!['en', 'hi', 'ar', 'es', 'fr', 'de', 'pt', 'ru', 'zh', 'ja'].includes(normalized)) {
+      throw Object.assign(new Error('Select a supported language'), { statusCode: 422 });
+    }
+    const user = await ProfileRepository.updateUser(userId, { 'metadata.preferredLanguage': normalized });
+    if (!user) throw Object.assign(new Error('User not found'), { statusCode: 404 });
+    return { success: true, preferredLanguage: normalized };
+  }
+
   static async updatePreferredCurrency(userId, currency) {
     const normalized = normalizeCurrency(currency);
     const user = await ProfileRepository.updateUser(userId, { 'metadata.preferredCurrency': normalized });

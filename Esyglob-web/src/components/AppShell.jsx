@@ -11,9 +11,12 @@ import { getRealtimeClient } from '../realtime/socket'
 import TradeWorkspaceDock from './TradeWorkspaceDock'
 import MarketplaceSearch from './MarketplaceSearch'
 import { detectCurrentAddress } from '../utils/current-address'
+import { useI18n } from '../i18n/i18n-context'
+import CurrencySelector from './CurrencySelector'
 
 export default function AppShell({ children }) {
   const { user, status, signOut } = useAuth()
+  const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -107,6 +110,7 @@ export default function AppShell({ children }) {
         <Link to="/home" className="brand-link"><Brand compact asLink={false} /></Link>
         <MarketplaceSearch />
         <div className="header-actions">
+          <CurrencySelector />
           {authenticated ? <>
             <Link className="header-region" to="/addresses"><MapPin /><span>{region}</span></Link>
             <Link className="icon-button notification-button header-messages" to="/messages" aria-label={`${unreadMessages} unread messages`}><MessageSquare />{unreadMessages > 0 && <b>{unreadMessages > 99 ? '99+' : unreadMessages}</b>}</Link>
@@ -120,7 +124,7 @@ export default function AppShell({ children }) {
         {sellerAccount ? <>
           <NavLink to="/dashboard">Seller dashboard</NavLink><NavLink to="/seller/products">Products</NavLink><NavLink to="/orders?role=seller">Orders</NavLink><NavLink to="/rfqs?role=seller">Enquiries & RFQs</NavLink><NavLink to="/messages">Messages</NavLink><NavLink to="/seller/business-profile">Business profile</NavLink><NavLink to="/subscriptions">Subscription</NavLink><NavLink to="/saved">Saved</NavLink><NavLink to="/settings">Settings</NavLink>
         </> : <>
-          <NavLink to="/home">Marketplace</NavLink><NavLink to="/categories">Categories</NavLink><NavLink to="/products">Products</NavLink><NavLink to="/sellers">Manufacturers</NavLink><NavLink to="/explore">Explore</NavLink><NavLink to="/services">Trade services</NavLink>{authenticated && <><NavLink to="/rfqs">RFQs</NavLink><NavLink to="/market-insights">Insights</NavLink><NavLink to="/ai-chat">AI sourcing</NavLink></>}<span className="nav-spacer" /><button onClick={() => navigate(authenticated ? '/rfqs/new' : '/login', { state: { from: '/rfqs/new' } })}><BriefcaseBusiness size={17} /> Post a buying request</button>
+          <NavLink to="/home">{t('nav.marketplace')}</NavLink><NavLink to="/categories">{t('nav.categories')}</NavLink><NavLink to="/products">{t('nav.products')}</NavLink><NavLink to="/sellers">{t('nav.manufacturers')}</NavLink><NavLink to="/explore">{t('nav.explore')}</NavLink><NavLink to="/services">{t('nav.services')}</NavLink>{authenticated && <><NavLink to="/rfqs">RFQs</NavLink><NavLink to="/market-insights">Insights</NavLink><NavLink to="/ai-chat">AI sourcing</NavLink></>}<span className="nav-spacer" /><button onClick={() => navigate(authenticated ? '/rfqs/new' : '/login', { state: { from: '/rfqs/new' } })}><BriefcaseBusiness size={17} /> Post a buying request</button>
         </>}
       </div></nav>
     </header>
@@ -139,7 +143,7 @@ export default function AppShell({ children }) {
     <main onClickCapture={handleBackCapture}><GlobalBackNavigation pathname={location.pathname} />{children}</main>
     {authenticated && !immersive && <TradeWorkspaceDock />}
     {!immersive && <nav className="mobile-tabbar" aria-label="Mobile navigation">
-      {sellerAccount ? <><NavLink to="/dashboard"><LayoutDashboard /><span>Dashboard</span></NavLink><NavLink to="/seller/products"><Grid2X2 /><span>Products</span></NavLink><NavLink to="/seller/order-queue"><BriefcaseBusiness /><span>Orders</span></NavLink><NavLink to="/messages"><MessageSquare /><span>Messages</span></NavLink><NavLink to="/account"><UserRound /><span>Account</span></NavLink></> : <><NavLink to="/home"><Home /><span>Home</span></NavLink><NavLink to="/categories"><Grid2X2 /><span>Categories</span></NavLink><NavLink to="/services"><BriefcaseBusiness /><span>Services</span></NavLink><NavLink to={authPath('/messages')} state={authenticated ? undefined : { from: '/messages' }}><MessageSquare /><span>Messages</span></NavLink><NavLink to={authPath('/account')} state={authenticated ? undefined : { from: '/account' }}><UserRound /><span>Account</span></NavLink></>}
+      {sellerAccount ? <><NavLink to="/dashboard"><LayoutDashboard /><span>Dashboard</span></NavLink><NavLink to="/seller/products"><Grid2X2 /><span>{t('nav.products')}</span></NavLink><NavLink to="/seller/order-queue"><BriefcaseBusiness /><span>Orders</span></NavLink><NavLink to="/messages"><MessageSquare /><span>{t('nav.messages')}</span></NavLink><NavLink to="/account"><UserRound /><span>{t('nav.account')}</span></NavLink></> : <><NavLink to="/home"><Home /><span>Home</span></NavLink><NavLink to="/categories"><Grid2X2 /><span>{t('nav.categories')}</span></NavLink><NavLink to="/services"><BriefcaseBusiness /><span>{t('nav.services')}</span></NavLink><NavLink to={authPath('/messages')} state={authenticated ? undefined : { from: '/messages' }}><MessageSquare /><span>{t('nav.messages')}</span></NavLink><NavLink to={authPath('/account')} state={authenticated ? undefined : { from: '/account' }}><UserRound /><span>{t('nav.account')}</span></NavLink></>}
     </nav>}
     {!immersive && <Footer authenticated={authenticated} />}
   </div>

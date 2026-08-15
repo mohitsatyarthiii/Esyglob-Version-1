@@ -1,5 +1,5 @@
 import { Archive, ArrowRight, Filter, Plus } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { fetchRfqs } from "../api/trade";
 import { useAuth } from "../auth/auth-context";
@@ -8,6 +8,7 @@ import { Money, StatusBadge } from "../components/TradeUI";
 import useAsyncData from "../hooks/useAsyncData";
 import { PageHead } from "../components/PageHead";
 import UnifiedSearchInput from "../components/UnifiedSearchInput";
+import { fetchCategories } from "../api/marketplace";
 
 const filters = [
   "all",
@@ -28,18 +29,29 @@ export default function RfqsPage() {
   const q = params.get("q") || "";
   const page = Math.max(1, Number(params.get("page")) || 1);
   const [search, setSearch] = useState(q);
+  const [categories, setCategories] = useState([]);
+  const category = params.get("category") || "";
+  const subcategory = params.get("subcategory") || "";
+  const country = params.get("country") || "";
+  const dateFrom = params.get("dateFrom") || "";
+  useEffect(() => { fetchCategories().then(setCategories).catch(() => setCategories([])); }, []);
+  const selectedCategory = categories.find((item) => item.name === category);
   const loader = useCallback(
     () =>
       fetchRfqs({
         scope: role,
         status: status === "all" ? undefined : status,
         q,
+        category: category || undefined,
+        subcategory: subcategory || undefined,
+        country: country || undefined,
+        dateFrom: dateFrom || undefined,
         page,
         limit: 20,
         sort: "createdAt",
         order: "desc",
       }),
-    [page, q, role, status]
+    [category, country, dateFrom, page, q, role, status, subcategory]
   );
   const query = useAsyncData(loader);
   const rows = query.data?.rfqs || [];
@@ -101,6 +113,10 @@ export default function RfqsPage() {
               ))}
             </select>
           </label>
+          <label>Category<select value={category} onChange={(event) => { const next = new URLSearchParams(params); event.target.value ? next.set("category", event.target.value) : next.delete("category"); next.delete("subcategory"); next.delete("page"); setParams(next); }}><option value="">All categories</option>{categories.map((item) => <option value={item.name} key={item._id || item.slug}>{item.name}</option>)}</select></label>
+          <label>Subcategory<select value={subcategory} disabled={!category} onChange={(event) => set("subcategory", event.target.value)}><option value="">All subcategories</option>{(selectedCategory?.subcategories || []).map((item) => <option value={item.name} key={item._id || item.slug}>{item.name}</option>)}</select></label>
+          <label>Location<input value={country} onChange={(event) => set("country", event.target.value)} placeholder="Country" /></label>
+          <label>Posted since<input type="date" value={dateFrom} onChange={(event) => set("dateFrom", event.target.value)} /></label>
         </div>
         <div className="filter-chips">
           {visibleFilters.slice(0, 7).map((item) => (
@@ -173,6 +189,7 @@ export function RfqCard({ item, sellerView }) {
           "Buyer requirements available in RFQ details."}
       </p>
       <div className="rfq-card__facts">
+        <span><small>Category</small><b>{[item.category, item.subcategory].filter(Boolean).join(" / ") || "—"}</b></span>
         <span>
           <small>Quantity</small>
           <b>
@@ -190,9 +207,10 @@ export function RfqCard({ item, sellerView }) {
           <b>{item.deliveryCountry || item.destinationCountry || "—"}</b>
         </span>
         <span>
-          <small>{deadline ? "Deadline" : "Submitted"}</small>
-          <b>{new Date(deadline || item.createdAt).toLocaleDateString()}</b>
+          <small>Posted</small>
+          <b>{new Date(item.createdAt).toLocaleDateString()}</b>
         </span>
+        {deadline && <span><small>Required by</small><b>{new Date(deadline).toLocaleDateString()}</b></span>}
       </div>
       <div className="rfq-card__footer">
         <span>

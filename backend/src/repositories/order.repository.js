@@ -27,10 +27,10 @@ class OrderRepository {
       .populate('buyerId', 'email fullName firstName lastName avatarUrl avatar profileImage phone')
       .populate({
         path: 'sellerId',
-        select: 'companyName companyType isVerified userId companyLogo logo logoUrl',
+        select: 'companyName companyType isVerified userId companyLogo logo logoUrl address businessEmail businessPhone gstNumber',
         populate: { path: 'userId', select: 'fullName avatarUrl avatar profileImage' },
       })
-      .populate('productId', 'name images description price')
+      .populate('productId', 'name images description price currency unit packaging hsCodes countryOfOrigin')
       .populate('rfqId')
       .populate('quotationId')
       .populate('chatId')

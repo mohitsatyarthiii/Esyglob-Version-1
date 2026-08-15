@@ -1,7 +1,7 @@
 import { ArrowLeft, Save, Send } from 'lucide-react'
-import { useCallback, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { createProductEnquiry } from '../api/marketplace'
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { createProductEnquiry, fetchCategories } from '../api/marketplace'
 import { createRfq, createSellerRfq } from '../api/trade'
 import AppShell from '../components/AppShell'
 import { AttachmentUploader } from '../components/TradeUI'
@@ -17,6 +17,8 @@ export default function RfqCreatePage() {
   const [attachments, setAttachments] = useState([])
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const [categories, setCategories] = useState([])
+  const [publishedRfq, setPublishedRfq] = useState(null)
   const [form, setForm] = useState({
     productName: product.name || '',
     quantity: String(product.requestedQuantity || product.moq || product.minimumOrderQuantity || 1),
@@ -26,13 +28,20 @@ export default function RfqCreatePage() {
     deliveryCountry: 'India',
     deliveryTimeline: 'flexible',
     notes: '',
+    category: '',
+    subcategory: '',
   })
+  const privateRfq = Boolean(prefill.sellerId || prefill.sellerUserId)
+  useEffect(() => {
+    if (privateRfq) return
+    fetchCategories().then(setCategories).catch(() => setError('Unable to load marketplace categories. Please try again.'))
+  }, [privateRfq])
   const update = useCallback((key, value) => setForm((current) => ({ ...current, [key]: value })), [])
 
   async function submit(status) {
     setError('')
     const quantity = Number(form.quantity)
-    if (!form.productName.trim() || !Number.isFinite(quantity) || quantity <= 0 || !form.unit.trim() || !form.deliveryCountry.trim() || !form.deliveryTimeline) {
+    if (!form.productName.trim() || !Number.isFinite(quantity) || quantity <= 0 || !form.unit.trim() || !form.deliveryCountry.trim() || !form.deliveryTimeline || (!privateRfq && status !== 'draft' && (!form.category || !form.subcategory))) {
       return setError('Product, valid quantity, unit, delivery location and timeline are required.')
     }
     if ([form.productName, form.notes].some((value) => contactPattern.test(value))) {
@@ -77,10 +86,11 @@ export default function RfqCreatePage() {
           : navigate(`/rfqs/${rfq._id || rfq.id}`)
       }
 
-      const isPrivate = Boolean(prefill.sellerId || prefill.sellerUserId)
+      const isPrivate = privateRfq
       const payload = {
         ...common,
-        category: typeof product.category === 'object' ? product.category?.name : product.category || 'General',
+        category: isPrivate ? (typeof product.category === 'object' ? product.category?.name : product.category || 'General') : form.category,
+        subcategory: isPrivate ? (typeof product.subcategory === 'object' ? product.subcategory?.name : product.subcategory || '') : form.subcategory,
         visibility: isPrivate ? 'private' : 'public',
         sellerId: prefill.sellerId || undefined,
         sellerUserId: prefill.sellerUserId || undefined,
@@ -90,14 +100,16 @@ export default function RfqCreatePage() {
       const result = isPrivate ? await createSellerRfq(payload) : await createRfq(payload)
       if (result.chat) return navigate(`/messages/${result.chat._id || result.chat.id}`)
       const rfq = result.rfq || result
-      navigate(`/rfqs/${rfq._id || rfq.id}`)
+      if (!isPrivate && status !== 'draft') setPublishedRfq(rfq)
+      else navigate(`/rfqs/${rfq._id || rfq.id}`)
     } catch (nextError) {
-      setError(nextError.message)
+      setError(privateRfq ? nextError.message : 'Unable to publish RFQ. Please try again.')
       setBusy('')
     }
   }
 
-  const privateRfq = Boolean(prefill.sellerId || prefill.sellerUserId)
+  const selectedCategory = categories.find((item) => item.name === form.category)
+  if (publishedRfq) return <AppShell><div className="trade-form-page container trade-form-page--compact"><section className="trade-form-section"><span className="eyebrow">Published</span><h1>RFQ published successfully.</h1><p>Your request is live in the Public RFQ Marketplace. Matching manufacturers are being notified without affecting its public availability.</p><div className="trade-page-actions"><Link className="button button--primary" to={`/rfqs/${publishedRfq._id || publishedRfq.id}`}>View Public RFQ</Link><Link className="button button--secondary" to="/rfqs">Go to My RFQs</Link></div></section></div></AppShell>
   return <AppShell><div className="trade-form-page container trade-form-page--compact">
     <button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Back</button>
     <header><span className="eyebrow">{privateRfq ? 'Private supplier enquiry' : 'Buyer sourcing request'}</span><h1>{privateRfq ? `Send enquiry${prefill.supplierName ? ` to ${prefill.supplierName}` : ''}` : 'Create RFQ'}</h1><p>Share the essential requirement. Suppliers can clarify details in the negotiation workspace.</p></header>
@@ -105,6 +117,7 @@ export default function RfqCreatePage() {
       <div>
         <FormSection title="Product requirement">
           <Field label="Product" required><input value={form.productName} onChange={(event) => update('productName', event.target.value)} placeholder="What do you need?" /></Field>
+          {!privateRfq && <div className="form-grid"><Field label="Category" required><select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value, subcategory: '' }))}><option value="">Select marketplace category</option>{categories.map((item) => <option value={item.name} key={item._id || item.slug}>{item.name}</option>)}</select></Field><Field label="Subcategory" required><select value={form.subcategory} disabled={!selectedCategory} onChange={(event) => update('subcategory', event.target.value)}><option value="">Select subcategory</option>{(selectedCategory?.subcategories || []).map((item) => <option value={item.name} key={item._id || item.slug}>{item.name}</option>)}</select></Field></div>}
           <div className="form-grid form-grid--3">
             <Field label="Quantity" required><input type="number" min="0.01" step="any" value={form.quantity} onChange={(event) => update('quantity', event.target.value)} /></Field>
             <Field label="Unit" required><input value={form.unit} onChange={(event) => update('unit', event.target.value)} placeholder="pcs, kg, cartons" /></Field>

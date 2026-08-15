@@ -327,18 +327,22 @@ export async function sendMessage(user, chatId, messageData) {
   await chatRepository.updateChat(chatId, chatUpdate);
 
   // Create notification
+  const isDirectEnquiry = isBuyer && chat.chatType === 'product_enquiry';
   await chatRepository.createNotification({
+    eventKey: isDirectEnquiry ? `direct-enquiry:${message._id}` : undefined,
     userId: receiverId,
-    notificationType: 'message',
+    notificationType: isDirectEnquiry ? 'new_inquiry' : 'message',
     title:
       chat.chatType === 'group'
         ? `New message in ${chat.groupName || 'Group Chat'}`
-        : `New message from ${user.fullName || user.email}`,
+        : isDirectEnquiry
+          ? `New enquiry from ${user.fullName || user.email}`
+          : `New message from ${user.fullName || user.email}`,
     description: normalizedContent.substring(0, 100),
     data: {
       relatedId: chatId,
       relatedModel: 'Chat',
-      actionUrl: `${isBuyer ? '/dashboard/seller/messages' : '/dashboard/buyer/messages'}?chatId=${chatId}`,
+      actionUrl: `/messages/${chatId}`,
     },
   });
 
@@ -364,7 +368,7 @@ export async function sendMessage(user, chatId, messageData) {
       io.to(`chat_${chatId}`).emit('new_message', autoReply)
     );
     io.to(`user_${receiverId}`).emit('new_notification', {
-      type: 'message',
+      type: isDirectEnquiry ? 'new_inquiry' : 'message',
       chatId,
       message: normalizedContent,
     });

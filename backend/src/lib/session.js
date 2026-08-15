@@ -101,6 +101,7 @@ export function serializeUser(user) {
     isActive: user.isActive,
     isBanned: user.isBanned,
     hasCompletedOnboarding: Boolean(user.hasCompletedOnboarding),
+    preferredLanguage: user.metadata?.preferredLanguage || 'en',
     sessionVersion: Number(user.sessionVersion || 0),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,

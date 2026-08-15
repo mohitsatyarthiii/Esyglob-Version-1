@@ -31,8 +31,26 @@ test('seller shipping setup normalizes an Indian pickup address for both carrier
     postalCode: '600001',
     country: 'India',
     countryCode: 'IN',
+    formattedAddress: '',
+    district: '',
+    placeId: '',
+    latitude: undefined,
+    longitude: undefined,
+    locationSource: 'manual',
   });
   assert.deepEqual(validatePickupAddress(address), {});
+});
+
+test('seller pickup normalization preserves structured Google location data', () => {
+  const address = normalizePickupAddress({
+    line1: '12 Industrial Estate', city: 'Chennai', state: 'Tamil Nadu', postalCode: '600001',
+    formattedAddress: '12 Industrial Estate, Chennai, Tamil Nadu 600001, India', district: 'Chennai',
+    placeId: 'google-place-123', latitude: 13.0827, longitude: 80.2707, locationSource: 'autocomplete',
+  });
+  assert.equal(address.placeId, 'google-place-123');
+  assert.equal(address.latitude, 13.0827);
+  assert.equal(address.longitude, 80.2707);
+  assert.equal(address.locationSource, 'autocomplete');
 });
 
 test('seller shipping setup returns field-level errors for incomplete pickup details', () => {

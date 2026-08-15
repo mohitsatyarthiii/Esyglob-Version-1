@@ -126,7 +126,7 @@ const SellerListingCard = memo(function SellerListingCard({ seller }) {
       <div className="seller-card-proof">{verified ? <><ShieldCheck /> Identity and business details verified</> : <><Building2 /> Marketplace business profile</>}</div>
       <div className="seller-card-actions">
         <button type="button" className="seller-card-action secondary" disabled={openingChat || !resolveId(seller.userId)} onClick={openManufacturerChat}><MessageCircle /> {openingChat ? 'Opening chat…' : 'Chat now'}</button>
-        <Link className="seller-card-action secondary" to={`/rfqs/new?sellerId=${id}`}><Send /> Send enquiry</Link>
+        <Link className="seller-card-action secondary" to={`/sellers/${id}?enquiry=1`}><Send /> Send enquiry</Link>
         <Link className="seller-card-action primary" to={`/sellers/${id}`}>View profile <ArrowUpRight /></Link>
       </div>
     </footer>

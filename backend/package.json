@@ -28,7 +28,9 @@
     "shipping:setup:dry-run": "node scripts/sync-seller-shipping-setups.js",
     "shipping:setup:sync": "node scripts/sync-seller-shipping-setups.js --execute",
     "catalog:sample-shipping:dry-run": "node scripts/seed-catalog-sample-shipping.js",
-    "catalog:sample-shipping:seed": "node scripts/seed-catalog-sample-shipping.js --execute"
+    "catalog:sample-shipping:seed": "node scripts/seed-catalog-sample-shipping.js --execute",
+    "shipping:checkout:audit": "node scripts/audit-live-checkout-rates.js",
+    "address:google:audit": "node scripts/audit-google-address.js"
   },
   "keywords": [],
   "author": "",

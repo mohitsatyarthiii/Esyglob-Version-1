@@ -13,7 +13,7 @@ import User from '../models/User.js';
 export async function findQuotations(query, skip, limit) {
   return Quotation.find(query)
     .select(
-      'rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationHistory sellerMessage buyerMessage agreement finalQuotation tradeDocuments createdAt updatedAt acceptedAt rejectedAt rejectionReason'
+      'rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationVersion currentOffer negotiationHistory sellerMessage buyerMessage agreement finalQuotation tradeDocuments createdAt updatedAt acceptedAt rejectedAt rejectionReason'
     )
     .populate({
       path: 'rfqId',
@@ -142,6 +142,15 @@ export async function findChatByBuyerSeller(buyerId, sellerId) {
 // ─── Message ───────────────────────────────────────────────
 export async function createMessage(data) {
   return Message.create(data).catch(() => null);
+}
+
+export async function createMessageOnce(data) {
+  if (!data.deliveryKey) return createMessage(data);
+  return Message.findOneAndUpdate(
+    { deliveryKey: data.deliveryKey },
+    { $setOnInsert: data },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+  );
 }
 
 // ─── Notification ──────────────────────────────────────────

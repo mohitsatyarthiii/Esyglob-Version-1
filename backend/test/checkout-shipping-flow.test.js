@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../src/lib/checkout-package.js';
-import { getLiveCheckoutShipping, isIndianAddress } from '../src/lib/checkout-shipping.js';
+import { getLiveCheckoutShipping, isIndianAddress, normalizeCheckoutShippingTiers } from '../src/lib/checkout-shipping.js';
 import { hasPickupAddress, sellerWithCheckoutPickup } from '../src/lib/checkout-seller-pickup.js';
 import { bookPaidOrderWithProvider } from '../src/lib/order-provider-booking.js';
 import { getServiceProvider } from '../src/lib/service-providers/index.js';
@@ -43,6 +43,29 @@ test('international checkout exits before any domestic provider lookup', async (
   assert.equal(result.internationalUnsupported, true);
   assert.deepEqual(result.options, []);
   assert.deepEqual(result.providerStatuses, []);
+});
+
+test('checkout exposes at most three branded logistics tiers backed by live provider quotes', () => {
+  const tiers = normalizeCheckoutShippingTiers([
+    { providerKey: 'shiprocket', serviceCode: 'SR_FAST', amount: 92, quoteId: 'sr-fast', bookingAvailable: true },
+    { providerKey: 'shiprocket', serviceCode: 'SR_VALUE', amount: 64, quoteId: 'sr-value', bookingAvailable: true },
+    { providerKey: 'delhivery', serviceCode: 'DELHIVERY_SURFACE', amount: 80, quoteId: 'del-surface', bookingAvailable: true },
+    { providerKey: 'delhivery', serviceCode: 'DELHIVERY_EXPRESS', amount: 110, quoteId: 'del-express', bookingAvailable: true },
+  ]);
+
+  assert.deepEqual(tiers.map(item => ({ key: item.key, label: item.label, quoteId: item.quoteId })), [
+    { key: 'esyglob_standard', label: 'EsyGlob Logistics Standard', quoteId: 'sr-value' },
+    { key: 'esyglob_premium', label: 'EsyGlob Logistics Premium', quoteId: 'del-express' },
+    { key: 'esyglob_pro', label: 'EsyGlob Logistics Pro', quoteId: 'del-surface' },
+  ]);
+  assert.equal(tiers.every(item => item.providerName === 'EsyGlob Logistics'), true);
+});
+
+test('checkout does not invent unavailable logistics tiers or prices', () => {
+  const tiers = normalizeCheckoutShippingTiers([
+    { providerKey: 'delhivery', serviceCode: 'DELHIVERY_EXPRESS', amount: 110, quoteId: 'del-express' },
+  ]);
+  assert.deepEqual(tiers.map(item => item.key), ['esyglob_premium']);
 });
 
 test('stored product packaging controls carrier measurements and scales package weight by quantity', () => {

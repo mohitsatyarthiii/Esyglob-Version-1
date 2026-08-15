@@ -82,6 +82,7 @@ class ProfileRepository {
         businessType: seller?.companyType || user.metadata?.businessType || '',
         companyDescription: seller?.companyDescription || user.metadata?.companyDescription || '',
         preferredCurrency: user.metadata?.preferredCurrency || 'INR',
+        preferredLanguage: user.metadata?.preferredLanguage || 'en',
         designation: user.metadata?.designation || '',
         businessInterests: user.metadata?.businessInterests || [],
         productCategories: user.metadata?.productCategories || [],

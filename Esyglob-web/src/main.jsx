@@ -7,6 +7,7 @@ import './index.css'
 import App from './App'
 import AppErrorBoundary from './components/AppErrorBoundary'
 import { ConfirmProvider, GlobalFormUX, NavigationUX, ToastProvider } from './components/EnterpriseUX'
+import I18nProvider from './i18n/I18nProvider'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -14,9 +15,9 @@ createRoot(document.getElementById('root')).render(
       <ToastProvider>
         <ConfirmProvider>
           <AppErrorBoundary>
-            <AuthProvider>
+            <AuthProvider><I18nProvider>
               <CurrencyProvider><GlobalFormUX /><NavigationUX /><App /></CurrencyProvider>
-            </AuthProvider>
+            </I18nProvider></AuthProvider>
           </AppErrorBoundary>
         </ConfirmProvider>
       </ToastProvider>

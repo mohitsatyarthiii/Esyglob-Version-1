@@ -16,6 +16,7 @@ export async function getQuotations(req, res, next) {
 
     return res.json(result);
   } catch (error) {
+    if (error.name === 'VersionError') return res.status(409).json({ error: 'This quotation has been updated. Please refresh to see the latest offer.' });
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });
     }
@@ -71,6 +72,7 @@ export async function getQuotationDetail(req, res, next) {
 
     return res.json(result);
   } catch (error) {
+    if (error.name === 'VersionError') return res.status(409).json({ error: 'This quotation has been updated. Please refresh to see the latest offer.' });
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });
     }
@@ -102,6 +104,7 @@ export async function updateQuotation(req, res, next) {
 
     return res.json(result);
   } catch (error) {
+    if (error.name === 'VersionError') return res.status(409).json({ error: 'This quotation has been updated. Please refresh to see the latest offer.' });
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         error: error.message,
@@ -136,6 +139,7 @@ export async function respondToQuotation(req, res, next) {
 
     return res.json(result);
   } catch (error) {
+    if (error.name === 'VersionError') return res.status(409).json({ error: 'This quotation has been updated. Please refresh to see the latest offer.' });
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         error: error.message,

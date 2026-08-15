@@ -7,13 +7,18 @@ import { loadRazorpay } from '../api/services'
 import { createSampleOrder, createTradeOrder, fetchCheckoutQuote, initiatePayment, verifyPayment } from '../api/trade'
 import AppShell from '../components/AppShell'
 import { SafeImage } from '../components/MarketplaceCards'
-import ProviderBrand from '../components/ProviderBrand'
 import { Money } from '../components/TradeUI'
 import useAsyncData from '../hooks/useAsyncData'
 import { resolveId } from '../utils/trade'
 import { TradeSkeleton } from './RfqsPage'
+import { useI18n } from '../i18n/i18n-context'
 
 const EMPTY_PRODUCT = {}
+const LOGISTICS_TIERS = [
+  { key: 'esyglob_standard', nameKey: 'checkout.standard', description: 'Reliable, value-focused delivery with end-to-end tracking.' },
+  { key: 'esyglob_premium', nameKey: 'checkout.premium', description: 'Priority handling for faster business delivery.' },
+  { key: 'esyglob_pro', nameKey: 'checkout.pro', description: 'Enhanced logistics for larger and business-critical shipments.' },
+]
 
 function payWithRazorpay(session, description) {
   return new Promise((resolve, reject) => {
@@ -52,6 +57,7 @@ function isIndia(address) {
 }
 
 export default function CheckoutPage() {
+  const { t } = useI18n()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const productId = params.get('productId')
@@ -98,6 +104,7 @@ export default function CheckoutPage() {
     : Promise.resolve({ logisticsOptions: [], awaitingAddress: true }), [address, destination, logistics, mode, productId, quantity]))
   const pricing = quote.data || {}
   const availableOptions = pricing.logisticsOptions || []
+  const tierCards = LOGISTICS_TIERS.map(tier => ({ ...tier, name: t(tier.nameKey), rate: availableOptions.find(item => item.key === tier.key) }))
   const logisticsKey = availableOptions.some(item => item.key === logistics) ? logistics : pricing.selectedLogistics?.key || availableOptions[0]?.key || ''
   const selectedShipping = availableOptions.find(item => item.key === logisticsKey)
   const shippingBookingAvailable = selectedShipping?.bookingAvailable !== false
@@ -182,23 +189,23 @@ export default function CheckoutPage() {
           <label>Quantity<input type="number" min={mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum} value={quantity} disabled={Boolean(pendingOrderId)} onChange={(event) => setQuantity(Math.max(mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum, Number(event.target.value) || minimum))} /></label>
         </section>
         <section className="module-panel">
-          <div className="compact-heading"><h2><MapPin /> Delivery address</h2><Link to="/addresses">Add or edit</Link></div>
+          <div className="compact-heading"><h2><MapPin /> {t('checkout.deliveryAddress')}</h2><Link to="/addresses">Add or edit</Link></div>
           {addresses.length ? <div className="checkout-addresses">{addresses.map((item) => <button type="button" disabled={Boolean(pendingOrderId)} className={resolveId(address) === resolveId(item) ? 'active' : ''} key={resolveId(item)} onClick={() => setAddressId(resolveId(item))}><b>{item.fullName}</b><span>{item.address || item.line1}, {item.city}, {item.country}</span>{resolveId(address) === resolveId(item) && <CheckCircle2 />}</button>)}</div> : <div className="account-empty"><MapPin /><b>No saved delivery address</b><Link className="button button--primary" to="/addresses">Add address</Link></div>}
         </section>
         <section className="module-panel">
-          <div className="checkout-shipping-heading"><h2><Truck /> Shipping</h2><p>Rates are calculated automatically from the seller's product packaging and your delivery address.</p></div>
-          {international || pricing.internationalUnsupported ? <div className="checkout-shipping-unavailable checkout-shipping-international"><Truck /><div><b>International shipping coming soon</b><p>Shipping is currently available only within India. Payment is disabled for this address.</p></div></div> : quote.loading && !pricing.logisticsOptions?.length ? <><p className="checkout-calculating" aria-live="polite">Calculating live sample shipping rates…</p><div className="checkout-logistics">{Array.from({ length: 2 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div></> : pricing.logisticsOptions?.length ? <><div className="checkout-provider-status" aria-label="Shipping provider connection status">{(pricing.providerStatuses || []).map(item => <span className={`is-${item.status}`} key={item.provider}><i />{item.name || item.provider}: {item.status === 'connected' ? 'Live rates available' : String(item.status || 'unavailable').replaceAll('_', ' ')}</span>)}</div>{quote.loading && <p className="checkout-calculating" aria-live="polite">Updating selected shipping rate…</p>}<div className="checkout-logistics" role="radiogroup" aria-label="Live sample shipping rates">{pricing.logisticsOptions.map((item, index) => {
-            const key = item.key || item.id || `option-${index}`
+          <div className="checkout-shipping-heading"><h2><Truck /> {t('checkout.shipping')}</h2><p>Rates are calculated automatically from the seller's product packaging and your delivery address.</p></div>
+          {international || pricing.internationalUnsupported ? <div className="checkout-shipping-unavailable checkout-shipping-international"><Truck /><div><b>International shipping coming soon</b><p>Shipping is currently available only within India. Payment is disabled for this address.</p></div></div> : quote.loading && !pricing.logisticsOptions?.length ? <><p className="checkout-calculating" aria-live="polite">Calculating live shipping rates…</p><div className="checkout-logistics">{Array.from({ length: 3 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div></> : pricing.logisticsOptions?.length ? <>{quote.loading && <p className="checkout-calculating" aria-live="polite">Updating selected shipping rate…</p>}<div className="checkout-logistics" role="radiogroup" aria-label="EsyGlob Logistics shipping tiers">{tierCards.map(({ key, name, description, rate: item }) => {
             const selected = logisticsKey === key
-            const unavailable = item.bookingAvailable === false
-            return <button type="button" role="radio" aria-checked={selected} disabled={Boolean(pendingOrderId) || quote.loading} className={`${selected ? 'active' : ''}${unavailable ? ' is-unavailable' : ''}`} key={key} onClick={() => setLogistics(key)}><ProviderBrand providerKey={item.providerKey} /><span className="checkout-shipping-copy"><b>{item.label || item.name || 'Shipping'}</b><small>{unavailable ? item.bookingUnavailableReason || 'Pickup booking unavailable for this seller location' : item.eta || item.estimatedDelivery || item.deliveryTime ? `Estimated delivery: ${item.eta || item.estimatedDelivery || item.deliveryTime}` : 'Live carrier rate · delivery estimate unavailable'}</small></span><strong><Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /></strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
+            const unavailable = !item || item.bookingAvailable === false
+            const eta = item?.eta || item?.estimatedDelivery || item?.deliveryTime
+            return <button type="button" role="radio" aria-checked={selected} aria-disabled={unavailable} disabled={Boolean(pendingOrderId) || quote.loading || unavailable} className={`${selected ? 'active' : ''}${unavailable ? ' is-unavailable' : ''}`} key={key} onClick={() => setLogistics(key)}><span className="checkout-tier-mark" aria-hidden="true"><Truck /></span><span className="checkout-shipping-copy"><b>{name}</b><small>{unavailable ? t('checkout.unavailable') : eta ? t('checkout.estimated', { eta }) : 'Delivery estimate will be confirmed after pickup.'}</small><em>{description}</em></span><strong>{item ? <Money value={item.amount ?? item.price ?? item.charge} currency={pricing.currency} /> : 'Unavailable'}</strong><i className="checkout-shipping-check">{selected ? <Check /> : null}</i></button>
           })}</div></> : address ? <div className="checkout-shipping-unavailable"><Truck /><div><b>{pricing.shippingSetupPending ? 'Shipping setup pending for this manufacturer' : pricing.shippingError?.code === 'PRODUCT_SHIPPING_DATA_MISSING' ? 'Sample package details are missing' : 'Unable to calculate shipping right now. Please try again.'}</b><p>{pricing.shippingSetupPending ? 'The manufacturer’s pickup location is being connected to EsyGlob Shipping.' : pricing.shippingError?.code === 'PRODUCT_SHIPPING_DATA_MISSING' ? 'The seller must add a numeric packed weight and dimensions for this sample before carriers can return a price.' : pricing.shippingError?.message || 'Check the delivery address and pincode, then retry.'}</p><button type="button" className="button button--secondary checkout-rate-retry" onClick={quote.reload}>Retry shipping</button></div></div> : <div className="checkout-shipping-unavailable"><MapPin /><div><b>Select a delivery address</b><p>Add or select an Indian delivery address to calculate shipping.</p></div></div>}
           {logisticsKey && !shippingBookingAvailable && <p className="action-error">{selectedShipping?.bookingUnavailableReason || 'EsyGlob Shipping rates are available, but booking is temporarily unavailable. Payment is disabled until pickup service is restored.'}</p>}
         </section>
         {quote.error && <p className="action-error">{quote.error.message}</p>}
       </div>
       <aside className="module-panel checkout-summary">
-        <ShieldCheck /><h2>Order summary</h2>
+        <ShieldCheck /><h2>{t('checkout.orderSummary')}</h2>
         <div className="quote-breakdown"><span>Original products <b><Money value={pricing.originalProductTotal ?? pricing.productTotal} currency={pricing.currency} /></b></span>{pricing.productSavings > 0 && <span className="saving">Product discount <b>−<Money value={pricing.productSavings} currency={pricing.currency} /></b></span>}<span>Logistics <b><Money value={pricing.logisticsCharges} currency={pricing.currency} /></b></span>{pricing.couponDiscount > 0 && <span className="saving">Coupon <b>−<Money value={pricing.couponDiscount} currency={pricing.currency} /></b></span>}<span>Platform fee <b><Money value={pricing.platformFee} currency={pricing.currency} /></b></span><span>Tax <b><Money value={pricing.gstAmount} currency={pricing.currency} /></b></span>{pricing.giftCardAmount > 0 && <span className="saving">Gift card <b>−<Money value={pricing.giftCardAmount} currency={pricing.currency} /></b></span>}<strong>Grand total <b><Money value={pricing.grandTotal} currency={pricing.currency} /></b></strong>{pricing.savings > 0 && <em className="checkout-savings">You save <Money value={pricing.savings} currency={pricing.currency} /></em>}</div>
         <label className="check-field"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I accept the trade, payment and fulfillment terms.</label>
         {error && <p className="action-error">{error}</p>}

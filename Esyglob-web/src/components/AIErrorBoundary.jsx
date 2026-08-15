@@ -13,6 +13,6 @@ export default class AIErrorBoundary extends Component {
 
   render() {
     if (!this.state.error) return this.props.children
-    return <div className="ai-boundary-fallback" role="alert"><i><Bot /></i><h1>AI workspace could not load</h1><p>The rest of EsyGlob is still available. Retry the assistant or return to your account.</p><small>{this.state.error?.message || 'Unexpected rendering error'}</small><div><button onClick={() => this.setState({ error: null })}><RefreshCw /> Retry AI</button><Link to="/account">Return to account</Link></div></div>
+    return <div className="ai-boundary-fallback" role="alert"><i><Bot /></i><h1>AI workspace could not load</h1><p>The AI is temporarily unavailable. Retry the assistant or return to your account.</p><div><button onClick={() => this.setState({ error: null })}><RefreshCw /> Retry AI</button><Link to="/account">Return to account</Link></div></div>
   }
 }

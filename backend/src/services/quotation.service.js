@@ -15,6 +15,60 @@ import { getIO } from '../lib/socket.js';
 import { allowedActions, assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
 import { createTradeDocument } from './trade-artifact.service.js';
 
+const NEGOTIABLE_QUOTATION_STATUSES = new Set(['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised']);
+
+function numericOffer(value, fallback) {
+  if (value === undefined || value === '') return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+export function quotationCurrentOffer(quotation) {
+  if (quotation.currentOffer?.unitPrice) return quotation.currentOffer.toObject?.() || quotation.currentOffer;
+  const history = [...(quotation.negotiationHistory || [])].reverse().find((entry) => Number(entry.unitPrice) > 0);
+  if (history) return history.toObject?.() || history;
+  return {
+    action: 'submitted', actorId: quotation.userId?._id || quotation.userId, actorRole: 'seller',
+    unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice,
+    minimumOrderQuantity: quotation.minimumOrderQuantity, suppliedQuantity: quotation.suppliedQuantity,
+    leadTime: quotation.leadTime, leadTimeUnit: quotation.leadTimeUnit,
+    paymentTerms: quotation.paymentTerms, incoterms: quotation.incoterms,
+    notes: quotation.sellerMessage || quotation.notes, createdAt: quotation.createdAt, sequence: 1,
+  };
+}
+
+async function assertFreshNegotiation(quotation, body = {}) {
+  if (quotation.expiryDate && new Date(quotation.expiryDate) <= new Date() && NEGOTIABLE_QUOTATION_STATUSES.has(quotation.status)) {
+    quotation.previousStatus = quotation.status;
+    quotation.status = 'expired';
+    await quotation.save();
+    throw Object.assign(new Error('This quotation has expired'), { statusCode: 409 });
+  }
+  const idempotencyKey = String(body.idempotencyKey || '').trim();
+  const existing = idempotencyKey && quotation.negotiationHistory?.find((entry) => entry.idempotencyKey === idempotencyKey);
+  if (!existing && body.expectedNegotiationVersion !== undefined && Number(body.expectedNegotiationVersion) !== Number(quotation.negotiationVersion || 0)) {
+    throw Object.assign(new Error('This quotation has been updated. Please refresh to see the latest offer.'), { statusCode: 409, staleQuotation: true });
+  }
+  return { idempotencyKey, existing };
+}
+
+function nextOffer(quotation, input, { action, actorId, actorRole, notes, previousUnitPrice }) {
+  const unitPrice = numericOffer(input.unitPrice, quotationCurrentOffer(quotation).unitPrice || quotation.unitPrice);
+  const suppliedQuantity = numericOffer(input.suppliedQuantity, quotation.suppliedQuantity);
+  const minimumOrderQuantity = numericOffer(input.minimumOrderQuantity, quotation.minimumOrderQuantity);
+  return {
+    action, actorId, actorRole, unitPrice,
+    totalPrice: numericOffer(input.totalPrice, unitPrice * (suppliedQuantity || minimumOrderQuantity || 1) + Number(input.shippingCost ?? quotation.shippingCost ?? 0)),
+    minimumOrderQuantity, suppliedQuantity,
+    leadTime: numericOffer(input.leadTime, quotation.leadTime),
+    leadTimeUnit: input.leadTimeUnit || quotation.leadTimeUnit,
+    paymentTerms: input.paymentTerms || quotation.paymentTerms,
+    incoterms: input.incoterms || quotation.incoterms,
+    notes: notes || '', previousUnitPrice,
+    createdAt: new Date(), sequence: Number(quotation.negotiationVersion || 0) + 1,
+  };
+}
+
 // ─── Seller Eligibility ────────────────────────────────────
 async function sellerCanQuote(rfq, seller, sellerUserId) {
   if (!seller?.isActive || seller.isSuspended) return false;
@@ -320,10 +374,19 @@ export async function createQuotation(session, body) {
     sellerMessage,
     directOrderEnabled: enableDirectOrder === true || body.directOrderEnabled === true,
     status: saveAsDraft ? 'draft' : 'submitted',
+    negotiationVersion: saveAsDraft ? 0 : 1,
+    ...(!saveAsDraft ? { currentOffer: {
+      action: 'submitted', actorId: session.userId, actorRole: 'seller', unitPrice: numericUnitPrice,
+      totalPrice: totalPrice || numericUnitPrice * (numericAvailableQuantity || numericMoq || 1),
+      minimumOrderQuantity: numericMoq, suppliedQuantity: numericAvailableQuantity,
+      leadTime: numericLeadTime, leadTimeUnit: leadTimeUnit || 'days', paymentTerms: paymentTerms || 'negotiable',
+      incoterms, notes: sellerMessage || notes || '', createdAt: new Date(), sequence: 1,
+    } } : {}),
     activityTimeline: [{ action: saveAsDraft ? 'draft_saved' : 'quotation_sent', status: saveAsDraft ? 'draft' : 'submitted', message: sellerMessage || notes || 'Quotation prepared', actorId: session.userId, actorRole: 'seller' }],
     negotiationHistory: [
       {
         action: saveAsDraft ? 'message' : 'submitted',
+        actorRole: 'seller',
         actorId: session.userId,
         message: sellerMessage || notes || 'Quotation submitted.',
         unitPrice: Number(unitPrice || 0),
@@ -464,6 +527,10 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     enableDirectOrder,
   } = body;
 
+  const freshness = await assertFreshNegotiation(existingQuotation, body);
+  if (freshness.existing) return { quotation: existingQuotation, reused: true, message: 'This negotiation action was already processed' };
+  const previousOffer = quotationCurrentOffer(existingQuotation);
+
   if (
     !['pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised'].includes(
       existingQuotation.status
@@ -549,10 +616,18 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
   });
 
   existingQuotation.revisionNumber += 1;
+  existingQuotation.negotiationVersion = Number(existingQuotation.negotiationVersion || 0) + 1;
+  existingQuotation.currentOffer = nextOffer(existingQuotation, existingQuotation, {
+    action: 'seller_revision', actorId: session.userId, actorRole: 'seller',
+    notes: sellerMessage || notes || 'Manufacturer revised the quotation.', previousUnitPrice: previousOffer.unitPrice,
+  });
   existingQuotation.negotiationHistory.push({
     action: 'seller_revision',
+    idempotencyKey: freshness.idempotencyKey || undefined,
     actorId: session.userId,
+    actorRole: 'seller',
     message: sellerMessage || notes || 'Manufacturer revised the quotation.',
+    previousUnitPrice: previousOffer.unitPrice,
     unitPrice: existingQuotation.unitPrice,
     totalPrice: existingQuotation.totalPrice,
     minimumOrderQuantity: existingQuotation.minimumOrderQuantity,
@@ -569,7 +644,9 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
   await rfq.save();
 
   // Notify buyer
+  const actionKey = freshness.idempotencyKey || `${existingQuotation.negotiationVersion}`;
   await quotationRepository.createNotification({
+    eventKey: `quotation-revised:${existingQuotation._id}:${actionKey}`,
     userId: rfq.buyerId,
     notificationType: 'quotation_revised',
     title: 'Quotation revised',
@@ -577,7 +654,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     data: {
       relatedId: existingQuotation._id,
       relatedModel: 'Quotation',
-      actionUrl: `/rfqs/${rfq._id}`,
+      actionUrl: `/quotations/${existingQuotation._id}`,
     },
     priority: 'high',
   });
@@ -594,7 +671,8 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
 
   const revisionMessage = `Quotation revised: ${existingQuotation.currency} ${existingQuotation.unitPrice} per unit, MOQ ${existingQuotation.minimumOrderQuantity}, lead time ${existingQuotation.leadTime} ${existingQuotation.leadTimeUnit}.`;
 
-  await quotationRepository.createMessage({
+  const revisionChatMessage = await quotationRepository.createMessageOnce({
+    deliveryKey: `quotation-revised:${existingQuotation._id}:${actionKey}`,
     chatId: chat._id,
     senderId: session.userId,
     receiverId: rfq.buyerId,
@@ -625,6 +703,12 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
   chat.buyerUnreadCount += 1;
   await chat.save();
 
+  const io = getIO();
+  if (io) {
+    io.to(`chat_${chat._id}`).emit('new_message', revisionChatMessage);
+    io.to(`user_${rfq.buyerId}`).emit('quotation_updated', { quotationId: existingQuotation._id, rfqId: rfq._id, status: existingQuotation.status });
+  }
+
   return { quotation: existingQuotation, message: 'Quotation revised successfully' };
 }
 
@@ -651,6 +735,8 @@ export async function getQuotationDetail(session, quotationId) {
 
   const actorRole = quotation.rfqId.buyerId.toString() === session.userId ? 'buyer' : 'seller';
   const result = quotation.toObject();
+  result.currentOffer = quotationCurrentOffer(quotation);
+  result.negotiationVersion = Number(quotation.negotiationVersion || 0);
   result.lifecycle = lifecycleSnapshot('quotation', result, actorRole);
   return { quotation: result };
 }
@@ -687,11 +773,19 @@ export async function updateQuotation(session, quotationId, body) {
     throw error;
   }
 
+  const freshness = await assertFreshNegotiation(quotation, body);
+  if (freshness.existing) return { quotation, reused: true, message: 'This negotiation action was already processed' };
+
   if (action === 'withdraw' || action === 'send') {
     if (quotation.userId.toString() !== session.userId) { const error = new Error('Unauthorized'); error.statusCode = 403; throw error; }
     if (action === 'withdraw' && !['draft','pending','submitted','negotiating','countered','revision_requested','revised'].includes(quotation.status)) { const error = new Error('Quotation can no longer be withdrawn'); error.statusCode = 409; throw error; }
     if (action === 'send' && quotation.status !== 'draft') { const error = new Error('Only a draft quotation can be sent'); error.statusCode = 409; throw error; }
     quotation.status = action === 'withdraw' ? 'withdrawn' : 'submitted';
+    if (action === 'send') {
+      quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+      quotation.currentOffer = nextOffer(quotation, quotation, { action: 'submitted', actorId: session.userId, actorRole: 'seller', notes: reason || body.sellerMessage || 'Quotation submitted.', previousUnitPrice: undefined });
+      quotation.negotiationHistory.push({ ...quotation.currentOffer.toObject?.() || quotation.currentOffer, idempotencyKey: freshness.idempotencyKey || undefined, message: reason || body.sellerMessage || 'Quotation submitted.' });
+    }
     quotation.activityTimeline.push({ action: action === 'withdraw' ? 'quotation_withdrawn' : 'quotation_sent', status: quotation.status, message: reason || body.sellerMessage || `Quotation ${action}`, actorId: session.userId, actorRole: 'seller' });
     await quotation.save();
     if (action === 'send') {
@@ -762,6 +856,48 @@ export async function updateQuotation(session, quotationId, body) {
     return { quotation, message: 'Quotation reopened' };
   }
 
+  if (action === 'accept_counter' || (action === 'reject' && quotation.status === 'countered' && quotation.userId.toString() === session.userId)) {
+    if (quotation.userId.toString() !== session.userId) throw Object.assign(new Error('Only the seller can respond to this counter offer'), { statusCode: 403 });
+    const rfq = await quotationRepository.findRfqById(quotation.rfqId);
+    const previousStatus = quotation.status;
+    const current = quotationCurrentOffer(quotation);
+    if (current.action !== 'buyer_counter' || current.actorRole !== 'buyer') throw Object.assign(new Error('There is no buyer counter offer awaiting your response'), { statusCode: 409 });
+    const actionKey = freshness.idempotencyKey || `${Number(quotation.negotiationVersion || 0) + 1}`;
+
+    if (action === 'accept_counter') {
+      const nextStatus = assertTransition({ type: 'quotation', status: previousStatus, action, actorRole: 'seller' });
+      quotation.unitPrice = current.unitPrice;
+      quotation.totalPrice = current.totalPrice;
+      quotation.minimumOrderQuantity = current.minimumOrderQuantity || quotation.minimumOrderQuantity;
+      quotation.suppliedQuantity = current.suppliedQuantity || quotation.suppliedQuantity;
+      quotation.leadTime = current.leadTime || quotation.leadTime;
+      quotation.leadTimeUnit = current.leadTimeUnit || quotation.leadTimeUnit;
+      quotation.status = nextStatus;
+      quotation.previousStatus = previousStatus;
+      quotation.acceptedAt = new Date();
+      quotation.finalQuotation = { finalQuotationNumber: `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'seller_preparation', version: 1 };
+      quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+      quotation.currentOffer = { ...current, action: 'seller_accepted_counter', actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller accepted the buyer counter offer.', createdAt: new Date(), sequence: quotation.negotiationVersion };
+      quotation.negotiationHistory.push({ ...quotation.currentOffer.toObject?.() || quotation.currentOffer, idempotencyKey: freshness.idempotencyKey || undefined, message: reason || 'Seller accepted the buyer counter offer.' });
+      quotation.activityTimeline.push({ action: 'seller_accepted_counter', status: nextStatus, message: reason || 'Seller accepted the buyer counter offer', actorId: session.userId, actorRole: 'seller' });
+      await quotation.save();
+      await quotationRepository.createNotification({ eventKey: `quotation-counter-accepted:${quotation._id}:${actionKey}`, userId: rfq.buyerId, notificationType: 'quotation_accepted', title: 'Seller accepted your counter offer', description: `The agreed price is ${quotation.currency} ${quotation.unitPrice} per unit.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
+      await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, deliveryKey: `quotation-counter-accepted:${quotation._id}:${actionKey}`, content: `Counter offer accepted\nProduct: ${rfq.title}\nAgreed price: ${quotation.currency} ${quotation.unitPrice} per unit\nView quotation: /quotations/${quotation._id}` });
+      return { quotation, message: 'Counter offer accepted' };
+    }
+
+    quotation.status = assertTransition({ type: 'quotation', status: previousStatus, action: 'reject', actorRole: 'seller' });
+    quotation.previousStatus = previousStatus;
+    quotation.rejectedAt = new Date();
+    quotation.rejectionReason = reason || 'Seller rejected the counter offer.';
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+    quotation.negotiationHistory.push({ action: 'rejected', idempotencyKey: freshness.idempotencyKey || undefined, actorId: session.userId, actorRole: 'seller', message: quotation.rejectionReason, unitPrice: current.unitPrice, previousUnitPrice: current.previousUnitPrice, createdAt: new Date() });
+    await quotation.save();
+    await quotationRepository.createNotification({ eventKey: `quotation-counter-rejected:${quotation._id}:${actionKey}`, userId: rfq.buyerId, notificationType: 'quotation_rejected', title: 'Seller rejected your counter offer', description: quotation.rejectionReason, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
+    await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, deliveryKey: `quotation-counter-rejected:${quotation._id}:${actionKey}`, content: `Counter offer rejected\nProduct: ${rfq.title}\nReason: ${quotation.rejectionReason}\nView quotation: /quotations/${quotation._id}` });
+    return { quotation, message: 'Counter offer rejected' };
+  }
+
   // Buyer actions: request_revision, counter_offer
   if (action === 'request_revision' || action === 'counter_offer') {
     const rfq = await quotationRepository.findRfqById(quotation.rfqId);
@@ -772,6 +908,10 @@ export async function updateQuotation(session, quotationId, body) {
     }
 
     const previousStatus = quotation.status;
+    const previousOffer = quotationCurrentOffer(quotation);
+    if (action === 'counter_offer' && (!Number.isFinite(Number(body.unitPrice)) || Number(body.unitPrice) <= 0)) {
+      throw Object.assign(new Error('Enter a valid positive counter price'), { statusCode: 422 });
+    }
     quotation.status = assertTransition({ type: 'quotation', status: previousStatus, action, actorRole: 'buyer' });
     if (previousStatus === 'final_quotation_pending') {
       const currentFinal = quotation.tradeDocuments.id(quotation.finalQuotation?.documentId);
@@ -810,10 +950,17 @@ export async function updateQuotation(session, quotationId, body) {
       shippingEstimate: quotation.shippingEstimate,
     });
 
+    const offer = action === 'counter_offer' ? nextOffer(quotation, body, {
+      action: 'buyer_counter', actorId: session.userId, actorRole: 'buyer',
+      notes: reason || body.buyerMessage || 'Buyer sent a counter offer.', previousUnitPrice: previousOffer.unitPrice,
+    }) : null;
     quotation.negotiationHistory.push({
       action: action === 'counter_offer' ? 'buyer_counter' : 'message',
+      idempotencyKey: freshness.idempotencyKey || undefined,
       actorId: session.userId,
+      actorRole: 'buyer',
       message: reason || body.buyerMessage || 'Buyer requested changes.',
+      previousUnitPrice: previousOffer.unitPrice,
       ...Object.fromEntries(
         Object.entries(counterFields).filter(
           ([, value]) => value !== undefined && value !== ''
@@ -823,6 +970,8 @@ export async function updateQuotation(session, quotationId, body) {
 
     quotation.buyerMessage =
       body.buyerMessage || reason || quotation.buyerMessage;
+    if (offer) quotation.currentOffer = offer;
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
 
     quotation.previousStatus = previousStatus;
     quotation.approvalHistory.push({ action, previousStatus, newStatus: quotation.status, actorId: session.userId, actorRole: 'buyer', notes: reason || body.buyerMessage, documents: body.attachments || [] });
@@ -833,7 +982,9 @@ export async function updateQuotation(session, quotationId, body) {
     rfq.status = 'negotiating';
     await rfq.save();
 
+    const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
     await quotationRepository.createNotification({
+      eventKey: `quotation-${action}:${quotation._id}:${actionKey}`,
       userId: quotation.userId,
       notificationType:
         action === 'counter_offer'
@@ -843,7 +994,9 @@ export async function updateQuotation(session, quotationId, body) {
         action === 'counter_offer'
           ? 'Counter offer received'
           : 'Quotation revision requested',
-      description: reason || 'The buyer requested changes to your quotation.',
+      description: action === 'counter_offer'
+        ? `Buyer countered at ${quotation.currency} ${offer.unitPrice} per unit (previous ${quotation.currency} ${previousOffer.unitPrice}).`
+        : reason || 'The buyer requested changes to your quotation.',
       data: {
         relatedId: quotation._id,
         relatedModel: 'Quotation',
@@ -852,7 +1005,13 @@ export async function updateQuotation(session, quotationId, body) {
       priority: 'high',
     });
 
-    await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: quotation.userId, content: action === 'counter_offer' ? 'Buyer submitted a structured counter offer. Review the requested commercial changes in the quotation workspace.' : 'Buyer requested a quotation revision. Review its notes, requested fields and documents in the quotation workspace.' });
+    await publishQuotationContext({
+      quotation, rfq, actorId: session.userId, receiverId: quotation.userId,
+      deliveryKey: `quotation-${action}:${quotation._id}:${actionKey}`,
+      content: action === 'counter_offer'
+        ? `Counter offer submitted\nProduct: ${rfq.title}\nPrevious price: ${quotation.currency} ${previousOffer.unitPrice} per unit\nCounter price: ${quotation.currency} ${offer.unitPrice} per unit\nQuantity: ${offer.suppliedQuantity || rfq.quantity}\nNotes: ${offer.notes || '—'}\nView quotation: /quotations/${quotation._id}`
+        : `Quotation revision requested\nProduct: ${rfq.title}\nNotes: ${reason || body.buyerMessage || 'Buyer requested changes.'}\nView quotation: /quotations/${quotation._id}`,
+    });
 
     return {
       quotation,
@@ -869,7 +1028,7 @@ export async function updateQuotation(session, quotationId, body) {
   }
 
   if (
-    !['draft', 'pending', 'submitted', 'negotiating', 'revision_requested', 'revised'].includes(
+    !['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised'].includes(
       quotation.status
     )
   ) {
@@ -918,13 +1077,21 @@ export async function updateQuotation(session, quotationId, body) {
     }
   });
 
+  if ([quotation.unitPrice, quotation.minimumOrderQuantity, quotation.suppliedQuantity, quotation.leadTime].some((value) => !Number.isFinite(Number(value)) || Number(value) <= 0)) {
+    throw Object.assign(new Error('Unit price, MOQ, available quantity, and lead time must be valid positive numbers'), { statusCode: 422 });
+  }
+
+  const previousOffer = quotationCurrentOffer(quotation);
   quotation.revisionNumber += 1;
   const previousStatus = quotation.status;
   quotation.status = previousStatus === 'draft' ? 'draft' : 'revised';
   quotation.negotiationHistory.push({
     action: 'seller_revision',
+    idempotencyKey: freshness.idempotencyKey || undefined,
     actorId: session.userId,
+    actorRole: 'seller',
     message: body.sellerMessage || body.notes || 'Seller revised the quotation.',
+    previousUnitPrice: previousOffer.unitPrice,
     unitPrice: quotation.unitPrice,
     totalPrice: quotation.totalPrice,
     minimumOrderQuantity: quotation.minimumOrderQuantity,
@@ -933,11 +1100,14 @@ export async function updateQuotation(session, quotationId, body) {
     leadTimeUnit: quotation.leadTimeUnit,
   });
 
-  quotation.totalPrice =
-    quotation.totalPrice ||
-    quotation.unitPrice *
-      (quotation.suppliedQuantity || quotation.minimumOrderQuantity || 1) +
-      (quotation.shippingCost || 0);
+  quotation.totalPrice = body.totalPrice !== undefined
+    ? Number(body.totalPrice)
+    : Number(quotation.unitPrice) * Number(quotation.suppliedQuantity || quotation.minimumOrderQuantity || 1) + Number(quotation.shippingCost || 0);
+  quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+  quotation.currentOffer = nextOffer(quotation, quotation, {
+    action: 'seller_revision', actorId: session.userId, actorRole: 'seller',
+    notes: body.sellerMessage || body.notes || 'Seller revised the quotation.', previousUnitPrice: previousOffer.unitPrice,
+  });
 
   quotation.previousStatus = previousStatus;
   quotation.activityTimeline.push({ action: previousStatus === 'draft' ? 'draft_updated' : 'seller_revision', status: quotation.status, message: body.sellerMessage || body.notes || `Quotation version ${quotation.revisionNumber} updated`, actorId: session.userId, actorRole: 'seller', metadata: { version: quotation.revisionNumber, documents: quotation.attachments || [] } });
@@ -949,7 +1119,9 @@ export async function updateQuotation(session, quotationId, body) {
     rfq.status = 'negotiating';
     rfq.activityTimeline.push({ action: 'quotation_revised', status: 'negotiating', message: `Quotation version ${quotation.revisionNumber} is ready for buyer review`, actorId: session.userId, actorRole: 'seller', metadata: { quotationId: quotation._id } });
     await rfq.save();
-    await quotationRepository.createNotification({ userId: rfq.buyerId, notificationType: 'quotation_revised', title: 'Quotation revision ready', description: `Version ${quotation.revisionNumber} is ready for review.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
+    const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
+    await quotationRepository.createNotification({ eventKey: `quotation-revised:${quotation._id}:${actionKey}`, userId: rfq.buyerId, notificationType: 'quotation_revised', title: 'Quotation revised', description: `Seller revised the quotation to ${quotation.currency} ${quotation.unitPrice} per unit.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
+    await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, deliveryKey: `quotation-revised:${quotation._id}:${actionKey}`, content: `Quotation revised\nProduct: ${rfq.title}\nPrevious price: ${quotation.currency} ${previousOffer.unitPrice} per unit\nRevised price: ${quotation.currency} ${quotation.unitPrice} per unit\nQuantity: ${quotation.suppliedQuantity || rfq.quantity}\nNotes: ${body.sellerMessage || body.notes || '—'}\nView quotation: /quotations/${quotation._id}` });
   }
 
   return { quotation, message: 'Quotation updated successfully' };
@@ -982,6 +1154,9 @@ export async function respondToQuotation(session, quotationId, body) {
     throw error;
   }
 
+  const freshness = await assertFreshNegotiation(quotation, body);
+  if (freshness.existing) return { quotation, reused: true, tradeOrder: null, message: 'This negotiation action was already processed' };
+
   if (quotation.rfqId.buyerId.toString() !== session.userId) {
     const error = new Error('Only RFQ creator can respond to quotations');
     error.statusCode = 403;
@@ -997,8 +1172,6 @@ export async function respondToQuotation(session, quotationId, body) {
   const previousStatus = quotation.status;
   if (action === 'accept' && previousStatus === 'buyer_accepted') {
     const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
-    await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — prepare the Final Quotation', description: 'Complete the final execution details and send the Final Quotation for Buyer signature.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#final-quotation-title` }, priority: 'high' }).catch(() => {});
-    await publishQuotationContext({ quotation: updatedQuotation, rfq: quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, content: 'Buyer accepted the negotiated quotation. Prepare the Final Quotation to continue.' }).catch(() => {});
     return { quotation: updatedQuotation, tradeOrder: null, reused: true, message: 'Quotation is already accepted and awaiting the Seller\'s Final Quotation.' };
   }
   const reviewableStatuses = ['pending', 'submitted', 'negotiating', 'revised'];
@@ -1017,10 +1190,17 @@ export async function respondToQuotation(session, quotationId, body) {
     quotation.rejectedAt = null;
     quotation.rejectionReason = null;
     quotation.finalQuotation = { finalQuotationNumber: `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'seller_preparation', version: 1 };
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+    const acceptedOffer = quotationCurrentOffer(quotation);
+    quotation.currentOffer = { ...acceptedOffer, action: 'accepted', actorId: session.userId, actorRole: 'buyer', notes: reason || 'Buyer accepted the negotiated quotation.', createdAt: new Date(), sequence: quotation.negotiationVersion };
     quotation.negotiationHistory.push({
       action: 'accepted',
+      idempotencyKey: freshness.idempotencyKey || undefined,
       actorId: session.userId,
+      actorRole: 'buyer',
       message: 'Buyer accepted the negotiated quotation. Seller must now prepare the Final Quotation.',
+      unitPrice: acceptedOffer.unitPrice,
+      totalPrice: acceptedOffer.totalPrice,
     });
     quotation.approvalHistory.push({ action: 'buyer_accepted', previousStatus, newStatus: quotation.status, actorId: session.userId, actorRole: 'buyer', notes: reason || 'Buyer accepted final quotation' });
     quotation.activityTimeline.push({ action: 'buyer_accepted', status: quotation.status, message: 'Waiting for Seller to prepare the Final Quotation', actorId: session.userId, actorRole: 'buyer' });
@@ -1028,9 +1208,12 @@ export async function respondToQuotation(session, quotationId, body) {
     quotation.status = 'rejected';
     quotation.rejectedAt = new Date();
     quotation.rejectionReason = reason || null;
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
     quotation.negotiationHistory.push({
       action: 'rejected',
+      idempotencyKey: freshness.idempotencyKey || undefined,
       actorId: session.userId,
+      actorRole: 'buyer',
       message: reason || 'Buyer rejected the quotation.',
     });
   }
@@ -1039,8 +1222,9 @@ export async function respondToQuotation(session, quotationId, body) {
 
   if (action === 'accept') {
     const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
-    const sellerNotification = await quotationRepository.createNotification({ userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — prepare the Final Quotation', description: 'Complete the final execution details and send the Final Quotation for Buyer signature.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#final-quotation-title` }, priority: 'high' });
-    await publishQuotationContext({ quotation: updatedQuotation, rfq: quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, content: 'Buyer accepted the negotiated quotation. Prepare the Final Quotation to continue.' });
+    const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
+    const sellerNotification = await quotationRepository.createNotification({ eventKey: `quotation-accepted:${quotation._id}:${actionKey}`, userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — prepare the Final Quotation', description: `Buyer accepted ${quotation.currency} ${quotationCurrentOffer(updatedQuotation).unitPrice} per unit. Complete the Final Quotation.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#final-quotation-title` }, priority: 'high' });
+    await publishQuotationContext({ quotation: updatedQuotation, rfq: quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, deliveryKey: `quotation-accepted:${quotation._id}:${actionKey}`, content: `Quotation accepted\nFinal agreed price: ${quotation.currency} ${quotationCurrentOffer(updatedQuotation).unitPrice} per unit\nView quotation: /quotations/${quotation._id}` });
     const io = getIO();
     if (io) {
       const event = { quotationId: quotation._id, rfqId: quotation.rfqId?._id || quotation.rfqId, status: quotation.status, action };
@@ -1051,13 +1235,16 @@ export async function respondToQuotation(session, quotationId, body) {
     return { quotation: updatedQuotation, tradeOrder: null, message: 'Quotation accepted. The Seller will now prepare the Final Quotation.' };
   }
 
+  const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
   await quotationRepository.createNotification({
+    eventKey: `quotation-rejected:${quotation._id}:${actionKey}`,
     userId: quotation.userId,
     notificationType: 'quotation_rejected',
     title: 'Quotation rejected',
     description: reason || 'The buyer rejected your quotation.',
     data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller` },
   });
+  await publishQuotationContext({ quotation, rfq: quotation.rfqId, actorId: session.userId, receiverId: quotation.userId, deliveryKey: `quotation-rejected:${quotation._id}:${actionKey}`, content: `Quotation rejected\nReason: ${reason || 'Buyer rejected the quotation.'}\nView quotation: /quotations/${quotation._id}` });
 
   const io = getIO();
   if (io) {
@@ -1144,7 +1331,7 @@ function needsFinalQuotationDocument(quotation) {
 }
 
 export async function ensureFinalQuotationDocument(quotationId) {
-  const quotation = await quotationRepository.findQuotationByIdLean(quotationId);
+  let quotation = await quotationRepository.findQuotationByIdLean(quotationId);
   if (!quotation || !needsFinalQuotationDocument(quotation)) return null;
   quotation.finalQuotation.status = 'awaiting_seller_signature';
   quotation.finalQuotation.documentId = undefined;
@@ -1159,10 +1346,10 @@ export async function ensureFinalQuotationDocument(quotationId) {
   return result.document;
 }
 
-async function publishQuotationContext({ quotation, rfq, actorId, receiverId, content }) {
+async function publishQuotationContext({ quotation, rfq, actorId, receiverId, content, deliveryKey }) {
   if (!rfq || !receiverId || !content) return;
   const { chat } = await findOrCreateConversation({ buyerId: rfq.buyerId, sellerId: quotation.userId?._id || quotation.userId, productId: quotation.productId || rfq.productId, rfqId: rfq._id, quotationId: quotation._id, chatType: 'rfq_negotiation' });
-  const message = await quotationRepository.createMessage({ chatId: chat._id, senderId: actorId, receiverId, content, messageType: 'system', quotationDetails: { quotationId: quotation._id, rfqId: rfq._id, unitPrice: quotation.unitPrice, currency: quotation.currency, minimumOrderQuantity: quotation.minimumOrderQuantity, leadTime: quotation.leadTime, status: quotation.status, actionUrl: `/quotations/${quotation._id}` } });
+  const message = await quotationRepository.createMessageOnce({ deliveryKey, chatId: chat._id, senderId: actorId, receiverId, content, messageType: 'quotation', quotationDetails: { quotationId: quotation._id, rfqId: rfq._id, unitPrice: quotationCurrentOffer(quotation).unitPrice || quotation.unitPrice, currency: quotation.currency, minimumOrderQuantity: quotationCurrentOffer(quotation).minimumOrderQuantity || quotation.minimumOrderQuantity, leadTime: quotationCurrentOffer(quotation).leadTime || quotation.leadTime, status: quotation.status, actionUrl: `/quotations/${quotation._id}` } });
   chat.lastMessage = content; chat.lastMessageAt = new Date();
   if (String(receiverId) === String(rfq.buyerId)) chat.buyerUnreadCount += 1; else chat.sellerUnreadCount += 1;
   await chat.save();

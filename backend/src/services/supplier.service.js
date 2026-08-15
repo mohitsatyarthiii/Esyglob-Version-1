@@ -5,6 +5,7 @@ import { buildSellerQuery, sellerSortField, stripUndefined } from '../lib/suppli
 import * as supplierRepository from '../repositories/supplier.repository.js';
 import { capabilities as digiLockerCapabilities } from './digilocker-verification.service.js';
 import { synchronizeSellerShippingSetup } from './seller-shipping-setup.service.js';
+import { validateSellerTaxonomy } from '../lib/taxonomy-validation.js';
 
 const PROTECTED_SELLER_STATUSES = new Set([
   'document_submitted',
@@ -161,6 +162,11 @@ export async function getOnboarding(user) {
 export async function saveOnboardingDraft(user, data) {
   const { verificationCenter: centerInput, ...sellerInput } = data;
   const cleaned = stripUndefined(sellerInput);
+  if (cleaned.productCategories || cleaned.productSubcategories) {
+    const taxonomy = await validateSellerTaxonomy(cleaned.productCategories || [], cleaned.productSubcategories || []);
+    cleaned.productCategories = taxonomy.categories;
+    cleaned.productSubcategories = taxonomy.subcategories;
+  }
   const now = new Date();
 
   const existingSeller = await supplierRepository.findExistingSeller(user.id);
@@ -284,6 +290,10 @@ export async function reviewVerificationApplication(admin, verificationId, input
 }
 
 export async function submitOnboarding(user, data) {
+  if (data.productCategories || data.productSubcategories) {
+    const taxonomy = await validateSellerTaxonomy(data.productCategories || [], data.productSubcategories || []);
+    data = { ...data, productCategories: taxonomy.categories, productSubcategories: taxonomy.subcategories };
+  }
   const seller = await supplierRepository.upsertSellerOnboarding(
     user.id,
     data,

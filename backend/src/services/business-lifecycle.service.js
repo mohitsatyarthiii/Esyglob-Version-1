@@ -20,7 +20,7 @@ export const LIFECYCLE_DEFINITIONS = Object.freeze({
     pending: { seller: { submit: 'submitted', withdraw: 'withdrawn' } },
     submitted: { buyer: { accept: 'buyer_accepted', request_revision: 'revision_requested', counter_offer: 'countered', reject: 'rejected' }, seller: { withdraw: 'withdrawn' } },
     negotiating: { buyer: { accept: 'buyer_accepted', request_revision: 'revision_requested', counter_offer: 'countered', reject: 'rejected' }, seller: { revise: 'revised', withdraw: 'withdrawn' } },
-    countered: { seller: { revise: 'revised', withdraw: 'withdrawn' }, buyer: { reject: 'rejected' } },
+    countered: { seller: { revise: 'revised', accept_counter: 'buyer_accepted', reject: 'rejected', withdraw: 'withdrawn' }, buyer: { reject: 'rejected' } },
     revision_requested: { seller: { revise: 'revised', withdraw: 'withdrawn' }, buyer: { reject: 'rejected' } },
     revised: { buyer: { accept: 'buyer_accepted', request_revision: 'revision_requested', counter_offer: 'countered', reject: 'rejected' }, seller: { withdraw: 'withdrawn' } },
     buyer_accepted: { seller: { confirm: 'final_quotation_pending', request_revision: 'revision_requested', reject: 'rejected' }, buyer: { reopen: 'submitted' } },

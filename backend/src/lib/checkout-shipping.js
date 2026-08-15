@@ -37,6 +37,38 @@ export function isIndianAddress(input = {}) {
   return countryCode(input.country, input.countryCode) === 'IN';
 }
 
+const TIER_DEFINITIONS = [
+  { key: 'esyglob_standard', label: 'EsyGlob Logistics Standard', mode: 'standard', providerKey: 'shiprocket', description: 'Reliable, value-focused delivery with end-to-end tracking.' },
+  { key: 'esyglob_premium', label: 'EsyGlob Logistics Premium', mode: 'premium', providerKey: 'delhivery', serviceCode: 'DELHIVERY_EXPRESS', description: 'Priority handling for faster business delivery.' },
+  { key: 'esyglob_pro', label: 'EsyGlob Logistics Pro', mode: 'pro', providerKey: 'delhivery', serviceCode: 'DELHIVERY_SURFACE', description: 'Enhanced logistics for larger and business-critical shipments.' },
+];
+
+function cheapestFirst(left, right) {
+  const availability = Number(right.bookingAvailable !== false) - Number(left.bookingAvailable !== false);
+  return availability || Number(left.amount ?? left.price) - Number(right.amount ?? right.price);
+}
+
+export function normalizeCheckoutShippingTiers(rates = []) {
+  const available = (Array.isArray(rates) ? rates : []).filter(rate => rate && Number(rate.amount ?? rate.price) > 0);
+  const used = new Set();
+  return TIER_DEFINITIONS.flatMap(tier => {
+    let candidates = available.filter(rate => rate.providerKey === tier.providerKey && !used.has(rate));
+    let selected = tier.serviceCode ? candidates.find(rate => rate.serviceCode === tier.serviceCode) : null;
+    if (!selected) selected = candidates.sort(cheapestFirst)[0];
+    if (!selected) return [];
+    used.add(selected);
+    return [{
+      ...selected,
+      key: tier.key,
+      label: tier.label,
+      mode: tier.mode,
+      description: tier.description,
+      providerName: 'EsyGlob Logistics',
+      providerLabel: 'EsyGlob Logistics',
+    }];
+  });
+}
+
 export async function getLiveCheckoutShipping({ userId, seller = {}, destination = {}, shipment = {}, requestId = '', providerMappings = null }) {
   const pickupSource = hasPickupAddress(seller.address) ? seller.address : seller.shippingAddress || seller.address || {};
   const pickup = address(pickupSource, seller);
@@ -88,7 +120,7 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
   });
   return {
     ...result,
-    options: (result.providers || []).map(rate => ({
+    options: normalizeCheckoutShippingTiers((result.providers || []).map(rate => ({
       key: `${rate.providerKey}:${rate.serviceCode}`,
       quoteId: rate.quoteId || rate.id || rate._id,
       label: String(rate.serviceName || '').replace(/^Delhivery\s+/i, '') || 'Shipping',
@@ -113,6 +145,6 @@ export async function getLiveCheckoutShipping({ userId, seller = {}, destination
       fastest: rate.fastest === true,
       bestPrice: rate.bestPrice === true,
       incoterm: shipment.incoterm || 'DAP',
-    })),
+    }))),
   };
 }

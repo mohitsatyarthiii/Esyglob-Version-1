@@ -29,7 +29,7 @@ import {
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveApiResourceUrl } from '../api/client'
-import { fetchSellerDetails } from '../api/marketplace'
+import { fetchSellerDetails, submitSellerEnquiry } from '../api/marketplace'
 import { createChat } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
@@ -57,6 +57,10 @@ export default function SellerDetailsPage() {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [activeMedia, setActiveMedia] = useState(0)
+  const [enquiryProduct, setEnquiryProduct] = useState(() => new URLSearchParams(location.search).get('enquiry') ? {} : null)
+  const [enquiry, setEnquiry] = useState({ message: '', quantity: '', unit: 'pcs' })
+  const [enquiryBusy, setEnquiryBusy] = useState(false)
+  const [enquirySuccess, setEnquirySuccess] = useState('')
 
   if (query.loading) return <AppShell><div className="listing-page container"><SkeletonCards count={3} variant="manufacturer" /></div></AppShell>
   if (query.error) return <AppShell><div className="listing-page container"><p className="inline-error">{query.error.message}</p></div></AppShell>
@@ -124,11 +128,34 @@ export default function SellerDetailsPage() {
     }
   }
 
-  function requestQuote() {
-    const target = '/rfqs/new'
-    status === 'authenticated'
-      ? navigate(target, { state: { sellerUserId: seller.userId?._id || seller.userId, sellerId, supplierName: name } })
-      : navigate('/login', { state: { from: location.pathname } })
+  function requestQuote(productContext = null) {
+    if (status !== 'authenticated') return navigate('/login', { state: { from: `${location.pathname}${location.search}` } })
+    setEnquiryProduct(productContext || {})
+    setEnquiry((current) => ({ ...current, quantity: productContext?.minimumOrderQuantity || productContext?.moq || current.quantity, unit: productContext?.unit || current.unit }))
+    setEnquirySuccess('')
+    setActionError('')
+  }
+
+  async function sendEnquiry(event) {
+    event.preventDefault()
+    if (!enquiry.message.trim() || enquiryBusy) return
+    setEnquiryBusy(true); setActionError('')
+    try {
+      const productLine = enquiryProduct?._id ? `Product: ${enquiryProduct.name}\nProduct ID: ${enquiryProduct._id || enquiryProduct.id}\n\n` : ''
+      const result = await submitSellerEnquiry({
+        otherUserId: seller.userId?._id || seller.userId,
+        content: `${productLine}${enquiry.message.trim()}`,
+        quantity: enquiry.quantity,
+        unit: enquiry.unit,
+      })
+      setEnquirySuccess('Enquiry sent successfully.')
+      setEnquiry((current) => ({ ...current, message: '' }))
+      setEnquiryProduct((current) => ({ ...current, chatId: result.chatId }))
+    } catch {
+      setActionError('Unable to send enquiry. Please try again.')
+    } finally {
+      setEnquiryBusy(false)
+    }
   }
 
   function orderSample() {
@@ -318,6 +345,17 @@ export default function SellerDetailsPage() {
       </div>
 
       <MobileActionBar busy={busy} seller={seller} actions={actions} />
+      {enquiryProduct && <div className="seller-enquiry-backdrop" role="presentation" onMouseDown={() => !enquiryBusy && setEnquiryProduct(null)}>
+        <form className="seller-enquiry-composer" role="dialog" aria-modal="true" aria-labelledby="seller-enquiry-title" onSubmit={sendEnquiry} onMouseDown={(event) => event.stopPropagation()}>
+          <header><div><span>Direct supplier message</span><h2 id="seller-enquiry-title">Send enquiry to {name}</h2></div><button type="button" onClick={() => setEnquiryProduct(null)} aria-label="Close"><span aria-hidden="true">×</span></button></header>
+          {enquiryProduct.name && <p className="seller-enquiry-product"><b>Product</b><span>{enquiryProduct.name}</span><small>ID: {enquiryProduct._id || enquiryProduct.id}</small></p>}
+          <label><span>Message *</span><textarea rows="6" required maxLength="5000" value={enquiry.message} onChange={(event) => setEnquiry({ ...enquiry, message: event.target.value })} placeholder="Describe the product, specifications, timeline, or questions for this manufacturer." /></label>
+          <div className="seller-enquiry-fields"><label><span>Quantity (optional)</span><input type="number" min="1" value={enquiry.quantity} onChange={(event) => setEnquiry({ ...enquiry, quantity: event.target.value })} /></label><label><span>Unit</span><select value={enquiry.unit} onChange={(event) => setEnquiry({ ...enquiry, unit: event.target.value })}><option value="pcs">Pieces</option><option value="kg">Kilograms</option><option value="boxes">Boxes</option><option value="tons">Tons</option><option value="meters">Meters</option><option value="other">Other</option></select></label></div>
+          {actionError && <p className="inline-error" role="alert">{actionError}</p>}
+          {enquirySuccess && <p className="seller-enquiry-success">{enquirySuccess}</p>}
+          <footer><button type="button" className="button button--secondary" onClick={() => setEnquiryProduct(null)}>Close</button>{enquiryProduct.chatId && <button type="button" className="button button--secondary" onClick={() => navigate(`/messages/${enquiryProduct.chatId}`)}>Open chat</button>}<button type="submit" className="button button--primary" disabled={enquiryBusy || !enquiry.message.trim()}><Send /> {enquiryBusy ? 'Sending…' : 'Send enquiry'}</button></footer>
+        </form>
+      </div>}
     </main>
   </AppShell>
 }
@@ -379,7 +417,7 @@ function ManufacturerProduct({ product, verified, requestQuote }) {
       <Link to={`/products/${id}`}><h3>{product.name || 'Supplier product'}</h3></Link>
       <strong>{price ? <><Money value={price} currency={product.currency} />{maxPrice ? <> – <Money value={maxPrice} currency={product.currency} /></> : null}</> : 'Request latest price'}</strong>
       <small>MOQ {moq} {product.unit || 'piece'}{moq > 1 ? 's' : ''}</small>
-      <div><Link to={`/products/${id}`}>View details</Link><button type="button" onClick={requestQuote}><Send /> Enquire</button></div>
+      <div><Link to={`/products/${id}`}>View details</Link><button type="button" onClick={() => requestQuote(product)}><Send /> Enquire</button></div>
     </div>
   </article>
 }

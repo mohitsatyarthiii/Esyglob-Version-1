@@ -50,6 +50,15 @@ class ProfileController {
     }
   }
 
+  static async updateLanguage(req, res) {
+    try {
+      const result = await ProfileService.updatePreferredLanguage(req.user._id, req.body?.language);
+      return res.json(result);
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.message || 'Unable to update language' });
+    }
+  }
+
   static async completeBuyerOnboarding(req, res) {
     try {
       const result = await ProfileService.completeBuyerOnboarding(req.user._id, req.user.roles, req.body);

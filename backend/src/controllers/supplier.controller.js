@@ -195,6 +195,7 @@ export async function saveOnboardingDraft(req, res, next) {
     if (error.name === 'ZodError') {
       return res.status(422).json({ error: 'Invalid onboarding draft' });
     }
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     console.error('Seller onboarding draft error:', error);
     return res.status(500).json({ error: 'Unable to save onboarding draft' });
   }
@@ -222,6 +223,7 @@ export async function submitOnboarding(req, res, next) {
     if (error.name === 'ZodError') {
       return res.status(422).json({ error: 'Please complete all required business details' });
     }
+    if (error.statusCode) return res.status(error.statusCode).json({ error: error.message });
     console.error('Seller onboarding error:', error);
     return res.status(500).json({ error: 'Unable to save onboarding details' });
   }

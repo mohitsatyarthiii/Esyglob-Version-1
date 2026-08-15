@@ -2,6 +2,10 @@ import mongoose from 'mongoose';
 
 const messageSchema = new mongoose.Schema(
   {
+    deliveryKey: {
+      type: String,
+      trim: true,
+    },
     chatId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Chat',
@@ -133,5 +137,6 @@ messageSchema.index({ receiverId: 1, isRead: 1 });
 messageSchema.index({ receiverId: 1, isRead: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, isDeleted: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, receiverId: 1, deliveredAt: 1 });
+messageSchema.index({ deliveryKey: 1 }, { unique: true, sparse: true });
 
 export default mongoose.models.Message || mongoose.model('Message', messageSchema);

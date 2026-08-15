@@ -14,6 +14,7 @@ router.get('/', ProfileController.get);
 // PATCH - Update profile
 router.patch('/', ProfileController.update);
 router.patch('/currency', ProfileController.updateCurrency);
+router.patch('/language', ProfileController.updateLanguage);
 router.post('/buyer-onboarding', ProfileController.completeBuyerOnboarding);
 
 // PATCH - Change password

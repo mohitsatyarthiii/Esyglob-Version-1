@@ -13,6 +13,8 @@ function normalizeIndianPhone(value) {
   return digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
 }
 export function normalizePickupAddress(address = {}) {
+  const latitude = Number(address.latitude);
+  const longitude = Number(address.longitude);
   return {
     contactName: clean(address.contactName),
     phone: normalizeIndianPhone(address.phone),
@@ -24,6 +26,12 @@ export function normalizePickupAddress(address = {}) {
     postalCode: clean(address.postalCode),
     country: clean(address.country || 'India'),
     countryCode: 'IN',
+    formattedAddress: clean(address.formattedAddress || address.formatted),
+    district: clean(address.district),
+    placeId: clean(address.placeId),
+    latitude: Number.isFinite(latitude) ? latitude : undefined,
+    longitude: Number.isFinite(longitude) ? longitude : undefined,
+    locationSource: ['autocomplete', 'gps', 'manual'].includes(address.locationSource) ? address.locationSource : 'manual',
   };
 }
 function validAddress(address) {

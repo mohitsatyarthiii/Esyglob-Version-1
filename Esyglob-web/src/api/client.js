@@ -127,15 +127,17 @@ export async function apiRequest(path, options = {}) {
 }
 
 function readableApiError(status, payload) {
-  if (payload?.error || payload?.message) return payload.error || payload.message
+  if (status >= 500) return 'EsyGlob is temporarily unable to complete this request. Please retry.'
+  const serverMessage = String(payload?.error || payload?.message || '').trim()
+  const technical = /\b(?:ECONN|ETIMEDOUT|Mongo(?:DB)?|Mongoose|Ollama|stack|trace|SQL|BSON|TypeError|ReferenceError|SyntaxError|502|503|500)\b/i
+  if (serverMessage && !technical.test(serverMessage)) return serverMessage
   if (status === 401) return 'Your session has expired. Please sign in again.'
   if (status === 403) return 'You do not have permission to complete this action.'
   if (status === 404) return 'The requested information could not be found.'
   if (status === 409) return 'This information already exists or was updated elsewhere.'
   if (status === 422) return 'Please review the highlighted information and try again.'
   if (status === 429) return 'Too many requests. Please wait a moment and retry.'
-  if (status >= 500) return 'EsyGlob is temporarily unable to complete this request. Please retry.'
-  return `Request failed with status ${status}`
+  return 'Unable to complete this request. Please try again.'
 }
 
 function announceRequestError(error, method, options) {

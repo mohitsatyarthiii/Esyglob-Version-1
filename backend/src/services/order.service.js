@@ -1,6 +1,6 @@
 import OrderRepository from '../repositories/order.repository.js';
 import NotificationService from './notification.service.js';
-import { buildCheckoutQuote, DEFAULT_LOGISTICS_RULES } from '../lib/checkout-quote.js';
+import { buildCheckoutQuote } from '../lib/checkout-quote.js';
 import { getLiveCheckoutShipping, isIndianAddress } from '../lib/checkout-shipping.js';
 import { buildAutomatedOrderServices } from '../lib/order-automation.js';
 import { getOrderFulfillment, notifyOrderStatus, syncShipmentFromOrderStatus } from '../lib/order-lifecycle.js';
@@ -92,16 +92,19 @@ class OrderService {
     payload.shipment = fulfillment.shipment;
     payload.invoice = fulfillment.invoice;
     payload.workflowSnapshot = await TradeWorkflowService.snapshot(order, isAdmin ? 'admin' : idString(order.buyerId || order.userId) === String(userId) ? 'buyer' : 'seller');
-    payload.logisticsOptions = DEFAULT_LOGISTICS_RULES.map(option => ({
-      key: option.key,
-      label: option.mode === 'express' ? 'Enterprise Logistics' : option.mode === 'premium' ? 'Premium Logistics' : 'Standard Logistics',
-      mode: option.mode,
-      eta: option.eta,
-      price: Number(option.baseCharge || 0) + Number(order.subtotal || order.totalAmount || 0) * Number(option.variableRate || 0),
-      currency: order.currency || 'INR',
-      incoterm: option.incoterm,
-      features: option.mode === 'express' ? ['Priority handling', 'Full insurance', 'Live tracking', 'Dedicated support'] : option.mode === 'premium' ? ['Enhanced insurance', 'Milestone tracking', 'Priority support'] : ['Standard coverage', 'Shipment tracking', 'Marketplace support'],
-    }));
+    payload.logisticsOptions = [];
+    if (String(order.paymentStatus || '').toLowerCase() !== 'paid' && order.checkout?.logisticsSelected !== true) {
+      try {
+        const liveShipping = await liveOrderShipping(order, userId);
+        payload.logisticsOptions = liveShipping.options.map(option => ({
+          key: option.key, label: option.label, mode: option.mode, eta: option.eta,
+          description: option.description, price: option.amount, currency: option.currency,
+          bookingAvailable: option.bookingAvailable,
+        }));
+      } catch {
+        payload.logisticsUnavailable = true;
+      }
+    }
 
     return { order: payload };
   }
@@ -605,14 +608,20 @@ class OrderService {
       order.timeline.push({ status: order.status, previousStatus: order.status, newStatus: order.status, action: 'update_shipping_address', actorRole: 'buyer', note: 'Buyer confirmed the delivery address', updatedBy:userId });
     } else if (data.action === 'select_logistics') {
       if (!['pending_approval','pending_payment','awaiting_payment'].includes(order.status)) throw Object.assign(new Error('Logistics can only be selected before payment'), { statusCode:409 });
-      const option = DEFAULT_LOGISTICS_RULES.find(item => item.key === data.logisticsOption);
-      if (!option) throw Object.assign(new Error('Select a valid logistics plan'), { statusCode:422 });
+      const liveShipping = await liveOrderShipping(order, userId);
+      const option = liveShipping.options.find(item => item.key === data.logisticsOption && item.bookingAvailable !== false);
+      if (!option) throw Object.assign(new Error('The selected live shipping rate is no longer available. Refresh and select another tier.'), { statusCode:409 });
+      const bookingSnapshot = await providerBookingSnapshot(userId, option.quoteId);
+      if (!bookingSnapshot) throw Object.assign(new Error('The selected shipping rate expired. Refresh and select shipping again.'), { statusCode:409 });
       order.checkout ||= {};
       order.checkout.logisticsSelected = true;
       order.checkout.logisticsOption = option.key;
-      const logisticsPrice = roundMoney(Number(option.baseCharge || 0) + Number(order.subtotal || 0) * Number(option.variableRate || 0));
-      order.checkout.logisticsSnapshot = { key: option.key, label: option.label, mode: option.mode, eta: option.eta, incoterm: option.incoterm, price: logisticsPrice };
+      const logisticsPrice = roundMoney(Number(option.amount || option.price || 0));
+      order.checkout.logisticsSnapshot = { key: option.key, label: option.label, mode: option.mode, eta: option.eta, price: logisticsPrice, quoteId: option.quoteId };
       order.shippingMethod = option.key;
+      order.tradeInformation ||= {};
+      order.tradeInformation.providerQuoteId = option.quoteId;
+      order.tradeInformation.providerBookingSnapshot = bookingSnapshot;
       const totals = calculateCommercialTotal({
         unitPrice: order.pricePerUnit ?? order.products?.[0]?.unitPrice,
         quantity: order.quantity ?? order.products?.[0]?.quantity,
@@ -698,6 +707,25 @@ class OrderService {
     payload.workflowSnapshot = await TradeWorkflowService.snapshot(order);
     return { order: payload };
   }
+}
+
+async function liveOrderShipping(order, userId) {
+  const product = order.productId?.toObject ? order.productId.toObject() : order.productId;
+  const rawSeller = order.sellerId?.toObject ? order.sellerId.toObject() : order.sellerId;
+  if (!product?._id || !rawSeller?._id) return { options: [] };
+  const destination = cleanAddress(order.shippingAddress || {});
+  if (['address', 'city', 'state', 'postalCode', 'country'].some(field => !String(destination[field] || '').trim()) || !isIndianAddress(destination)) return { options: [] };
+  const shippingContext = await sellerShippingCheckoutContext(rawSeller._id);
+  const seller = await sellerWithCheckoutPickup(rawSeller, shippingContext.pickupAddress);
+  const quantity = Math.max(Number(order.quantity || order.products?.[0]?.quantity || 1), 1);
+  const shipment = requireProductShippingData(product, checkoutShipmentForProduct(product, {
+    description: product.name,
+    declaredValue: Number(order.pricePerUnit || product.price || 0) * quantity,
+    currency: order.currency || product.currency || 'INR',
+    hsCode: productHsCode(product),
+    countryOfOrigin: product.countryOfOrigin,
+  }, quantity));
+  return getLiveCheckoutShipping({ userId, seller, destination, shipment, providerMappings: shippingContext.providerMappings });
 }
 
 export default OrderService;
