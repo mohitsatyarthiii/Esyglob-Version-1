@@ -91,6 +91,10 @@ function QuotationDetailsScreen() {
   const [signOpen, setSignOpen] = useState(false);
   const [signerName, setSignerName] = useState('');
   const [signatureValue, setSignatureValue] = useState('');
+  const approve = (title: string, message: string, onConfirm: () => void) => Alert.alert(title, message, [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Confirm', onPress: onConfirm },
+  ]);
 
   const quotation = useQuery({
     queryKey: ['quotation-details', quotationId],
@@ -289,7 +293,7 @@ function QuotationDetailsScreen() {
           <View style={styles.actionSection}>
             <Pressable
               disabled={accept.isPending || !canAccept}
-              onPress={() => accept.mutate()}
+              onPress={() => approve('Accept quotation?', 'This will lock the negotiated commercial offer.', () => accept.mutate())}
               style={[styles.acceptBtn, (!canAccept || accept.isPending) && styles.btnDisabled]}>
               {accept.isPending ? (
                 <ActivityIndicator size="small" color="#FFF" />
@@ -327,7 +331,7 @@ function QuotationDetailsScreen() {
                 <Icon name={enableDirectOrder ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} color={enableDirectOrder ? P.success : P.muted} />
                 <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Enable Direct Order</Text><Text style={styles.directOrderHint}>Buyer can place the order immediately after your signature, without another approval.</Text></View>
               </Pressable>
-              <Pressable disabled={prepareFinal.isPending} onPress={() => prepareFinal.mutate()} style={[styles.acceptBtn, prepareFinal.isPending && styles.btnDisabled]}>
+              <Pressable disabled={prepareFinal.isPending} onPress={() => approve('Prepare Final Quotation?', 'Generate the official document using the displayed product and total amount?', () => prepareFinal.mutate())} style={[styles.acceptBtn, prepareFinal.isPending && styles.btnDisabled]}>
                 {prepareFinal.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <><Icon name="file-sign" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Prepare Final Quotation</Text></>}
               </Pressable>
             </>}
@@ -340,7 +344,7 @@ function QuotationDetailsScreen() {
           <View style={styles.directOrderCard}>
             <Icon name="flash" size={22} color={P.success} />
             <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Direct Order ready</Text><Text style={styles.directOrderHint}>The Manufacturer Final Quotation is signed and no additional approval is required.</Text></View>
-            <Pressable disabled={placeOrder.isPending} onPress={() => placeOrder.mutate()} style={styles.placeOrderBtn}><Text style={styles.placeOrderText}>{placeOrder.isPending ? 'Opening…' : 'Place Order'}</Text></Pressable>
+            <Pressable disabled={placeOrder.isPending} onPress={() => approve('Place order?', 'Open checkout using the locked Final Quotation terms?', () => placeOrder.mutate())} style={styles.placeOrderBtn}><Text style={styles.placeOrderText}>{placeOrder.isPending ? 'Opening…' : 'Place Order'}</Text></Pressable>
           </View>
         )}
 

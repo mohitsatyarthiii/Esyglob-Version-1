@@ -38,6 +38,14 @@ export function sellerMatchesRfqTaxonomy(seller, rfq) {
   return Boolean(category && categories.includes(category) && (!subcategory || subcategories.includes(subcategory)));
 }
 
+export function productMatchesRfqTaxonomy(product, rfq) {
+  return Boolean(
+    normalizedTaxonomy(product?.category) &&
+    normalizedTaxonomy(product?.category) === normalizedTaxonomy(rfq?.category) &&
+    (!normalizedTaxonomy(rfq?.subcategory) || normalizedTaxonomy(product?.subcategory) === normalizedTaxonomy(rfq?.subcategory))
+  );
+}
+
 export function quotationCurrentOffer(quotation) {
   if (quotation.currentOffer?.unitPrice) return quotation.currentOffer.toObject?.() || quotation.currentOffer;
   const history = [...(quotation.negotiationHistory || [])].reverse().find((entry) => Number(entry.unitPrice) > 0);
@@ -85,7 +93,7 @@ function nextOffer(quotation, input, { action, actorId, actorRole, notes, previo
 }
 
 // ─── Seller Eligibility ────────────────────────────────────
-async function sellerCanQuote(rfq, seller, sellerUserId) {
+async function sellerCanQuote(rfq, seller, sellerUserId, linkedProduct = null) {
   if (!seller?.isActive || seller.isSuspended) return false;
   if (!OPEN_RFQ_STATUSES.includes(rfq.status)) return false;
 
@@ -116,7 +124,7 @@ async function sellerCanQuote(rfq, seller, sellerUserId) {
   ) {
     return false;
   }
-  return sellerMatchesRfqTaxonomy(seller, rfq);
+  return sellerMatchesRfqTaxonomy(seller, rfq) || productMatchesRfqTaxonomy(linkedProduct, rfq);
 }
 
 // ─── Get Quotations ────────────────────────────────────────
@@ -324,7 +332,7 @@ export async function createQuotation(session, body) {
     throw Object.assign(new Error('Select the manufacturer product linked to this quotation so accepted terms can continue to checkout'), { statusCode: 422 });
   }
 
-  if (!(await sellerCanQuote(rfq, seller, session.userId))) {
+  if (!(await sellerCanQuote(rfq, seller, session.userId, offeredProduct || (manufacturerOwnsRfqProduct ? rfqProduct : null)))) {
     const error = new Error('You are not eligible to quote this RFQ');
     error.statusCode = 403;
     throw error;
@@ -807,7 +815,8 @@ export async function updateQuotation(session, quotationId, body) {
     if (action === 'send') {
       const rfq = await quotationRepository.findRfqById(quotation.rfqId);
       const seller = await quotationRepository.findSellerByUserId(session.userId);
-      if (!rfq || !(await sellerCanQuote(rfq, seller, session.userId))) {
+      const linkedProduct = quotation.productId ? await quotationRepository.findProductById(quotation.productId) : null;
+      if (!rfq || !(await sellerCanQuote(rfq, seller, session.userId, linkedProduct))) {
         quotation.status = 'draft';
         quotation.activityTimeline.pop();
         await quotation.save();

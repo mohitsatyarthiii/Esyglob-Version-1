@@ -53,6 +53,8 @@ export default function RfqDetailsPage() {
   }, [openChat, params, query.data?.rfq, sellerView])
   async function action(type) {
     if (busyAction) return
+    const labels = { accept: 'accept this RFQ', request_information: 'request more information', decline: 'decline this RFQ', close: 'close this RFQ', reopen: 'reopen this RFQ', resubmit: 'resubmit this RFQ', cancel: 'cancel this RFQ', archive: 'archive this RFQ' }
+    if (!window.confirm(`Are you sure you want to ${labels[type] || type.replaceAll('_', ' ')}?`)) return
     setBusyAction(type)
     setError('')
     setMessage('')

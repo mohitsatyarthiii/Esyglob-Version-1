@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { pick, types as documentTypes } from '@react-native-documents/picker';
-import { createQuotation, fetchRFQDetails, fetchSellerProducts, startProductChat, uploadFiles, type UploadAttachment } from '../api/marketplace';
+import { createQuotation, fetchRFQDetails, fetchSellerProducts, startProductChat, updateRFQ, uploadFiles, type UploadAttachment } from '../api/marketplace';
 import { Quotation, RFQ } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { EmptyState, ErrorState, LoadingState } from '../components/StateViews';
@@ -134,6 +134,21 @@ function RFQDetailsScreen() {
     enabled: activeRole === 'seller',
     staleTime: 60_000,
   });
+
+  const rfqDecision = useMutation({
+    mutationFn: (action: 'accept' | 'decline') => updateRFQ(rfqId, { action }),
+    onSuccess: async (_result, action) => {
+      await queryClient.invalidateQueries({ queryKey: ['rfq-details', rfqId] });
+      Alert.alert(action === 'accept' ? 'RFQ accepted' : 'RFQ declined', action === 'accept' ? 'Quotation preparation is now enabled.' : 'The buyer can see that this RFQ was declined.');
+    },
+    onError: (error: unknown) => Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to update RFQ.'),
+  });
+
+  const approveRfqDecision = (action: 'accept' | 'decline') => Alert.alert(
+    action === 'accept' ? 'Accept this RFQ?' : 'Decline this RFQ?',
+    action === 'accept' ? 'Confirm that you want to prepare a quotation for this request.' : 'This will decline the buyer request.',
+    [{ text: 'Cancel', style: 'cancel' }, { text: 'Confirm', style: action === 'decline' ? 'destructive' : 'default', onPress: () => rfqDecision.mutate(action) }],
+  );
 
   const uploadQuoteFiles = async (files: Array<{ uri: string; name: string; type: string }>) => {
     if (!files.length) return;
@@ -275,6 +290,7 @@ function RFQDetailsScreen() {
   const chats: any[] = (rfq.data as any)?.chats ?? [];
   const timeline = item.deliveryTimeline ?? item.deadline;
   const hasExistingChat = chats.length > 0;
+  const privateSellerAccepted = item.visibility !== 'private' || ['seller_accepted', 'quoted', 'negotiating', 'converted', 'order_initiated'].includes(item.status) || Boolean(item.sellerWorkflow?.accepted);
 
   return (
     <View style={styles.screen}>
@@ -341,7 +357,20 @@ function RFQDetailsScreen() {
             </Pressable>
           )}
 
-          {sellerView && (
+          {sellerView && item.visibility === 'private' && !privateSellerAccepted && (
+            <>
+              <Pressable disabled={rfqDecision.isPending} onPress={() => approveRfqDecision('accept')} style={styles.quoteBtn}>
+                <Icon name="check-circle" size={18} color="#FFF" />
+                <Text style={styles.quoteBtnText}>Accept RFQ</Text>
+              </Pressable>
+              <Pressable disabled={rfqDecision.isPending} onPress={() => approveRfqDecision('decline')} style={styles.actionBtn}>
+                <Icon name="close-circle" size={18} color={P.danger} />
+                <Text style={[styles.actionBtnText, { color: P.danger }]}>Decline</Text>
+              </Pressable>
+            </>
+          )}
+
+          {sellerView && privateSellerAccepted && (
             <Pressable onPress={() => setQuoteOpen(true)} style={styles.quoteBtn}>
               <Icon name="cash-multiple" size={18} color="#FFF" />
               <Text style={styles.quoteBtnText}>Submit Quote</Text>

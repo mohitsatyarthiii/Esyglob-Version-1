@@ -6,7 +6,7 @@ import Message from '../src/models/Message.js';
 import RFQ from '../src/models/RFQ.js';
 import { OPEN_RFQ_STATUSES } from '../src/lib/rfq-helpers.js';
 import { sellerMatchesPublicRfq } from '../src/services/rfq.service.js';
-import { quotationCurrentOffer, sellerMatchesRfqTaxonomy } from '../src/services/quotation.service.js';
+import { productMatchesRfqTaxonomy, quotationCurrentOffer, sellerMatchesRfqTaxonomy } from '../src/services/quotation.service.js';
 import { assertTransition } from '../src/services/business-lifecycle.service.js';
 import { getConversationKey } from '../src/lib/chat-conversations.js';
 
@@ -59,6 +59,13 @@ test('quotation authorization enforces the same public RFQ taxonomy match', () =
   assert.equal(sellerMatchesRfqTaxonomy(seller, { category: 'Steel', subcategory: 'Outdoor Furniture' }), false);
 });
 
+test('an owned catalogue product can satisfy public RFQ taxonomy when seller profile metadata is stale', () => {
+  const rfq = { category: 'Furniture', subcategory: 'Outdoor Furniture' };
+  assert.equal(productMatchesRfqTaxonomy({ category: 'Furniture', subcategory: 'Outdoor Furniture' }, rfq), true);
+  assert.equal(productMatchesRfqTaxonomy({ category: 'Furniture', subcategory: 'Office Furniture' }, rfq), false);
+  assert.equal(productMatchesRfqTaxonomy({ category: 'Steel', subcategory: 'Outdoor Furniture' }, rfq), false);
+});
+
 test('RFQ commercial fields do not expose status as a buyer-controlled update', async () => {
   const source = await import('node:fs/promises').then(fs => fs.readFile(new URL('../src/services/rfq.service.js', import.meta.url), 'utf8'));
   const allowedFields = source.match(/const allowedFields = \[([\s\S]*?)\];/)?.[1] || '';
@@ -75,6 +82,12 @@ test('chat delivery idempotency is enforced only while sending messages', async 
 
   assert.equal(readSource.includes('findMessageByDeliveryKey'), false);
   assert.equal(sendSource.includes('findMessageByDeliveryKey'), true);
+});
+
+test('starting an order returns an existing quotation order before enforcing pre-order status', async () => {
+  const source = await import('node:fs/promises').then(fs => fs.readFile(new URL('../src/services/order.service.js', import.meta.url), 'utf8'));
+  const startOrder = source.slice(source.indexOf('static async startOrder'), source.indexOf('static async buyerAction'));
+  assert.ok(startOrder.indexOf('Order.findOne({ quotationId: quotation._id })') < startOrder.indexOf("const fullySigned = quotation.status === 'final_quotation_signed'"));
 });
 
 test('a buyer counter remains open for seller revise, accept, reject, or withdraw actions', () => {

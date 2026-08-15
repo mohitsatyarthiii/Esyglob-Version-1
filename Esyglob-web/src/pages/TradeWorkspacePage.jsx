@@ -19,6 +19,7 @@ export default function TradeWorkspacePage(){
   const query=useAsyncData(useCallback(()=>fetchUnifiedTradeWorkspace(entityType,entityId),[entityId,entityType]))
   const reloadWorkspace=query.reload
   useEffect(()=>{let socket;const refresh=()=>reloadWorkspace();getRealtimeClient().then(client=>{socket=client;client.on('quotation_updated',refresh);client.on('order_updated',refresh)}).catch(()=>{});return()=>{socket?.off('quotation_updated',refresh);socket?.off('order_updated',refresh)}},[reloadWorkspace])
+  useEffect(()=>{const approveStart=event=>{const button=event.target.closest?.('button');if(button?.textContent?.includes('Start Order')&&!window.confirm('Start this order and make the locked Final Quotation available in buyer checkout?')){event.preventDefault();event.stopPropagation()}};document.addEventListener('click',approveStart,true);return()=>document.removeEventListener('click',approveStart,true)},[])
   const [section,setSection]=useState(params.get('section')||'overview')
   if(query.loading)return <AppShell><main className="container unified-trade-page"><TradeSkeleton/></main></AppShell>
   if(query.error)return <AppShell><main className="container unified-trade-page"><p className="inline-error">{query.error.message}</p></main></AppShell>

@@ -54,6 +54,7 @@ export default function QuotationDetailsPage() {
   const concurrency = () => ({ expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: actionToken() })
 
   async function buyerAction(action) {
+    if (action === 'accept' && !window.confirm('Accept this quotation and lock the negotiated commercial offer?')) return
     setBusy(true); setError('')
     try {
       if (action === 'accept' || action === 'reject') {
@@ -75,6 +76,8 @@ export default function QuotationDetailsPage() {
 
   async function sellerAction(action) {
     if (action === 'confirm') return document.getElementById('final-quotation-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const labels = { accept_counter: 'accept the buyer counter offer', reject: 'reject the buyer counter offer', withdraw: 'withdraw this quotation', send: 'send this quotation' }
+    if (!window.confirm(`Are you sure you want to ${labels[action] || action.replaceAll('_', ' ')}?`)) return
     setBusy(true); setError('')
     try {
       await updateQuotation(quotationId, { ...concurrency(), action, reason: actionText || undefined })
@@ -117,7 +120,7 @@ export default function QuotationDetailsPage() {
       </> : <>
         {canAccept && <button className="button button--primary success-button" onClick={() => buyerAction('accept')} disabled={busy}><CheckCircle /> Accept quotation</button>}
         {BUYER_OPEN.includes(item.status) && <><button onClick={() => setDialog('request_revision')}><RefreshCw /> Request revision</button><button onClick={() => { setCounterPrice(String(currentOffer.unitPrice || item.unitPrice || '')); setDialog('counter_offer') }}>Counter offer</button><button className="danger-text" onClick={() => setDialog('reject')}><XCircle /> Reject</button></>}
-        {item.status === 'rejected' && <button onClick={() => updateQuotation(quotationId, { ...concurrency(), action: 'reopen', reason: 'Buyer reopened quotation' }).then(() => query.reload())}><RefreshCw /> Reopen</button>}
+        {item.status === 'rejected' && <button onClick={() => window.confirm('Reopen this rejected quotation for another review cycle?') && updateQuotation(quotationId, { ...concurrency(), action: 'reopen', reason: 'Buyer reopened quotation' }).then(() => query.reload())}><RefreshCw /> Reopen</button>}
       </>}
     </div>}
     {!canAccept && !sellerView && BUYER_OPEN.includes(item.status) && <p className="warning-note">A linked product is required before this quotation can create an order.</p>}

@@ -538,6 +538,8 @@ class OrderService {
     if (!seller) throw Object.assign(new Error('Seller profile not found'), { statusCode: 404 });
     const actorRole = idString(sourceRfq.buyerId) === String(userId) ? 'buyer' : idString(seller.userId) === String(userId) ? 'seller' : '';
     if (!actorRole) throw Object.assign(new Error('Only the Buyer or Seller for this Final Quotation can start the order'), { statusCode: 403 });
+    const existingOrder = await Order.findOne({ quotationId: quotation._id });
+    if (existingOrder) return { order: existingOrder };
     const directOrder = Boolean(quotation.directOrderEnabled);
     const fullySigned = quotation.status === 'final_quotation_signed' && quotation.finalQuotation?.status === 'signed';
     if (!fullySigned) throw Object.assign(new Error(directOrder ? 'Place Order becomes available after the Seller sends the signed Final Quotation' : 'Order creation is locked until the Buyer signs the Final Quotation'), { statusCode:409 });
@@ -546,8 +548,6 @@ class OrderService {
     const productId = toObjectId(body.productId || quotation?.productId || sourceRfq?.productId);
     const product = productId ? await Product.findOne({ _id: productId, sellerId: seller._id }).lean() : null;
     if (!product) throw Object.assign(new Error('A linked Seller product is required before starting the order'), { statusCode: 422 });
-    const existingOrder = await Order.findOne({ quotationId: quotation._id });
-    if (existingOrder) return { order: existingOrder };
     if (sourceRfq.tradeOrderId || quotation?.tradeOrderId) throw Object.assign(new Error('An order already exists for this trade'), { statusCode: 409 });
     const sellerInput = actorRole === 'seller' ? body : {};
     const quantity = Math.max(Number(sellerInput.quantity || quotation?.suppliedQuantity || sourceRfq.quantity || 1), 1);

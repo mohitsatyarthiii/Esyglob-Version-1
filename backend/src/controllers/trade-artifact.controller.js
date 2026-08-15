@@ -48,7 +48,16 @@ export async function previewDocument(req, res) {
       const visual = image
         ? `<img style="border-radius:7px;height:58px;object-fit:cover;width:58px" src="${image}" alt="${escapeHtml(item.name || 'Quoted product')}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>Image unavailable</span>`
         : '<span>Image unavailable</span>';
-      const details = [item.description, item.category, item.subcategory].filter(Boolean).map(value => `<small style="color:#64748b;display:block;margin-top:4px">${escapeHtml(value)}</small>`).join('');
+      const details = [
+        ['Description', item.description],
+        ['Category', item.category],
+        ['Subcategory', item.subcategory],
+        ['Brand', item.brand],
+        ['SKU', item.sku],
+        ['Country of origin', item.countryOfOrigin],
+        ['Specifications', item.specifications],
+        ['MOQ', item.minimumOrderQuantity ? `${item.minimumOrderQuantity} ${item.unit || ''}` : ''],
+      ].filter(([, value]) => value).map(([label, value]) => `<small style="color:#64748b;display:block;margin-top:4px"><b>${escapeHtml(label)}:</b> ${escapeHtml(value)}</small>`).join('');
       const pricing = content.pricing || {};
       return `<tr><td>${visual}<strong style="display:block;margin-top:5px">${escapeHtml(item.name || 'Quoted product')}</strong>${details}</td><td>${escapeHtml(item.quantity)} ${escapeHtml(item.unit || '')}</td><td>${escapeHtml(item.unitPrice)}<small style="color:#64748b;display:block;margin-top:4px">Product total: ${escapeHtml(item.totalPrice)}</small></td><td>${escapeHtml(pricing.currency || '')}<small style="color:#64748b;display:block;margin-top:4px">Shipping: ${escapeHtml(pricing.shippingCost || 0)}<br>Taxes: ${escapeHtml(pricing.taxAmount || 0)}<br><b>Final payable: ${escapeHtml(pricing.finalPayableAmount ?? pricing.totalPrice)}</b></small></td></tr>`;
     }).join('');

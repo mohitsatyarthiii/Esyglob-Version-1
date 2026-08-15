@@ -71,6 +71,7 @@ function FinalPreparation({ quotation, onComplete, setError }) {
   async function submit(event) {
     event.preventDefault()
     if (busy) return
+    if (!window.confirm('Generate this Final Quotation with the displayed product details and total amount?')) return
     setBusy(true); setError('')
     try {
       await updateQuotation(id(quotation), { action: 'confirm', suppliedQuantity: Number(form.suppliedQuantity), minimumOrderQuantity: Number(form.minimumOrderQuantity), unitPrice: Number(form.unitPrice), totalPrice: total, leadTime: Number(form.leadTime || 0), shippingTerms: form.shippingTerms, paymentTerms: form.paymentTerms, expiryDate: form.expiryDate || undefined, notes: form.notes, attachments, enableDirectOrder: form.enableDirectOrder, reason: 'Seller prepared the Final Quotation' })
@@ -158,6 +159,7 @@ function FinalDocument({ data, quotation, document, versions, user, authStatus, 
     printWindow?.addEventListener('load', () => printWindow.print(), { once: true })
   }
   async function startCheckout() {
+    if (!window.confirm('Place this order and open checkout using the locked Final Quotation terms?')) return
     if (busy) return
     if (authStatus !== 'authenticated') {
       navigate('/login', { state: { from: `/quotations/${id(quotation)}` } })
