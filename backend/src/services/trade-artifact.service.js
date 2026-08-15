@@ -149,6 +149,15 @@ export async function addNote(entityType, entityId, user, input) {
   if (context.entity.activityTimeline) context.entity.activityTimeline.push({ action: 'note_added', message: `${noteType} note added`, actorId: context.userId, actorRole: context.actorRole });
   if (context.entity.timeline) context.entity.timeline.push({ status: 'note_added', note: `${noteType} note added`, updatedBy: context.userId, timestamp: new Date() });
   await context.entity.save();
+  if (isFinalQuotation && document.status === 'completed') {
+    await RFQ.updateOne(
+      { _id: context.entity.rfqId },
+      {
+        $set: { acceptedQuotationId: context.entity._id, status: 'quoted' },
+        $push: { activityTimeline: { action: 'final_quotation_signed', status: 'quoted', message: 'The selected Final Quotation is fully signed and locked', actorId: context.userId, actorRole: context.actorRole, metadata: { quotationId: context.entity._id, documentId: document._id } } },
+      },
+    );
+  }
   if (noteType !== 'internal') await notifyParticipant(context, 'Trade note added', text.slice(0, 180), 'message_received');
   return getWorkspace(entityType, entityId, user);
 }

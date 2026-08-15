@@ -100,6 +100,10 @@ export async function createMessage(data) {
   return Message.create(data);
 }
 
+export async function findMessageByDeliveryKey(chatId, senderId, deliveryKey) {
+  return Message.findOne({ chatId, senderId, deliveryKey }).exec();
+}
+
 export async function createMessages(messagesArray) {
   return Message.insertMany(messagesArray);
 }

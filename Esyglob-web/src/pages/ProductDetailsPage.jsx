@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { BadgeCheck, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, ScanSearch, Send, Share2, ShieldCheck, Store, Truck, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { fetchProductDetails, fetchProducts, startProductChat, submitProductEnquiry, trackRecentlyViewed } from '../api/marketplace'
 import { uploadFiles } from '../api/trade'
@@ -441,6 +441,7 @@ function ProductTradeActions({ disabled, onContact, onRfq, sellerId }) {
 }
 
 function ProductEnquiryModal({ product, productId, sellerUserId, initialQuantity, unit, onClose, onStartRfq, onSubmitted }) {
+  const deliveryKey = useRef('')
   const [message, setMessage] = useState(`Hello, I am interested in ${product.name || 'this product'}. Please share availability and commercial details.`)
   const [quantity, setQuantity] = useState(initialQuantity)
   const [notes, setNotes] = useState('')
@@ -462,10 +463,11 @@ function ProductEnquiryModal({ product, productId, sellerUserId, initialQuantity
 
   async function submit(event) {
     event.preventDefault()
+    deliveryKey.current ||= globalThis.crypto?.randomUUID?.() || `enquiry-${Date.now()}-${Math.random()}`
     if (busy || uploading || !message.trim()) return
     setBusy(true); setError('')
     try {
-      await submitProductEnquiry({ otherUserId: sellerUserId, productId, productName: product.name, content: message.trim(), quantity: Math.max(1, Number(quantity) || 1), unit, notes: notes.trim(), attachments })
+      await submitProductEnquiry({ otherUserId: sellerUserId, productId, productName: product.name, content: message.trim(), quantity: Math.max(1, Number(quantity) || 1), unit, notes: notes.trim(), attachments, deliveryKey: deliveryKey.current })
       onSubmitted()
     } catch (next) { setError(next.message); setBusy(false) }
   }

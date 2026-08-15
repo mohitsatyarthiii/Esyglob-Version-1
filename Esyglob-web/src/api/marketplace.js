@@ -178,7 +178,7 @@ export async function startProductChat({ otherUserId, productId }) {
   return unwrapData(payload) || {}
 }
 
-export async function submitProductEnquiry({ otherUserId, productId, content, quantity, unit, notes, attachments = [], productName }) {
+export async function submitProductEnquiry({ otherUserId, productId, content, quantity, unit, notes, attachments = [], productName, deliveryKey }) {
   const created = unwrapData(await apiRequest('/chat', { method: 'POST', body: { otherUserId, productId, role: 'buyer', enquiry: true } })) || {}
   const chat = created.chat || created
   const chatId = chat._id || chat.id
@@ -187,12 +187,13 @@ export async function submitProductEnquiry({ otherUserId, productId, content, qu
   await apiRequest(`/chat/${chatId}`, { method: 'POST', body: {
     content: message,
     attachments,
+    deliveryKey,
     productDetails: { productId, productName, quantity, unit },
   } })
   return { chatId }
 }
 
-export async function submitSellerEnquiry({ otherUserId, content, quantity, unit = 'pcs' }) {
+export async function submitSellerEnquiry({ otherUserId, content, quantity, unit = 'pcs', deliveryKey }) {
   const created = unwrapData(await apiRequest('/chat', {
     method: 'POST',
     body: { otherUserId, role: 'buyer', enquiry: true },
@@ -201,7 +202,7 @@ export async function submitSellerEnquiry({ otherUserId, content, quantity, unit
   const chatId = chat._id || chat.id
   if (!chatId) throw new Error('The supplier conversation could not be created.')
   const message = [content?.trim(), quantity ? `Requested quantity: ${quantity} ${unit}` : ''].filter(Boolean).join('\n\n')
-  await apiRequest(`/chat/${chatId}`, { method: 'POST', body: { content: message, messageType: 'text' } })
+  await apiRequest(`/chat/${chatId}`, { method: 'POST', body: { content: message, messageType: 'text', deliveryKey } })
   return { chatId }
 }
 

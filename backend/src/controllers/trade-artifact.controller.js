@@ -13,6 +13,10 @@ const contractValue = value => {
   if (typeof value === 'object') return Object.entries(value).filter(([, item]) => item !== undefined && item !== '').map(([key, item]) => `${key.replaceAll('_', ' ')}: ${contractValue(item)}`).join(' · ');
   return String(value);
 };
+const safeImageUrl = value => {
+  const source = String(value || '').trim();
+  return /^(?:https?:\/\/|\/)/i.test(source) ? escapeHtml(source) : '';
+};
 const termRows = content => [
   ['Minimum order quantity', content.minimumOrderQuantity],
   ['Production', content.production],
@@ -39,7 +43,15 @@ export async function previewDocument(req, res) {
       ...(document.requiresBuyerSignature ? ['buyer'] : []),
     ];
     const signatures = signatureRoles.map(role => { const item = (document.signatures || []).find(value => value.signerRole === role); const signatureMark = item?.signatureType === 'drawn' && String(item.signatureValue || '').startsWith('data:image/') ? `<img style="display:block;height:48px;margin-top:7px;max-width:180px;object-fit:contain;object-position:left center" src="${escapeHtml(item.signatureValue)}" alt="${escapeHtml(role)} signature">` : `<em>${escapeHtml(item?.signatureValue || '')}</em>`; return item ? `<article class="signature signed"><strong>${escapeHtml(role)} signature</strong><b>${escapeHtml(item.signerName)}</b>${signatureMark}<small>Signed ${escapeHtml(new Date(item.signedAt).toLocaleString())} · ${isFinalQuotation ? 'Final Quotation' : 'Agreement'} v${escapeHtml(document.version || 1)}${item.termsAccepted ? ' · Terms accepted' : ''}</small></article>` : `<article class="signature pending">Awaiting ${escapeHtml(role)} signature</article>`; }).join('');
-    const productRows = products.map(item => `<tr><td>${escapeHtml(item.name || 'Quoted product')}</td><td>${escapeHtml(item.quantity)}</td><td>${escapeHtml(item.unitPrice)}</td><td>${escapeHtml(content.pricing?.currency || '')}</td></tr>`).join('');
+    const productRows = products.map(item => {
+      const image = safeImageUrl(item.image);
+      const visual = image
+        ? `<img style="border-radius:7px;height:58px;object-fit:cover;width:58px" src="${image}" alt="${escapeHtml(item.name || 'Quoted product')}" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>Image unavailable</span>`
+        : '<span>Image unavailable</span>';
+      const details = [item.description, item.category, item.subcategory].filter(Boolean).map(value => `<small style="color:#64748b;display:block;margin-top:4px">${escapeHtml(value)}</small>`).join('');
+      const pricing = content.pricing || {};
+      return `<tr><td>${visual}<strong style="display:block;margin-top:5px">${escapeHtml(item.name || 'Quoted product')}</strong>${details}</td><td>${escapeHtml(item.quantity)} ${escapeHtml(item.unit || '')}</td><td>${escapeHtml(item.unitPrice)}<small style="color:#64748b;display:block;margin-top:4px">Product total: ${escapeHtml(item.totalPrice)}</small></td><td>${escapeHtml(pricing.currency || '')}<small style="color:#64748b;display:block;margin-top:4px">Shipping: ${escapeHtml(pricing.shippingCost || 0)}<br>Taxes: ${escapeHtml(pricing.taxAmount || 0)}<br><b>Final payable: ${escapeHtml(pricing.finalPayableAmount ?? pricing.totalPrice)}</b></small></td></tr>`;
+    }).join('');
     const terms = termRows(content).map(([title, value]) => `<div><dt>${escapeHtml(title)}</dt><dd>${escapeHtml(contractValue(value))}</dd></div>`).join('');
     const party = (title, value = {}) => `<article class="party"><small>${title}</small><strong>${escapeHtml(value.company || value.name || 'Marketplace participant')}</strong><span>${escapeHtml(value.name || '')}</span><span>${escapeHtml(value.email || value.registrationNumber || '')}</span></article>`;
     res.set('Content-Type', 'text/html; charset=utf-8');

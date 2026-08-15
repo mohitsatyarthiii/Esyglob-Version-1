@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -762,6 +762,7 @@ function RFQCreateScreen() {
   const route = useRoute<any>();
   const queryClient = useQueryClient();
   const prefill = (route.params?.prefill ?? {}) as Record<string, any>;
+  const requestKey = useRef('');
   const [form, setForm] = useState({
     productName: String(prefill.productName ?? prefill.title ?? ''),
     quantity: String(prefill.quantity ?? '1'),
@@ -811,6 +812,7 @@ function RFQCreateScreen() {
 
   const submit = useMutation({
     mutationFn: async () => {
+      requestKey.current ||= `rfq-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const quantity = Number(form.quantity);
       const attachments = uploadedFiles.map(file => ({
         url: file.secure_url ?? file.url ?? file.location,
@@ -842,6 +844,7 @@ function RFQCreateScreen() {
         });
       }
       const payload = {
+        idempotencyKey: requestKey.current,
         ...common,
         category: String(prefill.category ?? 'General'),
         visibility: prefill.sellerId || prefill.sellerUserId ? 'private' : 'public',

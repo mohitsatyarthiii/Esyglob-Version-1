@@ -258,6 +258,12 @@ export async function createRfq(session, body) {
     sellerUserId: requestedSellerUserId,
     status: requestStatus,
   } = body;
+  const idempotencyKey = clean(body.idempotencyKey || body.clientRequestId);
+  if (idempotencyKey.length > 160) throw Object.assign(new Error('Invalid RFQ request identifier'), { statusCode: 422 });
+  if (idempotencyKey) {
+    const existing = await rfqRepository.findRfqByIdempotencyKey(session.userId, idempotencyKey);
+    if (existing) return { rfq: existing, reused: true, message: 'This RFQ request was already processed' };
+  }
 
   let linkedProduct = null;
   if (productId && mongoose.Types.ObjectId.isValid(productId)) {
@@ -334,6 +340,7 @@ export async function createRfq(session, body) {
 
   const rfq = await rfqRepository.createRfq({
     buyerId: session.userId,
+    idempotencyKey: idempotencyKey || undefined,
     sellerId: targetSeller?._id,
     sellerUserId: targetSeller?.userId,
     productId: productId || null,
@@ -383,6 +390,7 @@ export async function createRfq(session, body) {
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
     activityTimeline: [{ action: requestStatus === 'draft' ? 'draft_saved' : 'rfq_submitted', status: requestStatus === 'draft' ? 'draft' : 'submitted', message: resolvedTitle, actorId: session.userId, actorRole: 'buyer' }],
   });
+  if (rfq.$locals?.idempotencyReused) return { rfq, reused: true, message: 'This RFQ request was already processed' };
 
   if (targetSeller && rfq.status === 'submitted') {
     const { chat } = await findOrCreateConversation({
@@ -736,7 +744,7 @@ export async function updateRfq(session, rfqId, body) {
     'items', 'quantity', 'minimumOrderQuantity', 'unit', 'targetPrice',
     'currency', 'deliveryCountry', 'deliveryPort', 'deliveryTimeline', 'deliveryDate',
     'shippingPreference', 'drawings',
-    'incoterms', 'attachments', 'images', 'documents', 'visibility', 'status',
+    'incoterms', 'attachments', 'images', 'documents', 'visibility',
   ];
 
   const changedFields = allowedFields.filter(key => body[key] !== undefined && JSON.stringify(body[key]) !== JSON.stringify(rfq[key]));
@@ -776,6 +784,12 @@ export async function deleteRfq(session, rfqId) {
 
 // ─── Product Enquiry RFQ ───────────────────────────────────
 export async function createProductEnquiry(session, body) {
+  const idempotencyKey = clean(body.idempotencyKey || body.clientRequestId);
+  if (idempotencyKey.length > 160) throw Object.assign(new Error('Invalid RFQ request identifier'), { statusCode: 422 });
+  if (idempotencyKey) {
+    const existing = await rfqRepository.findRfqByIdempotencyKey(session.userId, idempotencyKey);
+    if (existing) return { rfq: existing, chat: existing.conversationId ? await Chat.findById(existing.conversationId) : null, reused: true, message: 'This RFQ request was already processed' };
+  }
   const productId = clean(body.productId);
   const sellerUserId = clean(body.sellerUserId);
   const quantity = Math.max(1, Number(body.quantity || 1));
@@ -873,6 +887,7 @@ export async function createProductEnquiry(session, body) {
 
   const rfq = await rfqRepository.createRfq({
     buyerId: session.userId,
+    idempotencyKey: idempotencyKey || undefined,
     productId: product._id,
     sellerId: seller._id,
     sellerUserId,
@@ -908,6 +923,7 @@ export async function createProductEnquiry(session, body) {
     status: 'active',
     expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
   });
+  if (rfq.$locals?.idempotencyReused) return { rfq, chat: rfq.conversationId ? await Chat.findById(rfq.conversationId) : null, reused: true, message: 'This RFQ request was already processed' };
 
   // Create conversation
   const { chat } = await findOrCreateConversation({

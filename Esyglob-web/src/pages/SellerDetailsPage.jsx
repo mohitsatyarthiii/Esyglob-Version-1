@@ -26,7 +26,7 @@ import {
   Users,
   Video,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { resolveApiResourceUrl } from '../api/client'
 import { fetchSellerDetails, submitSellerEnquiry } from '../api/marketplace'
@@ -61,6 +61,7 @@ export default function SellerDetailsPage() {
   const [enquiry, setEnquiry] = useState({ message: '', quantity: '', unit: 'pcs' })
   const [enquiryBusy, setEnquiryBusy] = useState(false)
   const [enquirySuccess, setEnquirySuccess] = useState('')
+  const enquiryDeliveryKey = useRef('')
 
   if (query.loading) return <AppShell><div className="listing-page container"><SkeletonCards count={3} variant="manufacturer" /></div></AppShell>
   if (query.error) return <AppShell><div className="listing-page container"><p className="inline-error">{query.error.message}</p></div></AppShell>
@@ -138,6 +139,7 @@ export default function SellerDetailsPage() {
 
   async function sendEnquiry(event) {
     event.preventDefault()
+    enquiryDeliveryKey.current ||= globalThis.crypto?.randomUUID?.() || `enquiry-${Date.now()}-${Math.random()}`
     if (!enquiry.message.trim() || enquiryBusy) return
     setEnquiryBusy(true); setActionError('')
     try {
@@ -147,6 +149,7 @@ export default function SellerDetailsPage() {
         content: `${productLine}${enquiry.message.trim()}`,
         quantity: enquiry.quantity,
         unit: enquiry.unit,
+        deliveryKey: enquiryDeliveryKey.current,
       })
       setEnquirySuccess('Enquiry sent successfully.')
       setEnquiry((current) => ({ ...current, message: '' }))

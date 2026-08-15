@@ -1,5 +1,5 @@
 import { Archive, ArrowLeft, Calendar, FileText, MapPin, MessageSquare, PackageCheck, Save, Send, ShieldCheck } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { archiveRfq, createChat, createQuotation, fetchRfq, updateRfq } from '../api/trade'
 import { fetchSellerProducts } from '../api/account'
@@ -73,6 +73,7 @@ function QuotationPreview({ quote, onChat }) {
 }
 
 function QuotationForm({ rfq, onClose, onSuccess }) {
+  const requestKey = useRef('')
   const productsQuery = useAsyncData(useCallback(() => fetchSellerProducts({ status: 'published', limit: 100 }), []))
   const manufacturerProducts = productsQuery.data?.products || []
   const fixedProductId = rfq.visibility === 'private' ? resolveId(rfq.productId) : ''
@@ -101,6 +102,7 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
 
   async function submit(event, status = 'submitted') {
     event.preventDefault()
+    requestKey.current ||= globalThis.crypto?.randomUUID?.() || `quotation-${Date.now()}-${Math.random()}`
     if (!form.productId) {
       setError('Select the manufacturer product linked to this quotation.')
       return
@@ -109,6 +111,7 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
     setError('')
     try {
       const quotation = await createQuotation({
+        idempotencyKey: requestKey.current,
         rfqId: resolveId(rfq),
         status,
         ...form,

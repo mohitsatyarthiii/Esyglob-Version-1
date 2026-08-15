@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { fetchProductDetails, fetchProducts } from '../api/products';
 import {
-  createProductEnquiry,
+  sendChatMessage,
   startProductChat,
   trackProductView,
   uploadFiles,
@@ -477,6 +477,7 @@ const infoStyles = StyleSheet.create({
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 function ProductDetailsScreen() {
+  const enquiryDeliveryKey = useRef('');
   const { formatPrice, selectedCurrency } = useCurrency();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -614,6 +615,7 @@ function ProductDetailsScreen() {
 
   const sendEnquiry = useMutation({
     mutationFn: async () => {
+      enquiryDeliveryKey.current ||= `enquiry-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       if (!product) throw new Error('Product not loaded.');
       if (!isBuyer) throw new Error('Only buyer accounts can send product enquiries.');
       if (isSelfContact) throw new Error('You cannot send an enquiry to your own seller account.');
@@ -631,27 +633,47 @@ function ProductDetailsScreen() {
         throw new Error('One or more attachments could not be uploaded. Please retry.');
       }
 
-      return createProductEnquiry({
+      const conversation = await startProductChat({
+        otherUserId: sellerUserId,
         productId: selectedProductId,
-        sellerUserId: sellerUserId,
-        productName: product.name || product.title || 'Product',
-        quantity: quantity || 1,
-        unit: product.unit || 'pcs',
-        targetPrice: targetPrice ? Number(targetPrice) : undefined,
-        destinationCountry: destinationCountry.trim() || 'India',
-        customSpecifications: customSpecifications.trim() || undefined,
-        packagingRequirements: packagingRequirements.trim() || undefined,
-        deliveryRequirements: deliveryRequirements.trim() || undefined,
-        additionalNotes: additionalNotes.trim() || undefined,
+        role: 'buyer',
+        enquiry: true,
+      });
+      const chatId = conversation.chat?._id || conversation.chat?.id;
+      if (!chatId) throw new Error('The supplier conversation could not be created.');
+
+      const productName = product.name || product.title || 'Product';
+      const message = [
+        `Product enquiry: ${productName}`,
+        `Requested quantity: ${quantity || 1} ${product.unit || 'pcs'}`,
+        targetPrice ? `Target price: ${targetPrice} ${product.currency || 'INR'} per unit` : '',
+        `Destination: ${destinationCountry.trim() || 'India'}`,
+        customSpecifications.trim() ? `Specifications: ${customSpecifications.trim()}` : '',
+        packagingRequirements.trim() ? `Packaging: ${packagingRequirements.trim()}` : '',
+        deliveryRequirements.trim() ? `Delivery: ${deliveryRequirements.trim()}` : '',
+        additionalNotes.trim() ? `Notes: ${additionalNotes.trim()}` : '',
+      ].filter(Boolean).join('\n');
+
+      await sendChatMessage(chatId, {
+        deliveryKey: enquiryDeliveryKey.current,
+        content: message,
+        messageType: 'product',
         attachments: cloudFiles.map((file, index) => ({
           filename: file.name ?? attachments[index]?.name ?? 'Attachment',
+          name: file.name ?? attachments[index]?.name ?? 'Attachment',
           type: file.mimeType ?? attachments[index]?.type ?? 'application/octet-stream',
           url: file.secure_url ?? file.url ?? file.location,
         })),
-        currency: product.currency || 'INR',
-        deliveryTimeline: 'flexible',
-        incoterms: 'FOB',
+        productDetails: {
+          productId: selectedProductId,
+          productName,
+          image: product.images?.[0]?.url || product.images?.[0] || '',
+          productLink: `/products/${selectedProductId}`,
+          supplierName: sellerName,
+          supplierId: sellerRouteId,
+        },
       });
+      return { chat: conversation.chat };
     },
     onSuccess: (result: any) => {
       setEnquiryOpen(false);

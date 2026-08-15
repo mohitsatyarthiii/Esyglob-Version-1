@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -96,6 +96,7 @@ function resolveBuyerUserId(item: any): string | undefined {
 // ─── Component ──────────────────────────────────────────────────────────────
 
 function RFQDetailsScreen() {
+  const quotationRequestKey = useRef('');
   const { formatPrice, selectedCurrency } = useCurrency();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
@@ -167,6 +168,7 @@ function RFQDetailsScreen() {
 
   const submitQuote = useMutation({
     mutationFn: async () => {
+      quotationRequestKey.current ||= `quotation-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       const item = rfq.data?.rfq;
       if (!item) throw new Error('RFQ details unavailable.');
 
@@ -176,6 +178,7 @@ function RFQDetailsScreen() {
       const fixedProductId = item.visibility === 'private' ? productId : undefined;
 
       return createQuotation({
+        idempotencyKey: quotationRequestKey.current,
         rfqId: getId(item) ?? '',
         productId: fixedProductId ?? quoteForm.productId,
         title: item.title ?? (item as any).productName ?? 'Quotation',

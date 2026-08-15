@@ -10,6 +10,11 @@ const rfqSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      maxlength: 160,
+    },
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Product',
@@ -244,6 +249,7 @@ rfqSchema.index({
   deliveryCountry: 'text',
   specifications: 'text',
 });
+rfqSchema.index({ buyerId: 1, idempotencyKey: 1 }, { unique: true, sparse: true, name: 'one_rfq_per_buyer_idempotency_key' });
 rfqSchema.plugin(mediaIntegrityPlugin, { entity: 'RFQs', paths: ['attachments.url', 'images.url', 'documents.url'] });
 
 export default mongoose.models.RFQ || mongoose.model('RFQ', rfqSchema);

@@ -1,5 +1,5 @@
 import { ArrowLeft, Save, Send } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { createProductEnquiry, fetchCategories } from '../api/marketplace'
 import { createRfq, createSellerRfq } from '../api/trade'
@@ -19,6 +19,7 @@ export default function RfqCreatePage() {
   const [error, setError] = useState('')
   const [categories, setCategories] = useState([])
   const [publishedRfq, setPublishedRfq] = useState(null)
+  const requestKey = useRef('')
   const [form, setForm] = useState({
     productName: product.name || '',
     quantity: String(product.requestedQuantity || product.moq || product.minimumOrderQuantity || 1),
@@ -39,6 +40,7 @@ export default function RfqCreatePage() {
   const update = useCallback((key, value) => setForm((current) => ({ ...current, [key]: value })), [])
 
   async function submit(status) {
+    requestKey.current ||= globalThis.crypto?.randomUUID?.() || `rfq-${Date.now()}-${Math.random()}`
     setError('')
     const quantity = Number(form.quantity)
     if (!form.productName.trim() || !Number.isFinite(quantity) || quantity <= 0 || !form.unit.trim() || !form.deliveryCountry.trim() || !form.deliveryTimeline || (!privateRfq && status !== 'draft' && (!form.category || !form.subcategory))) {
@@ -52,6 +54,7 @@ export default function RfqCreatePage() {
     try {
       const productId = product._id || product.id
       const common = {
+        idempotencyKey: requestKey.current,
         productId: productId || undefined,
         productName: form.productName.trim(),
         title: form.productName.trim(),
@@ -112,7 +115,7 @@ export default function RfqCreatePage() {
   if (publishedRfq) return <AppShell><div className="trade-form-page container trade-form-page--compact"><section className="trade-form-section"><span className="eyebrow">Published</span><h1>RFQ published successfully.</h1><p>Your request is live in the Public RFQ Marketplace. Matching manufacturers are being notified without affecting its public availability.</p><div className="trade-page-actions"><Link className="button button--primary" to={`/rfqs/${publishedRfq._id || publishedRfq.id}`}>View Public RFQ</Link><Link className="button button--secondary" to="/rfqs">Go to My RFQs</Link></div></section></div></AppShell>
   return <AppShell><div className="trade-form-page container trade-form-page--compact">
     <button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Back</button>
-    <header><span className="eyebrow">{privateRfq ? 'Private supplier enquiry' : 'Buyer sourcing request'}</span><h1>{privateRfq ? `Send enquiry${prefill.supplierName ? ` to ${prefill.supplierName}` : ''}` : 'Create RFQ'}</h1><p>Share the essential requirement. Suppliers can clarify details in the negotiation workspace.</p></header>
+    <header><span className="eyebrow">{privateRfq ? 'Private RFQ' : 'Buyer sourcing request'}</span><h1>{privateRfq ? `Send private RFQ${prefill.supplierName ? ` to ${prefill.supplierName}` : ''}` : 'Create RFQ'}</h1><p>Share the essential requirement. Suppliers can clarify details in the negotiation workspace.</p></header>
     <div className="trade-form-layout">
       <div>
         <FormSection title="Product requirement">
@@ -134,7 +137,7 @@ export default function RfqCreatePage() {
       <aside>
         <FormSection title="Ready to send?"><p className="form-help">Product, quantity, unit, delivery location and timeline are required. Target price, notes and attachments are optional.</p></FormSection>
         {error && <p className="action-error">{error}</p>}
-        <div className="sticky-form-actions"><button className="button button--secondary" disabled={Boolean(busy)} onClick={() => submit('draft')}><Save /> {busy === 'draft' ? 'Saving…' : 'Save draft'}</button><button className="button button--primary" disabled={Boolean(busy)} onClick={() => submit('active')}><Send /> {busy === 'active' ? 'Submitting…' : privateRfq ? 'Send enquiry' : 'Publish RFQ'}</button></div>
+        <div className="sticky-form-actions"><button className="button button--secondary" disabled={Boolean(busy)} onClick={() => submit('draft')}><Save /> {busy === 'draft' ? 'Saving…' : 'Save draft'}</button><button className="button button--primary" disabled={Boolean(busy)} onClick={() => submit('active')}><Send /> {busy === 'active' ? 'Submitting…' : privateRfq ? 'Send private RFQ' : 'Publish RFQ'}</button></div>
       </aside>
     </div>
   </div></AppShell>

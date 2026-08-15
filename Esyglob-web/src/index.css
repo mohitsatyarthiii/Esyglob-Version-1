@@ -14317,8 +14317,8 @@ svg {
   color: var(--muted);
   display: flex;
   font-size: 10px;
-  gap: 10px;
-  min-height: 45px;
+  gap: 14px;
+  min-height: 52px;
   position: relative;
 }
 
@@ -14328,10 +14328,11 @@ svg {
   background: var(--line);
   content: '';
   height: 100%;
-  left: 4px;
+  left: 8px;
   position: absolute;
-  top: 10px;
-  width: 1px;
+  top: 18px;
+  width: 2px;
+  z-index: 0;
 }
 
 .rfq-timeline>span:last-child::before,
@@ -14346,9 +14347,10 @@ svg {
   background: #fff;
   border: 2px solid #cbd5e1;
   border-radius: 50%;
-  flex: 0 0 9px;
-  height: 9px;
-  margin-top: 2px;
+  box-shadow: 0 0 0 4px #fff;
+  flex: 0 0 18px;
+  height: 18px;
+  margin-top: 1px;
   position: relative;
   z-index: 1;
 }

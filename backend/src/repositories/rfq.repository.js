@@ -58,7 +58,19 @@ export async function findRfqByIdLean(rfqId) {
 }
 
 export async function createRfq(data) {
-  return RFQ.create(data);
+  try {
+    return await RFQ.create(data);
+  } catch (error) {
+    if (error?.code !== 11000 || !data.idempotencyKey) throw error;
+    const existing = await RFQ.findOne({ buyerId: data.buyerId, idempotencyKey: data.idempotencyKey }).exec();
+    if (!existing) throw error;
+    existing.$locals.idempotencyReused = true;
+    return existing;
+  }
+}
+
+export async function findRfqByIdempotencyKey(buyerId, idempotencyKey) {
+  return RFQ.findOne({ buyerId, idempotencyKey }).exec();
 }
 
 export async function updateRfq(rfqId, update) {

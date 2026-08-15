@@ -23,6 +23,21 @@ function numericOffer(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function normalizedTaxonomy(value) {
+  const resolved = typeof value === 'object' && value
+    ? value.name || value.label || value.slug || value.title || ''
+    : value;
+  return String(resolved || '').trim().toLowerCase();
+}
+
+export function sellerMatchesRfqTaxonomy(seller, rfq) {
+  const category = normalizedTaxonomy(rfq?.category);
+  const subcategory = normalizedTaxonomy(rfq?.subcategory);
+  const categories = (seller?.productCategories || []).map(normalizedTaxonomy).filter(Boolean);
+  const subcategories = (seller?.productSubcategories || []).map(normalizedTaxonomy).filter(Boolean);
+  return Boolean(category && categories.includes(category) && (!subcategory || subcategories.includes(subcategory)));
+}
+
 export function quotationCurrentOffer(quotation) {
   if (quotation.currentOffer?.unitPrice) return quotation.currentOffer.toObject?.() || quotation.currentOffer;
   const history = [...(quotation.negotiationHistory || [])].reverse().find((entry) => Number(entry.unitPrice) > 0);
@@ -101,7 +116,7 @@ async function sellerCanQuote(rfq, seller, sellerUserId) {
   ) {
     return false;
   }
-  return true;
+  return sellerMatchesRfqTaxonomy(seller, rfq);
 }
 
 // ─── Get Quotations ────────────────────────────────────────
@@ -388,6 +403,7 @@ export async function createQuotation(session, body) {
         action: saveAsDraft ? 'message' : 'submitted',
         actorRole: 'seller',
         actorId: session.userId,
+        idempotencyKey: String(body.idempotencyKey || '').trim() || undefined,
         message: sellerMessage || notes || 'Quotation submitted.',
         unitPrice: Number(unitPrice || 0),
         totalPrice:
@@ -881,6 +897,10 @@ export async function updateQuotation(session, quotationId, body) {
       quotation.negotiationHistory.push({ ...quotation.currentOffer.toObject?.() || quotation.currentOffer, idempotencyKey: freshness.idempotencyKey || undefined, message: reason || 'Seller accepted the buyer counter offer.' });
       quotation.activityTimeline.push({ action: 'seller_accepted_counter', status: nextStatus, message: reason || 'Seller accepted the buyer counter offer', actorId: session.userId, actorRole: 'seller' });
       await quotation.save();
+      rfq.acceptedQuotationId = quotation._id;
+      rfq.status = 'quoted';
+      rfq.activityTimeline.push({ action: 'quotation_accepted', status: 'quoted', message: 'Seller accepted the buyer counter offer as the selected quotation', actorId: session.userId, actorRole: 'seller', metadata: { quotationId: quotation._id } });
+      await rfq.save();
       await quotationRepository.createNotification({ eventKey: `quotation-counter-accepted:${quotation._id}:${actionKey}`, userId: rfq.buyerId, notificationType: 'quotation_accepted', title: 'Seller accepted your counter offer', description: `The agreed price is ${quotation.currency} ${quotation.unitPrice} per unit.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
       await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, deliveryKey: `quotation-counter-accepted:${quotation._id}:${actionKey}`, content: `Counter offer accepted\nProduct: ${rfq.title}\nAgreed price: ${quotation.currency} ${quotation.unitPrice} per unit\nView quotation: /quotations/${quotation._id}` });
       return { quotation, message: 'Counter offer accepted' };
@@ -1032,7 +1052,7 @@ export async function updateQuotation(session, quotationId, body) {
       quotation.status
     )
   ) {
-    const error = new Error('Can only update open quotations');
+    const error = new Error('This quotation is no longer available for revision.');
     error.statusCode = 400;
     throw error;
   }
@@ -1221,6 +1241,10 @@ export async function respondToQuotation(session, quotationId, body) {
   await quotation.save();
 
   if (action === 'accept') {
+    quotation.rfqId.acceptedQuotationId = quotation._id;
+    quotation.rfqId.status = 'quoted';
+    quotation.rfqId.activityTimeline.push({ action: 'quotation_accepted', status: 'quoted', message: 'Buyer selected this quotation for Final Quotation preparation', actorId: session.userId, actorRole: 'buyer', metadata: { quotationId: quotation._id } });
+    await quotation.rfqId.save();
     const updatedQuotation = await quotationRepository.findQuotationByIdLean(quotationId);
     const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
     const sellerNotification = await quotationRepository.createNotification({ eventKey: `quotation-accepted:${quotation._id}:${actionKey}`, userId: quotation.userId, notificationType: 'quotation_accepted', title: 'Buyer accepted — prepare the Final Quotation', description: `Buyer accepted ${quotation.currency} ${quotationCurrentOffer(updatedQuotation).unitPrice} per unit. Complete the Final Quotation.`, data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}?role=seller#final-quotation-title` }, priority: 'high' });
@@ -1268,6 +1292,11 @@ async function finalQuotationSnapshot(quotation) {
   const buyerAddress = buyer?.metadata?.address || buyer?.address;
   const sellerAddress = sellerProfile?.address;
   const productImage = product?.images?.[0]?.url || product?.images?.[0] || finalRfq?.images?.[0]?.url || finalRfq?.images?.[0];
+  const quantity = Number(quotation.suppliedQuantity || finalRfq?.quantity || 0);
+  const productTotal = Number(quotation.unitPrice || 0) * quantity;
+  const shippingCost = Number(quotation.shippingCost || 0);
+  const taxAmount = Number(quotation.taxes?.amount || 0);
+  const finalPayableAmount = productTotal + shippingCost + taxAmount;
   return {
     finalRfq,
     content: {
@@ -1280,8 +1309,8 @@ async function finalQuotationSnapshot(quotation) {
       tradeReference: quotation.quotationNumber || finalRfq?.rfqNumber,
       buyer: { name: buyer?.fullName, company: buyerCompany, email: buyer?.email, phone: buyer?.phone, address: buyerAddress, country: buyer?.metadata?.country || buyerAddress?.country },
       seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, email: sellerUser?.email, phone: sellerProfile?.businessPhone || sellerUser?.phone, address: sellerAddress, country: sellerAddress?.country, registrationNumber: sellerProfile?.businessRegistrationNumber, taxNumber: sellerProfile?.gstNumber },
-      products: [{ productId: quotation.productId?._id || quotation.productId || finalRfq?.productId, name: product?.name || quotation.productId?.name || finalRfq?.title, image: productImage, brand: product?.brand, sku: product?.sku, countryOfOrigin: product?.countryOfOrigin, specifications: quotation.specifications || finalRfq?.specifications, quantity: quotation.suppliedQuantity || finalRfq?.quantity, unit: finalRfq?.unit, minimumOrderQuantity: quotation.minimumOrderQuantity, unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice }],
-      pricing: { unitPrice: quotation.unitPrice, totalPrice: quotation.totalPrice, currency: quotation.currency },
+      products: [{ productId: quotation.productId?._id || quotation.productId || finalRfq?.productId, name: product?.name || quotation.productId?.name || finalRfq?.title, image: productImage, description: product?.description || quotation.description || finalRfq?.description, category: product?.category || finalRfq?.category, subcategory: product?.subcategory || finalRfq?.subcategory, brand: product?.brand, sku: product?.sku, countryOfOrigin: product?.countryOfOrigin, specifications: quotation.specifications || finalRfq?.specifications, quantity, unit: finalRfq?.unit, minimumOrderQuantity: quotation.minimumOrderQuantity, unitPrice: quotation.unitPrice, totalPrice: productTotal }],
+      pricing: { unitPrice: quotation.unitPrice, productTotal, shippingCost, taxAmount, finalPayableAmount, totalPrice: finalPayableAmount, currency: quotation.currency },
       minimumOrderQuantity: quotation.minimumOrderQuantity,
       production: { timeline: quotation.productionTime, unit: quotation.productionTimeUnit },
       shipping: { cost: quotation.shippingCost, estimate: quotation.shippingEstimate },

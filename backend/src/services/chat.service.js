@@ -159,6 +159,11 @@ export async function getChatMessages(user, chatId, options = {}) {
     throw error;
   }
 
+  if (deliveryKey) {
+    const existing = await chatRepository.findMessageByDeliveryKey(chatId, user.id, deliveryKey);
+    if (existing) return { message: existing, reused: true, autoReply: null, autoReplies: [] };
+  }
+
   // Mark messages as read
   if (markRead && !after) {
     await chatRepository.markMessagesAsRead(chatId, user.id);
@@ -241,6 +246,8 @@ export async function getChatMessages(user, chatId, options = {}) {
 // ─── Send Message ──────────────────────────────────────────
 export async function sendMessage(user, chatId, messageData) {
   const { content, messageType = 'text', attachments, productDetails, orderDetails, rfqDetails, quotationDetails } = messageData;
+  const deliveryKey = String(messageData.deliveryKey || messageData.idempotencyKey || '').trim();
+  if (deliveryKey.length > 160) throw Object.assign(new Error('Invalid message request identifier'), { statusCode: 422 });
   const safeAttachments = Array.isArray(attachments) ? attachments.slice(0, 10) : [];
 
   if (!content?.trim() && safeAttachments.length === 0) {
@@ -299,6 +306,7 @@ export async function sendMessage(user, chatId, messageData) {
   const receiverId = groupReceiverId || (isBuyer ? chat.sellerId : chat.buyerId);
 
   const message = await chatRepository.createMessage({
+    deliveryKey: deliveryKey || undefined,
     chatId,
     senderId: user.id,
     receiverId,
@@ -329,7 +337,7 @@ export async function sendMessage(user, chatId, messageData) {
   // Create notification
   const isDirectEnquiry = isBuyer && chat.chatType === 'product_enquiry';
   await chatRepository.createNotification({
-    eventKey: isDirectEnquiry ? `direct-enquiry:${message._id}` : undefined,
+    eventKey: deliveryKey ? `chat-message:${deliveryKey}` : isDirectEnquiry ? `direct-enquiry:${message._id}` : undefined,
     userId: receiverId,
     notificationType: isDirectEnquiry ? 'new_inquiry' : 'message',
     title:
