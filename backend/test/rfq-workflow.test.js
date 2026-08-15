@@ -65,6 +65,18 @@ test('RFQ commercial fields do not expose status as a buyer-controlled update', 
   assert.equal(/['"]status['"]/.test(allowedFields), false);
 });
 
+test('chat delivery idempotency is enforced only while sending messages', async () => {
+  const source = await import('node:fs/promises').then(fs => fs.readFile(new URL('../src/services/chat.service.js', import.meta.url), 'utf8'));
+  const readStart = source.indexOf('export async function getChatMessages');
+  const sendStart = source.indexOf('export async function sendMessage');
+  const actionStart = source.indexOf('export async function performChatAction');
+  const readSource = source.slice(readStart, sendStart);
+  const sendSource = source.slice(sendStart, actionStart);
+
+  assert.equal(readSource.includes('findMessageByDeliveryKey'), false);
+  assert.equal(sendSource.includes('findMessageByDeliveryKey'), true);
+});
+
 test('a buyer counter remains open for seller revise, accept, reject, or withdraw actions', () => {
   const actions = ['revise', 'accept_counter', 'reject', 'withdraw'];
   for (const action of actions) {

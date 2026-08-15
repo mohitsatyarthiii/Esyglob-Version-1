@@ -159,11 +159,6 @@ export async function getChatMessages(user, chatId, options = {}) {
     throw error;
   }
 
-  if (deliveryKey) {
-    const existing = await chatRepository.findMessageByDeliveryKey(chatId, user.id, deliveryKey);
-    if (existing) return { message: existing, reused: true, autoReply: null, autoReplies: [] };
-  }
-
   // Mark messages as read
   if (markRead && !after) {
     await chatRepository.markMessagesAsRead(chatId, user.id);
@@ -294,6 +289,11 @@ export async function sendMessage(user, chatId, messageData) {
     const error = new Error('Unauthorized');
     error.statusCode = 403;
     throw error;
+  }
+
+  if (deliveryKey) {
+    const existing = await chatRepository.findMessageByDeliveryKey(chatId, user.id, deliveryKey);
+    if (existing) return { message: existing, reused: true, autoReply: null, autoReplies: [] };
   }
 
   const normalizedContent = content?.trim() || safeAttachments?.[0]?.name || 'Attachment';
