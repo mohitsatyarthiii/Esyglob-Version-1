@@ -195,9 +195,15 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
   const context = await loadContext(entityType, entityId, user);
   const document = context.entity.tradeDocuments.id(documentId);
   if (!document || !['buyer','seller'].includes(context.actorRole)) throw Object.assign(new Error('Document not found'), { statusCode: 404 });
-  const required = context.actorRole === 'buyer' ? document.requiresBuyerSignature : document.requiresSellerSignature;
+  let required = context.actorRole === 'buyer' ? document.requiresBuyerSignature : document.requiresSellerSignature;
   const isAgreement = ['purchase_agreement','commercial_agreement'].includes(document.documentType);
   const isFinalQuotation = entityType === 'quotation' && document.documentType === 'quotation' && document.metadata?.isFinalQuotation;
+  if (isFinalQuotation) {
+    document.requiresBuyerSignature = true;
+    document.metadata = { ...(document.metadata?.toObject?.() || document.metadata || {}), directOrderEnabled: false };
+    context.entity.directOrderEnabled = false;
+    required = context.actorRole === 'buyer' ? document.requiresBuyerSignature : document.requiresSellerSignature;
+  }
   if (isFinalQuotation && context.entity.status !== 'final_quotation_pending') throw Object.assign(new Error('This Final Quotation is not open for signatures'), { statusCode: 409 });
   if (isFinalQuotation && context.actorRole === 'seller' && document.status !== 'awaiting_seller_signature') throw Object.assign(new Error('This Final Quotation is not awaiting the Seller signature'), { statusCode: 409 });
   if (isFinalQuotation && context.actorRole === 'buyer' && document.status !== 'awaiting_buyer_signature') throw Object.assign(new Error('This Final Quotation is not awaiting the Buyer signature'), { statusCode: 409 });
@@ -237,16 +243,19 @@ export async function signTradeDocument(entityType, entityId, documentId, user, 
     context.entity.finalQuotation.lockedAt = new Date();
     context.entity.previousStatus = previousStatus;
     context.entity.status = 'final_quotation_signed';
-    const directActivation = context.actorRole === 'seller' && context.entity.directOrderEnabled;
-    context.entity.approvalHistory.push({ action: directActivation ? 'direct_order_activated' : 'final_quotation_signed', previousStatus, newStatus: 'final_quotation_signed', actorId: context.userId, actorRole: context.actorRole, notes: directActivation ? `Seller activated Direct Order with Final Quotation version ${document.version}` : `Buyer signed Final Quotation version ${document.version}` });
-    context.entity.activityTimeline.push({ action: directActivation ? 'direct_order_activated' : 'final_quotation_signed', status: 'final_quotation_signed', message: directActivation ? 'Seller signed the Final Quotation; Place Order is now available to the Buyer' : 'Buyer signed the Final Quotation; commercial terms are locked', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, version: document.version, directOrderEnabled: directActivation } });
-    context.entity.activityTimeline.push({ action: 'order_enabled', status: 'final_quotation_signed', message: directActivation ? 'Direct Order checkout is enabled without another approval step' : 'Start Order is now enabled', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, orderEnabled: true, directOrderEnabled: directActivation } });
+    context.entity.approvalHistory.push({ action: 'final_quotation_signed', previousStatus, newStatus: 'final_quotation_signed', actorId: context.userId, actorRole: context.actorRole, notes: `Buyer signed Final Quotation version ${document.version}` });
+    context.entity.activityTimeline.push({ action: 'final_quotation_signed', status: 'final_quotation_signed', message: 'Buyer signed the Final Quotation; commercial terms are locked', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, version: document.version, directOrderEnabled: false } });
+    context.entity.activityTimeline.push({ action: 'order_enabled', status: 'final_quotation_signed', message: 'Place Order is now enabled for the Buyer', actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id, orderEnabled: true, directOrderEnabled: false } });
+    context.entity.negotiationVersion = Number(context.entity.negotiationVersion || 0) + 1;
+    context.entity.negotiationHistory.push({ action: 'buyer_signed', actorId: context.userId, actorRole: 'buyer', message: `Buyer confirmed and signed Final Quotation version ${document.version}.`, notes: `Buyer confirmed and signed Final Quotation version ${document.version}.`, status: 'final_quotation_signed', unitPrice: context.entity.unitPrice, totalPrice: context.entity.totalPrice, minimumOrderQuantity: context.entity.minimumOrderQuantity, suppliedQuantity: context.entity.suppliedQuantity, leadTime: context.entity.leadTime, leadTimeUnit: context.entity.leadTimeUnit });
   }
   if (isFinalQuotation && id(context.entity.finalQuotation?.documentId) === id(document._id) && context.actorRole === 'seller' && document.status !== 'completed') {
     context.entity.finalQuotation.status = 'awaiting_buyer_signature';
     context.entity.finalQuotation.sellerSignedAt = new Date();
     context.entity.approvalHistory.push({ action: 'seller_signed_final_quotation', previousStatus: context.entity.status, newStatus: context.entity.status, actorId: context.userId, actorRole: 'seller', notes: `Seller signed Final Quotation version ${document.version}` });
     context.entity.activityTimeline.push({ action: 'seller_signed_final_quotation', status: document.status, message: 'Seller signed the Final Quotation; Buyer review is now open', actorId: context.userId, actorRole: 'seller', metadata: { documentId: document._id, version: document.version } });
+    context.entity.negotiationVersion = Number(context.entity.negotiationVersion || 0) + 1;
+    context.entity.negotiationHistory.push({ action: 'seller_signed', actorId: context.userId, actorRole: 'seller', message: `Seller signed Final Quotation version ${document.version}.`, notes: `Seller signed Final Quotation version ${document.version}.`, status: 'final_quotation_pending', unitPrice: context.entity.unitPrice, totalPrice: context.entity.totalPrice, minimumOrderQuantity: context.entity.minimumOrderQuantity, suppliedQuantity: context.entity.suppliedQuantity, leadTime: context.entity.leadTime, leadTimeUnit: context.entity.leadTimeUnit });
   }
   if (context.entity.activityTimeline) {
     context.entity.activityTimeline.push({ action: isFinalQuotation ? `${context.actorRole}_signed_final_quotation` : isAgreement ? `${context.actorRole}_signed_agreement` : 'document_signed', status: document.status, message: `${context.actorRole} signed ${document.title}`, actorId: context.userId, actorRole: context.actorRole, metadata: { documentId: document._id } });

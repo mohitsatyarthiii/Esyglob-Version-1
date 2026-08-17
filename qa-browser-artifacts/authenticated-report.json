@@ -1,0 +1,743 @@
+{
+  "users": {
+    "buyer": {
+      "login": {
+        "url": "https://esyglob.in/home",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nTrade Calculator\nCreate RFQ\nImage Search\nCategories\nEsyAI SourcingAI-powered product and supplier discovery\nTry AI\nCategories\nSee all\nApparel & Fashion\nComputer Hardware & Software\nConsumer Electronics\nAgriculture\nFood & Beverage\nFurniture\nAutomobile\nBrass Hardware & Components\nChemicals\nConstruction & Real Estate\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nGifts & Crafts\nFeatured products\nView all\n-50%\n1/5\nCustom Baby Hooded Unisex Autumn/Winter Bear Print 85% Cotton Long Sleeve Front Zipper Newborn Onesie Romper Outerwear\n\u2606\u2606\u2606\u2606\u2606\nNew\n\u20b9299.50\n\u20b9599.00\nper piece\nVerified\nMOQ 10\n5 days\nShipping available\nManufacturer\nShoppymood pvt. Ltd.\n\ud83c\uddee\ud83c\uddf3\nIndia\n-50%\n1/5\nMen\u2019s T-shirt Custom LOGO Picture T-shirt Printed LOGO Casual High Quality Blank Super Large 100% Cotton T-shirt\n\u2606\u2606\u2606\u2606\u2606\nNew\n\u20b944.50\n\u20b989.00\nper piece\nVerified\nMOQ 100\n2 days\nShipping available\nManufacturer\nShoppymood pvt. Ltd.\n\ud83c\uddee\ud83c\uddf3\nIndia\n1/5\nErgonomic Portable Wristband with White Noise 8 Natural Sounds Mini Digital Speaker Sleep & Focus Music Player Wearable Design\n\u2606\u2606\u2606\u2606\u2606\nNew\n\u20b9665.43\nper piece\nVerified\nMOQ 5\n0\nShipping available\nManufacturer\nSTARLINE ELECTRONICS PVT. LTD.\n\ud83c\uddee\ud83c\uddf3\nIndia\n1/4\nMultifunctional Blender Household and Commercial Use Smoothie Juicer Powerful Blender Food Grade Plastic Cup\n\u2606\u2606\u2606\u2606\u2606\nNew\n\u20b9733.93\nper piece\nVerified\nMOQ 2\n20 days\nShipping available\nManufacturer\nSTARLINE ELECTRONICS PVT. LTD.\n\ud83c\uddee\ud83c\uddf3\nIndia\n1/5\nNew High Quality Original Mobile Phone S26 ultra 16GB + 1TB 5G Smartphone 7.3inch Screen Mobile Phone\n\u2606\u2606\u2606\u2606\u2606\nNew\n\u20b94,",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-home.png",
+        "horizontal_overflow": false
+      },
+      "account": {
+        "url": "https://esyglob.in/account",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nBack\nEsyGlob Buyer Account\nMohit Satyarthi\nmohit11@gmail.com\nAI credits\n500 available\nBuy credits\nIncluded with plan\n500\nPurchased\n0\nConsumed\n0\nAdd Card\nAddress\nOrders\nPreferred Currency\n\nAll prices will be displayed in your selected currency.\n\nINR\nAED\nAUD\nBDT\nBHD\nBRL\nCAD\nCHF\nCNY\nCZK\nDKK\nEGP\nEUR\nGBP\nGHS\nHKD\nHUF\nIDR\nILS\nJPY\nKES\nKRW\nKWD\nLKR\nMMK\nMXN\nMYR\nNGN\nNOK\nNPR\nNZD\nOMR\nPHP\nPKR\nPLN\nQAR\nRUB\nSAR\nSEK\nSGD\nTHB\nTRY\nTWD\nUSD\nVND\nZAR\nMy Location\nSet location for nearby suppliers and accurate shipping.\nMy Orders\nAll Orders\nPending\nShipped\nCompleted\nBuying Services\n10\nMy RFQs\n9\nQuotations\nAgreements\nInvoices\nDocuments\nWallet\nGift Cards\nSaved Items\nAddresses\nTools & Insights\nAI Sourcing\nMarket Insights\nFind Manufacturers\n32\nMessages\nSaved Addresses\nAdd New\nManage your delivery addresses\nAdd, edit, or remove shipping addresses.\nSettings\nSecurity & Privacy\nHelp & Support\n\nYour latest order: ORDMSX24W7I2704\n\nSign out\nesyglob\n\nOne trusted marketplace for global products, verified manufacturers and trade services.\n\nSource\nCategories\nProducts\nManufacturers\nTrade securely\nVerified suppliers\nBuyer protection\nSecure payments\nAccount\nMy EsyGlob\nBack to top\n\u00a9 2026 EsyGlob. Global trade, made easier.\nPrivacy \u00b7 Terms \u00b7 Cookies",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-account.png",
+        "horizontal_overflow": false
+      },
+      "messages": {
+        "url": "https://esyglob.in/messages",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nBack\nBUYER-SELLER MESSAGING\nMessages (32)\n\nProduct, RFQ and quotation conversations stay connected to their marketplace context.\n\nNew group\nUnread only\nChats\nGroups\nFavorites\nArchived\nUrbanWood Industries\n8/17/26, 3:24 PM\n\nQuotation expired View quotation: /quotations/6a82da6e783de66644b0e7dc\n\nRFQ NEGOTIATION\n32\nGOLDEN GRAIN FOODS\n8/16/26, 10:17 PM\n\nOur supplier has received your inquiry and will respond as soon as possible.\n\nPRODUCT INQUIRY\nKuldeep\n8/14/26, 4:50 PM\n\nWelcome to Shoppymood pvt. Ltd.. We received your RFQ for Men\u2019s T-shirt Custom LOGO Picture T-shirt Printed LOGO Casual High Quality Blank Super Large 100% Cotton T-shirt and will review the requirement shortly.\n\nPRODUCT INQUIRY\nStarline Electronics\n8/11/26, 6:14 PM\n\nThanks for your question. STARLINE ELECTRONICS PVT. LTD. will review your requirement here on EsyGlob. Product: Ergonomic Portable Wristband with White Noise 8 Natural Sounds Mini Digital Speaker Sleep & Focus Music Player Wearable Design. MOQ: 5. Listed price: 665.43. Category: Consumer Electronics / Wearables. Description: Introducing our Ergonomic Portable Wristband with White Noise \u2013 a revolutionary wearable device that combines the power of sound therapy with the convenience of a wristband. Design. Employees: 201-500. For an exact quotation, please send an RFQ with quantity, specifications, and delivery destination.\n\nPRODUCT INQUIRY\nR\nRahul Agarwal\n\nStart the conversation\n\nMARKETPLACE CONVERSATION\nesyglob\n\nOne trusted marketplace for global products, verified manufactur",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-messages.png",
+        "horizontal_overflow": false
+      },
+      "notifications": {
+        "url": "https://esyglob.in/notifications",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nBack\nACCOUNT ACTIVITY\nNotifications\n\nRFQ, quotation, message, order and marketplace updates from the existing EsyGlob notification service.\n\nMark all read\nClear read\nQuotation expired\n8/17/2026, 3:24:55 PM\n\nThis quotation passed its validity date.\n\nQUOTATION EXPIRED\nNew quotation received\n8/17/2026, 3:24:55 PM\n\nUrbanWood Industries quoted INR 101 per unit for Production expiry RFQ msx24j08\n\nQUOTATION RECEIVED\nManufacturer accepted RFQ\n8/17/2026, 3:24:54 PM\n\nReview the RFQ workflow update.\n\nSUPPLIER RESPONSE\nNew quotation received\n8/17/2026, 3:24:52 PM\n\nUrbanWood Industries quoted INR 105 per unit for Production rejection RFQ msx24j08\n\nQUOTATION RECEIVED\nManufacturer accepted RFQ\n8/17/2026, 3:24:51 PM\n\nReview the RFQ workflow update.\n\nSUPPLIER RESPONSE\nNew quotation received\n8/17/2026, 3:24:50 PM\n\nUrbanWood Industries quoted INR 110 per unit for Production public wood RFQ msx24j08\n\nQUOTATION RECEIVED\nManufacturer accepted RFQ\n8/17/2026, 3:24:48 PM\n\nMatched by product taxonomy.\n\nSUPPLIER RESPONSE\nFinal Quotation signed successfully\n8/17/2026, 3:24:46 PM\n\nBoth signatures are recorded. The trade is ready for Order execution.\n\nDOCUMENT SIGNED\nSigned Final Quotation PDF\nSeller signed the Final Quotation \u2014 your signature is required\n8/17/2026, 3:24:44 PM\n\nReview the Seller-signed document and add the Buyer signature to enable Start Order.\n\nDOCUMENT SIGNED\nSigned Final Quotation PDF\nTrade document available\n8/17/2026, 3:24:43 PM\n\nFinal Quotation FQ-1786960481803-B0E4E3 was added to the trade workspace.\n\nDOCU",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-notifications.png",
+        "horizontal_overflow": false
+      },
+      "rfqs": {
+        "url": "https://esyglob.in/rfqs",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nBack\nBUYER SOURCING\nMy RFQs\n\nCreate, track and manage sourcing requirements and manufacturer responses.\n\nCreate RFQ\nQuotations\nSearch\nStatus\nall\nactive\ndraft\nquoted\nnegotiating\nconverted\nclosed\narchived\nCategory\nAll categories\nAgriculture\nApparel & Fashion\nAutomobile\nBrass Hardware & Components\nChemicals\nComputer Hardware & Software\nConstruction & Real Estate\nConsumer Electronics\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nFood & Beverage\nFurniture\nGifts & Crafts\nHealth & Beauty\nHome Supplies\nHome Textiles & Furnishings\nHospital & Medical Supplies\nHotel Supplies & Equipment\nIndustrial Supplies\nJewelry & Gemstones\nLeather & Leather Products\nMachinery\nMineral & Metals\nOffice & School Supplies\nPackaging & Laboratory Instruments\nPerfumery\nPipes, Tubes & Fittings\nPlastics & Products\nScientific & Laboratory Instruments\nSports & Entertainment\nSportswear & Outdoor Apparel\nTelecommunications\nToys\nTransportation\nSubcategory\nAll subcategories\nLocation\nPosted since\nAll\nActive\nDraft\nQuoted\nNegotiating\nConverted\nClosed\nFURNITURE\nProduction expiry RFQ msx24j08\nCANCELLED\n\nSupply the linked wooden product with standard export packaging.\n\nCategory\nFurniture / Dining Room\nQuantity\n100 pcs\nTarget\nRequest price\nDestination\nIndia\nPosted\n8/17/2026\nRequired by\n10/1/2026\n1 quotation\nView manufacturer responses\nFURNITURE\nProduction rejection RFQ msx24j08\nQUOTED\n\nSupply the linked wooden product with standard export packaging.\n\nCategory\nFurniture / Dining Room\nQuantity\n100 pcs\nTarget\nRequest price\n",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-rfqs.png",
+        "horizontal_overflow": false
+      },
+      "quotations": {
+        "url": "https://esyglob.in/quotations",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nOther \u00b7 Bhuj\n32\n40\nWelcome back\nMohit Satyarthi\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nRFQs\nInsights\nAI sourcing\nPost a buying request\nBack\nBUYER OFFER MANAGEMENT\nQuotations\n\nReview, compare and negotiate offers received for your RFQs.\n\nView RFQs\nStatus\nall\npending\nnegotiating\ncountered\nrevision_requested\nrevised\nbuyer_accepted\nfinal_quotation_pending\nfinal_quotation_signed\nrejected\nconverted\nlost\nURBANWOOD INDUSTRIES\nProduction expiry RFQ msx24j08\n\nFrom UrbanWood Industries\n\n\u20b910,100.00\n\u20b9101.00 / unit\nEXPIRED\nReview\nURBANWOOD INDUSTRIES\nProduction rejection RFQ msx24j08\n\nFrom UrbanWood Industries\n\n\u20b910,500.00\n\u20b9105.00 / unit\nREJECTED\nReview\nURBANWOOD INDUSTRIES\nProduction public wood RFQ msx24j08\n\nFrom UrbanWood Industries\n\n\u20b913,200.00\n\u20b9110.00 / unit\nSUBMITTED\nReview\nURBANWOOD INDUSTRIES\nProduction private wood RFQ msx24j08\n\nFrom UrbanWood Industries\n\n\u20b911,474.00\n\u20b993.00 / unit\nWON\nReview\nURBANWOOD INDUSTRIES\nProduction expiry RFQ msx1pj6e\n\nFrom UrbanWood Industries\n\n\u20b910,100.00\n\u20b9101.00 / unit\nEXPIRED\nReview\nURBANWOOD INDUSTRIES\nProduction rejection RFQ msx1pj6e\n\nFrom UrbanWood Industries\n\n\u20b910,500.00\n\u20b9105.00 / unit\nREJECTED\nReview\nURBANWOOD INDUSTRIES\nProduction public wood RFQ msx1pj6e\n\nFrom UrbanWood Industries\n\n\u20b913,200.00\n\u20b9110.00 / unit\nSUBMITTED\nReview\nURBANWOOD INDUSTRIES\nProduction private wood RFQ msx1pj6e\n\nFrom UrbanWood Industries\n\n\u20b911,474.00\n\u20b993.00 / unit\nWON\nReview\nURBANWOOD INDUSTRIES\nProduction private wood RFQ msx1ljk1\n\nFrom UrbanWood Industries\n\n\u20b911,474.00\n\u20b993.00 / unit\nWON\nReview\nesyglob\n\nOne trusted marketplace for global products, verified manufacturers and trade services.\n\nSource\nCategories\nProducts\nManufacturers\nTrade ",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-buyer-quotations.png",
+        "horizontal_overflow": false
+      }
+    },
+    "seller": {
+      "login": {
+        "url": "https://esyglob.in/login",
+        "title": "Esyglob \u2014 Global B2B Marketplace",
+        "text": "esyglob\nONE PLATFORM. EVERY TRADE.\nBuild trusted business across borders.\n\nSource products, verify suppliers, negotiate and manage trade with confidence.\n\nSecure by design\nProtected sessions and verified accounts\nBuilt for B2B\nPurpose-built sourcing and seller workflows\n\n\u201cEsyGlob gives every business a clearer, safer path to global sourcing.\u201d\n\nGLOBAL TRADE, MADE EASIER\nBack\nWelcome back\n\nSign in to continue to your marketplace.\n\nInvalid email or password\nBusiness email\nPassword\nKeep me signed in\nForgot password?\nSign in\nNew to EsyGlob? Create an account",
+        "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\auth-seller-login-failed.png",
+        "horizontal_overflow": false
+      }
+    }
+  },
+  "console_errors": [
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/login",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/account",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/messages",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/notifications",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/quotations",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "role": "seller",
+      "url": "https://esyglob.in/login",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    },
+    {
+      "role": "seller",
+      "url": "https://esyglob.in/login",
+      "text": "Failed to load resource: the server responded with a status of 401 ()"
+    }
+  ],
+  "failed_requests": [
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e477e03795705208a0a50",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/51fe33fc-99a9-466f-9eea-f4e7d1596381-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e1a7518ac8b745179a989",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/1de4656a-2e8a-4e85-aafb-3a0b903ece2b-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2mutnnkx&sid=lkRx4gRbuNCASB96ABlz",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e1ea618ac8b745179a9a3/4b525827-4ad2-41ab-a622-ea53a3483bdc-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e18e503795705208a0979",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/440d03ce-7239-4d30-bb45-eb9068ae1ccc-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e228503795705208a0a24",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e4f4818ac8b745179aaac",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e242418ac8b745179a9c2",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e091103795705208a0912/0c2ebc18-cd93-474c-ade9-2bab65120226-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a7df71887b1ec0a52e4db06",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a70332303795705208a0ae2/1d08d58a-4e6c-4dd4-91b3-c325639c0c5e-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e441918ac8b745179a9d7/30df0cd0-0057-426a-a3ad-9667d4b33078-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e1c4618ac8b745179a995",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/c05a9086-aabd-4ff3-8bc3-c611f294cdb6-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e441918ac8b745179a9d7/e15c4648-ba96-4c53-a9ca-d463866b5481-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e42c318ac8b745179a9ce",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e1ea618ac8b745179a9a3/b3f170c6-21a0-46e6-aba5-47474419b6fc-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/2c5bce27-fc86-4043-a383-f224331dfc7b-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a815025138aca2999946135",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e441918ac8b745179a9d7/0f229814-84cc-4ab3-ae84-b6a2949986b4-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e044403795705208a0903",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/93c36c0f-a2f9-4d82-aaaa-8e94c2e41023-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/b9db5e10-0056-41a4-a3ce-89b6c2dc2023-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2mus6797&sid=lkRx4gRbuNCASB96ABlz",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e175e03795705208a0970",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/6fdd8cc9-2880-4acb-9730-4c9302021cb1-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e4c9903795705208a0a79",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e412d03795705208a0a34",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e441918ac8b745179a9d7/45ab290e-ec04-4811-91f1-fcc079fe732e-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e1ea618ac8b745179a9a3/2ae03321-8649-408f-9aae-68a7f694e9e0-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/categories/6a12edbc1a7ca1175f9706bf/843185a1-f611-46ac-8caa-d9a06ddcb0f3-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e441918ac8b745179a9d7/415633fb-755b-4680-9ce8-df42b1bcf6c3-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://api.esyglob.in/storage/products/6a6e1ea618ac8b745179a9a3/6d451e90-3b11-410b-a56e-f2e295089bc7-original.webp",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e4dff03795705208a0aa5",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/buyer/saved?type=product&itemId=6a6e491903795705208a0a5e",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ne6xbmb",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nx32b91",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2of1bc9y&sid=APc3TsRmkieQyY6aABDo",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/api/categories?type=homepage&withCounts=true",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oz1h2iq&sid=ypkmaFjigynrG1NKABDv",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oz1gbab&sid=ypkmaFjigynrG1NKABDv",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "http_errors": [
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2mw8njx0&sid=RcBwle9YHWPBcbmGABl2",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2mwdtd8g&sid=RcBwle9YHWPBcbmGABl2",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2n1r1ldz&sid=KV2gYjo3yOPZpIj5ABl3",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2n1r2r7d&sid=KV2gYjo3yOPZpIj5ABl3",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2n78l0py&sid=3HBqHLlWfklJ08VyABl4",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2n78m148&sid=3HBqHLlWfklJ08VyABl4",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nbvvjk2&sid=ML8qv8jF22yC0zK0ABl5",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ndcoyf9&sid=mbwPoUGa7kU2RoAkABDa",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ndhy961&sid=mbwPoUGa7kU2RoAkABDa",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nfkte1j&sid=qO7p3pA5WQnSB-0OABDe",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nfq6zbe&sid=qO7p3pA5WQnSB-0OABDe",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nl695v1&sid=e9p-5JMOcpCUFFF3ABDf",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nl69jv8&sid=e9p-5JMOcpCUFFF3ABDf",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nr6y026&sid=JoEC7_L35dSkV77BABDg",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nr6zq0x&sid=JoEC7_L35dSkV77BABDg",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nv282ta&sid=aMTtrWEL7i0vFTrZABl8",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nwd2ble&sid=MPCSdfhbD1DRSBeVABDh",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nwjqbfu&sid=MPCSdfhbD1DRSBeVABDh",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ny4y1og&sid=v-zhyxcSJt8pSFirABDl",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2nyaloo2&sid=v-zhyxcSJt8pSFirABDl",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2o42pyea&sid=NbVRKjxR0Khlt3r4ABDm",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2o42p7c6&sid=NbVRKjxR0Khlt3r4ABDm",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oa13qtn&sid=3oQAWRDnLd01oFPBABDn",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oa132su&sid=3oQAWRDnLd01oFPBABDn",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2odmevit&sid=4go6YsOQvMqGvvxGABl9",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2of1b0ht&sid=APc3TsRmkieQyY6aABDo",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ofa0vj4&sid=APc3TsRmkieQyY6aABDo",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ohcc1eq&sid=-ipfvDse-YRa3chZABDp",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ohi8biq&sid=-ipfvDse-YRa3chZABDp",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2onfji6y&sid=q6kITAoR9baojY-YABDq",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2onfj0hk&sid=q6kITAoR9baojY-YABDq",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2otqe3st&sid=papFETwjtr3nV2SSABDr",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2otqeq9f&sid=papFETwjtr3nV2SSABDr",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2owufy8k&sid=jFivvt1f4S5cQG8sABl-",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oxxcaga&sid=523CeMIIf04Vcg8FABDs",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2oy2qozi&sid=523CeMIIf04Vcg8FABDs",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2p048p90&sid=r8crYVgpnInJ6GKWABmB",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2p09qsoh&sid=r8crYVgpnInJ6GKWABmB",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2p63l2hm&sid=xsvOAA-mIZk14psDABmC",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2p63m191&sid=xsvOAA-mIZk14psDABmC",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2pbvqtxo&sid=9ryHuNsxJRGuZWI9ABmD",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2pbvqcu9&sid=9ryHuNsxJRGuZWI9ABmD",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2pfllv0e&sid=S-6aFo-bySyuyl6CABDw",
+      "status": 400
+    },
+    {
+      "role": "buyer",
+      "url": "https://esyglob.in/socket.io/?EIO=4&transport=polling&t=2ph2gdfg&sid=dYImgJ7Xqr1SdnR5ABmE",
+      "status": 400
+    },
+    {
+      "role": "seller",
+      "url": "https://esyglob.in/api/auth/signin",
+      "status": 401
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 // Notification type category mapping
 export const NOTIFICATION_CATEGORIES = {
   messages: ['message', 'message_received'],
-  enquiries: ['new_inquiry', 'rfq_created', 'quotation_received', 'quotation_accepted', 'quotation_rejected', 'quotation_counter_offer', 'quotation_revised', 'quotation_revision_requested'],
+  enquiries: ['new_inquiry', 'rfq_created', 'quotation_received', 'quotation_accepted', 'quotation_rejected', 'quotation_counter_offer', 'quotation_revised', 'quotation_revision_requested', 'quotation_cancelled', 'quotation_expired'],
   orders: [
     'order_placed', 'order_pending', 'order_pending_approval',
     'order_awaiting_payment', 'order_pending_payment', 'order_payment_confirmed',

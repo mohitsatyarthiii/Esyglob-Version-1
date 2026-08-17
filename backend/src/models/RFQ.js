@@ -4,6 +4,7 @@ import { activitySchema, tradeDocumentSchema, tradeNoteSchema } from './schemas/
 
 const rfqSchema = new mongoose.Schema(
   {
+    rfqNumber: { type: String, trim: true },
     buyerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -241,6 +242,10 @@ const rfqSchema = new mongoose.Schema(
   }
 );
 
+rfqSchema.pre('validate', function assignRfqNumber() {
+  this.rfqNumber ||= `RFQ-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(this._id).slice(-8).toUpperCase()}`;
+});
+
 rfqSchema.index({
   title: 'text',
   description: 'text',
@@ -250,6 +255,7 @@ rfqSchema.index({
   specifications: 'text',
 });
 rfqSchema.index({ buyerId: 1, idempotencyKey: 1 }, { unique: true, sparse: true, name: 'one_rfq_per_buyer_idempotency_key' });
+rfqSchema.index({ rfqNumber: 1 }, { unique: true, sparse: true });
 rfqSchema.plugin(mediaIntegrityPlugin, { entity: 'RFQs', paths: ['attachments.url', 'images.url', 'documents.url'] });
 
 export default mongoose.models.RFQ || mongoose.model('RFQ', rfqSchema);

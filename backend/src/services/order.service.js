@@ -540,16 +540,17 @@ class OrderService {
     if (!actorRole) throw Object.assign(new Error('Only the Buyer or Seller for this Final Quotation can start the order'), { statusCode: 403 });
     const existingOrder = await Order.findOne({ quotationId: quotation._id });
     if (existingOrder) return { order: existingOrder };
-    const directOrder = Boolean(quotation.directOrderEnabled);
-    const fullySigned = quotation.status === 'final_quotation_signed' && quotation.finalQuotation?.status === 'signed';
-    if (!fullySigned) throw Object.assign(new Error(directOrder ? 'Place Order becomes available after the Seller sends the signed Final Quotation' : 'Order creation is locked until the Buyer signs the Final Quotation'), { statusCode:409 });
-    if (directOrder && actorRole !== 'buyer') throw Object.assign(new Error('Only the Buyer can place a Direct Order from this Final Quotation'), { statusCode:403 });
-    if (!directOrder && actorRole === 'buyer') throw Object.assign(new Error('Direct Order was not enabled for this Final Quotation'), { statusCode:403 });
+    const finalDocument = quotation.tradeDocuments?.id?.(quotation.finalQuotation?.documentId) || quotation.tradeDocuments?.find?.(document => String(document._id) === String(quotation.finalQuotation?.documentId));
+    const hasBuyerSignature = finalDocument?.signatures?.some(signature => signature.signerRole === 'buyer');
+    const hasSellerSignature = finalDocument?.signatures?.some(signature => signature.signerRole === 'seller');
+    const fullySigned = quotation.status === 'final_quotation_signed' && quotation.finalQuotation?.status === 'signed' && hasBuyerSignature && hasSellerSignature;
+    if (!fullySigned) throw Object.assign(new Error('Order creation is locked until the Buyer signs the Final Quotation'), { statusCode:409 });
+    if (actorRole !== 'buyer') throw Object.assign(new Error('Only the Buyer can create an order from the fully signed Final Quotation'), { statusCode:403 });
     const productId = toObjectId(body.productId || quotation?.productId || sourceRfq?.productId);
     const product = productId ? await Product.findOne({ _id: productId, sellerId: seller._id }).lean() : null;
     if (!product) throw Object.assign(new Error('A linked Seller product is required before starting the order'), { statusCode: 422 });
     if (sourceRfq.tradeOrderId || quotation?.tradeOrderId) throw Object.assign(new Error('An order already exists for this trade'), { statusCode: 409 });
-    const sellerInput = actorRole === 'seller' ? body : {};
+    const sellerInput = {};
     const quantity = Math.max(Number(sellerInput.quantity || quotation?.suppliedQuantity || sourceRfq.quantity || 1), 1);
     const minimumOrderQuantity = Math.max(Number(sellerInput.minimumOrderQuantity || quotation?.minimumOrderQuantity || product.minimumOrderQuantity || 1), 1);
     if (quantity < minimumOrderQuantity) throw Object.assign(new Error(`Final quantity must meet MOQ ${minimumOrderQuantity}`), { statusCode: 422 });
@@ -561,22 +562,14 @@ class OrderService {
       discount: sellerInput.discount,
     });
     const { unitPrice, shippingCost, taxAmount, discount, subtotal, totalAmount } = totals;
-    const initialCheckout = directOrder
-      ? { addressRequired: true, shippingAddressProvided: false, logisticsSelected: false, termsAccepted: false, orderValidated: false }
-      : { addressRequired: false, shippingAddressProvided: false, logisticsSelected: false, termsAccepted: false, orderValidated: false };
+    const initialCheckout = { addressRequired: true, shippingAddressProvided: false, logisticsSelected: false, termsAccepted: false, orderValidated: false };
     const orderNumber = await OrderRepository.generateOrderNumber('ORD');
-    const order = await OrderRepository.create({ orderNumber, userId:sourceRfq.buyerId, buyerId:sourceRfq.buyerId, sellerId:seller._id, productId:product._id, rfqId:sourceRfq._id, quotationId:quotation._id, orderType:'bulk', orderSubType:'trade_order', quantity, unit:sellerInput.unit || product.unit || sourceRfq.unit, pricePerUnit:unitPrice, subtotal, shippingCost, taxAmount, discount, totalPrice:totalAmount, totalAmount, netAmount:totalAmount, currency:sellerInput.currency || quotation.currency || product.currency || 'INR', paymentStatus:'pending', status:'pending_approval', products:[{ productId:product._id, name:product.name, sku:sellerInput.sku, quantity, unit:sellerInput.unit || product.unit, unitPrice, totalPrice:subtotal, specifications:sellerInput.specifications || sourceRfq.specifications, image:product.images?.[0] }], sellerNotes:sellerInput.notes || '', tradeInformation:{ paymentTerms:quotation.paymentTerms, deliveryTerms:quotation.incoterms, leadTime:quotation.leadTime, productionTime:quotation.productionTime, minimumOrderQuantity, logisticsConfiguredBySeller:sellerInput.logistics || null, configuredBySeller:actorRole === 'seller', initiatedBy:actorRole, commercialTermsLockedAt:quotation.finalQuotation?.lockedAt || new Date() }, documents:Array.isArray(sellerInput.documents)?sellerInput.documents:[], tradeDocuments:quotation.tradeDocuments || [], timeline:[{ status:'rfq_created', note:`RFQ ${sourceRfq.title} linked`, updatedBy:sourceRfq.buyerId },{ status:'quotation_accepted', note:`Quotation version ${quotation.revisionNumber} accepted`, updatedBy:sourceRfq.buyerId },{ status:'final_quotation_signed', note:directOrder?'Seller-signed Direct Order Final Quotation locked':'Buyer signed the Final Quotation', updatedBy:directOrder?seller.userId:sourceRfq.buyerId },{ status:'order_started', note:`${actorRole === 'buyer' ? 'Buyer' : 'Seller'} started checkout from locked Final Quotation terms`, updatedBy:userId },{ status:'pending_approval', note:'Waiting for buyer checkout validation', updatedBy:userId }], checkout:{ logisticsSelected:false, termsAccepted:false, orderValidated:false } });
-    if (directOrder) {
-      order.status = 'pending_approval';
-      order.checkout = initialCheckout;
-      order.timeline.push({ status: 'pending_approval', note: 'Direct Order checkout opened from the Seller-signed Final Quotation', updatedBy: userId });
-      order.approvalHistory.push({ action: 'direct_order_checkout_started', previousStatus: 'pending_approval', newStatus: 'pending_approval', actorId: userId, actorRole: 'buyer', notes: 'Buyer opened secure checkout from the Seller Final Quotation' });
-    }
+    const order = await OrderRepository.create({ orderNumber, userId:sourceRfq.buyerId, buyerId:sourceRfq.buyerId, sellerId:seller._id, productId:product._id, rfqId:sourceRfq._id, quotationId:quotation._id, orderType:'bulk', orderSubType:'trade_order', quantity, unit:product.unit || sourceRfq.unit, pricePerUnit:unitPrice, subtotal, shippingCost, taxAmount, discount, totalPrice:totalAmount, totalAmount, netAmount:totalAmount, currency:quotation.currency || product.currency || 'INR', paymentStatus:'pending', status:'pending_approval', products:[{ productId:product._id, name:product.name, quantity, unit:product.unit || sourceRfq.unit, unitPrice, totalPrice:subtotal, specifications:sourceRfq.specifications, image:product.images?.[0] }], sellerNotes:'', tradeInformation:{ paymentTerms:quotation.paymentTerms, deliveryTerms:quotation.incoterms, leadTime:quotation.leadTime, productionTime:quotation.productionTime, minimumOrderQuantity, logisticsConfiguredBySeller:null, configuredBySeller:true, initiatedBy:'buyer', commercialTermsLockedAt:quotation.finalQuotation?.lockedAt || new Date() }, documents:[], tradeDocuments:quotation.tradeDocuments || [], timeline:[{ status:'rfq_created', note:`RFQ ${sourceRfq.title} linked`, updatedBy:sourceRfq.buyerId },{ status:'quotation_accepted', note:`Quotation version ${quotation.revisionNumber} accepted`, updatedBy:sourceRfq.buyerId },{ status:'final_quotation_signed', note:'Buyer signed the Final Quotation', updatedBy:sourceRfq.buyerId },{ status:'order_started', note:'Buyer started checkout from locked Final Quotation terms', updatedBy:userId },{ status:'pending_approval', note:'Waiting for buyer checkout validation', updatedBy:userId }], checkout:initialCheckout });
     await order.save();
     sourceRfq.tradeOrderId=order._id; sourceRfq.status='order_initiated'; sourceRfq.activityTimeline.push({ action:'order_started', status:'order_initiated', message:`Order ${orderNumber} started`, actorId:userId, actorRole }); await sourceRfq.save();
     quotation.tradeOrderId=order._id; quotation.previousStatus=quotation.status; quotation.status='won'; quotation.activityTimeline.push({ action:'order_started', status:'won', message:`${actorRole === 'buyer' ? 'Buyer' : 'Seller'} started order ${orderNumber}`, actorId:userId, actorRole, metadata:{ orderId:order._id } }); await quotation.save();
     const recipientId = actorRole === 'buyer' ? seller.userId : sourceRfq.buyerId;
-    await NotificationService.createNotification({ userId:recipientId, notificationType:'trade_order_created', title:directOrder?'Direct Order checkout started':'Checkout started from signed Final Quotation', description:directOrder?`Buyer started checkout for order ${orderNumber} from the locked Final Quotation.`:`Order ${orderNumber} now uses the locked Final Quotation terms.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}${actorRole === 'buyer' ? '?role=seller' : ''}` }, priority:'high' }).catch(()=>{});
+    await NotificationService.createNotification({ userId:recipientId, notificationType:'trade_order_created', title:'Checkout started from signed Final Quotation', description:`Buyer started checkout for order ${orderNumber} from the locked Final Quotation.`, data:{ relatedId:order._id, relatedModel:'Order', actionUrl:`/orders/${order._id}?role=seller` }, priority:'high' }).catch(()=>{});
     return { order };
   }
 

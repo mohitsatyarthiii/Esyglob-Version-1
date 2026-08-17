@@ -118,7 +118,6 @@ function RFQDetailsScreen() {
     shippingTerms: '',
     expiryDate: '',
     sellerMessage: '',
-    enableDirectOrder: false,
   });
 
   const rfq = useQuery({
@@ -207,7 +206,6 @@ function RFQDetailsScreen() {
         shippingTerms: quoteForm.shippingTerms || undefined,
         expiryDate: quoteForm.expiryDate || undefined,
         sellerMessage: quoteForm.sellerMessage || 'Quotation submitted from mobile.',
-        enableDirectOrder: quoteForm.enableDirectOrder,
         attachments: quoteAttachments.map(file => ({ url: file.secure_url ?? file.url ?? file.location, filename: file.name, type: file.mimeType })),
       });
     },
@@ -462,10 +460,6 @@ function RFQDetailsScreen() {
               <FormField label="Payment Terms" value={quoteForm.paymentTerms} onChangeText={v => setQuoteForm({ ...quoteForm, paymentTerms: v })} />
               <FormField label="Valid Until (YYYY-MM-DD)" value={quoteForm.expiryDate} onChangeText={v => setQuoteForm({ ...quoteForm, expiryDate: v })} />
               <FormField label="Commercial Notes" value={quoteForm.sellerMessage} onChangeText={v => setQuoteForm({ ...quoteForm, sellerMessage: v })} multiline />
-              <Pressable onPress={() => setQuoteForm({ ...quoteForm, enableDirectOrder: !quoteForm.enableDirectOrder })} style={styles.checkRow}>
-                <Icon name={quoteForm.enableDirectOrder ? 'checkbox-marked' : 'checkbox-blank-outline'} size={21} color={quoteForm.enableDirectOrder ? P.primary : P.muted} />
-                <View style={{ flex: 1 }}><Text style={styles.checkTitle}>Enable Direct Order</Text><Text style={styles.checkDesc}>After you sign the Final Quotation, the buyer can place the order without another approval step.</Text></View>
-              </Pressable>
               <Text style={styles.formLabel}>Attachments</Text>
               {quoteAttachments.map((file, index) => <View key={`${file.url}-${index}`} style={styles.quoteAttachment}><Icon name={file.mimeType?.startsWith('image/') ? 'image-outline' : 'file-document-outline'} size={20} color={P.accent} /><Text numberOfLines={1} style={styles.quoteAttachmentName}>{file.name ?? `Attachment ${index + 1}`}</Text><Pressable onPress={() => setQuoteAttachments(current => current.filter((_, fileIndex) => fileIndex !== index))}><Icon name="close-circle" size={19} color={P.danger} /></Pressable></View>)}
               <View style={styles.quoteUploadActions}><Pressable disabled={quoteUploading} onPress={pickQuoteImages} style={styles.quoteUploadButton}><Icon name="image-plus" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Images</Text></Pressable><Pressable disabled={quoteUploading} onPress={pickQuoteDocuments} style={styles.quoteUploadButton}><Icon name="paperclip" size={18} color={P.accent} /><Text style={styles.quoteUploadText}>Files</Text></Pressable></View>
@@ -482,7 +476,7 @@ function RFQDetailsScreen() {
 
               <Pressable
                 disabled={submitQuote.isPending || (!fixedQuotationProductId && !quoteForm.productId)}
-                onPress={() => submitQuote.mutate()}
+                onPress={() => Alert.alert('Send quotation?', `Submit ${formatPrice(Number(quoteForm.unitPrice) * (Number(quoteForm.suppliedQuantity) || Number(item.quantity ?? 1)), quoteForm.currency)} as the total product value?`, [{ text: 'Cancel', style: 'cancel' }, { text: 'Send Quotation', onPress: () => submitQuote.mutate() }])}
                 style={[styles.submitSheetBtn, (submitQuote.isPending || (!fixedQuotationProductId && !quoteForm.productId)) && styles.btnDisabled]}>
                 {submitQuote.isPending ? (
                   <ActivityIndicator size="small" color="#FFF" />

@@ -41,6 +41,8 @@ const notificationSchema = new mongoose.Schema(
         'quotation_rejected',
         'quotation_counter_offer',
         'quotation_revised',
+        'quotation_cancelled',
+        'quotation_expired',
         'rfq_converted_to_order',
         'quotation_revision_requested',
         'trade_order_created',

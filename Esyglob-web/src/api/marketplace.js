@@ -193,16 +193,27 @@ export async function submitProductEnquiry({ otherUserId, productId, content, qu
   return { chatId }
 }
 
-export async function submitSellerEnquiry({ otherUserId, content, quantity, unit = 'pcs', deliveryKey }) {
+export async function submitSellerEnquiry({ otherUserId, content, quantity, unit = 'pcs', deliveryKey, product }) {
   const created = unwrapData(await apiRequest('/chat', {
     method: 'POST',
-    body: { otherUserId, role: 'buyer', enquiry: true },
+    body: { otherUserId, productId: product?.id, role: 'buyer', enquiry: true },
   })) || {}
   const chat = created.chat || created
   const chatId = chat._id || chat.id
   if (!chatId) throw new Error('The supplier conversation could not be created.')
   const message = [content?.trim(), quantity ? `Requested quantity: ${quantity} ${unit}` : ''].filter(Boolean).join('\n\n')
-  await apiRequest(`/chat/${chatId}`, { method: 'POST', body: { content: message, messageType: 'text', deliveryKey } })
+  await apiRequest(`/chat/${chatId}`, { method: 'POST', body: {
+    content: message,
+    messageType: product?.id ? 'product' : 'text',
+    deliveryKey,
+    productDetails: product?.id ? {
+      productId: product.id,
+      productName: product.name,
+      image: product.image,
+      quantity: Number(quantity) || undefined,
+      unit,
+    } : undefined,
+  } })
   return { chatId }
 }
 

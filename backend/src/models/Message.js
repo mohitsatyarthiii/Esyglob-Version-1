@@ -47,6 +47,8 @@ const messageSchema = new mongoose.Schema(
       productId: mongoose.Schema.Types.ObjectId,
       productName: String,
       price: Number,
+      quantity: Number,
+      unit: String,
       image: String,
       productLink: String,
       supplierName: String,

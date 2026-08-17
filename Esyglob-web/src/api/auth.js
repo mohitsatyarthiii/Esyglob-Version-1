@@ -13,7 +13,9 @@ export function normalizeUser(payload) {
 }
 
 export async function getCurrentUser() {
-  return normalizeUser(await apiRequest('/auth/me', { cache: false }))
+  // A 401 is the normal guest-state response on first load. AuthProvider maps
+  // it to `guest`, so it must not surface as a global "session expired" toast.
+  return normalizeUser(await apiRequest('/auth/me', { cache: false, toastErrors: false }))
 }
 
 export async function login(credentials) {

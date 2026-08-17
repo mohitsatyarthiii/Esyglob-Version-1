@@ -141,6 +141,7 @@ export default function SellerDetailsPage() {
     event.preventDefault()
     enquiryDeliveryKey.current ||= globalThis.crypto?.randomUUID?.() || `enquiry-${Date.now()}-${Math.random()}`
     if (!enquiry.message.trim() || enquiryBusy) return
+    if (!window.confirm(`Send this enquiry to ${name}?`)) return
     setEnquiryBusy(true); setActionError('')
     try {
       const productLine = enquiryProduct?._id ? `Product: ${enquiryProduct.name}\nProduct ID: ${enquiryProduct._id || enquiryProduct.id}\n\n` : ''
@@ -150,6 +151,11 @@ export default function SellerDetailsPage() {
         quantity: enquiry.quantity,
         unit: enquiry.unit,
         deliveryKey: enquiryDeliveryKey.current,
+        product: enquiryProduct?._id ? {
+          id: enquiryProduct._id || enquiryProduct.id,
+          name: enquiryProduct.name,
+          image: enquiryProduct.images?.[0]?.url || enquiryProduct.images?.[0] || enquiryProduct.image,
+        } : undefined,
       })
       setEnquirySuccess('Enquiry sent successfully.')
       setEnquiry((current) => ({ ...current, message: '' }))

@@ -46,7 +46,7 @@ export default function QuotationDetailsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const rawItem = query.data || {}
-  const item = sellerView && rawItem.directOrderEnabled && rawItem.status === 'final_quotation_signed' ? { ...rawItem, status: 'direct_order_waiting' } : rawItem
+  const item = rawItem
   const rfq = typeof item.rfqId === 'object' ? item.rfqId : {}
   const seller = typeof item.sellerId === 'object' ? item.sellerId : {}
   const product = typeof item.productId === 'object' ? item.productId : {}
@@ -54,7 +54,7 @@ export default function QuotationDetailsPage() {
   const concurrency = () => ({ expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: actionToken() })
 
   async function buyerAction(action) {
-    if (action === 'accept' && !window.confirm('Accept this quotation and lock the negotiated commercial offer?')) return
+    if (action === 'accept' && !window.confirm(`Accept this quotation at ${item.currency || 'INR'} ${Number(currentOffer.totalPrice || 0).toLocaleString()} total?`)) return
     setBusy(true); setError('')
     try {
       if (action === 'accept' || action === 'reject') {
@@ -76,8 +76,8 @@ export default function QuotationDetailsPage() {
 
   async function sellerAction(action) {
     if (action === 'confirm') return document.getElementById('final-quotation-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    const labels = { accept_counter: 'accept the buyer counter offer', reject: 'reject the buyer counter offer', withdraw: 'withdraw this quotation', send: 'send this quotation' }
-    if (!window.confirm(`Are you sure you want to ${labels[action] || action.replaceAll('_', ' ')}?`)) return
+    const labels = { accept_counter: `Accept the buyer counter offer at ${item.currency || 'INR'} ${Number(currentOffer.totalPrice || 0).toLocaleString()} total?`, reject: 'Reject this buyer counter offer?', withdraw: 'Withdraw this quotation?', send: 'Submit this quotation to the buyer?' }
+    if (!window.confirm(labels[action] || `Confirm ${action.replaceAll('_', ' ')}?`)) return
     setBusy(true); setError('')
     try {
       await updateQuotation(quotationId, { ...concurrency(), action, reason: actionText || undefined })
@@ -115,7 +115,6 @@ export default function QuotationDetailsPage() {
         {SELLER_OPEN.includes(item.status) && <button className="button button--primary" onClick={() => setDialog('edit')}><Edit3 /> {item.status === 'countered' ? 'Revise offer' : 'Revise quotation'}</button>}
         {item.status === 'countered' && <><button className="button button--primary success-button" disabled={busy} onClick={() => sellerAction('accept_counter')}><CheckCircle /> Accept counter</button><button className="danger-text" disabled={busy} onClick={() => sellerAction('reject')}><XCircle /> Reject counter</button></>}
         {item.status === 'buyer_accepted' && <button className="button button--primary success-button" disabled={busy} onClick={() => sellerAction('confirm')}><CheckCircle /> Prepare Final Quotation</button>}
-        {item.status === 'final_quotation_signed' && <Link className="button button--primary success-button" to={`/trade-workspace/quotation/${quotationId}`}><PackageCheck /> Start Order</Link>}
         {SELLER_OPEN.includes(item.status) && <button className="danger-text" disabled={busy} onClick={() => sellerAction('withdraw')}><XCircle /> Withdraw</button>}
       </> : <>
         {canAccept && <button className="button button--primary success-button" onClick={() => buyerAction('accept')} disabled={busy}><CheckCircle /> Accept quotation</button>}
@@ -157,7 +156,7 @@ function CurrentOfferCard({ offer, item, rfq, sellerView }) {
   const buyerCounter = offer.action === 'buyer_counter'
   return <section className={`quotation-current-offer ${buyerCounter ? 'countered' : ''}`}>
     <header><div><span>Current offer</span><h2><Money value={offer.unitPrice} currency={item.currency} /> <small>/ {rfq.unit || 'unit'}</small></h2></div><StatusBadge status={buyerCounter ? 'countered' : item.status} /></header>
-    <div><span><small>Offered by</small><b>{offer.actorRole === 'buyer' ? 'Buyer' : 'Seller'}</b></span><span><small>Quantity</small><b>{offer.suppliedQuantity || item.suppliedQuantity || rfq.quantity} {rfq.unit}</b></span>{offer.previousUnitPrice && <span><small>Previous offer</small><b><Money value={offer.previousUnitPrice} currency={item.currency} /></b></span>}{offer.previousUnitPrice && <span><small>Difference</small><b>{difference > 0 ? '−' : difference < 0 ? '+' : ''}<Money value={Math.abs(difference)} currency={item.currency} /></b></span>}</div>
+    <div><span><small>Offered by</small><b>{offer.actorRole === 'buyer' ? 'Buyer' : 'Seller'}</b></span><span><small>Quantity</small><b>{offer.suppliedQuantity || item.suppliedQuantity || rfq.quantity} {rfq.unit}</b></span><span><small>Total</small><b><Money value={offer.totalPrice} currency={item.currency} /></b></span>{offer.previousUnitPrice && <span><small>Previous offer</small><b><Money value={offer.previousUnitPrice} currency={item.currency} /></b></span>}{offer.previousUnitPrice && <span><small>Difference</small><b>{difference > 0 ? '−' : difference < 0 ? '+' : ''}<Money value={Math.abs(difference)} currency={item.currency} /> / unit</b></span>}</div>
     {buyerCounter && sellerView && <p><b>Buyer sent a counter offer.</b> Review the previous and proposed prices, then revise, accept, or reject it.</p>}
     {offer.notes && <blockquote>{offer.notes}</blockquote>}
   </section>
@@ -169,18 +168,24 @@ function NegotiationTimeline({ history, currency }) {
 
 function ActionDialog({ type, text, setText, counterPrice, setCounterPrice, busy, currentOffer, currency, onClose, onSubmit }) {
   const title = type === 'reject' ? 'Reject quotation' : type === 'counter_offer' ? 'Send counter offer' : 'Request revision'
-  return <div className="modal-backdrop" onMouseDown={onClose}><div className="action-dialog" onMouseDown={(event) => event.stopPropagation()}><div className="compact-heading"><h2>{title}</h2><button onClick={onClose}>×</button></div>{type === 'counter_offer' && <><p className="counter-reference">Current offer: <b><Money value={currentOffer.unitPrice} currency={currency} /> / unit</b></p><Field label="Counter price per unit"><input type="number" min="0.01" step="0.01" required value={counterPrice} onChange={(event) => setCounterPrice(event.target.value)} /></Field></>}<Field label="Message"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Explain your response to the supplier" /></Field><button className={`button button--full ${type === 'reject' ? 'button--danger' : 'button--primary'}`} disabled={busy || (type === 'counter_offer' && !(Number(counterPrice) > 0))} onClick={onSubmit}>{busy ? 'Sending…' : 'Send response'}</button></div></div>
+  const confirmLabel = type === 'counter_offer' ? <>Yes, Send Counter Offer — <Money value={Number(counterPrice || 0)} currency={currency} /> / unit</> : type === 'reject' ? 'Yes, Reject Quotation' : 'Yes, Request Revision'
+  return <div className="modal-backdrop" onMouseDown={onClose}><div className="action-dialog" onMouseDown={(event) => event.stopPropagation()}><div className="compact-heading"><h2>{title}</h2><button onClick={onClose}>×</button></div>{type === 'counter_offer' && <><p className="counter-reference">Current offer: <b><Money value={currentOffer.unitPrice} currency={currency} /> / unit</b></p><Field label="Counter price per unit"><input type="number" min="0.01" step="0.01" required value={counterPrice} onChange={(event) => setCounterPrice(event.target.value)} /></Field></>}<Field label="Message"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Explain your response to the supplier" /></Field><button className={`button button--full ${type === 'reject' ? 'button--danger' : 'button--primary'}`} disabled={busy || (type === 'counter_offer' && !(Number(counterPrice) > 0))} onClick={onSubmit}>{busy ? 'Sending…' : confirmLabel}</button></div></div>
 }
 
 function QuotationEditDialog({ item, currentOffer, onClose, onSuccess }) {
   const [attachments, setAttachments] = useState(item.attachments || [])
   const [form, setForm] = useState({ unitPrice: currentOffer.unitPrice || item.unitPrice || '', suppliedQuantity: currentOffer.suppliedQuantity || item.suppliedQuantity || item.quantity || '', minimumOrderQuantity: currentOffer.minimumOrderQuantity || item.minimumOrderQuantity || '', leadTime: currentOffer.leadTime || item.leadTime || '', leadTimeUnit: currentOffer.leadTimeUnit || item.leadTimeUnit || 'days', productionTime: item.productionTime || '', productionTimeUnit: item.productionTimeUnit || 'days', packaging: typeof item.packaging === 'string' ? item.packaging : item.packaging?.description || '', samplePrice: item.samplePrice || '', taxRate: item.taxes?.taxRate || '', shippingTerms: item.shippingTerms || '', paymentTerms: currentOffer.paymentTerms || item.paymentTerms || '', incoterms: currentOffer.incoterms || item.incoterms || 'FOB', shippingCost: item.shippingCost || 0, shippingEstimate: item.shippingEstimate || '', sellerMessage: '', specifications: item.specifications || '' })
   const [busy, setBusy] = useState(false); const [error, setError] = useState('')
-  const total = useMemo(() => Number(form.unitPrice || 0) * Number(form.suppliedQuantity || 0) + Number(form.shippingCost || 0), [form.shippingCost, form.suppliedQuantity, form.unitPrice])
+  const total = useMemo(() => {
+    const subtotal = Number(form.unitPrice || 0) * Number(form.suppliedQuantity || 0)
+    return subtotal + Number(form.shippingCost || 0) + subtotal * Number(form.taxRate || 0) / 100
+  }, [form.shippingCost, form.suppliedQuantity, form.taxRate, form.unitPrice])
   async function submit(event) {
-    event.preventDefault(); setBusy(true); setError('')
+    event.preventDefault()
+    if (!window.confirm(`Submit this revised quotation at ${item.currency || 'INR'} ${Number(total).toLocaleString()} total?`)) return
+    setBusy(true); setError('')
     try {
-      await updateQuotation(resolveId(item), { ...form, expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: actionToken(), unitPrice: Number(form.unitPrice), suppliedQuantity: Number(form.suppliedQuantity), minimumOrderQuantity: Number(form.minimumOrderQuantity), leadTime: Number(form.leadTime), shippingCost: Number(form.shippingCost), productionTime: Number(form.productionTime) || undefined, samplePrice: Number(form.samplePrice) || undefined, taxes: form.taxRate ? { taxRate: Number(form.taxRate) } : undefined, packaging: form.packaging || undefined, shippingTerms: form.shippingTerms || undefined, totalPrice: total, attachments })
+      await updateQuotation(resolveId(item), { ...form, expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: actionToken(), unitPrice: Number(form.unitPrice), suppliedQuantity: Number(form.suppliedQuantity), minimumOrderQuantity: Number(form.minimumOrderQuantity), leadTime: Number(form.leadTime), shippingCost: Number(form.shippingCost), productionTime: Number(form.productionTime) || undefined, samplePrice: Number(form.samplePrice) || undefined, taxes: form.taxRate ? { taxRate: Number(form.taxRate) } : undefined, packaging: form.packaging || undefined, shippingTerms: form.shippingTerms || undefined, attachments })
       if (item.status === 'draft') await updateQuotation(resolveId(item), { action: 'send', expectedNegotiationVersion: Number(item.negotiationVersion || 0) + 1, idempotencyKey: actionToken() })
       onSuccess()
     } catch (nextError) { setError(nextError.message); setBusy(false) }

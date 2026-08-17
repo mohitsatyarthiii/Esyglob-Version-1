@@ -4,6 +4,7 @@ import Quotation from '../models/Quotation.js';
 import Chat from '../models/Chat.js';
 import Seller from '../models/Seller.js';
 import Notification from '../models/Notification.js';
+import Product from '../models/Product.js';
 import { OPEN_RFQ_STATUSES } from '../lib/rfq-helpers.js';
 
 // ─── RFQ CRUD ──────────────────────────────────────────────
@@ -150,6 +151,27 @@ export async function createNotifications(notifications) {
   } : { insertOne: { document: notification } });
   await Notification.bulkWrite(operations, { ordered: false });
   return notifications;
+}
+
+export async function findSellerProductTaxonomies(sellerId) {
+  return Product.find({ sellerId, status: { $in: ['active', 'published'] } }).select('category subcategory').lean().exec();
+}
+
+export async function sellerHasMatchingProduct(sellerId, category, subcategory) {
+  return Product.exists({
+    sellerId,
+    status: { $in: ['active', 'published'] },
+    category: new RegExp(`^${String(category).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+    ...(subcategory ? { subcategory: new RegExp(`^${String(subcategory).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } : {}),
+  });
+}
+
+export async function findSellerIdsByProductTaxonomy(category, subcategory) {
+  return Product.distinct('sellerId', {
+    status: { $in: ['active', 'published'] },
+    category: new RegExp(`^${String(category).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+    ...(subcategory ? { subcategory: new RegExp(`^${String(subcategory).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } : {}),
+  });
 }
 
 export async function createNotification(notification) {

@@ -13,7 +13,7 @@ import User from '../models/User.js';
 export async function findQuotations(query, skip, limit) {
   return Quotation.find(query)
     .select(
-      'rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationVersion currentOffer negotiationHistory sellerMessage buyerMessage agreement finalQuotation tradeDocuments createdAt updatedAt acceptedAt rejectedAt rejectionReason'
+      'quotationNumber rfqId sellerId userId productId tradeOrderId unitPrice totalPrice currency pricingTiers minimumOrderQuantity suppliedQuantity leadTime leadTimeUnit paymentTerms incoterms shippingCost shippingEstimate status revisionNumber negotiationVersion currentOffer negotiationHistory sellerMessage buyerMessage agreement finalQuotation tradeDocuments createdAt updatedAt acceptedAt rejectedAt rejectionReason'
     )
     .populate({
       path: 'rfqId',
@@ -67,8 +67,12 @@ export async function findExistingQuotation(rfqId, userId) {
   return Quotation.findOne({
     rfqId,
     userId,
-    status: { $nin: ['rejected', 'expired'] },
+    status: { $in: ['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised', 'buyer_accepted', 'final_quotation_pending', 'final_quotation_signed'] },
   }).exec();
+}
+
+export async function findQuotationByIdempotencyKey(userId, idempotencyKey) {
+  return Quotation.findOne({ userId, idempotencyKey }).exec();
 }
 
 export async function createQuotation(data) {

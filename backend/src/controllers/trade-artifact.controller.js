@@ -1,6 +1,6 @@
 import * as service from '../services/trade-artifact.service.js';
 import { streamAgreementPdf } from '../lib/agreement-pdf.js';
-const respond = handler => async (req, res) => { try { return res.json(await handler(req)); } catch (error) { return res.status(error.statusCode || 500).json({ error: error.message }); } };
+const respond = handler => async (req, res) => { try { return res.json(await handler(req)); } catch (error) { if (error.name === 'VersionError') return res.status(409).json({ error: 'This trade record has been updated. Please review the latest version.' }); const status = error.statusCode || 500; if (status === 500) console.error('[TradeArtifact]', error); return res.status(status).json({ error: status === 500 ? 'Unable to process this trade document right now.' : error.message }); } };
 export const workspace = respond(req => service.getWorkspace(req.params.entityType, req.params.entityId, req.user));
 export const unifiedWorkspace = respond(req => service.getUnifiedWorkspace(req.params.entityType, req.params.entityId, req.user));
 export const addNote = respond(req => service.addNote(req.params.entityType, req.params.entityId, req.user, req.body || {}));

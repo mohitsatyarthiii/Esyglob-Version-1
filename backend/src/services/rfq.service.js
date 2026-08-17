@@ -52,7 +52,8 @@ async function canSellerAccessRfq(rfq, sessionUserId, seller) {
     return false;
   }
 
-  return OPEN_RFQ_STATUSES.includes(rfq.status) && sellerMatchesPublicRfq(seller, rfq);
+  if (!OPEN_RFQ_STATUSES.includes(rfq.status)) return false;
+  return sellerMatchesPublicRfq(seller, rfq) || Boolean(await rfqRepository.sellerHasMatchingProduct(seller._id, rfq.category, rfq.subcategory));
 }
 
 function normalized(value) {
@@ -60,6 +61,13 @@ function normalized(value) {
     ? value.name || value.label || value.slug || value.title || ''
     : value;
   return String(resolved || '').trim().toLowerCase();
+}
+
+function normalizeRfqUnit(value) {
+  const unit = String(value || '').trim().toLowerCase();
+  const aliases = { piece: 'pcs', pieces: 'pcs', pc: 'pcs', kilogram: 'kg', kilograms: 'kg', tonne: 'tons', tonnes: 'tons', ton: 'tons', litre: 'liters', litres: 'liters', meter: 'meters', metre: 'meters', metres: 'meters', box: 'boxes', roll: 'rolls', sheet: 'sheets' };
+  const normalized = aliases[unit] || unit;
+  return VALID_UNITS.includes(normalized) ? normalized : 'pcs';
 }
 
 export function sellerMatchesPublicRfq(seller, rfq) {
@@ -143,12 +151,17 @@ export async function getRfqs(session, searchParams) {
       throw error;
     }
     const seller = await rfqRepository.findSellerByUserId(session.userId);
+    const productTaxonomies = seller?._id ? await rfqRepository.findSellerProductTaxonomies(seller._id) : [];
     query.status =
       status && status !== 'all'
         ? status
         : { $in: OPEN_RFQ_STATUSES };
     query.expiresAt = { $gt: new Date() };
-    const eligiblePublic = publicRfqMatchQuery(seller);
+    const eligiblePublic = publicRfqMatchQuery({
+      ...seller,
+      productCategories: [...(seller?.productCategories || []), ...productTaxonomies.map(item => item.category)],
+      productSubcategories: [...(seller?.productSubcategories || []), ...productTaxonomies.map(item => item.subcategory)],
+    });
     query.$and = [{
       $or: [
         { sellerUserId: session.userId },
@@ -268,14 +281,14 @@ export async function createRfq(session, body) {
   let linkedProduct = null;
   if (productId && mongoose.Types.ObjectId.isValid(productId)) {
     const Product = (await import('../models/Product.js')).default;
-    linkedProduct = await Product.findById(productId).select('name category subcategory currency unit').lean();
+    linkedProduct = await Product.findById(productId).select('name category subcategory currency unit sellerId').lean();
   }
   const simplifiedProduct = clean(body.productName || items?.[0]?.name);
   const resolvedTitle = clean(title || simplifiedProduct || linkedProduct?.name);
   const resolvedDescription = clean(description || body.notes) || `Buyer requested a quotation for ${resolvedTitle}.`;
   let resolvedCategory = clean(category || linkedProduct?.category) || 'General';
   let resolvedSubcategory = clean(subcategory || linkedProduct?.subcategory);
-  const resolvedUnit = VALID_UNITS.includes(unit) ? unit : VALID_UNITS.includes(items?.[0]?.unit) ? items[0].unit : linkedProduct?.unit || 'pcs';
+  const resolvedUnit = normalizeRfqUnit(unit || items?.[0]?.unit || linkedProduct?.unit);
   const resolvedQuantity = Number(quantity || items?.[0]?.quantity);
   const resolvedCurrency = normalizeCurrency(currency || linkedProduct?.currency || 'INR');
 
@@ -296,6 +309,9 @@ export async function createRfq(session, body) {
     const error = new Error('You cannot send an RFQ to yourself');
     error.statusCode = 400;
     throw error;
+  }
+  if (targetSeller && linkedProduct && !idMatches(linkedProduct.sellerId, targetSeller._id)) {
+    throw Object.assign(new Error('The selected product does not belong to this manufacturer'), { statusCode: 403 });
   }
 
   const requestedVisibility = targetSeller ? 'private' : (visibility || 'public');
@@ -458,6 +474,9 @@ export async function createRfq(session, body) {
     }
     return { rfq, chat, message: 'Private RFQ sent successfully' };
   }
+  if (targetPrice !== undefined && targetPrice !== '' && (!Number.isFinite(Number(targetPrice)) || Number(targetPrice) < 0)) {
+    throw Object.assign(new Error('Target price must be a valid non-negative number'), { statusCode: 422 });
+  }
 
   // Deliver only after the public RFQ itself has been persisted. A delivery
   // failure must never roll back or hide the public marketplace record.
@@ -471,7 +490,14 @@ export async function createRfq(session, body) {
     sellerQuery.productSubcategories = { $in: [new RegExp(`^${escapeRegex(resolvedSubcategory)}$`, 'i')] };
 
     try {
-      const sellers = await rfqRepository.findSellersForNotification(sellerQuery, 500);
+      const [profileSellers, productSellerIds] = await Promise.all([
+        rfqRepository.findSellersForNotification(sellerQuery, 500),
+        rfqRepository.findSellerIdsByProductTaxonomy(resolvedCategory, resolvedSubcategory),
+      ]);
+      const productSellers = productSellerIds.length
+        ? await rfqRepository.findSellersForNotification({ ...PUBLIC_SELLER_ELIGIBILITY, _id: { $in: productSellerIds }, ...(isVerifiedSuppliersOnly ? { isVerified: true } : {}), ...(preferredSuppliersCountries?.length ? { 'address.country': { $in: preferredSuppliersCountries } } : {}) }, 500)
+        : [];
+      const sellers = [...new Map([...profileSellers, ...productSellers].map(item => [String(item._id), item])).values()];
       const deliveryResults = await Promise.allSettled(sellers.map(async (seller) => {
         const { chat } = await findOrCreateConversation({
           buyerId: session.userId,
@@ -793,7 +819,7 @@ export async function createProductEnquiry(session, body) {
   const productId = clean(body.productId);
   const sellerUserId = clean(body.sellerUserId);
   const quantity = Math.max(1, Number(body.quantity || 1));
-  const unit = VALID_UNITS.includes(body.unit) ? body.unit : 'pcs';
+  const unit = normalizeRfqUnit(body.unit);
   const deliveryCountry = clean(body.destinationCountry || body.deliveryCountry);
 
   const moderation = validateNoContactInfo({

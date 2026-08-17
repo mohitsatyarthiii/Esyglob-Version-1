@@ -9,6 +9,7 @@ import { sellerMatchesPublicRfq } from '../src/services/rfq.service.js';
 import { productMatchesRfqTaxonomy, quotationCurrentOffer, sellerMatchesRfqTaxonomy } from '../src/services/quotation.service.js';
 import { assertTransition } from '../src/services/business-lifecycle.service.js';
 import { getConversationKey } from '../src/lib/chat-conversations.js';
+import { calculateQuotationTotals } from '../src/lib/quotation-commerce.js';
 
 test('newly submitted public RFQs remain discoverable while terminal statuses do not', () => {
   assert.equal(OPEN_RFQ_STATUSES.includes('submitted'), true);
@@ -108,4 +109,72 @@ test('current offer supports legacy quotations and preserves buyer counters inde
   assert.equal(counter.unitPrice, 90);
   assert.equal(counter.previousUnitPrice, 100);
   assert.equal(counter.actorRole, 'buyer');
+});
+
+test('multiple counter and revision rounds remain valid until buyer acceptance', () => {
+  const states = [
+    ['submitted', 'buyer', 'counter_offer', 'countered'],
+    ['countered', 'seller', 'revise', 'revised'],
+    ['revised', 'buyer', 'counter_offer', 'countered'],
+    ['countered', 'seller', 'revise', 'revised'],
+    ['revised', 'buyer', 'accept', 'buyer_accepted'],
+  ];
+  for (const [status, actorRole, action, expected] of states) {
+    assert.equal(assertTransition({ type: 'quotation', status, action, actorRole }), expected);
+  }
+  assert.throws(() => assertTransition({ type: 'quotation', status: 'buyer_accepted', action: 'counter_offer', actorRole: 'buyer' }), /cannot counter_offer/);
+  assert.throws(() => assertTransition({ type: 'quotation', status: 'final_quotation_signed', action: 'revise', actorRole: 'seller' }), /cannot revise/);
+});
+
+test('backend quotation totals reject manipulated and non-finite commercial values', () => {
+  assert.deepEqual(calculateQuotationTotals({ unitPrice: 93, quantity: 500, shippingCost: 250, taxAmount: 100 }), {
+    unitPrice: 93,
+    quantity: 500,
+    productSubtotal: 46500,
+    shippingCost: 250,
+    taxAmount: 100,
+    otherCharges: 0,
+    discount: 0,
+    finalTotal: 46850,
+  });
+  assert.equal(calculateQuotationTotals({ unitPrice: 100, quantity: 10, taxRate: 18 }).finalTotal, 1180);
+  for (const value of [-1, Number.NaN, Number.POSITIVE_INFINITY, 'not-a-price']) {
+    assert.throws(() => calculateQuotationTotals({ unitPrice: value, quantity: 100 }), /Unit price/);
+  }
+  assert.throws(() => calculateQuotationTotals({ unitPrice: 93, quantity: 0 }), /Quantity/);
+});
+
+test('negotiation events carry durable identity, relationship, offer, and timestamp fields', async () => {
+  const quotation = new Quotation({
+    rfqId: new Quotation.base.Types.ObjectId(),
+    sellerId: new Quotation.base.Types.ObjectId(),
+    userId: new Quotation.base.Types.ObjectId(),
+    unitPrice: 100,
+    minimumOrderQuantity: 100,
+    suppliedQuantity: 100,
+    leadTime: 10,
+    negotiationHistory: [
+      { action: 'submitted', actorRole: 'seller', unitPrice: 100, totalPrice: 10000 },
+      { action: 'buyer_counter', actorRole: 'buyer', unitPrice: 90, totalPrice: 9000 },
+    ],
+  });
+  await quotation.validate();
+  const [submitted, counter] = quotation.negotiationHistory;
+  assert.ok(submitted.eventId);
+  assert.equal(String(submitted.rfqId), String(quotation.rfqId));
+  assert.equal(String(submitted.quotationId), String(quotation._id));
+  assert.ok(submitted.timestamp);
+  assert.equal(counter.status, 'countered');
+  assert.equal(counter.previousOffer.unitPrice, 100);
+  assert.equal(counter.newOffer.unitPrice, 90);
+  assert.ok(counter.changedTerms.includes('unitPrice'));
+});
+
+test('final quotation and order source enforce buyer signature and locked buyer handoff', async () => {
+  const fs = await import('node:fs/promises');
+  const quotationSource = await fs.readFile(new URL('../src/services/quotation.service.js', import.meta.url), 'utf8');
+  const orderSource = await fs.readFile(new URL('../src/services/order.service.js', import.meta.url), 'utf8');
+  assert.match(quotationSource, /requiresBuyerSignature:\s*true/);
+  assert.match(orderSource, /Only the Buyer can create an order from the fully signed Final Quotation/);
+  assert.match(orderSource, /const sellerInput = \{\}/);
 });

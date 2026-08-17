@@ -25,7 +25,7 @@ export const LIFECYCLE_DEFINITIONS = Object.freeze({
     revised: { buyer: { accept: 'buyer_accepted', request_revision: 'revision_requested', counter_offer: 'countered', reject: 'rejected' }, seller: { withdraw: 'withdrawn' } },
     buyer_accepted: { seller: { confirm: 'final_quotation_pending', request_revision: 'revision_requested', reject: 'rejected' }, buyer: { reopen: 'submitted' } },
     final_quotation_pending: { buyer: { request_revision: 'buyer_accepted', sign: 'final_quotation_signed' } },
-    final_quotation_signed: { seller: { start_order: 'won' } },
+    final_quotation_signed: { buyer: { start_order: 'won' } },
     agreement_pending: { seller: { sign: 'agreement_pending' }, buyer: { sign: 'agreement_signed' } },
     agreement_signed: { seller: { start_order: 'won' } },
     rejected: { buyer: { reopen: 'submitted' } },
@@ -96,9 +96,7 @@ export function recordTransition(entity, { type, action, fromStatus, toStatus, a
 }
 
 export function lifecycleSnapshot(type, entity, actorRole) {
-  const actions = type === 'quotation' && entity.status === 'final_quotation_signed' && entity.directOrderEnabled
-    ? actorRole === 'buyer' ? [{ action: 'start_order', nextStatus: 'won' }] : []
-    : allowedActions(type, entity.status, actorRole);
+  const actions = allowedActions(type, entity.status, actorRole);
   return {
     type,
     currentStatus: entity.status,

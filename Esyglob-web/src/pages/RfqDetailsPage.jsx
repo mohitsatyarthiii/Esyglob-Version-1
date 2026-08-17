@@ -94,7 +94,6 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
     paymentTerms: '30% advance, balance before dispatch',
     expiryDate: '',
     sellerMessage: '',
-    enableDirectOrder: false,
   })
   const total = useMemo(
     () => Number(form.unitPrice || 0) * Number(form.suppliedQuantity || 0),
@@ -109,6 +108,7 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
       setError('Select the manufacturer product linked to this quotation.')
       return
     }
+    if (status !== 'draft' && !window.confirm(`Submit this quotation to the buyer at ${form.currency} ${Number(total).toLocaleString()} total?`)) return
     setBusy(true)
     setError('')
     try {
@@ -118,7 +118,6 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
         status,
         ...form,
         unitPrice: Number(form.unitPrice),
-        totalPrice: total,
         suppliedQuantity: Number(form.suppliedQuantity),
         minimumOrderQuantity: Number(form.minimumOrderQuantity),
         leadTime: Number(form.leadTime),
@@ -149,9 +148,8 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
     </div>
     <Field label="Commercial notes"><textarea rows="3" value={form.sellerMessage} onChange={(event) => update('sellerMessage', event.target.value)} /></Field>
     <AttachmentUploader folder="quotations" value={attachments} onChange={setAttachments} />
-    <label className="checkbox trade-checkbox"><input type="checkbox" checked={form.enableDirectOrder} onChange={(event) => update('enableDirectOrder', event.target.checked)} /><span /> Enable Direct Order after the final quotation is signed</label>
     <div className="quote-total"><span>Quotation total</span><b><Money value={total} currency={form.currency} /></b></div>
     {error && <p className="action-error">{error}</p>}
-    <div className="quotation-submit-actions"><button type="button" className="button button--ghost" disabled={busy} onClick={(event) => submit(event, 'draft')}><Save /> Save draft</button><button className="button button--primary" disabled={busy}><Send /> {busy ? 'Submitting…' : 'Send quotation'}</button></div>
+    <div className="quotation-submit-actions"><button type="button" className="button button--ghost" disabled={busy} onClick={(event) => submit(event, 'draft')}><Save /> Save draft</button><button className="button button--primary" disabled={busy}><Send /> {busy ? 'Submitting…' : `Submit Quotation — ${form.currency} ${Number(total).toLocaleString()}`}</button></div>
   </form></div>
 }

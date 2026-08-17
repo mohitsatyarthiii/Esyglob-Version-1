@@ -1,0 +1,238 @@
+{
+  "pages": [
+    {
+      "name": "login",
+      "viewport": "desktop",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/login",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "text": "esyglob\nONE PLATFORM. EVERY TRADE.\nBuild trusted business across borders.\n\nSource products, verify suppliers, negotiate and manage trade with confidence.\n\nSecure by design\nProtected sessions and verified accounts\nBuilt for B2B\nPurpose-built sourcing and seller workflows\n\n\u201cEsyGlob gives every business a clearer, safer path to global sourcing.\u201d\n\nGLOBAL TRADE, MADE EASIER\nBack\nWelcome back\n\nSign in to continue to your marketplace.\n\nBusiness email\nPassword\nKeep me signed in\nForgot password?\nSign in\nNew to EsyGlob? Create an account",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\login-desktop.png"
+    },
+    {
+      "name": "login",
+      "viewport": "laptop",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/login",
+      "horizontal_overflow": false,
+      "scroll_width": 1280,
+      "client_width": 1280,
+      "text": "esyglob\nONE PLATFORM. EVERY TRADE.\nBuild trusted business across borders.\n\nSource products, verify suppliers, negotiate and manage trade with confidence.\n\nSecure by design\nProtected sessions and verified accounts\nBuilt for B2B\nPurpose-built sourcing and seller workflows\n\n\u201cEsyGlob gives every business a clearer, safer path to global sourcing.\u201d\n\nGLOBAL TRADE, MADE EASIER\nBack\nWelcome back\n\nSign in to continue to your marketplace.\n\nBusiness email\nPassword\nKeep me signed in\nForgot password?\nSign in\nNew to EsyGlob? Create an account",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\login-laptop.png"
+    },
+    {
+      "name": "login",
+      "viewport": "tablet",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/login",
+      "horizontal_overflow": false,
+      "scroll_width": 768,
+      "client_width": 768,
+      "text": "esyglob\nONE PLATFORM. EVERY TRADE.\nBuild trusted business across borders.\n\nSource products, verify suppliers, negotiate and manage trade with confidence.\n\nSecure by design\nProtected sessions and verified accounts\nBuilt for B2B\nPurpose-built sourcing and seller workflows\n\n\u201cEsyGlob gives every business a clearer, safer path to global sourcing.\u201d\n\nGLOBAL TRADE, MADE EASIER\nBack\nWelcome back\n\nSign in to continue to your marketplace.\n\nBusiness email\nPassword\nKeep me signed in\nForgot password?\nSign in\nNew to EsyGlob? Create an account",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\login-tablet.png"
+    },
+    {
+      "name": "login",
+      "viewport": "mobile",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/login",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "text": "esyglob\nBack\nWelcome back\n\nSign in to continue to your marketplace.\n\nBusiness email\nPassword\nKeep me signed in\nForgot password?\nSign in\nNew to EsyGlob? Create an account",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\login-mobile.png"
+    },
+    {
+      "name": "public-rfqs",
+      "viewport": "desktop",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/rfqs",
+      "horizontal_overflow": false,
+      "scroll_width": 1440,
+      "client_width": 1440,
+      "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nLogin\nSign up\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nPost a buying request\nBack\nMANUFACTURER OPPORTUNITIES\nPublic RFQ Marketplace\n\nDiscover active public requirements and submit a connected quotation.\n\nSearch\nStatus\nall\nsubmitted\nactive\nquoted\nnegotiating\nCategory\nAll categories\nAgriculture\nApparel & Fashion\nAutomobile\nBrass Hardware & Components\nChemicals\nComputer Hardware & Software\nConstruction & Real Estate\nConsumer Electronics\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nFood & Beverage\nFurniture\nGifts & Crafts\nHealth & Beauty\nHome Supplies\nHome Textiles & Furnishings\nHospital & Medical Supplies\nHotel Supplies & Equipment\nIndustrial Supplies\nJewelry & Gemstones\nLeather & Leather Products\nMachinery\nMineral & Metals\nOffice & School Supplies\nPackaging & Laboratory Instruments\nPerfumery\nPipes, Tubes & Fittings\nPlastics & Products\nScientific & Laboratory Instruments\nSports & Entertainment\nSportswear & Outdoor Apparel\nTelecommunications\nToys\nTransportation\nSubcategory\nAll subcategories\nLocation\nPosted since\nAll\nSubm",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\public-rfqs-desktop.png"
+    },
+    {
+      "name": "public-rfqs",
+      "viewport": "laptop",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/rfqs",
+      "horizontal_overflow": false,
+      "scroll_width": 1280,
+      "client_width": 1280,
+      "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nLogin\nSign up\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nPost a buying request\nBack\nMANUFACTURER OPPORTUNITIES\nPublic RFQ Marketplace\n\nDiscover active public requirements and submit a connected quotation.\n\nSearch\nStatus\nall\nsubmitted\nactive\nquoted\nnegotiating\nCategory\nAll categories\nAgriculture\nApparel & Fashion\nAutomobile\nBrass Hardware & Components\nChemicals\nComputer Hardware & Software\nConstruction & Real Estate\nConsumer Electronics\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nFood & Beverage\nFurniture\nGifts & Crafts\nHealth & Beauty\nHome Supplies\nHome Textiles & Furnishings\nHospital & Medical Supplies\nHotel Supplies & Equipment\nIndustrial Supplies\nJewelry & Gemstones\nLeather & Leather Products\nMachinery\nMineral & Metals\nOffice & School Supplies\nPackaging & Laboratory Instruments\nPerfumery\nPipes, Tubes & Fittings\nPlastics & Products\nScientific & Laboratory Instruments\nSports & Entertainment\nSportswear & Outdoor Apparel\nTelecommunications\nToys\nTransportation\nSubcategory\nAll subcategories\nLocation\nPosted since\nAll\nSubm",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\public-rfqs-laptop.png"
+    },
+    {
+      "name": "public-rfqs",
+      "viewport": "tablet",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/rfqs",
+      "horizontal_overflow": false,
+      "scroll_width": 768,
+      "client_width": 768,
+      "text": "Global B2B sourcing, simplified.\nBuyer protection\nVerified suppliers\n24/7 trade support\nesyglob\nSearch\n\ud83c\uddee\ud83c\uddf3\nINR\nLogin\nSign up\nMarketplace\nCategories\nProducts\nManufacturers\nExplore\nTrade services\nPost a buying request\nBack\nMANUFACTURER OPPORTUNITIES\nPublic RFQ Marketplace\n\nDiscover active public requirements and submit a connected quotation.\n\nSearch\nStatus\nall\nsubmitted\nactive\nquoted\nnegotiating\nCategory\nAll categories\nAgriculture\nApparel & Fashion\nAutomobile\nBrass Hardware & Components\nChemicals\nComputer Hardware & Software\nConstruction & Real Estate\nConsumer Electronics\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nFood & Beverage\nFurniture\nGifts & Crafts\nHealth & Beauty\nHome Supplies\nHome Textiles & Furnishings\nHospital & Medical Supplies\nHotel Supplies & Equipment\nIndustrial Supplies\nJewelry & Gemstones\nLeather & Leather Products\nMachinery\nMineral & Metals\nOffice & School Supplies\nPackaging & Laboratory Instruments\nPerfumery\nPipes, Tubes & Fittings\nPlastics & Products\nScientific & Laboratory Instruments\nSports & Entertainment\nSportswear & Outdoor Apparel\nTelecommunications\nToys\nTransportation\nSubcategory\nAll subcategories\nLocation\nPosted since\nAll\nSubm",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\public-rfqs-tablet.png"
+    },
+    {
+      "name": "public-rfqs",
+      "viewport": "mobile",
+      "status": 200,
+      "url": "http://127.0.0.1:4175/rfqs",
+      "horizontal_overflow": false,
+      "scroll_width": 390,
+      "client_width": 390,
+      "text": "esyglob\nLogin\nSign up\nBack\nMANUFACTURER OPPORTUNITIES\nPublic RFQ Marketplace\n\nDiscover active public requirements and submit a connected quotation.\n\nStatus\nall\nsubmitted\nactive\nquoted\nnegotiating\nCategory\nAll categories\nAgriculture\nApparel & Fashion\nAutomobile\nBrass Hardware & Components\nChemicals\nComputer Hardware & Software\nConstruction & Real Estate\nConsumer Electronics\nElectronics & Electrical Supplies\nEnergy & Power\nEnvironment & Pollution\nFood & Beverage\nFurniture\nGifts & Crafts\nHealth & Beauty\nHome Supplies\nHome Textiles & Furnishings\nHospital & Medical Supplies\nHotel Supplies & Equipment\nIndustrial Supplies\nJewelry & Gemstones\nLeather & Leather Products\nMachinery\nMineral & Metals\nOffice & School Supplies\nPackaging & Laboratory Instruments\nPerfumery\nPipes, Tubes & Fittings\nPlastics & Products\nScientific & Laboratory Instruments\nSports & Entertainment\nSportswear & Outdoor Apparel\nTelecommunications\nToys\nTransportation\nSubcategory\nAll subcategories\nLocation\nPosted since\nAll\nSubmitted\nActive\nQuoted\nNegotiating\nFURNITURE\nProduction public wood RFQ msx24j08\nQUOTED\n\nPublic sourcing test for matching wooden products.\n\nCategory\nFurniture / Dining Room\nQuantity\n120 pcs\nTarget\nRequest",
+      "screenshot": "F:\\Desktop\\esyglob-app\\qa-browser-artifacts\\public-rfqs-mobile.png"
+    }
+  ],
+  "console_errors": [
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/login",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "url": "http://127.0.0.1:4175/rfqs",
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    }
+  ],
+  "failed_requests": [
+    {
+      "url": "http://127.0.0.1:4175/api/categories?type=homepage&withCounts=true",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/categories?type=homepage&withCounts=true",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/categories?type=homepage&withCounts=true",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "http_errors": [
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    },
+    {
+      "url": "http://127.0.0.1:4175/api/auth/me",
+      "status": 401
+    }
+  ]
+}

@@ -3,6 +3,8 @@ import { activitySchema, tradeDocumentSchema, tradeNoteSchema } from './schemas/
 
 const quotationSchema = new mongoose.Schema(
   {
+    quotationNumber: { type: String, trim: true },
+    idempotencyKey: { type: String, trim: true },
     rfqId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'RFQ',
@@ -57,6 +59,7 @@ const quotationSchema = new mongoose.Schema(
     },
     suppliedQuantity: {
       type: Number,
+      min: 1,
     },
     
     // Lead Time
@@ -93,13 +96,14 @@ const quotationSchema = new mongoose.Schema(
     shippingCost: {
       type: Number,
       default: 0,
+      min: 0,
     },
     shippingEstimate: mongoose.Schema.Types.Mixed,
     shippingTerms: String,
     packaging: mongoose.Schema.Types.Mixed,
     warranty: String,
     samplePrice: { type: Number, min: 0 },
-    taxes: { taxRate: { type: Number, min: 0 }, amount: { type: Number, min: 0 }, description: String },
+    taxes: { taxRate: { type: Number, min: 0, max: 100 }, amount: { type: Number, min: 0 }, description: String },
     specialClauses: [String],
     
     // Product Details
@@ -141,6 +145,9 @@ const quotationSchema = new mongoose.Schema(
       actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       actorRole: { type: String, enum: ['buyer', 'seller'] },
       unitPrice: Number,
+      productSubtotal: Number,
+      shippingCost: Number,
+      taxAmount: Number,
       totalPrice: Number,
       minimumOrderQuantity: Number,
       suppliedQuantity: Number,
@@ -162,6 +169,9 @@ const quotationSchema = new mongoose.Schema(
           ref: 'User',
         },
         unitPrice: Number,
+        productSubtotal: Number,
+        shippingCost: Number,
+        taxAmount: Number,
         totalPrice: Number,
         minimumOrderQuantity: Number,
         suppliedQuantity: Number,
@@ -191,14 +201,24 @@ const quotationSchema = new mongoose.Schema(
     ],
     negotiationHistory: [
       {
+        eventId: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
+        rfqId: { type: mongoose.Schema.Types.ObjectId, ref: 'RFQ' },
+        quotationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Quotation' },
         action: {
           type: String,
-          enum: ['submitted', 'buyer_counter', 'seller_revision', 'seller_accepted_counter', 'accepted', 'rejected', 'message'],
+          enum: ['submitted', 'buyer_counter', 'seller_revision', 'seller_accepted_counter', 'accepted', 'rejected', 'expired', 'withdrawn', 'finalized', 'seller_signed', 'buyer_signed', 'message'],
         },
         idempotencyKey: String,
         actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         actorRole: { type: String, enum: ['buyer', 'seller'] },
         message: String,
+        notes: String,
+        status: String,
+        previousOffer: mongoose.Schema.Types.Mixed,
+        newOffer: mongoose.Schema.Types.Mixed,
+        changedTerms: [String],
+        messageReference: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
+        notificationReference: { type: mongoose.Schema.Types.ObjectId, ref: 'Notification' },
         previousUnitPrice: Number,
         unitPrice: Number,
         totalPrice: Number,
@@ -207,6 +227,7 @@ const quotationSchema = new mongoose.Schema(
         leadTime: Number,
         leadTimeUnit: String,
         createdAt: { type: Date, default: Date.now },
+        timestamp: { type: Date, default: Date.now },
       },
     ],
     expiryDate: {
@@ -288,6 +309,48 @@ const quotationSchema = new mongoose.Schema(
   }
 );
 
+const negotiationStatus = {
+  submitted: 'submitted',
+  buyer_counter: 'countered',
+  seller_revision: 'revised',
+  seller_accepted_counter: 'buyer_accepted',
+  accepted: 'buyer_accepted',
+  rejected: 'rejected',
+  finalized: 'final_quotation_pending',
+  seller_signed: 'final_quotation_pending',
+  buyer_signed: 'final_quotation_signed',
+};
+
+quotationSchema.pre('validate', function normalizeNegotiationEvents() {
+  this.quotationNumber ||= `QT-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${String(this._id).slice(-8).toUpperCase()}`;
+  let previous = null;
+  for (const event of this.negotiationHistory || []) {
+    event.eventId ||= new mongoose.Types.ObjectId();
+    event.rfqId ||= this.rfqId?._id || this.rfqId;
+    event.quotationId ||= this._id;
+    event.timestamp ||= event.createdAt || new Date();
+    event.notes ||= event.message;
+    event.status ||= negotiationStatus[event.action] || this.status;
+    const current = {
+      unitPrice: event.unitPrice,
+      productSubtotal: event.productSubtotal,
+      shippingCost: event.shippingCost,
+      taxAmount: event.taxAmount,
+      totalPrice: event.totalPrice,
+      minimumOrderQuantity: event.minimumOrderQuantity,
+      suppliedQuantity: event.suppliedQuantity,
+      leadTime: event.leadTime,
+      leadTimeUnit: event.leadTimeUnit,
+    };
+    event.previousOffer ||= previous ? { ...previous } : undefined;
+    event.newOffer ||= { ...current };
+    if (!event.changedTerms?.length && previous) {
+      event.changedTerms = Object.keys(current).filter((key) => current[key] !== undefined && String(current[key]) !== String(previous[key]));
+    }
+    if (event.unitPrice !== undefined) previous = current;
+  }
+});
+
 quotationSchema.index({
   status: 'text',
   description: 'text',
@@ -306,5 +369,9 @@ quotationSchema.index(
     },
   }
 );
+quotationSchema.index({ 'negotiationHistory.eventId': 1 });
+quotationSchema.index({ 'negotiationHistory.idempotencyKey': 1 });
+quotationSchema.index({ quotationNumber: 1 }, { unique: true, sparse: true });
+quotationSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true, sparse: true, name: 'one_quotation_per_seller_idempotency_key' });
 
 export default mongoose.models.Quotation || mongoose.model('Quotation', quotationSchema);

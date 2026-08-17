@@ -305,6 +305,34 @@ export async function sendMessage(user, chatId, messageData) {
 
   const receiverId = groupReceiverId || (isBuyer ? chat.sellerId : chat.buyerId);
 
+  let resolvedProductDetails = null;
+  if (productDetails?.productId) {
+    if (!isObjectId(productDetails.productId)) throw Object.assign(new Error('Product not found'), { statusCode: 404 });
+    const [product, sellerProfile] = await Promise.all([
+      chatRepository.findProductById(productDetails.productId),
+      chatRepository.findSellerByUserIdLean(chat.sellerId),
+    ]);
+    if (!product || !sellerProfile || String(product.sellerId) !== String(sellerProfile._id) || (chat.productId && String(chat.productId) !== String(product._id))) {
+      throw Object.assign(new Error('Product context does not belong to this manufacturer conversation'), { statusCode: 403 });
+    }
+    const requestedQuantity = productDetails.quantity === undefined ? undefined : Number(productDetails.quantity);
+    if (requestedQuantity !== undefined && (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0)) {
+      throw Object.assign(new Error('Requested quantity must be a valid positive number'), { statusCode: 422 });
+    }
+    resolvedProductDetails = {
+      productId: product._id,
+      productName: product.name,
+      price: product.price,
+      image: product.images?.[0]?.url || product.images?.[0] || '',
+      productLink: `/products/${product._id}`,
+      supplierName: sellerProfile.companyName,
+      supplierId: sellerProfile._id,
+      quantity: requestedQuantity,
+      unit: String(productDetails.unit || '').trim(),
+      specifications: { category: product.category, subcategory: product.subcategory },
+    };
+  }
+
   const message = await chatRepository.createMessage({
     deliveryKey: deliveryKey || undefined,
     chatId,
@@ -313,7 +341,7 @@ export async function sendMessage(user, chatId, messageData) {
     content: normalizedContent,
     messageType,
     attachments: safeAttachments,
-    productDetails: productDetails || null,
+    productDetails: resolvedProductDetails,
     orderDetails: orderDetails || null,
     rfqDetails: rfqDetails || null,
     quotationDetails: quotationDetails || null,
@@ -768,6 +796,16 @@ export async function createChat(session, chatData) {
         error.statusCode = 403;
         throw error;
       }
+    }
+  }
+
+  if (productId) {
+    const [product, sellerProfile] = await Promise.all([
+      chatRepository.findProductById(productId),
+      chatRepository.findSellerByUserIdLean(sellerId),
+    ]);
+    if (!product || !sellerProfile || String(product.sellerId) !== String(sellerProfile._id)) {
+      throw Object.assign(new Error('Product enquiry must reference a product from the selected manufacturer'), { statusCode: 403 });
     }
   }
 

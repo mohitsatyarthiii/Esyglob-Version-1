@@ -49,6 +49,12 @@ export default function RfqCreatePage() {
     if ([form.productName, form.notes].some((value) => contactPattern.test(value))) {
       return setError('Phone numbers, email addresses and external links are not allowed in RFQs.')
     }
+    if (status !== 'draft') {
+      const prompt = privateRfq
+        ? `Send this private RFQ to ${prefill.supplierName || 'the selected manufacturer'}?`
+        : 'Publish this RFQ to the public marketplace?'
+      if (!window.confirm(prompt)) return
+    }
 
     setBusy(status)
     try {

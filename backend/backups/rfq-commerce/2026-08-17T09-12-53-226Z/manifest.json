@@ -1,0 +1,75 @@
+{
+  "format": "esyglob-rfq-commerce-backup-v1",
+  "createdAt": "2026-08-17T09:12:57.023Z",
+  "sourceDatabase": "test",
+  "restorableWith": "scripts/restore-rfq-commerce-data.js",
+  "files": {
+    "ai_chats": {
+      "file": "ai_chats.ejsonl",
+      "count": 0,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "aichats": {
+      "file": "aichats.ejsonl",
+      "count": 0,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "chats": {
+      "file": "chats.ejsonl",
+      "count": 6,
+      "bytes": 6505,
+      "sha256": "47252363f8f7a55068aa7efc7d7672aa573629ce4c1e4faeaa76796fda505c1d"
+    },
+    "documents": {
+      "file": "documents.ejsonl",
+      "count": 7,
+      "bytes": 18302,
+      "sha256": "1c20c1adda43b46d53222f0688695f4070957af999b6a43457c80d1cee36492c"
+    },
+    "messages": {
+      "file": "messages.ejsonl",
+      "count": 118,
+      "bytes": 132966,
+      "sha256": "f029a6a3e33fee3b07483aa55fa4e954b5c34d3c9a879a6ec8767e97c45dd33a"
+    },
+    "notifications": {
+      "file": "notifications.ejsonl",
+      "count": 121,
+      "bytes": 82706,
+      "sha256": "3134b6b88eef572aaaf252b53958719d27d8767b85783e7f35e0a1f0eed86049"
+    },
+    "orders": {
+      "file": "orders.ejsonl",
+      "count": 5,
+      "bytes": 50336,
+      "sha256": "b7821e9ccea2955a60042d2dc9192b9b2d11ce3617dc24fec50561e4c8fd3fad"
+    },
+    "quotations": {
+      "file": "quotations.ejsonl",
+      "count": 10,
+      "bytes": 116335,
+      "sha256": "8ee687bc8b451fec9b98a8982e96fbd4544be910f7223ecc57ab76ca92d981e4"
+    },
+    "rfqs": {
+      "file": "rfqs.ejsonl",
+      "count": 29,
+      "bytes": 55766,
+      "sha256": "1369e1035b01b720b605dee19eb67df35f7b257b9bda8082a426282786a9c17c"
+    }
+  },
+  "diagnostics": {
+    "missing": {
+      "quotationRfqs": [
+        "6a7efb8eaa1ff15031116dd5"
+      ],
+      "chatRfqs": [],
+      "chatQuotations": [],
+      "messageChats": [],
+      "orderRfqs": [],
+      "orderQuotations": []
+    },
+    "orphanCount": 1
+  }
+}

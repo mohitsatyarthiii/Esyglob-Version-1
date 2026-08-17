@@ -87,7 +87,7 @@ function QuotationDetailsScreen() {
   const { quotationId } = route.params as { quotationId: string };
   const [actionOpen, setActionOpen] = useState<ActionType>(null);
   const [actionText, setActionText] = useState('');
-  const [enableDirectOrder, setEnableDirectOrder] = useState(false);
+  const [counterPrice, setCounterPrice] = useState('');
   const [signOpen, setSignOpen] = useState(false);
   const [signerName, setSignerName] = useState('');
   const [signatureValue, setSignatureValue] = useState('');
@@ -112,21 +112,15 @@ function QuotationDetailsScreen() {
   const prepareFinal = useMutation({
     mutationFn: () => patchQuotation(quotationId, {
       action: 'confirm',
-      enableDirectOrder,
-      suppliedQuantity: Number((quotation.data as any)?.suppliedQuantity || (quotation.data as any)?.rfqId?.quantity || 1),
-      unitPrice: Number((quotation.data as any)?.unitPrice || 0),
-      totalPrice: Number((quotation.data as any)?.totalPrice || 0),
-      leadTime: Number((quotation.data as any)?.leadTime || 1),
-      paymentTerms: (quotation.data as any)?.paymentTerms || 'negotiable',
-      shippingTerms: (quotation.data as any)?.shippingTerms || (quotation.data as any)?.incoterms || 'Manufacturer arranged',
-      notes: (quotation.data as any)?.notes || (quotation.data as any)?.sellerMessage,
+      expectedNegotiationVersion: Number((quotation.data as any)?.negotiationVersion || 0),
+      idempotencyKey: `mobile-final-${quotationId}-${Number((quotation.data as any)?.negotiationVersion || 0)}`,
     }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] }),
         queryClient.invalidateQueries({ queryKey: ['quotation-workspace', quotationId] }),
       ]);
-      Alert.alert('Final Quotation ready', enableDirectOrder ? 'Sign it to activate Place Order for the Buyer.' : 'Sign it to send it for Buyer review.');
+      Alert.alert('Final Quotation ready', 'The accepted commercial terms are locked. The manufacturer signs first, then the buyer signs before order creation.');
     },
     onError: (error: unknown) => Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to prepare Final Quotation.'),
   });
@@ -145,7 +139,7 @@ function QuotationDetailsScreen() {
         queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] }),
         queryClient.invalidateQueries({ queryKey: ['quotation-workspace', quotationId] }),
       ]);
-      Alert.alert('Signed', enableDirectOrder || (quotation.data as any)?.directOrderEnabled ? 'Place Order is now available to the Buyer.' : 'The Buyer can now review and sign.');
+      Alert.alert('Signed', activeRole === 'seller' ? 'The Buyer can now review and sign.' : 'Both signatures are complete. Place Order is now available.');
     },
     onError: (error: unknown) => Alert.alert('Failed', error instanceof Error ? error.message : 'Unable to sign Final Quotation.'),
   });
@@ -170,7 +164,7 @@ function QuotationDetailsScreen() {
   // ── Accept ────────────────────────────────────────────────────────────
 
   const accept = useMutation({
-    mutationFn: () => acceptQuotation(quotationId),
+    mutationFn: (input?: Record<string, unknown>) => acceptQuotation(quotationId, input),
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] });
       const orderId =
@@ -189,22 +183,34 @@ function QuotationDetailsScreen() {
 
   const revise = useMutation({
     mutationFn: async (action: 'request_revision' | 'counter_offer' | 'reject') => {
+      const current = quotation.data as any;
+      const common = {
+        expectedNegotiationVersion: Number(current?.negotiationVersion || 0),
+        idempotencyKey: `mobile-${action}-${quotationId}-${Number(current?.negotiationVersion || 0)}`,
+      };
       if (action === 'reject') {
         // Use respondToQuotation for reject
         return respondToQuotation(quotationId, 'reject', {
-          reason: actionText || 'Buyer rejected this quotation.',
+          reason: actionText || 'Buyer rejected this quotation.', ...common,
         });
       }
       // Use patchQuotation for revise/counter
       const body: Record<string, unknown> = {
         action,
-        reason: actionText || 'Buyer requested an update.',
+        reason: actionText || 'Buyer requested an update.', ...common,
       };
+      if (action === 'counter_offer') {
+        const unitPrice = Number(counterPrice);
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) throw new Error('Enter a valid positive counter price.');
+        body.unitPrice = unitPrice;
+        body.suppliedQuantity = Number(current?.currentOffer?.suppliedQuantity || current?.suppliedQuantity || current?.rfqId?.quantity || 1);
+      }
       return patchQuotation(quotationId, body);
     },
     onSuccess: () => {
       setActionOpen(null);
       setActionText('');
+      setCounterPrice('');
       queryClient.invalidateQueries({ queryKey: ['quotation-details', quotationId] });
       Alert.alert('✓ Sent', 'Quotation updated.');
     },
@@ -229,7 +235,8 @@ function QuotationDetailsScreen() {
   const title = item.title ?? product?.name ?? rfq?.title ?? 'Quotation';
   const chatId = typeof item.chatId === 'string' ? item.chatId : item.chatId?._id;
   const nextProductId = typeof item.productId === 'string' ? item.productId : item.productId?._id;
-  const canRespond = ['pending', 'submitted', 'negotiating', 'revised'].includes(String(item.status));
+  const finalDocument = [...((workspace.data as any)?.documents ?? [])].reverse().find((entry: any) => entry?.metadata?.isFinalQuotation && entry.status !== 'void');
+  const canRespond = ['pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised'].includes(String(item.status));
   const canAccept = Boolean(nextProductId && canRespond);
   const statusCfg = getStatusConfig(item.status ?? 'submitted');
 
@@ -293,7 +300,7 @@ function QuotationDetailsScreen() {
           <View style={styles.actionSection}>
             <Pressable
               disabled={accept.isPending || !canAccept}
-              onPress={() => approve('Accept quotation?', 'This will lock the negotiated commercial offer.', () => accept.mutate())}
+              onPress={() => approve('Accept exact quotation?', `Lock ${formatPrice(Number(item.currentOffer?.totalPrice ?? item.totalPrice ?? 0), item.currency ?? 'INR')} as the final commercial total?`, () => accept.mutate({ expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: `mobile-accept-${quotationId}-${Number(item.negotiationVersion || 0)}` }))}
               style={[styles.acceptBtn, (!canAccept || accept.isPending) && styles.btnDisabled]}>
               {accept.isPending ? (
                 <ActivityIndicator size="small" color="#FFF" />
@@ -327,23 +334,32 @@ function QuotationDetailsScreen() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Manufacturer Final Quotation</Text>
             {item.status === 'buyer_accepted' && <>
-              <Pressable style={styles.directOrderRow} onPress={() => setEnableDirectOrder(value => !value)}>
-                <Icon name={enableDirectOrder ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} color={enableDirectOrder ? P.success : P.muted} />
-                <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Enable Direct Order</Text><Text style={styles.directOrderHint}>Buyer can place the order immediately after your signature, without another approval.</Text></View>
-              </Pressable>
               <Pressable disabled={prepareFinal.isPending} onPress={() => approve('Prepare Final Quotation?', 'Generate the official document using the displayed product and total amount?', () => prepareFinal.mutate())} style={[styles.acceptBtn, prepareFinal.isPending && styles.btnDisabled]}>
                 {prepareFinal.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <><Icon name="file-sign" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Prepare Final Quotation</Text></>}
               </Pressable>
             </>}
-            {item.status === 'final_quotation_pending' && <Pressable disabled={signFinal.isPending} onPress={() => setSignOpen(true)} style={[styles.acceptBtn, signFinal.isPending && styles.btnDisabled]}><Icon name="draw-pen" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Add Manufacturer Signature</Text></Pressable>}
+            {item.status === 'final_quotation_pending' && finalDocument?.status === 'awaiting_seller_signature' && <Pressable disabled={signFinal.isPending} onPress={() => setSignOpen(true)} style={[styles.acceptBtn, signFinal.isPending && styles.btnDisabled]}><Icon name="draw-pen" size={18} color="#FFF" /><Text style={styles.acceptBtnText}>Add Manufacturer Signature</Text></Pressable>}
+            {item.status === 'final_quotation_pending' && finalDocument?.status === 'awaiting_buyer_signature' && <View style={styles.infoBanner}><Icon name="clock-outline" size={16} color={P.accent} /><Text style={styles.infoBannerText}>Manufacturer signature recorded. Waiting for Buyer review and signature.</Text></View>}
             {!['buyer_accepted', 'final_quotation_pending'].includes(item.status) && <View style={styles.infoBanner}><Icon name="information" size={16} color={P.accent} /><Text style={styles.infoBannerText}>Final Quotation status: {getStatusConfig(item.status).label}</Text></View>}
           </View>
         )}
 
-        {buyerView && item.directOrderEnabled && item.status === 'final_quotation_signed' && (
+        {buyerView && item.status === 'final_quotation_pending' && finalDocument?.status === 'awaiting_buyer_signature' && (
           <View style={styles.directOrderCard}>
-            <Icon name="flash" size={22} color={P.success} />
-            <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Direct Order ready</Text><Text style={styles.directOrderHint}>The Manufacturer Final Quotation is signed and no additional approval is required.</Text></View>
+            <Icon name="file-sign" size={22} color={P.accent} />
+            <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Buyer signature required</Text><Text style={styles.directOrderHint}>Review the locked Final Quotation, then sign to complete the agreement.</Text></View>
+            <Pressable disabled={signFinal.isPending} onPress={() => setSignOpen(true)} style={styles.placeOrderBtn}><Text style={styles.placeOrderText}>Review & Sign</Text></Pressable>
+          </View>
+        )}
+
+        {buyerView && item.status === 'final_quotation_pending' && finalDocument?.status === 'awaiting_seller_signature' && (
+          <View style={styles.infoBanner}><Icon name="clock-outline" size={16} color={P.accent} /><Text style={styles.infoBannerText}>Waiting for the Manufacturer to sign the locked Final Quotation.</Text></View>
+        )}
+
+        {buyerView && item.status === 'final_quotation_signed' && (
+          <View style={styles.directOrderCard}>
+            <Icon name="check-decagram" size={22} color={P.success} />
+            <View style={styles.directOrderCopy}><Text style={styles.directOrderTitle}>Final Quotation signed</Text><Text style={styles.directOrderHint}>Both parties signed. Checkout will use the locked quotation terms.</Text></View>
             <Pressable disabled={placeOrder.isPending} onPress={() => approve('Place order?', 'Open checkout using the locked Final Quotation terms?', () => placeOrder.mutate())} style={styles.placeOrderBtn}><Text style={styles.placeOrderText}>{placeOrder.isPending ? 'Opening…' : 'Place Order'}</Text></Pressable>
           </View>
         )}
@@ -366,10 +382,26 @@ function QuotationDetailsScreen() {
           )}
         </View>
 
+        {Array.isArray(item.negotiationHistory) && item.negotiationHistory.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Negotiation History</Text>
+            {item.negotiationHistory.map((event: any, index: number) => (
+              <DetailRow
+                key={String(event.eventId ?? event._id ?? index)}
+                icon={event.actorRole === 'buyer' ? 'account-arrow-up' : 'factory'}
+                label={`${event.actorRole === 'buyer' ? 'Buyer' : 'Manufacturer'} · ${String(event.action || 'update').replace(/_/g, ' ')}`}
+                value={`${event.unitPrice ? `${formatPrice(Number(event.unitPrice), item.currency ?? 'INR')} / unit` : event.message || event.notes || 'Status updated'}${event.timestamp || event.createdAt ? ` · ${new Date(event.timestamp || event.createdAt).toLocaleString('en-IN')}` : ''}`}
+                multiline
+              />
+            ))}
+          </View>
+        )}
+
         {/* Details */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Quotation Details</Text>
           <DetailRow icon="cash" label="Unit Price" value={item.unitPrice ? formatPrice(Number(item.unitPrice), item.currency ?? 'INR') : undefined} />
+          <DetailRow icon="cash-check" label="Current Offer Total" value={item.currentOffer?.totalPrice ? formatPrice(Number(item.currentOffer.totalPrice), item.currency ?? 'INR') : undefined} />
           <DetailRow icon="cube-outline" label="Quantity" value={item.quantity ? `${item.quantity} ${item.unit ?? 'units'}` : undefined} />
           <DetailRow icon="clock-outline" label="Lead Time" value={item.leadTime} />
           <DetailRow icon="credit-card" label="Payment Terms" value={item.paymentTerms} />
@@ -425,6 +457,17 @@ function QuotationDetailsScreen() {
                 <Icon name="close" size={20} color={P.textSecondary} />
               </Pressable>
             </View>
+            {actionOpen === 'counter_offer' && <>
+              <TextInput
+                value={counterPrice}
+                onChangeText={setCounterPrice}
+                keyboardType="decimal-pad"
+                placeholder="Counter unit price"
+                placeholderTextColor={P.muted}
+                style={styles.signatureInput}
+              />
+              <Text style={styles.signatureTerms}>The server recalculates subtotal, shipping, tax, and final total from this unit price.</Text>
+            </>}
             <TextInput
               value={actionText}
               onChangeText={setActionText}
@@ -434,7 +477,7 @@ function QuotationDetailsScreen() {
               style={styles.sheetInput}
             />
             <Pressable
-              disabled={!actionOpen || revise.isPending}
+              disabled={!actionOpen || revise.isPending || (actionOpen === 'counter_offer' && (!Number.isFinite(Number(counterPrice)) || Number(counterPrice) <= 0))}
               onPress={() => actionOpen && revise.mutate(actionOpen as 'request_revision' | 'counter_offer' | 'reject')}
               style={[styles.sheetSubmit, revise.isPending && styles.btnDisabled]}>
               {revise.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.sheetSubmitText}>Send</Text>}
@@ -449,7 +492,7 @@ function QuotationDetailsScreen() {
             <View style={styles.sheetHeader}><Text style={styles.sheetTitle}>Sign Final Quotation</Text><Pressable onPress={() => setSignOpen(false)} style={styles.sheetClose}><Icon name="close" size={20} color={P.textSecondary} /></Pressable></View>
             <TextInput value={signerName} onChangeText={setSignerName} placeholder="Legal signer name" placeholderTextColor={P.muted} style={styles.signatureInput} />
             <TextInput value={signatureValue} onChangeText={setSignatureValue} placeholder="Type your legal signature" placeholderTextColor={P.muted} style={[styles.signatureInput, styles.signatureMark]} />
-            <Text style={styles.signatureTerms}>By signing, you accept the Final Quotation and authorize the selected Direct Order setting.</Text>
+            <Text style={styles.signatureTerms}>By signing, you accept the locked Final Quotation. An order can be created only after both parties sign.</Text>
             <Pressable disabled={signFinal.isPending || !signerName.trim() || !signatureValue.trim()} onPress={() => signFinal.mutate()} style={[styles.sheetSubmit, (signFinal.isPending || !signerName.trim() || !signatureValue.trim()) && styles.btnDisabled]}>{signFinal.isPending ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.sheetSubmitText}>Sign and Send</Text>}</Pressable>
           </View>
         </View>

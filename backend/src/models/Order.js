@@ -268,7 +268,6 @@ orderSchema.index({ orderSubType: 1, paymentStatus: 1, createdAt: -1 });
 orderSchema.index({ shipmentId: 1, status: 1 });
 orderSchema.index({ invoiceId: 1, paymentStatus: 1 });
 orderSchema.index({ status: 1 });
-orderSchema.index({ orderNumber: 1 }, { unique: true });
 orderSchema.index({ 'checkout.idempotencyKey': 1 }, { unique: true, sparse: true });
 orderSchema.index({ userId: 1, createdAt: -1 });
 orderSchema.index({

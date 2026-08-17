@@ -14,14 +14,9 @@ import { normalizeCurrency } from '../lib/currency-metadata.js';
 import { getIO } from '../lib/socket.js';
 import { allowedActions, assertTransition, lifecycleSnapshot, recordTransition } from './business-lifecycle.service.js';
 import { createTradeDocument } from './trade-artifact.service.js';
+import { commercialNumber, resolveOfferTotals } from '../lib/quotation-commerce.js';
 
 const NEGOTIABLE_QUOTATION_STATUSES = new Set(['draft', 'pending', 'submitted', 'negotiating', 'countered', 'revision_requested', 'revised']);
-
-function numericOffer(value, fallback) {
-  if (value === undefined || value === '') return fallback;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
 
 function normalizedTaxonomy(value) {
   const resolved = typeof value === 'object' && value
@@ -60,11 +55,28 @@ export function quotationCurrentOffer(quotation) {
   };
 }
 
-async function assertFreshNegotiation(quotation, body = {}) {
+async function expireQuotationIfNeeded(quotation) {
   if (quotation.expiryDate && new Date(quotation.expiryDate) <= new Date() && NEGOTIABLE_QUOTATION_STATUSES.has(quotation.status)) {
-    quotation.previousStatus = quotation.status;
+    const previousStatus = quotation.status;
+    quotation.previousStatus = previousStatus;
     quotation.status = 'expired';
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+    quotation.negotiationHistory.push({ action: 'expired', actorRole: 'seller', actorId: quotation.userId?._id || quotation.userId, message: 'Quotation validity period expired.', notes: 'Quotation validity period expired.', previousUnitPrice: quotationCurrentOffer(quotation).unitPrice, status: 'expired' });
+    quotation.activityTimeline.push({ action: 'quotation_expired', status: 'expired', message: 'Quotation validity period expired', actorId: quotation.userId?._id || quotation.userId, actorRole: 'seller' });
     await quotation.save();
+    const rfq = await quotationRepository.findRfqById(quotation.rfqId?._id || quotation.rfqId).catch(() => null);
+    if (rfq) {
+      const eventKey = `quotation-expired:${quotation._id}`;
+      await quotationRepository.createNotification({ eventKey, userId: rfq.buyerId, notificationType: 'quotation_expired', title: 'Quotation expired', description: 'This quotation passed its validity date.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'medium' }).catch(() => null);
+      await publishQuotationContext({ quotation, rfq, actorId: quotation.userId?._id || quotation.userId, receiverId: rfq.buyerId, deliveryKey: eventKey, content: `Quotation expired\nView quotation: /quotations/${quotation._id}` }).catch(() => null);
+    }
+    return true;
+  }
+  return false;
+}
+
+async function assertFreshNegotiation(quotation, body = {}) {
+  if (await expireQuotationIfNeeded(quotation)) {
     throw Object.assign(new Error('This quotation has expired'), { statusCode: 409 });
   }
   const idempotencyKey = String(body.idempotencyKey || '').trim();
@@ -76,14 +88,27 @@ async function assertFreshNegotiation(quotation, body = {}) {
 }
 
 function nextOffer(quotation, input, { action, actorId, actorRole, notes, previousUnitPrice }) {
-  const unitPrice = numericOffer(input.unitPrice, quotationCurrentOffer(quotation).unitPrice || quotation.unitPrice);
-  const suppliedQuantity = numericOffer(input.suppliedQuantity, quotation.suppliedQuantity);
-  const minimumOrderQuantity = numericOffer(input.minimumOrderQuantity, quotation.minimumOrderQuantity);
+  const unitPrice = input.unitPrice === undefined || input.unitPrice === ''
+    ? quotationCurrentOffer(quotation).unitPrice || quotation.unitPrice
+    : commercialNumber(input.unitPrice, 'Unit price', { minimum: Number.EPSILON });
+  const suppliedQuantity = input.suppliedQuantity === undefined || input.suppliedQuantity === ''
+    ? quotation.suppliedQuantity
+    : commercialNumber(input.suppliedQuantity, 'Quantity', { minimum: Number.EPSILON });
+  const minimumOrderQuantity = input.minimumOrderQuantity === undefined || input.minimumOrderQuantity === ''
+    ? quotation.minimumOrderQuantity
+    : commercialNumber(input.minimumOrderQuantity, 'Minimum order quantity', { minimum: Number.EPSILON });
+  const resolvedLeadTime = input.leadTime === undefined || input.leadTime === ''
+    ? quotation.leadTime
+    : commercialNumber(input.leadTime, 'Lead time', { minimum: Number.EPSILON });
+  const totals = resolveOfferTotals(quotation, { ...input, unitPrice, suppliedQuantity, minimumOrderQuantity });
   return {
     action, actorId, actorRole, unitPrice,
-    totalPrice: numericOffer(input.totalPrice, unitPrice * (suppliedQuantity || minimumOrderQuantity || 1) + Number(input.shippingCost ?? quotation.shippingCost ?? 0)),
+    productSubtotal: totals.productSubtotal,
+    shippingCost: totals.shippingCost,
+    taxAmount: totals.taxAmount,
+    totalPrice: totals.finalTotal,
     minimumOrderQuantity, suppliedQuantity,
-    leadTime: numericOffer(input.leadTime, quotation.leadTime),
+    leadTime: resolvedLeadTime,
     leadTimeUnit: input.leadTimeUnit || quotation.leadTimeUnit,
     paymentTerms: input.paymentTerms || quotation.paymentTerms,
     incoterms: input.incoterms || quotation.incoterms,
@@ -244,7 +269,6 @@ export async function createQuotation(session, body) {
     expiryDate,
     attachments,
     sellerMessage,
-    enableDirectOrder,
   } = body;
 
   const moderation = validateNoContactInfo({
@@ -281,6 +305,13 @@ export async function createQuotation(session, body) {
   )) {
     throw Object.assign(new Error('Unit price, MOQ, available quantity, and lead time must be valid positive numbers'), { statusCode: 422 });
   }
+  const submittedTotals = saveAsDraft ? null : resolveOfferTotals({
+    unitPrice: numericUnitPrice,
+    suppliedQuantity: numericAvailableQuantity,
+    minimumOrderQuantity: numericMoq,
+    shippingCost: shippingCost ?? 0,
+    taxes: taxes || {},
+  });
   const resolvedCurrency = normalizeCurrency(currency || 'INR');
 
   if (!mongoose.Types.ObjectId.isValid(rfqId)) {
@@ -338,6 +369,12 @@ export async function createQuotation(session, body) {
     throw error;
   }
 
+  const creationIdempotencyKey = String(body.idempotencyKey || '').trim();
+  if (creationIdempotencyKey) {
+    const replayedQuotation = await quotationRepository.findQuotationByIdempotencyKey(session.userId, creationIdempotencyKey);
+    if (replayedQuotation) return { quotation: replayedQuotation, reused: true, message: 'This quotation request was already processed' };
+  }
+
   // Check for existing quotation - revise if found
   const existingQuotation = await quotationRepository.findExistingQuotation(
     rfqId,
@@ -359,14 +396,16 @@ export async function createQuotation(session, body) {
   }
 
   // Create new quotation
-  const quotation = await quotationRepository.createQuotation({
+  let quotation;
+  try {
+    quotation = await quotationRepository.createQuotation({
+    idempotencyKey: creationIdempotencyKey || undefined,
     rfqId,
     productId: quotationProductId || null,
     sellerId: seller._id,
     userId: session.userId,
     unitPrice: numericUnitPrice,
-    totalPrice:
-      totalPrice || Number(unitPrice || 0) * (suppliedQuantity || minimumOrderQuantity || 1),
+    totalPrice: submittedTotals?.finalTotal || 0,
     currency: resolvedCurrency,
     minimumOrderQuantity: Number(minimumOrderQuantity || 1),
     suppliedQuantity: Number(suppliedQuantity || minimumOrderQuantity || 1),
@@ -377,12 +416,12 @@ export async function createQuotation(session, body) {
     paymentTerms: paymentTerms || 'negotiable',
     advanceRequired: advanceRequired || 0,
     incoterms,
-    shippingCost: shippingCost || 0,
+    shippingCost: submittedTotals?.shippingCost || 0,
     shippingEstimate: shippingEstimate || null,
     shippingTerms,
     packaging,
     samplePrice: Number(samplePrice || 0),
-    taxes: taxes || {},
+    taxes: { ...(taxes || {}), amount: submittedTotals?.taxAmount || 0 },
     specialClauses: specialClauses || [],
     pricingTiers: pricingTiers || [],
     description,
@@ -395,12 +434,15 @@ export async function createQuotation(session, body) {
       expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     attachments: attachments || [],
     sellerMessage,
-    directOrderEnabled: enableDirectOrder === true || body.directOrderEnabled === true,
+    directOrderEnabled: false,
     status: saveAsDraft ? 'draft' : 'submitted',
     negotiationVersion: saveAsDraft ? 0 : 1,
     ...(!saveAsDraft ? { currentOffer: {
       action: 'submitted', actorId: session.userId, actorRole: 'seller', unitPrice: numericUnitPrice,
-      totalPrice: totalPrice || numericUnitPrice * (numericAvailableQuantity || numericMoq || 1),
+      productSubtotal: submittedTotals.productSubtotal,
+      shippingCost: submittedTotals.shippingCost,
+      taxAmount: submittedTotals.taxAmount,
+      totalPrice: submittedTotals.finalTotal,
       minimumOrderQuantity: numericMoq, suppliedQuantity: numericAvailableQuantity,
       leadTime: numericLeadTime, leadTimeUnit: leadTimeUnit || 'days', paymentTerms: paymentTerms || 'negotiable',
       incoterms, notes: sellerMessage || notes || '', createdAt: new Date(), sequence: 1,
@@ -414,15 +456,20 @@ export async function createQuotation(session, body) {
         idempotencyKey: String(body.idempotencyKey || '').trim() || undefined,
         message: sellerMessage || notes || 'Quotation submitted.',
         unitPrice: Number(unitPrice || 0),
-        totalPrice:
-          totalPrice || Number(unitPrice || 0) * (suppliedQuantity || minimumOrderQuantity || 1),
+        totalPrice: submittedTotals?.finalTotal || 0,
         minimumOrderQuantity: Number(minimumOrderQuantity || 1),
         suppliedQuantity,
         leadTime: Number(leadTime || 1),
         leadTimeUnit: leadTimeUnit || 'days',
       },
     ],
-  });
+    });
+  } catch (error) {
+    if (error?.code !== 11000 || !creationIdempotencyKey) throw error;
+    const replayedQuotation = await quotationRepository.findQuotationByIdempotencyKey(session.userId, creationIdempotencyKey);
+    if (!replayedQuotation) throw error;
+    return { quotation: replayedQuotation, reused: true, message: 'This quotation request was already processed' };
+  }
 
   if (saveAsDraft) return { quotation, message: 'Quotation draft saved' };
 
@@ -548,7 +595,6 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     expiryDate,
     attachments,
     sellerMessage,
-    enableDirectOrder,
   } = body;
 
   const freshness = await assertFreshNegotiation(existingQuotation, body);
@@ -565,6 +611,18 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     error.quotationId = existingQuotation._id;
     throw error;
   }
+
+  const revisionUnitPrice = commercialNumber(unitPrice, 'Unit price', { minimum: Number.EPSILON });
+  const revisionMoq = commercialNumber(minimumOrderQuantity, 'Minimum order quantity', { minimum: Number.EPSILON });
+  const revisionQuantity = commercialNumber(suppliedQuantity, 'Available quantity', { minimum: Number.EPSILON });
+  const revisionLeadTime = commercialNumber(leadTime, 'Lead time', { minimum: Number.EPSILON });
+  const revisionTotals = resolveOfferTotals(existingQuotation, {
+    unitPrice: revisionUnitPrice,
+    minimumOrderQuantity: revisionMoq,
+    suppliedQuantity: revisionQuantity,
+    shippingCost: shippingCost ?? existingQuotation.shippingCost,
+    taxes: taxes ?? existingQuotation.taxes,
+  });
 
   // Save revision history
   existingQuotation.revisionHistory.push({
@@ -597,27 +655,25 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
 
   // Update fields
   Object.assign(existingQuotation, {
-    unitPrice,
+    unitPrice: revisionUnitPrice,
     totalPrice:
-      totalPrice ||
-      unitPrice * (suppliedQuantity || minimumOrderQuantity) +
-        (shippingCost || 0),
-    currency: currency || existingQuotation.currency || 'INR',
-    minimumOrderQuantity,
-    suppliedQuantity,
-    leadTime,
+      revisionTotals.finalTotal,
+    currency: normalizeCurrency(currency || existingQuotation.currency || 'INR'),
+    minimumOrderQuantity: revisionMoq,
+    suppliedQuantity: revisionQuantity,
+    leadTime: revisionLeadTime,
     leadTimeUnit: leadTimeUnit || 'days',
     productionTime: productionTime ?? existingQuotation.productionTime,
     productionTimeUnit: productionTimeUnit || existingQuotation.productionTimeUnit || 'days',
     paymentTerms: paymentTerms || 'negotiable',
     advanceRequired: advanceRequired || 0,
     incoterms,
-    shippingCost: shippingCost || 0,
+    shippingCost: revisionTotals.shippingCost,
     shippingEstimate: shippingEstimate || existingQuotation.shippingEstimate,
     shippingTerms: shippingTerms ?? existingQuotation.shippingTerms,
     packaging: packaging ?? existingQuotation.packaging,
     samplePrice: samplePrice ?? existingQuotation.samplePrice,
-    taxes: taxes ?? existingQuotation.taxes,
+    taxes: { ...(taxes ?? existingQuotation.taxes?.toObject?.() ?? existingQuotation.taxes ?? {}), amount: revisionTotals.taxAmount },
     specialClauses: specialClauses ?? existingQuotation.specialClauses,
     pricingTiers: pricingTiers || existingQuotation.pricingTiers || [],
     description,
@@ -627,9 +683,7 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     customizationDetails,
     notes,
     sellerMessage,
-    directOrderEnabled: enableDirectOrder === undefined
-      ? existingQuotation.directOrderEnabled
-      : enableDirectOrder === true || body.directOrderEnabled === true,
+    directOrderEnabled: false,
     expiryDate: expiryDate || existingQuotation.expiryDate,
     attachments: attachments || existingQuotation.attachments || [],
     status:
@@ -745,7 +799,6 @@ export async function getQuotationDetail(session, quotationId) {
     error.statusCode = 404;
     throw error;
   }
-
   const isBuyer = quotation.rfqId.buyerId.toString() === session.userId;
   const isAuthorized =
     (isBuyer && quotation.status !== 'draft') ||
@@ -756,6 +809,7 @@ export async function getQuotationDetail(session, quotationId) {
     error.statusCode = 403;
     throw error;
   }
+  if (await expireQuotationIfNeeded(quotation)) quotation = await quotationRepository.findQuotationById(quotationId);
 
   const actorRole = quotation.rfqId.buyerId.toString() === session.userId ? 'buyer' : 'seller';
   const result = quotation.toObject();
@@ -797,6 +851,11 @@ export async function updateQuotation(session, quotationId, body) {
     throw error;
   }
 
+  const authorizationRfq = await quotationRepository.findRfqById(quotation.rfqId);
+  if (quotation.userId.toString() !== session.userId && authorizationRfq?.buyerId?.toString() !== session.userId) {
+    throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
+  }
+
   const freshness = await assertFreshNegotiation(quotation, body);
   if (freshness.existing) return { quotation, reused: true, message: 'This negotiation action was already processed' };
 
@@ -805,6 +864,10 @@ export async function updateQuotation(session, quotationId, body) {
     if (action === 'withdraw' && !['draft','pending','submitted','negotiating','countered','revision_requested','revised'].includes(quotation.status)) { const error = new Error('Quotation can no longer be withdrawn'); error.statusCode = 409; throw error; }
     if (action === 'send' && quotation.status !== 'draft') { const error = new Error('Only a draft quotation can be sent'); error.statusCode = 409; throw error; }
     quotation.status = action === 'withdraw' ? 'withdrawn' : 'submitted';
+    if (action === 'withdraw') {
+      quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+      quotation.negotiationHistory.push({ action: 'withdrawn', idempotencyKey: freshness.idempotencyKey || undefined, actorId: session.userId, actorRole: 'seller', message: reason || 'Seller withdrew the quotation.', notes: reason || 'Seller withdrew the quotation.', previousUnitPrice: quotationCurrentOffer(quotation).unitPrice, status: 'withdrawn' });
+    }
     if (action === 'send') {
       quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
       quotation.currentOffer = nextOffer(quotation, quotation, { action: 'submitted', actorId: session.userId, actorRole: 'seller', notes: reason || body.sellerMessage || 'Quotation submitted.', previousUnitPrice: undefined });
@@ -812,6 +875,14 @@ export async function updateQuotation(session, quotationId, body) {
     }
     quotation.activityTimeline.push({ action: action === 'withdraw' ? 'quotation_withdrawn' : 'quotation_sent', status: quotation.status, message: reason || body.sellerMessage || `Quotation ${action}`, actorId: session.userId, actorRole: 'seller' });
     await quotation.save();
+    if (action === 'withdraw') {
+      const rfq = await quotationRepository.findRfqById(quotation.rfqId);
+      if (rfq) {
+        const actionKey = freshness.idempotencyKey || `${quotation.negotiationVersion}`;
+        await quotationRepository.createNotification({ eventKey: `quotation-withdrawn:${quotation._id}:${actionKey}`, userId: rfq.buyerId, notificationType: 'quotation_cancelled', title: 'Quotation withdrawn', description: reason || 'The manufacturer withdrew this quotation.', data: { relatedId: quotation._id, relatedModel: 'Quotation', actionUrl: `/quotations/${quotation._id}` }, priority: 'high' });
+        await publishQuotationContext({ quotation, rfq, actorId: session.userId, receiverId: rfq.buyerId, deliveryKey: `quotation-withdrawn:${quotation._id}:${actionKey}`, content: `Quotation withdrawn\nReason: ${reason || 'The manufacturer withdrew this quotation.'}\nView quotation: /quotations/${quotation._id}` });
+      }
+    }
     if (action === 'send') {
       const rfq = await quotationRepository.findRfqById(quotation.rfqId);
       const seller = await quotationRepository.findSellerByUserId(session.userId);
@@ -851,20 +922,49 @@ export async function updateQuotation(session, quotationId, body) {
     if (quotation.userId.toString() !== session.userId) { const error = new Error('Only the seller can confirm the final quotation'); error.statusCode = 403; throw error; }
     const nextStatus = assertTransition({ type: 'quotation', status: quotation.status, action, actorRole: 'seller' });
     const previousStatus = quotation.status;
-    if (body.enableDirectOrder !== undefined || body.directOrderEnabled !== undefined) {
-      quotation.directOrderEnabled = body.enableDirectOrder === true || body.directOrderEnabled === true;
+    const lockedOffer = quotationCurrentOffer(quotation);
+    const lockedFields = {
+      unitPrice: lockedOffer.unitPrice ?? quotation.unitPrice,
+      suppliedQuantity: lockedOffer.suppliedQuantity ?? quotation.suppliedQuantity,
+      minimumOrderQuantity: lockedOffer.minimumOrderQuantity ?? quotation.minimumOrderQuantity,
+      leadTime: lockedOffer.leadTime ?? quotation.leadTime,
+      leadTimeUnit: lockedOffer.leadTimeUnit ?? quotation.leadTimeUnit,
+      paymentTerms: lockedOffer.paymentTerms ?? quotation.paymentTerms,
+      incoterms: lockedOffer.incoterms ?? quotation.incoterms,
+    };
+    for (const [field, lockedValue] of Object.entries(lockedFields)) {
+      if (body[field] !== undefined && String(body[field]) !== String(lockedValue)) {
+        throw Object.assign(new Error('Accepted commercial terms are locked. Reopen negotiation to request a change.'), { statusCode: 409, field });
+      }
+      quotation[field] = lockedValue;
     }
-    quotation.directOrderEnabledAt = quotation.directOrderEnabled ? new Date() : undefined;
-    const finalFields = ['suppliedQuantity','minimumOrderQuantity','unitPrice','totalPrice','packaging','shippingEstimate','leadTime','leadTimeUnit','productionTime','productionTimeUnit','paymentTerms','warranty','notes','specialClauses','attachments','shippingTerms','expiryDate'];
+    quotation.directOrderEnabled = false;
+    quotation.directOrderEnabledAt = undefined;
+    const finalFields = ['attachments'];
     for (const field of finalFields) if (body[field] !== undefined) quotation[field] = field === 'specialClauses' && !Array.isArray(body[field]) ? String(body[field]).split('\n').map(value => value.trim()).filter(Boolean) : body[field];
     if ([quotation.unitPrice, quotation.minimumOrderQuantity, quotation.suppliedQuantity, quotation.leadTime].some(value => !Number.isFinite(Number(value)) || Number(value) <= 0)) {
       throw Object.assign(new Error('Final Quotation requires valid Unit Price, MOQ, Available Quantity, and Lead Time'), { statusCode: 422 });
     }
-    quotation.totalPrice = Number(body.totalPrice || (Number(quotation.unitPrice || 0) * Number(quotation.suppliedQuantity || 0) + Number(quotation.shippingCost || 0) + Number(quotation.taxes?.amount || 0)));
+    quotation.totalPrice = resolveOfferTotals(quotation, quotation).finalTotal;
+    quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
+    quotation.negotiationHistory.push({
+      action: 'finalized',
+      idempotencyKey: freshness.idempotencyKey || undefined,
+      actorId: session.userId,
+      actorRole: 'seller',
+      message: reason || 'Seller finalized the accepted quotation terms.',
+      notes: reason || 'Seller finalized the accepted quotation terms.',
+      status: nextStatus,
+      unitPrice: quotation.unitPrice,
+      totalPrice: quotation.totalPrice,
+      minimumOrderQuantity: quotation.minimumOrderQuantity,
+      suppliedQuantity: quotation.suppliedQuantity,
+      leadTime: quotation.leadTime,
+      leadTimeUnit: quotation.leadTimeUnit,
+    });
     recordTransition(quotation, { type: 'quotation', action, fromStatus: previousStatus, toStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller confirmed the accepted commercial terms' });
     quotation.finalQuotation = { ...(quotation.finalQuotation?.toObject?.() || quotation.finalQuotation || {}), finalQuotationNumber: quotation.finalQuotation?.finalQuotationNumber || `FQ-${Date.now()}-${String(quotation._id).slice(-6).toUpperCase()}`, status: 'awaiting_seller_signature', preparedAt: new Date(), sellerSignedAt: null, buyerSignedAt: null, lockedAt: null };
     quotation.approvalHistory.push({ action: 'final_quotation_prepared', previousStatus, newStatus: nextStatus, actorId: session.userId, actorRole: 'seller', notes: reason || 'Seller prepared the Final Quotation' });
-    if (quotation.directOrderEnabled) quotation.activityTimeline.push({ action: 'direct_order_enabled', status: nextStatus, message: 'Seller enabled buyer checkout directly from this Final Quotation', actorId: session.userId, actorRole: 'seller' });
     const { finalRfq, document } = await createFinalQuotationDocument(quotation, session.userId, reason);
     const updated = await quotationRepository.findQuotationByIdLean(quotationId);
     await publishQuotationContext({ quotation: updated, rfq: finalRfq, actorId: session.userId, receiverId: finalRfq?.buyerId, content: `Final Quotation ${updated.finalQuotation?.finalQuotationNumber} was generated. The Seller signature is required before Buyer review.` });
@@ -893,10 +993,14 @@ export async function updateQuotation(session, quotationId, body) {
       const nextStatus = assertTransition({ type: 'quotation', status: previousStatus, action, actorRole: 'seller' });
       quotation.unitPrice = current.unitPrice;
       quotation.totalPrice = current.totalPrice;
+      quotation.shippingCost = current.shippingCost ?? quotation.shippingCost;
+      quotation.taxes = { ...(quotation.taxes?.toObject?.() || quotation.taxes || {}), amount: current.taxAmount ?? quotation.taxes?.amount ?? 0 };
       quotation.minimumOrderQuantity = current.minimumOrderQuantity || quotation.minimumOrderQuantity;
       quotation.suppliedQuantity = current.suppliedQuantity || quotation.suppliedQuantity;
       quotation.leadTime = current.leadTime || quotation.leadTime;
       quotation.leadTimeUnit = current.leadTimeUnit || quotation.leadTimeUnit;
+      quotation.paymentTerms = current.paymentTerms || quotation.paymentTerms;
+      quotation.incoterms = current.incoterms || quotation.incoterms;
       quotation.status = nextStatus;
       quotation.previousStatus = previousStatus;
       quotation.acceptedAt = new Date();
@@ -951,7 +1055,6 @@ export async function updateQuotation(session, quotationId, body) {
 
     const counterFields = {
       unitPrice: body.unitPrice,
-      totalPrice: body.totalPrice,
       minimumOrderQuantity: body.minimumOrderQuantity,
       suppliedQuantity: body.suppliedQuantity,
       leadTime: body.leadTime,
@@ -990,6 +1093,17 @@ export async function updateQuotation(session, quotationId, body) {
       actorRole: 'buyer',
       message: reason || body.buyerMessage || 'Buyer requested changes.',
       previousUnitPrice: previousOffer.unitPrice,
+      ...(offer ? {
+        unitPrice: offer.unitPrice,
+        productSubtotal: offer.productSubtotal,
+        shippingCost: offer.shippingCost,
+        taxAmount: offer.taxAmount,
+        totalPrice: offer.totalPrice,
+        minimumOrderQuantity: offer.minimumOrderQuantity,
+        suppliedQuantity: offer.suppliedQuantity,
+        leadTime: offer.leadTime,
+        leadTimeUnit: offer.leadTimeUnit,
+      } : {}),
       ...Object.fromEntries(
         Object.entries(counterFields).filter(
           ([, value]) => value !== undefined && value !== ''
@@ -1067,13 +1181,15 @@ export async function updateQuotation(session, quotationId, body) {
   }
 
   const allowedFields = [
-    'unitPrice', 'totalPrice', 'leadTime', 'leadTimeUnit', 'productionTime', 'productionTimeUnit',
+    'unitPrice', 'leadTime', 'leadTimeUnit', 'productionTime', 'productionTimeUnit',
     'paymentTerms', 'advanceRequired', 'minimumOrderQuantity',
     'suppliedQuantity', 'incoterms', 'shippingCost', 'shippingEstimate', 'shippingTerms',
     'pricingTiers', 'description', 'specifications',
     'customizationAvailable', 'customizationDetails', 'notes',
     'sellerMessage', 'attachments', 'packaging', 'samplePrice', 'taxes', 'specialClauses',
   ];
+
+  const previousOffer = quotationCurrentOffer(quotation);
 
   quotation.revisionHistory.push({
     version: quotation.revisionNumber,
@@ -1110,10 +1226,12 @@ export async function updateQuotation(session, quotationId, body) {
     throw Object.assign(new Error('Unit price, MOQ, available quantity, and lead time must be valid positive numbers'), { statusCode: 422 });
   }
 
-  const previousOffer = quotationCurrentOffer(quotation);
   quotation.revisionNumber += 1;
   const previousStatus = quotation.status;
   quotation.status = previousStatus === 'draft' ? 'draft' : 'revised';
+  const revisionTotals = resolveOfferTotals(quotation, quotation);
+  quotation.totalPrice = revisionTotals.finalTotal;
+  quotation.taxes = { ...(quotation.taxes?.toObject?.() || quotation.taxes || {}), amount: revisionTotals.taxAmount };
   quotation.negotiationHistory.push({
     action: 'seller_revision',
     idempotencyKey: freshness.idempotencyKey || undefined,
@@ -1122,16 +1240,16 @@ export async function updateQuotation(session, quotationId, body) {
     message: body.sellerMessage || body.notes || 'Seller revised the quotation.',
     previousUnitPrice: previousOffer.unitPrice,
     unitPrice: quotation.unitPrice,
-    totalPrice: quotation.totalPrice,
+    productSubtotal: revisionTotals.productSubtotal,
+    shippingCost: revisionTotals.shippingCost,
+    taxAmount: revisionTotals.taxAmount,
+    totalPrice: revisionTotals.finalTotal,
     minimumOrderQuantity: quotation.minimumOrderQuantity,
     suppliedQuantity: quotation.suppliedQuantity,
     leadTime: quotation.leadTime,
     leadTimeUnit: quotation.leadTimeUnit,
   });
 
-  quotation.totalPrice = body.totalPrice !== undefined
-    ? Number(body.totalPrice)
-    : Number(quotation.unitPrice) * Number(quotation.suppliedQuantity || quotation.minimumOrderQuantity || 1) + Number(quotation.shippingCost || 0);
   quotation.negotiationVersion = Number(quotation.negotiationVersion || 0) + 1;
   quotation.currentOffer = nextOffer(quotation, quotation, {
     action: 'seller_revision', actorId: session.userId, actorRole: 'seller',
@@ -1183,14 +1301,13 @@ export async function respondToQuotation(session, quotationId, body) {
     throw error;
   }
 
-  const freshness = await assertFreshNegotiation(quotation, body);
-  if (freshness.existing) return { quotation, reused: true, tradeOrder: null, message: 'This negotiation action was already processed' };
-
   if (quotation.rfqId.buyerId.toString() !== session.userId) {
     const error = new Error('Only RFQ creator can respond to quotations');
     error.statusCode = 403;
     throw error;
   }
+  const freshness = await assertFreshNegotiation(quotation, body);
+  if (freshness.existing) return { quotation, reused: true, tradeOrder: null, message: 'This negotiation action was already processed' };
 
   if (!['accept', 'reject'].includes(action)) {
     const error = new Error('Invalid action');
@@ -1350,8 +1467,8 @@ async function createFinalQuotationDocument(quotation, sellerUserId, reason) {
     documentType: 'quotation',
     title: `Final Quotation ${quotation.finalQuotation.finalQuotationNumber}`,
     requiresSellerSignature: true,
-    requiresBuyerSignature: !quotation.directOrderEnabled,
-    metadata: { isFinalQuotation: true, finalQuotationNumber: quotation.finalQuotation.finalQuotationNumber, directOrderEnabled: Boolean(quotation.directOrderEnabled) },
+    requiresBuyerSignature: true,
+    metadata: { isFinalQuotation: true, finalQuotationNumber: quotation.finalQuotation.finalQuotationNumber, directOrderEnabled: false },
     notes: reason || 'Seller prepared the Final Quotation',
     content,
   });
