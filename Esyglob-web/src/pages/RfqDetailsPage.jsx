@@ -66,7 +66,209 @@ export default function RfqDetailsPage() {
   if (query.loading) return <AppShell><div className="listing-page container"><TradeSkeleton /></div></AppShell>
   if (query.error || !data.rfq) return <AppShell><div className="listing-page container"><div className="inline-error">{query.error?.message || 'RFQ not found.'}</div></div></AppShell>
   const attachments = [...(rfq.attachments || []), ...(rfq.images || []), ...(rfq.documents || [])]
-  return <AppShell><div className="detail-page container trade-page"><button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Back to RFQs</button><section className="rfq-detail-hero"><div><div className="trade-heading-line"><span className="eyebrow">{rfq.rfqNumber || 'Request for quotation'}</span><StatusBadge status={rfq.status || 'active'} /></div><h1>{rfq.title || rfq.productName}</h1><p>{rfq.description}</p><div className="rfq-meta"><span><Calendar /> Submitted {new Date(rfq.createdAt).toLocaleDateString()}</span><span><MapPin /> {rfq.deliveryCountry || rfq.destinationCountry}</span><span><ShieldCheck /> {rfq.isVerifiedSuppliersOnly ? 'Verified suppliers only' : 'Public marketplace'}</span></div></div><div className="rfq-detail-actions">{sellerView ? <><button className="button button--secondary" onClick={() => openChat()}><MessageSquare /> Chat with buyer</button>{!rfq.sellerWorkflow?.accepted && <button className="button button--primary" onClick={() => action('accept')}><ShieldCheck /> Accept RFQ</button>}<button className="button button--secondary" onClick={() => action('request_information')}><MessageSquare /> Request information</button>{rfq.sellerWorkflow?.accepted && <button className="button button--primary" onClick={() => setQuoteOpen(true)}><Send /> Start quotation</button>}<button className="danger-text" onClick={() => action('decline')}>Decline RFQ</button></> : <><button className="button button--secondary" onClick={() => openChat(data.quotations?.[0])} disabled={!data.quotations?.length}><MessageSquare /> Continue chat</button>{['active','draft','closed'].includes(rfq.status) && <button className="button button--secondary" onClick={() => action(rfq.status === 'closed' ? 'reopen' : 'close')}>{rfq.status === 'closed' ? 'Reopen' : 'Close'}</button>}{['information_requested','rejected'].includes(rfq.status) && <button className="button button--primary" onClick={() => action('resubmit')}><Send /> Revise and resubmit</button>}<button className="danger-text" onClick={() => action('cancel')}>Cancel RFQ</button><button className="icon-danger" onClick={() => action('archive')}><Archive /></button></>}</div></section>{error && <p className="action-error">{error}</p>}{message && <p className="action-success">{message}</p>}<div className="detail-columns"><div><section className="detail-card"><h2>Requirements</h2><dl className="trade-detail-grid"><DetailItem label="Category">{rfq.category}{rfq.subcategory ? ` / ${rfq.subcategory}` : ''}</DetailItem><DetailItem label="Quantity">{rfq.quantity} {rfq.unit}</DetailItem><DetailItem label="Target price"><Money value={rfq.targetPrice} currency={rfq.currency} /></DetailItem><DetailItem label="Minimum order">{rfq.minimumOrderQuantity ? `${rfq.minimumOrderQuantity} ${rfq.unit}` : 'Flexible'}</DetailItem><DetailItem label="Delivery timeline">{rfq.deliveryTimeline}</DetailItem><DetailItem label="Incoterms">{rfq.incoterms}</DetailItem><DetailItem label="Delivery port">{rfq.deliveryPort}</DetailItem><DetailItem label="Deadline">{rfq.deadline || rfq.expiresAt ? new Date(rfq.deadline || rfq.expiresAt).toLocaleDateString() : undefined}</DetailItem></dl>{rfq.specifications && <div className="requirement-copy"><h3>Specifications</h3><p>{rfq.specifications}</p></div>}</section>{rfq.items?.length > 0 && <section className="detail-card"><h2>Line items</h2><div className="line-item-list">{rfq.items.map((item, index) => <article key={index}><PackageCheck /><div><b>{item.name || `Item ${index + 1}`}</b><p>{item.specifications}</p></div><span>{item.quantity} {item.unit}</span></article>)}</div></section>}{attachments.length > 0 && <section className="detail-card"><h2>Attachments</h2><div className="attachment-list">{attachments.map((file, index) => <a href={file.url || file} target="_blank" rel="noreferrer" key={index}><FileText /> {file.filename || file.name || `Attachment ${index + 1}`}</a>)}</div></section>}</div><aside className="detail-card"><h2>{sellerView ? 'Buyer summary' : 'RFQ progress'}</h2>{sellerView ? <><p>{displayName(rfq.buyerId, 'Marketplace buyer')}</p><p>Review all requirements before submitting a commercial offer. Your quotation will automatically create or update the RFQ negotiation conversation.</p></> : <div className="rfq-timeline">{['RFQ submitted', 'Relevant sellers notified', data.quotations?.length ? `${data.quotations.length} quotation(s) received` : 'Awaiting quotations', rfq.status === 'converted' ? 'Converted to order' : 'Negotiation / selection'].map((item, index) => <span className={index < 2 || (index === 2 && data.quotations?.length) ? 'done' : ''} key={item}><i />{item}</span>)}</div>}</aside></div>{!sellerView && <section className="trade-section"><div className="compact-heading"><h2>Supplier quotations</h2>{data.quotations?.length > 1 && <Link to={`/quotations/compare?ids=${data.quotations.map(resolveId).join(',')}`}>Compare offers</Link>}</div>{data.quotations?.length ? <div className="quotation-grid">{data.quotations.map((quote) => <QuotationPreview key={resolveId(quote)} quote={quote} onChat={() => openChat(quote)} />)}</div> : <div className="empty-panel"><Send /><h3>No quotations received yet</h3><p>Matching sellers can review and respond while this RFQ is active.</p></div>}</section>}</div>{quoteOpen && <QuotationForm rfq={rfq} onClose={() => setQuoteOpen(false)} onSuccess={(quotation) => navigate(`/quotations/${resolveId(quotation)}?role=seller`)} />}</AppShell>
+  const nextActionText = sellerView
+    ? (!rfq.sellerWorkflow?.accepted
+      ? 'Accept this RFQ to unlock quotation preparation and the deal-specific product configuration workflow.'
+      : 'This RFQ is live. Prepare a commercial response and define the exact product configuration for the deal.')
+    : (['information_requested', 'rejected'].includes(rfq.status)
+      ? 'The buyer is still waiting for your updated response and revised details.'
+      : 'Monitor the supplier response, compare quoted terms, and keep the transaction-specific specifications aligned with the final agreement.')
+  return (
+    <AppShell>
+      <div className="detail-page container trade-page">
+        <button className="back-link" onClick={() => navigate(-1)}>
+          <ArrowLeft /> Back to RFQs
+        </button>
+        <section className="rfq-detail-hero">
+          <div>
+            <div className="trade-heading-line">
+              <span className="eyebrow">{rfq.rfqNumber || 'Request for quotation'}</span>
+              <StatusBadge status={rfq.status || 'active'} />
+            </div>
+            <h1>{rfq.title || rfq.productName}</h1>
+            <p>{rfq.description}</p>
+            <div className="rfq-meta">
+              <span><Calendar /> Submitted {new Date(rfq.createdAt).toLocaleDateString()}</span>
+              <span><MapPin /> {rfq.deliveryCountry || rfq.destinationCountry}</span>
+              <span><ShieldCheck /> {rfq.isVerifiedSuppliersOnly ? 'Verified suppliers only' : 'Public marketplace'}</span>
+            </div>
+          </div>
+          <div className="rfq-detail-side">
+            <div className="rfq-detail-summary">
+              <span>RFQ snapshot</span>
+              <strong>{Number(rfq.quantity || 0).toLocaleString()} {rfq.unit || 'units'}</strong>
+              <small>{rfq.deliveryCountry || rfq.destinationCountry || 'Destination not specified'}</small>
+              <p>{nextActionText}</p>
+            </div>
+            <div className="rfq-detail-actions">
+              {sellerView ? (
+                <>
+                  <button className="button button--secondary" onClick={() => openChat()}>
+                    <MessageSquare /> Chat with buyer
+                  </button>
+                  {!rfq.sellerWorkflow?.accepted && (
+                    <button className="button button--primary" onClick={() => action('accept')}>
+                      <ShieldCheck /> Accept RFQ
+                    </button>
+                  )}
+                  <button className="button button--secondary" onClick={() => action('request_information')}>
+                    <MessageSquare /> Request information
+                  </button>
+                  {rfq.sellerWorkflow?.accepted && (
+                    <button className="button button--primary" onClick={() => setQuoteOpen(true)}>
+                      <Send /> Start quotation
+                    </button>
+                  )}
+                  <button className="danger-text" onClick={() => action('decline')}>
+                    Decline RFQ
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="button button--secondary" onClick={() => openChat(data.quotations?.[0])} disabled={!data.quotations?.length}>
+                    <MessageSquare /> Continue chat
+                  </button>
+                  {['active', 'draft', 'closed'].includes(rfq.status) && (
+                    <button className="button button--secondary" onClick={() => action(rfq.status === 'closed' ? 'reopen' : 'close')}>
+                      {rfq.status === 'closed' ? 'Reopen' : 'Close'}
+                    </button>
+                  )}
+                  {['information_requested', 'rejected'].includes(rfq.status) && (
+                    <button className="button button--primary" onClick={() => action('resubmit')}>
+                      <Send /> Revise and resubmit
+                    </button>
+                  )}
+                  <button className="danger-text" onClick={() => action('cancel')}>
+                    Cancel RFQ
+                  </button>
+                  <button className="icon-danger" onClick={() => action('archive')}>
+                    <Archive />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+        {error && <p className="action-error">{error}</p>}
+        {message && <p className="action-success">{message}</p>}
+        <div className="detail-columns">
+          <div>
+            <section className="detail-card">
+              <h2>Requirements</h2>
+              <dl className="trade-detail-grid">
+                <DetailItem label="Category">
+                  {rfq.category}
+                  {rfq.subcategory ? ` / ${rfq.subcategory}` : ''}
+                </DetailItem>
+                <DetailItem label="Quantity">{rfq.quantity} {rfq.unit}</DetailItem>
+                <DetailItem label="Target price">
+                  <Money value={rfq.targetPrice} currency={rfq.currency} />
+                </DetailItem>
+                <DetailItem label="Minimum order">
+                  {rfq.minimumOrderQuantity ? `${rfq.minimumOrderQuantity} ${rfq.unit}` : 'Flexible'}
+                </DetailItem>
+                <DetailItem label="Delivery timeline">{rfq.deliveryTimeline}</DetailItem>
+                <DetailItem label="Incoterms">{rfq.incoterms}</DetailItem>
+                <DetailItem label="Delivery port">{rfq.deliveryPort}</DetailItem>
+                <DetailItem label="Deadline">
+                  {rfq.deadline || rfq.expiresAt ? new Date(rfq.deadline || rfq.expiresAt).toLocaleDateString() : undefined}
+                </DetailItem>
+              </dl>
+              {rfq.specifications && (
+                <div className="requirement-copy">
+                  <h3>Specifications</h3>
+                  <p>{rfq.specifications}</p>
+                </div>
+              )}
+            </section>
+            {rfq.items?.length > 0 && (
+              <section className="detail-card">
+                <h2>Line items</h2>
+                <div className="line-item-list">
+                  {rfq.items.map((item, index) => (
+                    <article key={index}>
+                      <PackageCheck />
+                      <div>
+                        <b>{item.name || `Item ${index + 1}`}</b>
+                        <p>{item.specifications}</p>
+                      </div>
+                      <span>{item.quantity} {item.unit}</span>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+            {attachments.length > 0 && (
+              <section className="detail-card">
+                <h2>Attachments</h2>
+                <div className="attachment-list">
+                  {attachments.map((file, index) => (
+                    <a href={file.url || file} target="_blank" rel="noreferrer" key={index}>
+                      <FileText /> {file.filename || file.name || `Attachment ${index + 1}`}
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+          <aside className="detail-card">
+            <h2>{sellerView ? 'Buyer summary' : 'RFQ progress'}</h2>
+            {sellerView ? (
+              <>
+                <p>{displayName(rfq.buyerId, 'Marketplace buyer')}</p>
+                <p>
+                  Review all requirements before submitting a commercial offer. Your quotation will automatically create or update the RFQ negotiation conversation.
+                </p>
+              </>
+            ) : (
+              <div className="rfq-timeline">
+                {['RFQ submitted', 'Relevant sellers notified', data.quotations?.length ? `${data.quotations.length} quotation(s) received` : 'Awaiting quotations', rfq.status === 'converted' ? 'Converted to order' : 'Negotiation / selection'].map(
+                  (item, index) => (
+                    <span className={index < 2 || (index === 2 && data.quotations?.length) ? 'done' : ''} key={item}>
+                      <i />
+                      {item}
+                    </span>
+                  )
+                )}
+              </div>
+            )}
+          </aside>
+        </div>
+        {!sellerView && (
+          <section className="trade-section">
+            <div className="compact-heading">
+              <h2>Supplier quotations</h2>
+              {data.quotations?.length > 1 && (
+                <Link to={`/quotations/compare?ids=${data.quotations.map(resolveId).join(',')}`}>
+                  Compare offers
+                </Link>
+              )}
+            </div>
+            {data.quotations?.length ? (
+              <div className="quotation-grid">
+                {data.quotations.map((quote) => (
+                  <QuotationPreview key={resolveId(quote)} quote={quote} onChat={() => openChat(quote)} />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-panel">
+                <Send />
+                <h3>No quotations received yet</h3>
+                <p>Matching sellers can review and respond while this RFQ is active.</p>
+              </div>
+            )}
+          </section>
+        )}
+        {quoteOpen && (
+          <QuotationForm
+            rfq={rfq}
+            onClose={() => setQuoteOpen(false)}
+            onSuccess={(quotation) => navigate(`/quotations/${resolveId(quotation)}?role=seller`)}
+          />
+        )}
+      </div>
+    </AppShell>
+  )
 }
 
 function QuotationPreview({ quote, onChat }) {
@@ -84,6 +286,15 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
   const [error, setError] = useState('')
   const [form, setForm] = useState({
     productId: fixedProductId,
+    productName: rfq.title || '',
+    productDescription: rfq.description || '',
+    productSpecifications: rfq.specifications || '',
+    material: '',
+    size: '',
+    color: '',
+    finish: '',
+    packaging: '',
+    customNotes: '',
     unitPrice: '',
     currency: rfq.currency || 'INR',
     minimumOrderQuantity: rfq.minimumOrderQuantity || 1,
@@ -112,11 +323,34 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
     setBusy(true)
     setError('')
     try {
+      const selectedProduct = manufacturerProducts.find((product) => resolveId(product) === form.productId) || null
+      const productConfiguration = {
+        productId: form.productId || undefined,
+        image: selectedProduct?.images?.[0]?.url || selectedProduct?.images?.[0] || '',
+        name: form.productName || selectedProduct?.name || rfq.title || 'Configured product',
+        description: form.productDescription || selectedProduct?.description || rfq.description || '',
+        specifications: form.productSpecifications || selectedProduct?.specifications || rfq.specifications || '',
+        material: form.material || '',
+        size: form.size || '',
+        color: form.color || '',
+        finish: form.finish || '',
+        packaging: form.packaging || '',
+        customNotes: form.customNotes || form.sellerMessage || '',
+        quantity: Number(form.suppliedQuantity),
+        minimumOrderQuantity: Number(form.minimumOrderQuantity),
+        unitPrice: Number(form.unitPrice),
+        currency: form.currency || rfq.currency || 'INR',
+        leadTime: Number(form.leadTime),
+        leadTimeUnit: form.leadTimeUnit || 'days',
+        paymentTerms: form.paymentTerms || 'negotiable',
+        shippingTerms: form.shippingTerms || '',
+      }
       const quotation = await createQuotation({
         idempotencyKey: requestKey.current,
         rfqId: resolveId(rfq),
         status,
         ...form,
+        productConfiguration,
         unitPrice: Number(form.unitPrice),
         suppliedQuantity: Number(form.suppliedQuantity),
         minimumOrderQuantity: Number(form.minimumOrderQuantity),
@@ -146,6 +380,22 @@ function QuotationForm({ rfq, onClose, onSuccess }) {
       <Field label="Shipping method"><input value={form.shippingTerms} onChange={(event) => update('shippingTerms', event.target.value)} placeholder="Air, sea, courier…" /></Field>
       <Field label="Payment terms"><input value={form.paymentTerms} onChange={(event) => update('paymentTerms', event.target.value)} /></Field>
     </div>
+    <div className="requirement-copy"><h3>Deal product configuration</h3><p>Define the product details for this specific RFQ deal. The buyer does not need to enter supplier-specific product details.</p></div>
+    <div className="form-grid form-grid--3">
+      <Field label="Deal product name"><input value={form.productName} onChange={(event) => update('productName', event.target.value)} placeholder={rfq.title || 'Configured product'} /></Field>
+      <Field label="Material"><input value={form.material} onChange={(event) => update('material', event.target.value)} placeholder="Example: Stainless steel" /></Field>
+      <Field label="Finish"><input value={form.finish} onChange={(event) => update('finish', event.target.value)} placeholder="Example: Powder coated" /></Field>
+    </div>
+    <div className="form-grid form-grid--3">
+      <Field label="Size / model"><input value={form.size} onChange={(event) => update('size', event.target.value)} placeholder="Example: 120x80 cm" /></Field>
+      <Field label="Color"><input value={form.color} onChange={(event) => update('color', event.target.value)} placeholder="Example: Black" /></Field>
+      <Field label="Packaging"><input value={form.packaging} onChange={(event) => update('packaging', event.target.value)} placeholder="Example: export carton" /></Field>
+    </div>
+    <div className="form-grid">
+      <Field label="Product description"><textarea rows="2" value={form.productDescription} onChange={(event) => update('productDescription', event.target.value)} placeholder="Describe the exact product being offered for this deal" /></Field>
+      <Field label="Technical specifications"><textarea rows="2" value={form.productSpecifications} onChange={(event) => update('productSpecifications', event.target.value)} placeholder="Include key dimensions, tolerances, or technical attributes" /></Field>
+    </div>
+    <Field label="Custom notes for this deal"><textarea rows="2" value={form.customNotes} onChange={(event) => update('customNotes', event.target.value)} placeholder="Example: custom logo, certification requirements, or QA notes" /></Field>
     <Field label="Commercial notes"><textarea rows="3" value={form.sellerMessage} onChange={(event) => update('sellerMessage', event.target.value)} /></Field>
     <AttachmentUploader folder="quotations" value={attachments} onChange={setAttachments} />
     <div className="quote-total"><span>Quotation total</span><b><Money value={total} currency={form.currency} /></b></div>

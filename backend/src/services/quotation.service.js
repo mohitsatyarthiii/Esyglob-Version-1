@@ -55,6 +55,50 @@ export function quotationCurrentOffer(quotation) {
   };
 }
 
+export function resolveProductConfiguration(quotation, fallbackProduct = null) {
+  const history = Array.isArray(quotation?.productConfigurationHistory) ? quotation.productConfigurationHistory : [];
+  const latestHistoryEntry = history.length ? history[history.length - 1] : null;
+  const historySnapshot = latestHistoryEntry?.snapshot && typeof latestHistoryEntry.snapshot === 'object'
+    ? latestHistoryEntry.snapshot
+    : null;
+  const currentConfig = quotation?.productConfiguration && typeof quotation.productConfiguration === 'object'
+    ? quotation.productConfiguration
+    : {};
+  const productValues = {
+    ...(fallbackProduct && typeof fallbackProduct === 'object' ? fallbackProduct : {}),
+    ...(historySnapshot || {}),
+    ...(currentConfig || {}),
+  };
+
+  const resolved = {
+    productId: quotation?.productId || fallbackProduct?._id || fallbackProduct?.id || null,
+    name: productValues.name || productValues.productName || fallbackProduct?.name || quotation?.title || '',
+    image: productValues.image || productValues.imageUrl || fallbackProduct?.images?.[0] || fallbackProduct?.image || '',
+    description: productValues.description || fallbackProduct?.description || quotation?.description || '',
+    specifications: productValues.specifications || fallbackProduct?.specifications || quotation?.specifications || '',
+    material: productValues.material || '',
+    size: productValues.size || '',
+    dimensions: productValues.dimensions || '',
+    color: productValues.color || '',
+    finish: productValues.finish || '',
+    grade: productValues.grade || productValues.model || '',
+    customization: productValues.customization || '',
+    packaging: productValues.packaging || '',
+    quantity: Number(productValues.quantity ?? quotation?.suppliedQuantity ?? fallbackProduct?.stockQuantity ?? 1) || 1,
+    minimumOrderQuantity: Number(productValues.minimumOrderQuantity ?? quotation?.minimumOrderQuantity ?? fallbackProduct?.minimumOrderQuantity ?? 1) || 1,
+    unitPrice: Number(productValues.unitPrice ?? quotation?.unitPrice ?? fallbackProduct?.price ?? 0) || 0,
+    currency: productValues.currency || quotation?.currency || fallbackProduct?.currency || 'INR',
+    leadTime: Number(productValues.leadTime ?? quotation?.leadTime ?? fallbackProduct?.leadTime?.value ?? 0) || 0,
+    leadTimeUnit: productValues.leadTimeUnit || quotation?.leadTimeUnit || fallbackProduct?.leadTime?.unit || 'days',
+    paymentTerms: productValues.paymentTerms || quotation?.paymentTerms || fallbackProduct?.paymentTerms || 'negotiable',
+    shippingTerms: productValues.shippingTerms || quotation?.shippingTerms || '',
+    customNotes: productValues.customNotes || productValues.notes || quotation?.sellerMessage || quotation?.notes || '',
+    ...productValues,
+  };
+
+  return resolved;
+}
+
 async function expireQuotationIfNeeded(quotation) {
   if (quotation.expiryDate && new Date(quotation.expiryDate) <= new Date() && NEGOTIABLE_QUOTATION_STATUSES.has(quotation.status)) {
     const previousStatus = quotation.status;
@@ -269,6 +313,7 @@ export async function createQuotation(session, body) {
     expiryDate,
     attachments,
     sellerMessage,
+    productConfiguration,
   } = body;
 
   const moderation = validateNoContactInfo({
@@ -369,6 +414,25 @@ export async function createQuotation(session, body) {
     throw error;
   }
 
+  const normalizedProductConfiguration = {
+    ...((productConfiguration && typeof productConfiguration === 'object') ? productConfiguration : {}),
+    productId: quotationProductId || offeredProduct?._id || rfq.productId || null,
+    name: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.name) || offeredProduct?.name || rfq.title || 'Configured product',
+    image: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.image) || offeredProduct?.images?.[0] || rfq.images?.[0]?.url || '',
+    description: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.description) || description || offeredProduct?.description || rfq.description || '',
+    specifications: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.specifications) || specifications || offeredProduct?.specifications || rfq.specifications || '',
+    quantity: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.quantity : suppliedQuantity) ?? numericAvailableQuantity ?? rfq.quantity ?? 1)) || 1,
+    minimumOrderQuantity: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.minimumOrderQuantity : minimumOrderQuantity) ?? numericMoq ?? offeredProduct?.minimumOrderQuantity ?? rfq.minimumOrderQuantity ?? 1)) || 1,
+    unitPrice: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.unitPrice : unitPrice) ?? numericUnitPrice ?? 0)) || 0,
+    currency: normalizeCurrency((productConfiguration && typeof productConfiguration === 'object' && productConfiguration.currency) || currency || rfq.currency || 'INR'),
+    leadTime: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.leadTime : leadTime) ?? numericLeadTime ?? 0)) || 0,
+    leadTimeUnit: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.leadTimeUnit) || leadTimeUnit || 'days',
+    paymentTerms: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.paymentTerms) || paymentTerms || 'negotiable',
+    shippingTerms: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.shippingTerms) || shippingTerms || '',
+    packaging: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.packaging) || packaging || '',
+    customNotes: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.customNotes) || sellerMessage || notes || '',
+  };
+
   const creationIdempotencyKey = String(body.idempotencyKey || '').trim();
   if (creationIdempotencyKey) {
     const replayedQuotation = await quotationRepository.findQuotationByIdempotencyKey(session.userId, creationIdempotencyKey);
@@ -434,6 +498,13 @@ export async function createQuotation(session, body) {
       expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     attachments: attachments || [],
     sellerMessage,
+    productConfiguration: normalizedProductConfiguration,
+    productConfigurationHistory: [{
+      version: 1,
+      createdAt: new Date(),
+      changedFields: Object.keys(normalizedProductConfiguration),
+      snapshot: normalizedProductConfiguration,
+    }],
     directOrderEnabled: false,
     status: saveAsDraft ? 'draft' : 'submitted',
     negotiationVersion: saveAsDraft ? 0 : 1,
@@ -612,10 +683,30 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
     throw error;
   }
 
+  const previousConfiguration = resolveProductConfiguration(existingQuotation);
   const revisionUnitPrice = commercialNumber(unitPrice, 'Unit price', { minimum: Number.EPSILON });
   const revisionMoq = commercialNumber(minimumOrderQuantity, 'Minimum order quantity', { minimum: Number.EPSILON });
   const revisionQuantity = commercialNumber(suppliedQuantity, 'Available quantity', { minimum: Number.EPSILON });
   const revisionLeadTime = commercialNumber(leadTime, 'Lead time', { minimum: Number.EPSILON });
+  const nextProductConfiguration = {
+    ...(previousConfiguration || {}),
+    ...(productConfiguration && typeof productConfiguration === 'object' ? productConfiguration : {}),
+    productId: existingQuotation.productId || rfq.productId || null,
+    name: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.name) || previousConfiguration.name || existingQuotation.description || rfq.title || 'Configured product',
+    image: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.image) || previousConfiguration.image || '',
+    description: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.description) || description || previousConfiguration.description || existingQuotation.description || rfq.description || '',
+    specifications: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.specifications) || specifications || previousConfiguration.specifications || existingQuotation.specifications || rfq.specifications || '',
+    quantity: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.quantity : suppliedQuantity) ?? revisionQuantity ?? previousConfiguration.quantity ?? existingQuotation.suppliedQuantity ?? rfq.quantity ?? 1)) || 1,
+    minimumOrderQuantity: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.minimumOrderQuantity : minimumOrderQuantity) ?? revisionMoq ?? previousConfiguration.minimumOrderQuantity ?? existingQuotation.minimumOrderQuantity ?? rfq.minimumOrderQuantity ?? 1)) || 1,
+    unitPrice: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.unitPrice : unitPrice) ?? revisionUnitPrice ?? previousConfiguration.unitPrice ?? existingQuotation.unitPrice ?? 0)) || 0,
+    currency: normalizeCurrency((productConfiguration && typeof productConfiguration === 'object' && productConfiguration.currency) || currency || previousConfiguration.currency || existingQuotation.currency || rfq.currency || 'INR'),
+    leadTime: Number(((productConfiguration && typeof productConfiguration === 'object' ? productConfiguration.leadTime : leadTime) ?? revisionLeadTime ?? previousConfiguration.leadTime ?? existingQuotation.leadTime ?? 0)) || 0,
+    leadTimeUnit: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.leadTimeUnit) || leadTimeUnit || previousConfiguration.leadTimeUnit || existingQuotation.leadTimeUnit || 'days',
+    paymentTerms: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.paymentTerms) || paymentTerms || previousConfiguration.paymentTerms || existingQuotation.paymentTerms || 'negotiable',
+    shippingTerms: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.shippingTerms) || shippingTerms || previousConfiguration.shippingTerms || existingQuotation.shippingTerms || '',
+    packaging: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.packaging) || packaging || previousConfiguration.packaging || existingQuotation.packaging || '',
+    customNotes: (productConfiguration && typeof productConfiguration === 'object' && productConfiguration.customNotes) || sellerMessage || notes || previousConfiguration.customNotes || existingQuotation.sellerMessage || '',
+  };
   const revisionTotals = resolveOfferTotals(existingQuotation, {
     unitPrice: revisionUnitPrice,
     minimumOrderQuantity: revisionMoq,
@@ -625,6 +716,15 @@ async function reviseExistingQuotation(existingQuotation, session, seller, rfq, 
   });
 
   // Save revision history
+  const changedConfigurationFields = Object.keys(nextProductConfiguration).filter((key) => JSON.stringify(nextProductConfiguration[key]) !== JSON.stringify(previousConfiguration[key]));
+  existingQuotation.productConfiguration = nextProductConfiguration;
+  existingQuotation.productConfigurationHistory.push({
+    version: (existingQuotation.productConfigurationHistory?.length || 0) + 1,
+    createdAt: new Date(),
+    changedFields: changedConfigurationFields,
+    snapshot: nextProductConfiguration,
+  });
+
   existingQuotation.revisionHistory.push({
     revisedAt: new Date(),
     revisedBy: session.userId,
@@ -1186,10 +1286,38 @@ export async function updateQuotation(session, quotationId, body) {
     'suppliedQuantity', 'incoterms', 'shippingCost', 'shippingEstimate', 'shippingTerms',
     'pricingTiers', 'description', 'specifications',
     'customizationAvailable', 'customizationDetails', 'notes',
-    'sellerMessage', 'attachments', 'packaging', 'samplePrice', 'taxes', 'specialClauses',
+    'sellerMessage', 'attachments', 'packaging', 'samplePrice', 'taxes', 'specialClauses', 'productConfiguration',
   ];
 
   const previousOffer = quotationCurrentOffer(quotation);
+  const previousConfiguration = resolveProductConfiguration(quotation);
+  const nextProductConfig = {
+    ...(previousConfiguration || {}),
+    ...(body.productConfiguration && typeof body.productConfiguration === 'object' ? body.productConfiguration : {}),
+    productId: quotation.productId || null,
+    name: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.name) || previousConfiguration.name || quotation.title || 'Configured product',
+    image: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.image) || previousConfiguration.image || '',
+    description: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.description) || body.description || previousConfiguration.description || quotation.description || '',
+    specifications: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.specifications) || body.specifications || previousConfiguration.specifications || quotation.specifications || '',
+    quantity: Number(((body.productConfiguration && typeof body.productConfiguration === 'object' ? body.productConfiguration.quantity : quotation.suppliedQuantity) ?? quotation.suppliedQuantity ?? previousConfiguration.quantity ?? 1)) || 1,
+    minimumOrderQuantity: Number(((body.productConfiguration && typeof body.productConfiguration === 'object' ? body.productConfiguration.minimumOrderQuantity : quotation.minimumOrderQuantity) ?? quotation.minimumOrderQuantity ?? previousConfiguration.minimumOrderQuantity ?? 1)) || 1,
+    unitPrice: Number(((body.productConfiguration && typeof body.productConfiguration === 'object' ? body.productConfiguration.unitPrice : quotation.unitPrice) ?? quotation.unitPrice ?? previousConfiguration.unitPrice ?? 0)) || 0,
+    currency: normalizeCurrency((body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.currency) || quotation.currency || previousConfiguration.currency || 'INR'),
+    leadTime: Number(((body.productConfiguration && typeof body.productConfiguration === 'object' ? body.productConfiguration.leadTime : quotation.leadTime) ?? quotation.leadTime ?? previousConfiguration.leadTime ?? 0)) || 0,
+    leadTimeUnit: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.leadTimeUnit) || quotation.leadTimeUnit || previousConfiguration.leadTimeUnit || 'days',
+    paymentTerms: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.paymentTerms) || quotation.paymentTerms || previousConfiguration.paymentTerms || 'negotiable',
+    shippingTerms: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.shippingTerms) || quotation.shippingTerms || previousConfiguration.shippingTerms || '',
+    packaging: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.packaging) || quotation.packaging || previousConfiguration.packaging || '',
+    customNotes: (body.productConfiguration && typeof body.productConfiguration === 'object' && body.productConfiguration.customNotes) || body.sellerMessage || quotation.sellerMessage || previousConfiguration.customNotes || '',
+  };
+
+  quotation.productConfiguration = nextProductConfig;
+  quotation.productConfigurationHistory.push({
+    version: (quotation.productConfigurationHistory?.length || 0) + 1,
+    changedFields: Object.keys(nextProductConfig).filter((key) => JSON.stringify(nextProductConfig[key]) !== JSON.stringify(previousConfiguration[key])),
+    createdAt: new Date(),
+    snapshot: nextProductConfig,
+  });
 
   quotation.revisionHistory.push({
     version: quotation.revisionNumber,
@@ -1414,6 +1542,7 @@ async function finalQuotationSnapshot(quotation) {
     quotationRepository.findSellerByUserId(quotation.userId),
     quotation.productId || finalRfq?.productId ? quotationRepository.findProductById(quotation.productId?._id || quotation.productId || finalRfq?.productId) : null,
   ]);
+  const productConfig = resolveProductConfiguration(quotation, product);
   const buyerCompany = buyer?.metadata?.companyName || buyer?.companyName;
   const buyerAddress = buyer?.metadata?.address || buyer?.address;
   const sellerAddress = sellerProfile?.address;
@@ -1435,7 +1564,7 @@ async function finalQuotationSnapshot(quotation) {
       tradeReference: quotation.quotationNumber || finalRfq?.rfqNumber,
       buyer: { name: buyer?.fullName, company: buyerCompany, email: buyer?.email, phone: buyer?.phone, address: buyerAddress, country: buyer?.metadata?.country || buyerAddress?.country },
       seller: { name: sellerUser?.fullName, company: sellerProfile?.companyName, email: sellerUser?.email, phone: sellerProfile?.businessPhone || sellerUser?.phone, address: sellerAddress, country: sellerAddress?.country, registrationNumber: sellerProfile?.businessRegistrationNumber, taxNumber: sellerProfile?.gstNumber },
-      products: [{ productId: quotation.productId?._id || quotation.productId || finalRfq?.productId, name: product?.name || quotation.productId?.name || finalRfq?.title, image: productImage, description: product?.description || quotation.description || finalRfq?.description, category: product?.category || finalRfq?.category, subcategory: product?.subcategory || finalRfq?.subcategory, brand: product?.brand, sku: product?.sku, countryOfOrigin: product?.countryOfOrigin, specifications: quotation.specifications || finalRfq?.specifications, quantity, unit: finalRfq?.unit, minimumOrderQuantity: quotation.minimumOrderQuantity, unitPrice: quotation.unitPrice, totalPrice: productTotal }],
+      products: [{ productId: quotation.productId?._id || quotation.productId || finalRfq?.productId, name: productConfig.name || product?.name || quotation.productId?.name || finalRfq?.title, image: productConfig.image || productImage, description: productConfig.description || product?.description || quotation.description || finalRfq?.description, category: product?.category || finalRfq?.category, subcategory: product?.subcategory || finalRfq?.subcategory, brand: product?.brand, sku: product?.sku, countryOfOrigin: product?.countryOfOrigin, specifications: productConfig.specifications || quotation.specifications || finalRfq?.specifications, quantity: Number(productConfig.quantity ?? quantity), unit: finalRfq?.unit, minimumOrderQuantity: Number(productConfig.minimumOrderQuantity ?? quotation.minimumOrderQuantity), unitPrice: Number(productConfig.unitPrice ?? quotation.unitPrice), totalPrice: Number(productConfig.unitPrice ?? quotation.unitPrice) * Number(productConfig.quantity ?? quantity) }],
       pricing: { unitPrice: quotation.unitPrice, productTotal, shippingCost, taxAmount, finalPayableAmount, totalPrice: finalPayableAmount, currency: quotation.currency },
       minimumOrderQuantity: quotation.minimumOrderQuantity,
       production: { timeline: quotation.productionTime, unit: quotation.productionTimeUnit },

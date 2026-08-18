@@ -115,6 +115,16 @@ const quotationSchema = new mongoose.Schema(
       type: String,
       maxlength: 500,
     },
+    productConfiguration: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    productConfigurationHistory: [{
+      version: Number,
+      changedFields: [String],
+      createdAt: { type: Date, default: Date.now },
+      snapshot: mongoose.Schema.Types.Mixed,
+    }],
     certifications: [String],
     
     // Customization

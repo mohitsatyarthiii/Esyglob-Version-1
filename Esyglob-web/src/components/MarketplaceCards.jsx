@@ -276,11 +276,12 @@ function countryFlag(country) {
     uae: 'AE', vietnam: 'VN', turkey: 'TR', germany: 'DE', bangladesh: 'BD',
     pakistan: 'PK', indonesia: 'ID', thailand: 'TH', japan: 'JP', korea: 'KR',
     'south korea': 'KR', france: 'FR', italy: 'IT', brazil: 'BR', canada: 'CA',
+    singapore: 'SG', malaysia: 'MY', australia: 'AU', uk: 'GB', 'united kingdom': 'GB',
+    netherlands: 'NL', spain: 'ES', egypt: 'EG', saudi: 'SA', qatar: 'QA', kuwait: 'KW',
   };
-  const code = String(country || '').trim().length === 2
-    ? String(country).toUpperCase()
-    : names[String(country || '').trim().toLowerCase()];
-  return code?.replace(/./g, (letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))) || '🌐';
+  const raw = String(country || '').trim();
+  const code = raw.length === 2 ? raw.toUpperCase() : names[raw.toLowerCase()];
+  return code ? <img className="locale-flag" src={`/flags/${code.toLowerCase()}.svg`} alt="" aria-hidden="true" /> : '🌐';
 }
 
 // ─── ManufacturerCard ───────────────────────────────────────────

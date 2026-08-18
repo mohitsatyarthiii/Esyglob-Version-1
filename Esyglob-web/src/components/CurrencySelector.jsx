@@ -3,10 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n/i18n-context'
 import { CURRENCY_META, CURRENCY_OPTIONS, currencyLabel, useCurrency } from '../preferences/currency-context'
 
-function Flag({ country, flag }) {
-  return flag
-    ? <span className="locale-flag locale-flag--emoji" aria-hidden="true">{flag}</span>
-    : <img className="locale-flag" src={`/flags/${country}.svg`} alt="" aria-hidden="true" />
+function Flag({ country, flag, countryCode }) {
+  const resolvedCode = String(country || countryCode || '').trim().toUpperCase()
+  if (resolvedCode && /^[A-Z]{2}$/.test(resolvedCode)) {
+    return <img className="locale-flag" src={`/flags/${resolvedCode.toLowerCase()}.svg`} alt="" aria-hidden="true" />
+  }
+  return flag ? <span className="locale-flag locale-flag--emoji" aria-hidden="true">{flag}</span> : null
 }
 
 export default function CurrencySelector({ className = 'header-currency' }) {
@@ -52,7 +54,7 @@ export default function CurrencySelector({ className = 'header-currency' }) {
 
   return <div className={`${className} locale-selector ${open ? 'open' : ''}`} ref={root} onKeyDown={keyDown}>
     <button type="button" className="locale-selector__trigger" onClick={() => { setActive(0); setOpen(value => !value) }} aria-expanded={open} aria-haspopup="listbox" aria-label={`Currency: ${currencyLabel(selectedCurrency)}`}>
-      <Flag flag={CURRENCY_META[selectedCurrency].flag} />
+      <Flag countryCode={CURRENCY_META[selectedCurrency].flagCountryCode} flag={CURRENCY_META[selectedCurrency].flag} />
       <span>{selectedCurrency}</span>
       <ChevronDown />
     </button>
@@ -65,7 +67,7 @@ export default function CurrencySelector({ className = 'header-currency' }) {
           return <span className="locale-selector__item-wrap" key={`${item.type}-${item.code}`}>
             {heading && <small>{item.type === 'language' ? t('preferences.language') : t('preferences.currency')}</small>}
             <button type="button" role="option" aria-selected={selected} className={index === active ? 'active' : ''} onMouseEnter={() => setActive(index)} onClick={() => void select(item)}>
-              <Flag country={item.country} flag={item.flag} />
+              <Flag country={item.country} countryCode={item.flagCountryCode} flag={item.flag} />
               <span><b>{item.type === 'currency' ? currencyLabel(item) : item.name}</b>{item.type === 'language' && <small>{item.code}</small>}</span>
               {selected && <Check />}
             </button>

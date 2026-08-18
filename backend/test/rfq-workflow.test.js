@@ -6,7 +6,7 @@ import Message from '../src/models/Message.js';
 import RFQ from '../src/models/RFQ.js';
 import { OPEN_RFQ_STATUSES } from '../src/lib/rfq-helpers.js';
 import { sellerMatchesPublicRfq } from '../src/services/rfq.service.js';
-import { productMatchesRfqTaxonomy, quotationCurrentOffer, sellerMatchesRfqTaxonomy } from '../src/services/quotation.service.js';
+import { productMatchesRfqTaxonomy, quotationCurrentOffer, resolveProductConfiguration, sellerMatchesRfqTaxonomy } from '../src/services/quotation.service.js';
 import { assertTransition } from '../src/services/business-lifecycle.service.js';
 import { getConversationKey } from '../src/lib/chat-conversations.js';
 import { calculateQuotationTotals } from '../src/lib/quotation-commerce.js';
@@ -124,6 +124,46 @@ test('multiple counter and revision rounds remain valid until buyer acceptance',
   }
   assert.throws(() => assertTransition({ type: 'quotation', status: 'buyer_accepted', action: 'counter_offer', actorRole: 'buyer' }), /cannot counter_offer/);
   assert.throws(() => assertTransition({ type: 'quotation', status: 'final_quotation_signed', action: 'revise', actorRole: 'seller' }), /cannot revise/);
+});
+
+test('quotation product configuration keeps the latest negotiated values and preserves history', () => {
+  const quote = {
+    productConfiguration: {
+      name: 'Oak Dining Table',
+      material: 'Oak',
+      finish: 'Natural',
+      unitPrice: 100,
+      quantity: 100,
+      currency: 'INR',
+    },
+    productConfigurationHistory: [
+      { version: 1, name: 'Oak Dining Table', material: 'Oak', finish: 'Natural', unitPrice: 100 },
+    ],
+  };
+
+  const updatedQuote = {
+    ...quote,
+    productConfiguration: {
+      ...quote.productConfiguration,
+      finish: 'Walnut',
+      unitPrice: 105,
+      customization: 'Custom logo',
+    },
+    productConfigurationHistory: [
+      ...quote.productConfigurationHistory,
+      { version: 2, finish: 'Walnut', unitPrice: 105, customization: 'Custom logo' },
+    ],
+  };
+
+  const original = resolveProductConfiguration(quote);
+  const latest = resolveProductConfiguration(updatedQuote);
+
+  assert.equal(original.material, 'Oak');
+  assert.equal(original.unitPrice, 100);
+  assert.equal(latest.finish, 'Walnut');
+  assert.equal(latest.unitPrice, 105);
+  assert.equal(latest.customization, 'Custom logo');
+  assert.equal(updatedQuote.productConfigurationHistory.length, 2);
 });
 
 test('backend quotation totals reject manipulated and non-finite commercial values', () => {
