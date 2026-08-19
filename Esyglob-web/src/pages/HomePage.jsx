@@ -8,6 +8,9 @@ import { CategoryBubble, ProductCard, SkeletonCards } from '../components/Market
 import MarketplaceSearch from '../components/MarketplaceSearch'
 import { MarketplaceError } from '../components/MarketplaceFeedback'
 import useAsyncData from '../hooks/useAsyncData'
+import { useRef } from 'react';
+import { useState } from 'react'
+import { useEffect } from 'react'
 
 const featuredLoader = () => fetchProducts({ limit: 10, sort: 'latest', verifiedOnly: true })
 const feedLoader = () => fetchProducts({ limit: 16, sort: 'latest' })
@@ -51,8 +54,131 @@ export default function HomePage() {
   </div></AppShell>
 }
 
+
+
 function MarketplaceCategories({ query, ordered }) {
-  return <section className="home-list-section"><div className="container"><div className="home-list-heading"><h2>Categories</h2><Link to="/categories">See all</Link></div>{query.error ? <MarketplaceError error={query.error} onRetry={query.reload} /> : <div className="home-category-row">{query.loading ? <SkeletonCards count={8} variant="category" /> : ordered.slice(0, 14).map(item => <CategoryBubble key={item._id || item.slug} category={item} />)}</div>}</div></section>
+  const sliderRef = useRef(null);
+  const [visibleItems, setVisibleItems] = useState(10);
+
+  useEffect(() => {
+    const updateVisibleItems = () => {
+      const width = window.innerWidth;
+      if (width < 480) {
+        setVisibleItems(6); // Mobile: 6 items
+      } else if (width < 768) {
+        setVisibleItems(8); // Tablet: 8 items
+      } else if (width < 1024) {
+        setVisibleItems(10); // Small laptop: 10 items
+      } else if (width < 1280) {
+        setVisibleItems(12); // Desktop: 12 items
+      } else {
+        setVisibleItems(14); // Large desktop: 14 items
+      }
+    };
+
+    updateVisibleItems();
+    window.addEventListener('resize', updateVisibleItems);
+    return () => window.removeEventListener('resize', updateVisibleItems);
+  }, []);
+
+  const scroll = (direction) => {
+    const container = sliderRef.current;
+    if (container) {
+      const scrollAmount = direction === 'left' ? -120 : 120;
+      container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <section className="py-4">
+      <div className="container mx-auto max-w-[1400px] px-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Categories</h2>
+          <div className="flex items-center gap-2">
+            <Link 
+              to="/categories" 
+              className="text-xs sm:text-sm text-gray-600 hover:text-gray-900"
+            >
+              See all
+            </Link>
+            <div className="flex gap-1">
+              <button
+                onClick={() => scroll('left')}
+                className="w-6 h-6 rounded-full border border-gray-200 hover:bg-gray-100 flex items-center justify-center transition-all"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => scroll('right')}
+                className="w-6 h-6 rounded-full border border-gray-200 hover:bg-gray-100 flex items-center justify-center transition-all"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Slider */}
+        {query.error ? (
+          <MarketplaceError error={query.error} onRetry={query.reload} />
+        ) : (
+          <div
+            ref={sliderRef}
+            className="flex gap-4 sm:gap-5 overflow-x-auto scroll-smooth scrollbar-hide py-2"
+            style={{
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none'
+            }}
+          >
+            {query.loading ? (
+              <SkeletonCards count={8} variant="category" />
+            ) : (
+              ordered.slice(0, 20).map(item => (
+                <div
+                  key={item._id || item.slug}
+                  className="flex-shrink-0 cursor-pointer group"
+                  style={{
+                    width: `calc((100% - ${(visibleItems - 1) * 16}px) / ${visibleItems})`,
+                    minWidth: '45px',
+                    maxWidth: '65px'
+                  }}
+                >
+                  <div className="relative w-full aspect-square rounded-full overflow-hidden bg-gray-50 transition-all duration-300 group-hover:shadow-lg group-hover:scale-105 group-hover:ring-2 group-hover:ring-blue-500">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 transition-opacity duration-300 rounded-full" />
+                  </div>
+                  <p className="text-center mt-1.5 text-[9px] sm:text-[10px] text-gray-700 leading-tight group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[24px] sm:min-h-[28px] px-0.5">
+                    {item.name}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <style jsx>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+        .line-clamp-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+      `}</style>
+    </section>
+  );
 }
 
 function FeaturedProducts({ query }) {
@@ -67,3 +193,4 @@ function QuickAction({ icon, label, tone, to, onClick, state }) {
   const content = <><span className={`tone-${tone}`}>{icon}</span><b>{label}</b></>
   return to ? <Link to={to} state={state}>{content}</Link> : <button onClick={onClick}>{content}</button>
 }
+

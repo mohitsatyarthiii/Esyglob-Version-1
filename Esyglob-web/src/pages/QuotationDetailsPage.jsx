@@ -25,6 +25,61 @@ function resolveCurrentOffer(item) {
   }
 }
 
+// Helper function to safely render specifications
+function SpecificationsDisplay({ specifications }) {
+  if (!specifications) return null;
+  
+  // If string, render directly
+  if (typeof specifications === 'string') {
+    return (
+      <div className="requirement-copy">
+        <h3>Specifications</h3>
+        <p>{specifications}</p>
+      </div>
+    );
+  }
+  
+  // If object, render key-value pairs
+  return (
+    <div className="requirement-copy">
+      <h3>Specifications</h3>
+      <dl className="trade-detail-grid">
+        {Object.entries(specifications).map(([key, value]) => (
+          <DetailItem key={key} label={key}>
+            {typeof value === 'object' ? JSON.stringify(value) : value || '—'}
+          </DetailItem>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+// Helper to convert specifications to string for textarea
+function specificationsToString(specifications) {
+  if (!specifications) return '';
+  if (typeof specifications === 'string') return specifications;
+  try {
+    return JSON.stringify(specifications, null, 2);
+  } catch {
+    return '';
+  }
+}
+
+// Helper to parse specifications from form
+function parseSpecifications(specifications) {
+  if (!specifications) return '';
+  if (typeof specifications === 'object') return specifications;
+  try {
+    const trimmed = specifications.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return JSON.parse(trimmed);
+    }
+    return specifications;
+  } catch {
+    return specifications;
+  }
+}
+
 export default function QuotationDetailsPage() {
   const { quotationId } = useParams()
   const { user } = useAuth()
@@ -158,8 +213,11 @@ export default function QuotationDetailsPage() {
         <DetailItem label="Shipping cost"><Money value={item.shippingCost} currency={item.currency} /></DetailItem>
         <DetailItem label="Valid until">{item.expiryDate ? new Date(item.expiryDate).toLocaleDateString() : '—'}</DetailItem>
       </dl>{item.sellerMessage && <div className="requirement-copy"><h3>Supplier note</h3><p>{item.sellerMessage}</p></div>}{item.buyerMessage && <div className="requirement-copy"><h3>Buyer response</h3><p>{item.buyerMessage}</p></div>}</section>
-      {(dealProduct.name || dealProduct.description || dealProduct.specifications || dealProduct.material || dealProduct.size || dealProduct.color || dealProduct.finish || dealProduct.customNotes) && <section className="detail-card"><h2>Configured product</h2>{dealProduct.name && <h3>{dealProduct.name}</h3>}{dealProduct.description && <p>{dealProduct.description}</p>}<dl className="trade-detail-grid">{dealProduct.material && <DetailItem label="Material">{dealProduct.material}</DetailItem>}{dealProduct.size && <DetailItem label="Size">{dealProduct.size}</DetailItem>}{dealProduct.color && <DetailItem label="Color">{dealProduct.color}</DetailItem>}{dealProduct.finish && <DetailItem label="Finish">{dealProduct.finish}</DetailItem>}{dealProduct.packaging && <DetailItem label="Packaging">{dealProduct.packaging}</DetailItem>}{dealProduct.quantity && <DetailItem label="Deal quantity">{dealProduct.quantity}</DetailItem>}{dealProduct.minimumOrderQuantity && <DetailItem label="MOQ">{dealProduct.minimumOrderQuantity}</DetailItem>}{dealProduct.customNotes && <DetailItem label="Deal note">{dealProduct.customNotes}</DetailItem>}</dl>{dealProduct.specifications && <div className="requirement-copy"><h3>Specifications</h3><p>{dealProduct.specifications}</p></div>}</section>}
-      {(item.specifications || item.description || item.notes) && <section className="detail-card"><h2>Offer notes</h2>{item.description && <p>{item.description}</p>}{item.specifications && <p>{item.specifications}</p>}{item.notes && <p>{item.notes}</p>}</section>}
+      
+      {(dealProduct.name || dealProduct.description || dealProduct.specifications || dealProduct.material || dealProduct.size || dealProduct.color || dealProduct.finish || dealProduct.customNotes) && <section className="detail-card"><h2>Configured product</h2>{dealProduct.name && <h3>{dealProduct.name}</h3>}{dealProduct.description && <p>{dealProduct.description}</p>}<dl className="trade-detail-grid">{dealProduct.material && <DetailItem label="Material">{dealProduct.material}</DetailItem>}{dealProduct.size && <DetailItem label="Size">{dealProduct.size}</DetailItem>}{dealProduct.color && <DetailItem label="Color">{dealProduct.color}</DetailItem>}{dealProduct.finish && <DetailItem label="Finish">{dealProduct.finish}</DetailItem>}{dealProduct.packaging && <DetailItem label="Packaging">{dealProduct.packaging}</DetailItem>}{dealProduct.quantity && <DetailItem label="Deal quantity">{dealProduct.quantity}</DetailItem>}{dealProduct.minimumOrderQuantity && <DetailItem label="MOQ">{dealProduct.minimumOrderQuantity}</DetailItem>}{dealProduct.customNotes && <DetailItem label="Deal note">{dealProduct.customNotes}</DetailItem>}</dl><SpecificationsDisplay specifications={dealProduct.specifications} /></section>}
+      
+      {(item.specifications || item.description || item.notes) && <section className="detail-card"><h2>Offer notes</h2>{item.description && <p>{item.description}</p>}<SpecificationsDisplay specifications={item.specifications} />{item.notes && <p>{item.notes}</p>}</section>}
+      
       {item.attachments?.length > 0 && <section className="detail-card"><h2>Attachments</h2><div className="attachment-list">{item.attachments.map((file, index) => <a href={file.url || file} target="_blank" rel="noreferrer" key={file._id || index}><FileText /> {file.filename || file.name || `Document ${index + 1}`} <Download /></a>)}</div></section>}
     </div><aside>
       <section className="detail-card"><h2><ShieldCheck /> Supplier</h2><h3>{displayName(seller, 'Supplier')}</h3><p>{seller.companyDescription || 'Verified marketplace supplier information is linked to this offer.'}</p>{resolveId(seller) && <Link to={`/sellers/${resolveId(seller)}`}>View supplier profile</Link>}</section>
@@ -238,7 +296,7 @@ function QuotationEditDialog({ item, currentOffer, onClose, onSuccess }) {
     productionTimeUnit: item.productionTimeUnit || 'days',
     productName: dealProduct.name || item.title || rfq.title || '',
     productDescription: dealProduct.description || item.description || rfq.description || '',
-    productSpecifications: dealProduct.specifications || item.specifications || rfq.specifications || '',
+    productSpecifications: specificationsToString(dealProduct.specifications || item.specifications || rfq.specifications),
     material: dealProduct.material || '',
     size: dealProduct.size || '',
     color: dealProduct.color || '',
@@ -253,13 +311,14 @@ function QuotationEditDialog({ item, currentOffer, onClose, onSuccess }) {
     shippingCost: item.shippingCost || 0,
     shippingEstimate: item.shippingEstimate || '',
     sellerMessage: '',
-    specifications: item.specifications || '',
+    specifications: specificationsToString(item.specifications),
   })
   const [busy, setBusy] = useState(false); const [error, setError] = useState('')
   const total = useMemo(() => {
     const subtotal = Number(form.unitPrice || 0) * Number(form.suppliedQuantity || 0)
     return subtotal + Number(form.shippingCost || 0) + subtotal * Number(form.taxRate || 0) / 100
   }, [form.shippingCost, form.suppliedQuantity, form.taxRate, form.unitPrice])
+  
   async function submit(event) {
     event.preventDefault()
     if (!window.confirm(`Submit this revised quotation at ${item.currency || 'INR'} ${Number(total).toLocaleString()} total?`)) return
@@ -270,7 +329,7 @@ function QuotationEditDialog({ item, currentOffer, onClose, onSuccess }) {
         productId: resolveId(item.productId) || undefined,
         name: form.productName || rfq.title || 'Configured product',
         description: form.productDescription || item.description || rfq.description || '',
-        specifications: form.productSpecifications || item.specifications || rfq.specifications || '',
+        specifications: parseSpecifications(form.productSpecifications || item.specifications || rfq.specifications),
         material: form.material || '',
         size: form.size || '',
         color: form.color || '',
@@ -286,10 +345,28 @@ function QuotationEditDialog({ item, currentOffer, onClose, onSuccess }) {
         paymentTerms: form.paymentTerms || item.paymentTerms || 'negotiable',
         shippingTerms: form.shippingTerms || item.shippingTerms || '',
       }
-      await updateQuotation(resolveId(item), { ...form, productConfiguration, expectedNegotiationVersion: Number(item.negotiationVersion || 0), idempotencyKey: actionToken(), unitPrice: Number(form.unitPrice), suppliedQuantity: Number(form.suppliedQuantity), minimumOrderQuantity: Number(form.minimumOrderQuantity), leadTime: Number(form.leadTime), shippingCost: Number(form.shippingCost), productionTime: Number(form.productionTime) || undefined, samplePrice: Number(form.samplePrice) || undefined, taxes: form.taxRate ? { taxRate: Number(form.taxRate) } : undefined, packaging: form.packaging || undefined, shippingTerms: form.shippingTerms || undefined, attachments })
+      await updateQuotation(resolveId(item), { 
+        ...form, 
+        productConfiguration, 
+        expectedNegotiationVersion: Number(item.negotiationVersion || 0), 
+        idempotencyKey: actionToken(), 
+        unitPrice: Number(form.unitPrice), 
+        suppliedQuantity: Number(form.suppliedQuantity), 
+        minimumOrderQuantity: Number(form.minimumOrderQuantity), 
+        leadTime: Number(form.leadTime), 
+        shippingCost: Number(form.shippingCost), 
+        productionTime: Number(form.productionTime) || undefined, 
+        samplePrice: Number(form.samplePrice) || undefined, 
+        taxes: form.taxRate ? { taxRate: Number(form.taxRate) } : undefined, 
+        packaging: form.packaging || undefined, 
+        shippingTerms: form.shippingTerms || undefined, 
+        specifications: parseSpecifications(form.specifications),
+        attachments 
+      })
       if (item.status === 'draft') await updateQuotation(resolveId(item), { action: 'send', expectedNegotiationVersion: Number(item.negotiationVersion || 0) + 1, idempotencyKey: actionToken() })
       onSuccess()
     } catch (nextError) { setError(nextError.message); setBusy(false) }
   }
+  
   return <div className="modal-backdrop" onMouseDown={onClose}><form className="quotation-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}><div className="compact-heading"><h2>{item.status === 'countered' ? 'Revise counter offer' : 'Revise quotation'}</h2><button type="button" onClick={onClose}>×</button></div>{item.status === 'countered' && <p className="counter-reference">Buyer counter: <b><Money value={currentOffer.unitPrice} currency={item.currency} /> / unit</b>. Edit the fields below to send your revision.</p>}<div className="form-grid form-grid--3">{[['unitPrice', 'Unit price'], ['suppliedQuantity', 'Quantity'], ['minimumOrderQuantity', 'MOQ']].map(([key, label]) => <Field key={key} label={label}><input type="number" min="0.01" step="0.01" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} required /></Field>)}</div><div className="form-grid"><Field label="Lead time"><input type="number" min="1" value={form.leadTime} onChange={(event) => setForm({ ...form, leadTime: event.target.value })} required /></Field><Field label="Incoterms"><input value={form.incoterms} onChange={(event) => setForm({ ...form, incoterms: event.target.value })} /></Field><Field label="Shipping cost"><input type="number" min="0" value={form.shippingCost} onChange={(event) => setForm({ ...form, shippingCost: event.target.value })} /></Field><Field label="Shipping estimate"><input value={form.shippingEstimate} onChange={(event) => setForm({ ...form, shippingEstimate: event.target.value })} /></Field></div><div className="requirement-copy"><h3>Deal product configuration</h3><p>Update the exact product configuration for this negotiation. These values are retained with the quotation and used in the Final Quotation.</p></div><div className="form-grid form-grid--3"><Field label="Deal product name"><input value={form.productName} onChange={(event) => setForm({ ...form, productName: event.target.value })} placeholder={rfq.title || 'Configured product'} /></Field><Field label="Material"><input value={form.material} onChange={(event) => setForm({ ...form, material: event.target.value })} /></Field><Field label="Finish"><input value={form.finish} onChange={(event) => setForm({ ...form, finish: event.target.value })} /></Field></div><div className="form-grid form-grid--3"><Field label="Size / model"><input value={form.size} onChange={(event) => setForm({ ...form, size: event.target.value })} /></Field><Field label="Color"><input value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></Field><Field label="Packaging"><input value={form.packaging} onChange={(event) => setForm({ ...form, packaging: event.target.value })} /></Field></div><div className="form-grid"><Field label="Product description"><textarea rows="2" value={form.productDescription} onChange={(event) => setForm({ ...form, productDescription: event.target.value })} /></Field><Field label="Technical specifications"><textarea rows="2" value={form.productSpecifications} onChange={(event) => setForm({ ...form, productSpecifications: event.target.value })} /></Field></div><Field label="Custom notes"><textarea rows="2" value={form.customNotes} onChange={(event) => setForm({ ...form, customNotes: event.target.value })} /></Field><Field label="Payment terms"><input value={form.paymentTerms} onChange={(event) => setForm({ ...form, paymentTerms: event.target.value })} /></Field><Field label="Message"><textarea value={form.sellerMessage} onChange={(event) => setForm({ ...form, sellerMessage: event.target.value })} placeholder="Explain this revision to the buyer" /></Field><AttachmentUploader folder="quotations" value={attachments} onChange={setAttachments} />{error && <p className="action-error">{error}</p>}<button className="button button--primary button--full" disabled={busy}>{busy ? 'Saving…' : 'Submit revision'}</button></form></div>
 }

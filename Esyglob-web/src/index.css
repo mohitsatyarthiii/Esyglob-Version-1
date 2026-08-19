@@ -28644,6 +28644,8 @@ svg {
   width: 15px;
 }
 
+
+
 .home-marketplace-hero h1 {
   color: #fff;
   font-size: clamp(40px, 5.4vw, 68px);
@@ -28932,8 +28934,11 @@ svg {
   width: 14px;
 }
 
-.home-list-section {
-  padding-block: 24px;
+.home-list-section .container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 20px;
+  overflow: visible; /* Prevent cutting off */
 }
 
 .home-list-section--muted {
@@ -28970,7 +28975,9 @@ svg {
   -webkit-overflow-scrolling: touch;
 }
 
-.home-category-row > *,
+.home-category-row * {
+  background-color: transparent !important;
+}
 .home-product-row > * {
   scroll-snap-align: start;
 }
