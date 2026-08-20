@@ -2,7 +2,7 @@
 import { BadgeCheck, Check, ChevronLeft, ChevronRight, Copy, CreditCard, FileCheck2, FileText, Globe2, MapPin, Maximize2, MessageSquare, Minus, PackageCheck, Paperclip, Plus, ScanSearch, Send, Share2, ShieldCheck, Store, Truck, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { fetchProductDetails, fetchProducts, submitProductEnquiry, trackRecentlyViewed } from '../api/marketplace'
+import { fetchProductDetails, fetchProducts, startProductChat, submitProductEnquiry, trackRecentlyViewed } from '../api/marketplace'
 import { uploadFiles } from '../api/trade'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
@@ -51,7 +51,19 @@ export default function ProductDetailsPage() {
   useEffect(() => { setQuantity(moq) }, [moq])
   
   function authAction(callback) { if (status !== 'authenticated') return navigate('/login', { state: { from: location.pathname, notice: 'Sign in to contact suppliers and use account features.' } }); callback() }
-  function handleChatNow() { authAction(() => setEnquiryOpen(true)) }
+  function handleChatNow() { authAction(async () => {
+    if (!sellerUserId || action.busy) return
+    setAction({ busy: true, message: '', error: '' })
+    try {
+      const created = await startProductChat({ otherUserId: sellerUserId, productId })
+      const chat = created.chat || created
+      const chatId = chat._id || chat.id
+      if (!chatId) throw new Error('The supplier conversation could not be opened.')
+      navigate(`/messages/${encodeURIComponent(chatId)}`, { state: { productId, productName: product.name } })
+    } catch (error) {
+      setAction({ busy: false, message: '', error: error.message || 'Chat could not be opened. Please try again.' })
+    }
+  }) }
   async function share() { try { if (navigator.share) await navigator.share({ title: product.name, text: product.name, url: window.location.href }); else { await navigator.clipboard.writeText(window.location.href); setAction({ busy: false, message: 'Product link copied.', error: '' }) } } catch (error) { if (error.name !== 'AbortError') setAction({ busy: false, message: '', error: 'Unable to share this product.' }) } }
   function startRfq() { authAction(() => navigate('/rfqs/new', { state: { product: { ...product, requestedQuantity: quantity, requestedUnit: unit, selectedVariant: variant }, sellerUserId } })) }
   
@@ -464,8 +476,6 @@ function ProductEnquiryModal({ product, productId, sellerUserId, initialQuantity
     event.preventDefault()
     deliveryKey.current ||= globalThis.crypto?.randomUUID?.() || `enquiry-${Date.now()}-${Math.random()}`
     if (busy || uploading || !message.trim()) return
-    const supplierName = product.sellerId?.companyName || product.sellerId?.businessName || 'this manufacturer'
-    if (!window.confirm(`Send this product enquiry to ${supplierName}?\n\nQuantity: ${Math.max(1, Number(quantity) || 1)} ${unit}\nProduct: ${product.name || 'Selected product'}`)) return
     setBusy(true); setError('')
     try {
       await submitProductEnquiry({ otherUserId: sellerUserId, productId, productName: product.name, content: message.trim(), quantity: Math.max(1, Number(quantity) || 1), unit, notes: notes.trim(), attachments, deliveryKey: deliveryKey.current })

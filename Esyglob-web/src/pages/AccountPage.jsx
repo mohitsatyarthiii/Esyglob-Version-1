@@ -6,7 +6,7 @@ import { fetchChats, fetchQuotations, fetchRfqs } from '../api/trade';
 import { useAuth } from '../auth/auth-context';
 import AppShell from '../components/AppShell';
 import useAsyncData from '../hooks/useAsyncData';
-import { CURRENCIES, useCurrency } from '../preferences/currency-context';
+import { AccountCurrencySelector } from '../components/CurrencySelector';
 import { TradeSkeleton } from './RfqsPage';
 import { AICreditMeter, useAICredits } from '../components/AICredits';
 
@@ -87,7 +87,6 @@ export default function AccountPage() {
   const navigate = useNavigate();
   const role = user?.primaryRole === 'seller' ? 'seller' : 'buyer';
   const creditState = useAICredits(role);
-  const { selectedCurrency, setCurrency } = useCurrency();
   const query = useAsyncData(
     useCallback(async () => {
       const [summary, rfqs, quotations, chats] = await Promise.all([fetchAccountSummary(role), fetchRfqs({ scope: role, limit: 1 }), fetchQuotations({ scope: role, limit: 1 }), fetchChats({ role, limit: 60 })]);
@@ -177,11 +176,7 @@ export default function AccountPage() {
                 <h2>Preferred Currency</h2>
               </header>
               <p>All prices will be displayed in your selected currency.</p>
-              <select value={selectedCurrency} onChange={(event) => setCurrency(event.target.value)}>
-                {CURRENCIES.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
+              <AccountCurrencySelector />
             </section>
             <Link className="mobile-account-location" to="/location">
               <i>

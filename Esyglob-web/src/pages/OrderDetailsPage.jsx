@@ -168,7 +168,7 @@ function BuyerCheckoutControls({ order, busy, onAction }) {
     try {
       await actionFn()
       setLocalBusy('')
-    } catch (error) {
+    } catch {
       setLocalBusy('')
     }
   }

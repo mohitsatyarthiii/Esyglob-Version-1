@@ -105,7 +105,7 @@ class GlobalSearchService {
    */
   static compactCategory(category, query, type = 'category') {
     const href = type === 'subcategory'
-      ? `/categories/${encodeURIComponent(category.categoryId?.slug || category.categoryId?.name || '')}/${encodeURIComponent(category.slug || category.name)}`
+      ? `/products?category=${encodeURIComponent(category.name)}`
       : `/categories/${encodeURIComponent(category.slug || category.name)}`;
 
     return {

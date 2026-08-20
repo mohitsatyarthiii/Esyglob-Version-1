@@ -122,7 +122,11 @@ const quotationSchema = new mongoose.Schema(
     productConfigurationHistory: [{
       version: Number,
       changedFields: [String],
+      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      actorRole: String,
+      reason: String,
       createdAt: { type: Date, default: Date.now },
+      previousSnapshot: mongoose.Schema.Types.Mixed,
       snapshot: mongoose.Schema.Types.Mixed,
     }],
     certifications: [String],

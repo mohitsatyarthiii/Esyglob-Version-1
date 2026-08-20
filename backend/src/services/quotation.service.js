@@ -1312,10 +1312,15 @@ export async function updateQuotation(session, quotationId, body) {
   };
 
   quotation.productConfiguration = nextProductConfig;
-  quotation.productConfigurationHistory.push({
+  const changedProductFields = Object.keys(nextProductConfig).filter((key) => JSON.stringify(nextProductConfig[key]) !== JSON.stringify(previousConfiguration[key]));
+  if (changedProductFields.length) quotation.productConfigurationHistory.push({
     version: (quotation.productConfigurationHistory?.length || 0) + 1,
-    changedFields: Object.keys(nextProductConfig).filter((key) => JSON.stringify(nextProductConfig[key]) !== JSON.stringify(previousConfiguration[key])),
+    changedFields: changedProductFields,
+    changedBy: session.userId,
+    actorRole: 'seller',
+    reason: body.productChangeReason || body.sellerMessage || body.reason || 'Deal product updated',
     createdAt: new Date(),
+    previousSnapshot: previousConfiguration,
     snapshot: nextProductConfig,
   });
 
@@ -1365,7 +1370,7 @@ export async function updateQuotation(session, quotationId, body) {
     idempotencyKey: freshness.idempotencyKey || undefined,
     actorId: session.userId,
     actorRole: 'seller',
-    message: body.sellerMessage || body.notes || 'Seller revised the quotation.',
+    message: body.sellerMessage || body.productChangeReason || body.notes || (changedProductFields.length ? 'Seller updated the deal product configuration.' : 'Seller revised the quotation.'),
     previousUnitPrice: previousOffer.unitPrice,
     unitPrice: quotation.unitPrice,
     productSubtotal: revisionTotals.productSubtotal,
@@ -1385,7 +1390,7 @@ export async function updateQuotation(session, quotationId, body) {
   });
 
   quotation.previousStatus = previousStatus;
-  quotation.activityTimeline.push({ action: previousStatus === 'draft' ? 'draft_updated' : 'seller_revision', status: quotation.status, message: body.sellerMessage || body.notes || `Quotation version ${quotation.revisionNumber} updated`, actorId: session.userId, actorRole: 'seller', metadata: { version: quotation.revisionNumber, documents: quotation.attachments || [] } });
+  quotation.activityTimeline.push({ action: previousStatus === 'draft' ? 'draft_updated' : changedProductFields.length ? 'deal_product_updated' : 'seller_revision', status: quotation.status, message: body.sellerMessage || body.productChangeReason || body.notes || `Quotation version ${quotation.revisionNumber} updated`, actorId: session.userId, actorRole: 'seller', metadata: { version: quotation.revisionNumber, changedProductFields, documents: quotation.attachments || [] } });
 
   await quotation.save();
 

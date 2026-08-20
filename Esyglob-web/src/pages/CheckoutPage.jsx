@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchAddresses } from '../api/account'
 import { fetchProductDetails } from '../api/marketplace'
 import { loadRazorpay } from '../api/services'
-import { createSampleOrder, createTradeOrder, fetchCheckoutQuote, initiatePayment, verifyPayment } from '../api/trade'
+import { createSampleOrder, createTradeOrder, fetchCheckoutQuote, fetchQuotation, initiatePayment, verifyPayment } from '../api/trade'
 import AppShell from '../components/AppShell'
 import { SafeImage } from '../components/MarketplaceCards'
 import { Money } from '../components/TradeUI'
@@ -61,6 +61,7 @@ export default function CheckoutPage() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const productId = params.get('productId')
+  const quotationId = params.get('quotationId')
   const mode = params.get('mode') === 'sample' ? 'sample' : 'trade'
   const minimum = Math.max(1, Number(params.get('quantity') || 1))
   const [quantity, setQuantity] = useState(minimum)
@@ -73,10 +74,13 @@ export default function CheckoutPage() {
   const [idempotencyKey] = useState(() => globalThis.crypto?.randomUUID?.() || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
   const base = useAsyncData(useCallback(async () => {
-    const [details, addresses] = await Promise.all([fetchProductDetails(productId), fetchAddresses()])
-    return { details, addresses }
-  }, [productId]))
+    const quotation = quotationId ? await fetchQuotation(quotationId) : null
+    const resolvedProductId = productId || resolveId(quotation?.productId)
+    const [details, addresses] = await Promise.all([resolvedProductId ? fetchProductDetails(resolvedProductId) : Promise.resolve({ product: quotation?.productConfiguration || {} }), fetchAddresses()])
+    return { details, addresses, quotation, resolvedProductId }
+  }, [productId, quotationId]))
   const product = base.data?.details?.product || EMPTY_PRODUCT
+  const checkoutProductId = base.data?.resolvedProductId || productId
   const addresses = base.data?.addresses || []
   const address = addresses.find((item) => resolveId(item) === addressId) || addresses.find((item) => item.isDefault) || addresses[0]
   const destination = useMemo(() => ({
@@ -92,16 +96,17 @@ export default function CheckoutPage() {
     postalCode: address?.postalCode || address?.pincode || '',
   }), [address])
   const international = Boolean(address) && !isIndia(address)
-  const quote = useAsyncData(useCallback(() => productId && address
+  const quote = useAsyncData(useCallback(() => checkoutProductId && address
     ? fetchCheckoutQuote({
-      productId,
+      productId: checkoutProductId,
+      quotationId: quotationId || undefined,
       quantity,
       orderType: mode === 'sample' ? 'sample' : 'bulk',
       orderSubType: mode === 'sample' ? 'sample_order' : 'direct_order',
       logisticsOption: logistics || undefined,
       destination,
     })
-    : Promise.resolve({ logisticsOptions: [], awaitingAddress: true }), [address, destination, logistics, mode, productId, quantity]))
+    : Promise.resolve({ logisticsOptions: [], awaitingAddress: true }), [address, checkoutProductId, destination, logistics, mode, quantity, quotationId]))
   const pricing = quote.data || {}
   const availableOptions = pricing.logisticsOptions || []
   const tierCards = LOGISTICS_TIERS.map(tier => ({ ...tier, name: t(tier.nameKey), rate: availableOptions.find(item => item.key === tier.key) }))
@@ -124,9 +129,9 @@ export default function CheckoutPage() {
       postalCode: address.postalCode || address.pincode,
     }
     const payload = {
-      productId,
+      productId: checkoutProductId,
       quantity,
-      quotationId: params.get('quotationId') || undefined,
+      quotationId: quotationId || undefined,
       chatId: params.get('chatId') || undefined,
       destination,
       shippingAddress,
@@ -180,7 +185,7 @@ export default function CheckoutPage() {
 
   return <AppShell><div className="container checkout-page">
     <button className="back-link" onClick={() => navigate(-1)}><ArrowLeft /> Product details</button>
-    <header><span className="eyebrow">Secure marketplace checkout</span><h1>{mode === 'sample' ? 'Order a sample' : 'Place direct order'}</h1><p>Confirm delivery, logistics, charges and terms, then pay without leaving checkout.</p></header>
+    <header><span className="eyebrow">Secure B2B checkout</span><h1>{mode === 'sample' ? 'Order a sample' : quotationId ? 'Complete your quotation order' : 'Place direct order'}</h1><p>Confirm delivery, shipping, the final amount and your acknowledgement before secure payment.</p></header>
     <div className="checkout-layout">
       <div>
         <section className="module-panel checkout-product">
@@ -189,11 +194,11 @@ export default function CheckoutPage() {
           <label>Quantity<input type="number" min={mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum} value={quantity} disabled={Boolean(pendingOrderId)} onChange={(event) => setQuantity(Math.max(mode === 'sample' ? 1 : product.minimumOrderQuantity || minimum, Number(event.target.value) || minimum))} /></label>
         </section>
         <section className="module-panel">
-          <div className="compact-heading"><h2><MapPin /> {t('checkout.deliveryAddress')}</h2><Link to="/addresses">Add or edit</Link></div>
+          <div className="compact-heading"><h2><span className="checkout-step">1</span><MapPin /> {t('checkout.deliveryAddress')}</h2><div className="checkout-address-actions"><Link to="/addresses">Edit</Link><Link to="/addresses">Change address</Link><Link to="/addresses">+ Add new address</Link></div></div>
           {addresses.length ? <div className="checkout-addresses">{addresses.map((item) => <button type="button" disabled={Boolean(pendingOrderId)} className={resolveId(address) === resolveId(item) ? 'active' : ''} key={resolveId(item)} onClick={() => setAddressId(resolveId(item))}><b>{item.fullName}</b><span>{item.address || item.line1}, {item.city}, {item.country}</span>{resolveId(address) === resolveId(item) && <CheckCircle2 />}</button>)}</div> : <div className="account-empty"><MapPin /><b>No saved delivery address</b><Link className="button button--primary" to="/addresses">Add address</Link></div>}
         </section>
         <section className="module-panel">
-          <div className="checkout-shipping-heading"><h2><Truck /> {t('checkout.shipping')}</h2><p>Rates are calculated automatically from the seller's product packaging and your delivery address.</p></div>
+          <div className="checkout-shipping-heading"><h2><span className="checkout-step">2</span><Truck /> {t('checkout.shipping')}</h2><p>Rates are calculated automatically from the seller's product packaging and your delivery address.</p></div>
           {international || pricing.internationalUnsupported ? <div className="checkout-shipping-unavailable checkout-shipping-international"><Truck /><div><b>International shipping coming soon</b><p>Shipping is currently available only within India. Payment is disabled for this address.</p></div></div> : quote.loading && !pricing.logisticsOptions?.length ? <><p className="checkout-calculating" aria-live="polite">Calculating live shipping rates…</p><div className="checkout-logistics">{Array.from({ length: 3 }, (_, index) => <div className="checkout-shipping-skeleton" key={index}><i /><span><i /><i /></span><i /></div>)}</div></> : pricing.logisticsOptions?.length ? <>{quote.loading && <p className="checkout-calculating" aria-live="polite">Updating selected shipping rate…</p>}<div className="checkout-logistics" role="radiogroup" aria-label="EsyGlob Logistics shipping tiers">{tierCards.map(({ key, name, description, rate: item }) => {
             const selected = logisticsKey === key
             const unavailable = !item || item.bookingAvailable === false
@@ -205,13 +210,13 @@ export default function CheckoutPage() {
         {quote.error && <p className="action-error">{quote.error.message}</p>}
       </div>
       <aside className="module-panel checkout-summary">
-        <ShieldCheck /><h2>{t('checkout.orderSummary')}</h2>
+        <ShieldCheck /><h2><span className="checkout-step">3</span>{t('checkout.orderSummary')}</h2>
         <div className="quote-breakdown"><span>Original products <b><Money value={pricing.originalProductTotal ?? pricing.productTotal} currency={pricing.currency} /></b></span>{pricing.productSavings > 0 && <span className="saving">Product discount <b>−<Money value={pricing.productSavings} currency={pricing.currency} /></b></span>}<span>Logistics <b><Money value={pricing.logisticsCharges} currency={pricing.currency} /></b></span>{pricing.couponDiscount > 0 && <span className="saving">Coupon <b>−<Money value={pricing.couponDiscount} currency={pricing.currency} /></b></span>}<span>Platform fee <b><Money value={pricing.platformFee} currency={pricing.currency} /></b></span><span>Tax <b><Money value={pricing.gstAmount} currency={pricing.currency} /></b></span>{pricing.giftCardAmount > 0 && <span className="saving">Gift card <b>−<Money value={pricing.giftCardAmount} currency={pricing.currency} /></b></span>}<strong>Grand total <b><Money value={pricing.grandTotal} currency={pricing.currency} /></b></strong>{pricing.savings > 0 && <em className="checkout-savings">You save <Money value={pricing.savings} currency={pricing.currency} /></em>}</div>
-        <label className="check-field"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I accept the trade, payment and fulfillment terms.</label>
+        <div className="checkout-acknowledgement"><h3><span className="checkout-step">4</span>Buyer acknowledgement</h3><label className="check-field"><input type="checkbox" checked={terms} onChange={(event) => setTerms(event.target.checked)} /> I confirm that I have reviewed the product, quantity, delivery address, shipping option and total amount.</label></div>
         {error && <p className="action-error">{error}</p>}
         {pendingOrderId && <p><CheckCircle2 /> Order saved. Complete payment to submit it to the seller.</p>}
-        <button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || Boolean(quote.error) || international || pricing.internationalUnsupported || !logisticsKey || !shippingBookingAvailable || !terms}><CreditCard /> {busy ? 'Opening Razorpay…' : Number(pricing.grandTotal || 0) <= 0 ? 'Place fully covered order' : pendingOrderId ? 'Retry payment' : mode === 'sample' ? 'Pay & Place Sample Order' : 'Pay & Place Order'}</button>
-        <small>Razorpay verifies payment before fulfillment begins.</small>
+        <h3 className="checkout-payment-title"><span className="checkout-step">5</span>Payment</h3><button className="button button--primary button--full" onClick={place} disabled={busy || quote.loading || Boolean(quote.error) || international || pricing.internationalUnsupported || !logisticsKey || !shippingBookingAvailable || !terms}><CreditCard /> {busy ? 'Opening secure payment…' : Number(pricing.grandTotal || 0) <= 0 ? 'Place fully covered order' : <>{pendingOrderId ? 'Retry ' : ''}Pay <Money value={pricing.grandTotal} currency={pricing.currency} /></>}</button>
+        <small className="checkout-payment-methods"><span>Visa</span><span>Mastercard</span><span>RuPay</span><span>UPI</span> Securely processed by Razorpay</small>
       </aside>
     </div>
   </div></AppShell>

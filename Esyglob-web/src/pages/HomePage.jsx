@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { fetchCategories, fetchProducts } from '../api/marketplace'
 import { useAuth } from '../auth/auth-context'
 import AppShell from '../components/AppShell'
-import { CategoryBubble, ProductCard, SkeletonCards } from '../components/MarketplaceCards'
+import { ProductCard, SkeletonCards } from '../components/MarketplaceCards'
 import MarketplaceSearch from '../components/MarketplaceSearch'
 import { MarketplaceError } from '../components/MarketplaceFeedback'
 import useAsyncData from '../hooks/useAsyncData'
@@ -193,4 +193,3 @@ function QuickAction({ icon, label, tone, to, onClick, state }) {
   const content = <><span className={`tone-${tone}`}>{icon}</span><b>{label}</b></>
   return to ? <Link to={to} state={state}>{content}</Link> : <button onClick={onClick}>{content}</button>
 }
-

@@ -79,3 +79,31 @@ export default function CurrencySelector({ className = 'header-currency' }) {
     </div>}
   </div>
 }
+
+export function AccountCurrencySelector() {
+  const { selectedCurrency, setCurrency } = useCurrency()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const root = useRef(null)
+  const selected = CURRENCY_META[selectedCurrency]
+  const options = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return CURRENCY_OPTIONS.filter(item => !needle || `${item.code} ${item.name} ${item.symbol}`.toLowerCase().includes(needle))
+  }, [query])
+  useEffect(() => {
+    const close = event => { if (!root.current?.contains(event.target)) setOpen(false) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [])
+  return <div className={`account-currency-picker ${open ? 'open' : ''}`} ref={root}>
+    <button type="button" className="account-currency-picker__trigger" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <Flag countryCode={selected.flagCountryCode} />
+      <span><b>{selected.code} — {selected.symbol}</b><small>{selected.name}</small></span>
+      <ChevronDown />
+    </button>
+    {open && <div className="account-currency-picker__menu">
+      <label><Search /><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder="Search currency..." /></label>
+      <div role="listbox">{options.map(item => <button type="button" role="option" aria-selected={item.code === selectedCurrency} key={item.code} onClick={() => { setCurrency(item.code); setOpen(false); setQuery('') }}><Flag countryCode={item.flagCountryCode} /><span><b>{item.code} — {item.symbol}</b><small>{item.name}</small></span>{item.code === selectedCurrency && <Check />}</button>)}</div>
+    </div>}
+  </div>
+}

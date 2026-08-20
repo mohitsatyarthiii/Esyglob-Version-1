@@ -167,9 +167,10 @@ export default function UnifiedSearchInput({
   }
 
   function chooseSuggestion(item) {
-    if (item.href) {
+    const safeHref = suggestionHref(item)
+    if (safeHref) {
       setOpen(false)
-      navigate(item.href)
+      navigate(safeHref)
       return
     }
     update(item.label)
@@ -229,4 +230,12 @@ export default function UnifiedSearchInput({
       <footer><Camera /> Upload a product photo for visual matching</footer>
     </div>}
   </div>
+}
+
+function suggestionHref(item) {
+  const href = String(item?.href || '')
+  if (!href.startsWith('/') || href.startsWith('//')) return ''
+  if (item.type === 'subcategory') return `/products?category=${encodeURIComponent(item.label || '')}`
+  const supported = /^\/(?:products(?:\/[^/?#]+)?|sellers(?:\/[^/?#]+)?|categories(?:\/[^/?#]+)?|services(?:\/[^/?#]+)?|rfqs(?:\/[^/?#]+)?)(?:[?#].*)?$/
+  return supported.test(href) ? href : ''
 }
