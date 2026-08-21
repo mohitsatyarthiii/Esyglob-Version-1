@@ -38,6 +38,7 @@ const AgreementsPage = lazy(() => import('./pages/AgreementsPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const OrdersPage = lazy(() => import('./pages/OrdersPage'))
 const OrderDetailsPage = lazy(() => import('./pages/OrderDetailsPage'))
+const OrderTrackingPage = lazy(() => import('./pages/OrderTrackingPage'))
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'))
 const AddressesPage = lazy(() => import('./pages/AddressesPage'))
 const SavedItemsPage = lazy(() => import('./pages/SavedItemsPage'))
@@ -111,6 +112,7 @@ export default function App() {
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/orders" element={<OrdersPage />} />
       <Route path="/orders/:orderId" element={<OrderDetailsPage />} />
+      <Route path="/orders/:orderId/tracking" element={<OrderTrackingPage />} />
       <Route path="/checkout" element={<CheckoutPage />} />
       <Route path="/payment/success" element={<PaymentResultPage status="success" />} />
       <Route path="/payment/failure" element={<PaymentResultPage status="failure" />} />

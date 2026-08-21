@@ -64,6 +64,9 @@ export async function updateOrder(id, input) { return entity(await apiRequest(`/
 export async function addProductionUpdate(id, input) { return entity(await apiRequest(`/orders/${id}/production-updates`, { method: 'POST', body: input }), 'order') }
 export async function buyerOrderAction(id, input) { return entity(await apiRequest(`/orders/${id}/buyer-action`, { method: 'POST', body: input }), 'order') }
 export async function retryOrderShippingBooking(id) { return unwrapData(await apiRequest(`/orders/${id}/retry-shipping-booking`, { method: 'POST' })) }
+export async function fetchOrderTracking(id, refresh = false) { return unwrapData(await apiRequest(`/orders/${id}/tracking`, { query: refresh ? { refresh: 1 } : undefined, cache: false })) }
+export async function markOrderReadyForShipment(id) { return unwrapData(await apiRequest(`/orders/${id}/ready-for-shipment`, { method: 'POST' })) }
+export async function createTrackingQuery(id, input) { return unwrapData(await apiRequest(`/orders/${id}/tracking/query`, { method: 'POST', body: input })) }
 export async function fetchMyShippingSetup() { return unwrapData(await apiRequest('/shipping/setup/me', { cache: false })) }
 export async function updateMyShippingSetup(pickupAddress) { return unwrapData(await apiRequest('/shipping/setup/me', { method: 'PUT', body: { pickupAddress }, timeoutMs: 60_000 })) }
 export async function synchronizeMyShippingSetup() { return unwrapData(await apiRequest('/shipping/setup/me/sync', { method: 'POST' })) }

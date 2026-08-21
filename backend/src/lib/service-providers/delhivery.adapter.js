@@ -133,7 +133,8 @@ export class DelhiveryAdapter extends ServiceProviderAdapter {
     try {
       const { data } = await this.api().get('/api/v1/packages/json/', { params: { waybill: trackingNumber, verbose: 2 } });
       const shipment = data.ShipmentData?.[0]?.Shipment || {};
-      return { status: normalizeTracking(shipment.Status?.Status || shipment.Status?.StatusType), eta: shipment.ExpectedDeliveryDate || null, events: (shipment.Scans || []).map(item => ({ status: normalizeTracking(item.ScanDetail?.Scan), message: item.ScanDetail?.Instructions || item.ScanDetail?.Scan, location: item.ScanDetail?.ScannedLocation, occurredAt: item.ScanDetail?.ScanDateTime })), providerPayload: data };
+      const providerStatus = shipment.Status?.Status || shipment.Status?.StatusType;
+      return { status: normalizeTracking(providerStatus), providerStatus, currentLocation: shipment.Status?.StatusLocation, eta: shipment.ExpectedDeliveryDate || null, events: (shipment.Scans || []).map(item => ({ status: normalizeTracking(item.ScanDetail?.Scan), providerStatus: item.ScanDetail?.Scan, message: item.ScanDetail?.Instructions || item.ScanDetail?.Scan, location: item.ScanDetail?.ScannedLocation, occurredAt: item.ScanDetail?.ScanDateTime, providerPayload: item.ScanDetail })), providerPayload: data };
     } catch (error) { throw this.providerError(error, 'tracking'); }
   }
 }

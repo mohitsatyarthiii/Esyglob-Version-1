@@ -174,6 +174,9 @@ export default function OrdersPage() {
                       ? `Buyer: ${displayName(item.buyerId)}`
                       : `Seller: ${displayName(item.sellerId)}`}
                   </p>
+                  <p className="order-tracking-summary">
+                    <Truck /> {item.shipmentId?.trackingNumber || item.trackingNumber || "Tracking number is being generated"}
+                  </p>
                 </div>
                 <div>
                   <b>
@@ -181,8 +184,8 @@ export default function OrdersPage() {
                   </b>
                   <StatusBadge status={item.status || "pending"} />
                 </div>
-                <Link to={`/orders/${resolveId(item)}`}>
-                  View order <ArrowRight />
+                <Link to={`/orders/${resolveId(item)}/tracking`}>
+                  Track order <ArrowRight />
                 </Link>
               </article>
             ))}

@@ -178,7 +178,8 @@ export class ShiprocketAdapter extends ServiceProviderAdapter {
       const api = await this.api();
       const { data } = await api.get(`/courier/track/awb/${encodeURIComponent(trackingNumber)}`);
       const tracking = data.tracking_data || data;
-      return { status: normalizeTracking(tracking.shipment_status || tracking.track_status), eta: tracking.etd || null, events: (tracking.shipment_track_activities || []).map(event => ({ status: normalizeTracking(event['sr-status-label'] || event.activity), message: event.activity, location: event.location, occurredAt: event.date })), providerPayload: data };
+      const providerStatus = tracking.shipment_status || tracking.track_status;
+      return { status: normalizeTracking(providerStatus), providerStatus, currentLocation: tracking.current_location, eta: tracking.etd || null, events: (tracking.shipment_track_activities || []).map(event => ({ status: normalizeTracking(event['sr-status-label'] || event.activity), providerStatus: event['sr-status-label'] || event.activity, message: event.activity, location: event.location, occurredAt: event.date, providerPayload: event })), providerPayload: data };
     } catch (error) { throw this.providerError(error, 'tracking'); }
   }
 }

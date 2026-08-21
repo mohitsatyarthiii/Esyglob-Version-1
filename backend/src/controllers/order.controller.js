@@ -1,6 +1,22 @@
 import OrderService from '../services/order.service.js';
+import OrderTrackingService from '../services/order-tracking.service.js';
 
 class OrderController {
+  static async getTracking(req, res) {
+    try {
+      return res.json(await OrderTrackingService.get(req.user._id, req.user.roles, req.params.orderId, { refresh: req.query.refresh === 'true' || req.query.refresh === '1' }));
+    } catch (error) {
+      return res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Tracking is temporarily unavailable' : error.message, code: error.code });
+    }
+  }
+  static async markReadyForShipment(req, res) {
+    try { return res.json(await OrderTrackingService.markReady(req.user._id, req.user.roles, req.params.orderId)); }
+    catch (error) { return res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Shipment booking is taking longer than expected. Please retry shortly.' : error.message, code: error.code, details: error.details }); }
+  }
+  static async createTrackingQuery(req, res) {
+    try { return res.status(201).json(await OrderTrackingService.createQuery(req.user._id, req.user.roles, req.params.orderId, req.body)); }
+    catch (error) { return res.status(error.statusCode || 500).json({ error: error.statusCode >= 500 ? 'Your query could not be submitted. Please retry.' : error.message, code: error.code }); }
+  }
   static async retryShippingBooking(req,res){try{return res.json(await OrderService.retryShippingBooking(req.user._id,req.user.roles,req.params.orderId));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async sellerQueue(req,res){try{return res.json(await OrderService.sellerQueue(req.user._id,req.query));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}
   static async startOrder(req,res){try{return res.status(201).json(await OrderService.startOrder(req.user._id,req.body));}catch(error){return res.status(error.statusCode||500).json({error:error.message});}}

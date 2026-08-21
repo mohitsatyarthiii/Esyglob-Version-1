@@ -67,13 +67,21 @@ export function dimensions(shipment) {
   };
 }
 
-export function normalizeTracking(status, fallback = 'in_transit') {
-  const value = String(status || '').toLowerCase().replaceAll(' ', '_');
-  if (/deliver(ed|y_complete)/.test(value)) return 'delivered';
-  if (/out_for_delivery/.test(value)) return 'out_for_delivery';
-  if (/pickup|picked_up|collected/.test(value)) return 'picked_up';
+export function normalizeTracking(status, fallback = 'pending') {
+  const value = String(status || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (/rto.*deliver|return.*deliver/.test(value)) return 'rto_delivered';
+  if (/rto.*transit|return.*transit/.test(value)) return 'rto_in_transit';
+  if (/rto|return_to_origin/.test(value)) return 'rto_initiated';
+  if (/deliver(ed|y_complete)|shipment_delivered/.test(value)) return 'delivered';
+  if (/out.*delivery|ofd/.test(value)) return 'out_for_delivery';
+  if (/attempt|consignee.*unavailable/.test(value)) return 'delivery_attempted';
+  if (/delay/.test(value)) return 'delayed';
+  if (/exception|undeliver|lost|damag|failed/.test(value)) return 'exception';
+  if (/in.*transit|departed|arrived|hub|dispatched/.test(value)) return 'in_transit';
+  if (/pickup|picked.*up|collected/.test(value)) return 'picked_up';
+  if (/awb|label/.test(value)) return 'label_created';
+  if (/book|manifest/.test(value)) return 'shipment_booked';
   if (/cancel/.test(value)) return 'cancelled';
-  if (/fail|exception|undeliver/.test(value)) return 'failed';
-  if (/book|manifest|confirm|ready/.test(value)) return 'confirmed';
+  if (/ready/.test(value)) return 'ready_for_shipment';
   return fallback;
 }

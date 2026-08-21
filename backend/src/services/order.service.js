@@ -11,10 +11,10 @@ import { commitOrderPromotions, releaseOrderPromotions, reserveOrderPromotions }
 import { calculateCommercialTotal, roundMoney } from '../lib/order-totals.js';
 import { checkoutShipmentForProduct, productHsCode, requireProductShippingData } from '../lib/checkout-package.js';
 import { sellerWithCheckoutPickup } from '../lib/checkout-seller-pickup.js';
-import { bookPaidOrderWithProvider, providerBookingSnapshot } from '../lib/order-provider-booking.js';
+import { providerBookingSnapshot } from '../lib/order-provider-booking.js';
 import { sellerShippingCheckoutContext } from './seller-shipping-setup.service.js';
-import Shipment from '../models/Shipment.js';
 import Order from '../models/Order.js';
+import OrderTrackingService from './order-tracking.service.js';
 
 function toObjectId(value) {
   if (!value) return null;
@@ -413,7 +413,7 @@ class OrderService {
    * Update order status (seller only)
    */
   static async updateOrderStatus(userId, roles, orderId, data) {
-    const { status, trackingNumber, estimatedDeliveryDate, notes } = data;
+    const { status, estimatedDeliveryDate, notes } = data;
 
     const order = await OrderRepository.findByIdFull(orderId);
     if (!order) {
@@ -431,6 +431,10 @@ class OrderService {
     }
 
     if (status) {
+      const providerControlled = ['ready_to_ship', 'preparing_shipment', 'pickup_scheduled', 'picked_up', 'warehouse_processing', 'in_transit', 'custom_clearance', 'out_for_delivery', 'shipped', 'delivered', 'returned'];
+      if (providerControlled.includes(status) && !isAdmin) {
+        throw Object.assign(new Error(status === 'ready_to_ship' ? 'Use Mark ready for shipment to start carrier booking.' : 'Shipment milestones are updated by the shipping provider.'), { statusCode: 409 });
+      }
       const permitted = TradeWorkflowService.allowedNext(order.status);
       if (!permitted.includes(status) && !isAdmin) {
         throw Object.assign(
@@ -450,11 +454,10 @@ class OrderService {
       await notifyOrderStatus(order, { status, userId });
     }
 
-    if (trackingNumber) order.trackingNumber = trackingNumber;
     if (estimatedDeliveryDate) order.estimatedDeliveryDate = estimatedDeliveryDate;
 
     await syncShipmentFromOrderStatus(order, {
-      status, trackingNumber, estimatedDeliveryDate, updatedBy: userId,
+      status, estimatedDeliveryDate, updatedBy: userId,
     });
 
     await OrderRepository.save(order);
@@ -477,19 +480,7 @@ class OrderService {
   }
 
   static async retryShippingBooking(userId, roles, orderId) {
-    const order = await OrderRepository.findByIdFull(orderId);
-    if (!order) throw Object.assign(new Error('Order not found'), { statusCode: 404 });
-    const seller = await OrderRepository.findSellerByUserId(userId);
-    const authorized = String(order.buyerId?._id || order.buyerId || order.userId) === String(userId)
-      || String(order.sellerId?._id || order.sellerId || '') === String(seller?._id || '')
-      || roles?.includes('admin');
-    if (!authorized) throw Object.assign(new Error('Unauthorized'), { statusCode: 403 });
-    if (order.paymentStatus !== 'paid') throw Object.assign(new Error('Shipping can be booked only after verified payment'), { statusCode: 409 });
-    const shipment = await Shipment.findOne({ orderId: order._id }).sort({ createdAt: -1 });
-    if (!shipment) throw Object.assign(new Error('Order shipment is not ready for booking'), { statusCode: 409 });
-    const result = await bookPaidOrderWithProvider(order, shipment, userId);
-    await OrderRepository.save(order);
-    return { success: result.booked || result.alreadyBooked, booking: result, shipment };
+    return OrderTrackingService.markReady(userId, roles, orderId);
   }
 
   static async sellerQueue(userId, query = {}) {

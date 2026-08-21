@@ -17,6 +17,9 @@ router.post('/', OrderController.create);
 
 // GET - Single order
 router.get('/:orderId', OrderController.getById);
+router.get('/:orderId/tracking', OrderController.getTracking);
+router.post('/:orderId/ready-for-shipment', OrderController.markReadyForShipment);
+router.post('/:orderId/tracking/query', OrderController.createTrackingQuery);
 
 router.post('/:orderId/production-updates', OrderController.addProductionUpdate);
 router.post('/:orderId/buyer-action', OrderController.buyerAction);

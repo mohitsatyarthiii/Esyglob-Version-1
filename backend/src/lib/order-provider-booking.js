@@ -61,11 +61,10 @@ export async function bookPaidOrderWithProvider(order, shipment, updatedBy) {
     shipment.pickupRequestId = result.pickupRequestId;
     shipment.trackingNumber = result.trackingNumber;
     shipment.awbNumber = result.trackingNumber;
+    shipment.trackingUrl = result.trackingUrl;
     shipment.status = result.pickupRequestId ? 'pickup_scheduled' : 'pickup_pending';
     shipment.estimatedDeliveryAt = result.eta || snapshot.estimatedDeliveryAt || shipment.estimatedDeliveryAt;
     shipment.providerPayload = result.providerPayload;
-    shipment.events.push({ status: 'label_created', description: 'EsyGlob Shipping booked and tracking created', occurredAt: new Date() });
-    if (result.pickupRequestId) shipment.events.push({ status: 'pickup_scheduled', description: 'Carrier pickup scheduled', occurredAt: new Date() });
     order.trackingNumber = result.trackingNumber || order.trackingNumber;
     order.timeline.push({ status: 'shipment_booked', timestamp: new Date(), note: 'EsyGlob Shipping booking confirmed', updatedBy });
     await shipment.save();
