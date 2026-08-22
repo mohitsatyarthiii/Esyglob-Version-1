@@ -64,10 +64,15 @@ export async function streamAIMessage(input, onEvent, signal) {
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let completed = false
   const dispatch = (frame) => {
     const data = frame.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
     if (!data) return
-    try { onEvent(JSON.parse(data)) } catch { /* Ignore malformed heartbeat frames. */ }
+    let event
+    try { event = JSON.parse(data) }
+    catch { throw new ApiError('The response stream was interrupted. Please retry.', 0) }
+    if (event?.type === 'done') completed = true
+    onEvent(event)
   }
   while (true) {
     const { done, value } = await reader.read()
@@ -78,6 +83,7 @@ export async function streamAIMessage(input, onEvent, signal) {
     if (done) break
   }
   if (buffer.trim()) dispatch(buffer)
+  if (!completed) throw new ApiError('The response connection closed before completion. Please retry.', 0)
 }
 export async function updateAIChat(input) { return unwrapData(await apiRequest('/ai-chat', { method: 'PATCH', body: input })) }
 export async function deleteAIChat(chatId) { return unwrapData(await apiRequest('/ai-chat', { method: 'DELETE', query: { chatId } })) }

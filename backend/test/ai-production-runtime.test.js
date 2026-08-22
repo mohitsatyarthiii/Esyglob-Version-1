@@ -170,26 +170,26 @@ test('intent router serves greetings and FAQs without inference', async () => {
   assert.equal(await AISemanticCacheService.get('Show my account orders', 'stable_general'), null);
 });
 
-test('runtime always requests gemma3:4b and never streams hidden reasoning', async () => {
+test('runtime always requests configured Gemma 1B and never streams hidden reasoning', async () => {
   const originalFetch = globalThis.fetch;
   let payload;
   globalThis.fetch = async (_url, options) => {
     payload = JSON.parse(options.body);
     const lines = [
       JSON.stringify({ message: { thinking: 'private reasoning', content: '<thi' } }),
-      JSON.stringify({ message: { content: 'nk>secret steps</think>Final answer' }, eval_count: 4 }),
+      JSON.stringify({ message: { content: 'nk>secret steps</think>Final answer' }, eval_count: 4, done: true, done_reason: 'stop' }),
     ].join('\n');
     return new Response(lines, { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } });
   };
   try {
     let streamed = '';
     const result = await OllamaRuntimeService.complete({ messages: [{ role: 'user', content: 'test' }], stream: true, onToken: token => { streamed += token; } });
-    assert.equal(payload.model, 'gemma3:4b');
+    assert.equal(payload.model, 'gemma3:1b');
     assert.equal('think' in payload, false);
-    assert.equal(payload.options.top_k, 40);
+    assert.equal(payload.options.top_k, 20);
     assert.equal(payload.options.top_p, 0.9);
     assert.equal(payload.options.repeat_penalty, 1.1);
-    assert.equal(payload.options.num_ctx, 8192);
+    assert.equal(payload.options.num_ctx, 4096);
     assert.equal(OllamaRuntimeService.requiresPeriodicWarmup(), false);
     assert.equal(result.content, 'Final answer');
     assert.equal(streamed, 'Final answer');
@@ -228,7 +228,7 @@ test('runtime validates the configured Gemma model before startup warmup', async
   try {
     assert.equal(await OllamaRuntimeService.validateModel({ force: true }), true);
     assert.match(request.url, /\/api\/show$/);
-    assert.equal(request.payload.model, 'gemma3:4b');
+    assert.equal(request.payload.model, 'gemma3:1b');
     assert.equal(OllamaRuntimeService.status().modelAvailable, true);
   } finally {
     globalThis.fetch = originalFetch;

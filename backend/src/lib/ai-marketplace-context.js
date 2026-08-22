@@ -26,7 +26,7 @@ function publicProductLink(product) {
 }
 
 function publicSupplierLink(seller) {
-  return `/manufacturers/${seller?._id}`;
+  return `/sellers/${seller?._id}`;
 }
 
 function publicCategoryLink(category) {
@@ -102,9 +102,9 @@ function relevanceScore(values, terms, qualityScore = 0) {
 }
 
 export async function getAISearchResults({ query, filters = {}, userId = null }) {
-  const productLimit = Math.min(Number(process.env.AI_MARKETPLACE_PRODUCT_LIMIT || 24), 60);
-  const supplierLimit = Math.min(Number(process.env.AI_MARKETPLACE_SUPPLIER_LIMIT || 16), 40);
-  const categoryLimit = Math.min(Number(process.env.AI_MARKETPLACE_CATEGORY_LIMIT || 10), 30);
+  const productLimit = Math.min(Number(process.env.AI_MARKETPLACE_PRODUCT_LIMIT || 12), 24);
+  const supplierLimit = Math.min(Number(process.env.AI_MARKETPLACE_SUPPLIER_LIMIT || 8), 16);
+  const categoryLimit = Math.min(Number(process.env.AI_MARKETPLACE_CATEGORY_LIMIT || 6), 12);
   const rfqLimit = Math.min(Number(process.env.AI_MARKETPLACE_RFQ_LIMIT || 8), 20);
   const orderLimit = Math.min(Number(process.env.AI_MARKETPLACE_ORDER_LIMIT || 8), 20);
   const terms = getSearchTerms(query, filters);
@@ -163,6 +163,7 @@ async function getAISearchResultsUncached({
   ] : [];
 
   const productQuery = {
+    ...(filters.productId && mongoose.Types.ObjectId.isValid(filters.productId) ? { _id: filters.productId } : {}),
     status: { $in: ['active', 'published'] },
     isVerifiedSeller: true,
     ...(productOr.length ? { $or: productOr } : {}),
@@ -171,6 +172,7 @@ async function getAISearchResultsUncached({
   if (filters.targetPrice) productQuery.price = { $lte: filters.targetPrice };
 
   const sellerQuery = {
+    ...(filters.sellerId && mongoose.Types.ObjectId.isValid(filters.sellerId) ? { _id: filters.sellerId } : {}),
     isActive: true,
     isSuspended: { $ne: true },
     ...(filters.requireVerified ? { isVerified: true } : {}),
@@ -199,8 +201,7 @@ async function getAISearchResultsUncached({
       .lean()
       .exec(),
     Seller.find(sellerQuery)
-      .select('companyName businessName companyType companyDescription address factoryInfo companyDetails certifications verificationStatus isVerified trustScore rating reviewCount productCategories exportMarkets shippingInfo totalProducts responseRate averageResponseTimeHours onTimeDeliveryRate userId')
-      .populate('userId', 'fullName')
+      .select('companyName businessName companyType companyDescription address factoryInfo companyDetails certifications verificationStatus isVerified trustScore rating reviewCount productCategories exportMarkets shippingInfo totalProducts responseRate averageResponseTimeHours onTimeDeliveryRate')
       .sort({ isVerified: -1, trustScore: -1, rating: -1, createdAt: -1 })
       .limit(supplierLimit)
       .lean()
@@ -321,11 +322,11 @@ export function summarizeMarketplaceResults(results) {
   const promptProductLimit = Number(process.env.AI_PROMPT_PRODUCT_LIMIT || 4);
   const promptSupplierLimit = Number(process.env.AI_PROMPT_SUPPLIER_LIMIT || 4);
   const topProducts = (results.products || []).slice(0, promptProductLimit).map(product =>
-    `- Product: ${product.name} | ${product.category || 'General'} | Price ${product.currency || 'INR'} ${product.price || 'request'} | MOQ ${product.minimumOrderQuantity || 1} ${product.unit || 'units'} | Supplier ${product.sellerId?.companyName || 'Supplier'}${product.sellerId?.isVerified ? ' verified' : ''}${product.primaryHsCodeId?.code || product.hsCodes?.[0]?.code ? ` | HS ${product.primaryHsCodeId?.code || product.hsCodes?.[0]?.code}` : ''} | Link ${publicProductLink(product)}${product.sellerId?._id ? ` | Supplier link ${publicSupplierLink(product.sellerId)}` : ''}`
+    `- Product: ${product.name} | ${product.category || 'General'}${product.subcategory ? ` / ${product.subcategory}` : ''} | Price ${product.price ? `${product.currency || 'INR'} ${product.price}` : 'not listed'} | MOQ ${product.minimumOrderQuantity || 'not listed'} ${product.unit || ''} | Supplier ${product.sellerId?.companyName || 'not listed'}${product.sellerId?.isVerified ? ' verified' : ''}${product.description ? ` | Description ${String(product.description).slice(0, 180)}` : ''}${product.specifications && Object.keys(product.specifications).length ? ` | Specifications ${JSON.stringify(product.specifications).slice(0, 220)}` : ''} | Link ${publicProductLink(product)}${product.sellerId?._id ? ` | Supplier link ${publicSupplierLink(product.sellerId)}` : ''}`
   );
 
   const topSuppliers = (results.suppliers || []).slice(0, promptSupplierLimit).map(seller =>
-    `- Supplier: ${seller.companyName || 'Supplier'} | ${seller.companyType || 'supplier'} | ${seller.address?.country || 'Global'} | Trust ${seller.trustScore || 0} | ${seller.isVerified ? 'Verified' : 'Not verified'} | Link ${publicSupplierLink(seller)}`
+    `- Supplier: ${seller.companyName || 'Supplier'} | ${seller.companyType || 'supplier'} | ${[seller.address?.city, seller.address?.state, seller.address?.country].filter(Boolean).join(', ') || 'Location not listed'} | ${seller.isVerified ? 'Verified' : 'Not verified'}${seller.productCategories?.length ? ` | Categories ${seller.productCategories.slice(0, 5).join(', ')}` : ''}${seller.companyDescription ? ` | Description ${String(seller.companyDescription).slice(0, 220)}` : ''} | Link ${publicSupplierLink(seller)}`
   );
 
   const topCategories = (results.categories?.length ? results.categories : productCategories.map(name => ({ name })))

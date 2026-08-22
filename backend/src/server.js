@@ -28,7 +28,7 @@ async function startServer() {
     initializeSocket(server);
     OllamaRuntimeService.validateModel()
       .then(() => AIChatService.warmProvider())
-      .then(ok => console.log(`[AI] ${OllamaRuntimeService.model} warm-up ${ok ? 'complete' : 'unavailable'}`))
+      .then(ok => console.log(`[AI] Gemma 3 1B warm-up ${ok ? 'complete' : 'unavailable'}`))
       .catch(error => console.error(`[AI] ${error.message}`));
     if (OllamaRuntimeService.requiresPeriodicWarmup()) {
       const aiKeepWarm = setInterval(() => {

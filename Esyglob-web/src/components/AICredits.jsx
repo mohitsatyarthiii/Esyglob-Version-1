@@ -8,13 +8,13 @@ const CREDIT_EVENT = 'esyglob:ai-credits-updated'
 export function publishAICredits(credits) { if (credits) window.dispatchEvent(new CustomEvent(CREDIT_EVENT, { detail: credits })) }
 
 export function useAICredits(role = 'buyer') {
-  const [credits, setCredits] = useState(null); const [loading, setLoading] = useState(true)
-  const refresh = useCallback(async () => { const data = await fetchSubscription(role); setCredits(data?.credits || { allocated: Number(data?.plan?.aiCredits?.monthly ?? data?.plan?.aiCredits ?? 0), used: Number(data?.usage?.aiCreditsUsed || 0), remaining: Number(data?.usage?.aiCreditsRemaining || 0), todayUsed: Number(data?.usage?.aiCreditsToday || 0), resetAt: data?.subscription?.creditsResetAt || data?.subscription?.usageResetAt }); setLoading(false); return data }, [role])
+  const [credits, setCredits] = useState(null); const [plan, setPlan] = useState(null); const [loading, setLoading] = useState(true)
+  const refresh = useCallback(async () => { const data = await fetchSubscription(role); setPlan(data?.plan || null); setCredits(data?.credits || { allocated: Number(data?.plan?.aiCredits?.monthly ?? data?.plan?.aiCredits ?? 0), used: Number(data?.usage?.aiCreditsUsed || 0), remaining: Number(data?.usage?.aiCreditsRemaining || 0), todayUsed: Number(data?.usage?.aiCreditsToday || 0), resetAt: data?.subscription?.creditsResetAt || data?.subscription?.usageResetAt }); setLoading(false); return data }, [role])
   const apply = useCallback(next => { if (!next) return; setCredits(current => { const usedDelta = Math.max(0, Number(next.used || 0) - Number(current?.used || 0)); return { ...current, ...next, todayUsed: next.todayUsed ?? Number(current?.todayUsed || 0) + usedDelta } }); publishAICredits(next) }, [])
   useEffect(() => { let live = true; refresh().catch(() => { if (live) setLoading(false) }); const receive = event => { if (live && event.detail) setCredits(current => ({ ...current, ...event.detail })) }; const refetch = () => { if (document.visibilityState === 'visible') refresh().catch(() => undefined) }; window.addEventListener(CREDIT_EVENT, receive); window.addEventListener('focus', refetch); document.addEventListener('visibilitychange', refetch); const timer = window.setInterval(refetch, 60_000); return () => { live = false; window.removeEventListener(CREDIT_EVENT, receive); window.removeEventListener('focus', refetch); document.removeEventListener('visibilitychange', refetch); window.clearInterval(timer) } }, [refresh])
-  return { credits, loading, refresh, apply, exhausted: Boolean(credits && Number(credits.remaining) <= 0) }
+  return { credits, plan, loading, refresh, apply, exhausted: Boolean(credits && Number(credits.remaining) <= 0) }
 }
-
+ 
 export function AICreditMeter({ state, role = 'buyer', compact = false, className = '' }) {
   const source = state || { credits: null, loading: true }; const [dialogOpen, setDialogOpen] = useState(false); const credits = source.credits
   const allocated = Math.max(0, Number(credits?.allocated || 0)); const remaining = Math.max(0, Number(credits?.remaining || 0)); const used = Math.max(0, Number(credits?.used || 0)); const percentage = allocated ? Math.min(100, Math.round((used / allocated) * 100)) : 100; const low = allocated > 0 && remaining / allocated <= .2

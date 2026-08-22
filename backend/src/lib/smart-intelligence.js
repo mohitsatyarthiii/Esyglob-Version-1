@@ -40,7 +40,7 @@ function productInstantResponse(product) {
     product.description ? `\n${String(product.description).slice(0, 420)}` : '',
     specLines.length ? `\nSpecifications:\n${specLines.join('\n')}` : '',
     `\nOpen product: /products/${product._id}`,
-    supplier?._id ? `Open supplier: /manufacturers/${supplier._id}` : '',
+    supplier?._id ? `Open supplier: /sellers/${supplier._id}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -62,7 +62,7 @@ function supplierInstantResponse(supplier) {
       ? `- Export markets: ${supplier.exportMarkets.slice(0, 5).join(', ')}`
       : '',
     supplier.companyDescription ? `\n${String(supplier.companyDescription).slice(0, 420)}` : '',
-    `\nOpen supplier: /manufacturers/${supplier._id}`,
+    `\nOpen supplier: /sellers/${supplier._id}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -91,7 +91,7 @@ function searchInstantResponse(message, results = {}) {
   if (suppliers.length) {
     lines.push('\nSuppliers:');
     suppliers.forEach(supplier => {
-      lines.push(`- ${supplier.companyName || 'Supplier'} | ${supplier.companyType || 'supplier'} | ${supplier.address?.country || 'Global'} | ${supplier.isVerified ? 'Verified' : 'Not verified'} | /manufacturers/${supplier._id}`);
+      lines.push(`- ${supplier.companyName || 'Supplier'} | ${supplier.companyType || 'supplier'} | ${supplier.address?.country || 'Global'} | ${supplier.isVerified ? 'Verified' : 'Not verified'} | /sellers/${supplier._id}`);
     });
   }
 

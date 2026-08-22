@@ -21,7 +21,7 @@ const aiUsageSchema = new mongoose.Schema(
     },
     modelUsed: {
       type: String,
-      default: 'gemma3:4b',
+      default: () => process.env.OLLAMA_MODEL,
     },
     
     // Request Details

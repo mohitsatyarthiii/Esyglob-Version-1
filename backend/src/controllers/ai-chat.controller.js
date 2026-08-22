@@ -21,10 +21,10 @@ function debugLog(...args) {
 
 function inferenceBudget(route = {}, intelligence = {}, message = '') {
   const handling = route.handling || '';
-  if (handling === 'ai_market_insights' || intelligence.intent === 'market_research') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 280), contextSize: 4_096 };
-  if (handling === 'database_first' || intelligence.route === 'marketplace_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
-  if (handling === 'ai_trade' || intelligence.route === 'knowledge_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 6_144 };
-  return { maxTokens: Math.min(CHAT_MAX_TOKENS, String(message).length < 120 ? 220 : 320), contextSize: 4_096 };
+  if (handling === 'ai_market_insights' || intelligence.intent === 'market_research') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 280), contextSize: 3_072 };
+  if (handling === 'database_first' || intelligence.route === 'marketplace_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 3_072 };
+  if (handling === 'ai_trade' || intelligence.route === 'knowledge_data') return { maxTokens: Math.min(CHAT_MAX_TOKENS, 420), contextSize: 3_072 };
+  return { maxTokens: Math.min(CHAT_MAX_TOKENS, String(message).length < 120 ? 220 : 320), contextSize: 2_048 };
 }
 
 class AIChatController {
@@ -50,7 +50,7 @@ class AIChatController {
    */
   static async sendMessage(req, res) {
     try {
-      const result = await AIChatService.sendMessage(req.user._id, req.body, req.user);
+      const result = await AIChatService.sendMessage(req.user._id, req.body, req.user, req.aiRouting);
       const credits = await commitUsageReservation(req, { responseTokens: result.tokensUsed });
       return res.json({ ...result, credits });
     } catch (error) {
@@ -147,7 +147,7 @@ class AIChatController {
         if (!isObjectId(body.chatId)) {
           return res.status(404).json({ error: 'Chat not found' });
         }
-        chat = await AIChatRepository.findForStreaming(body.chatId, userId, 10);
+        chat = await AIChatRepository.findForStreaming(body.chatId, userId, 6);
         if (!chat) return res.status(404).json({ error: 'Chat not found' });
       } else {
         // NEW: Create empty chat directly — do NOT call sendMessage()
@@ -239,12 +239,16 @@ class AIChatController {
         }
 
         // Try AI if not simple greeting
+        if (!assistantText && req.aiRouting?.provider && req.aiRouting.provider !== 'ollama') {
+          throw Object.assign(new Error('Premium AI is not configured'), { statusCode: 503, code: 'AI_PROVIDER_NOT_CONFIGURED' });
+        }
+
         if (!assistantText && !isSimpleGreeting) {
           try {
             const result = await OllamaRuntimeService.complete({
               messages: [
                 { role: 'system', content: systemPrompt },
-                ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-10)).map(item => ({
+                ...(platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-6)).map(item => ({
                   role: item.role === 'user' ? 'user' : 'assistant',
                   content: String(item.content || '').slice(0, 600),
                 })),
@@ -253,7 +257,7 @@ class AIChatController {
               stream: true,
               signal: requestAbort.signal,
               timeoutMs: Number(process.env.OLLAMA_STREAM_TIMEOUT_MS || 90_000),
-              temperature: 0.22,
+              temperature: 0.18,
               maxTokens: budget.maxTokens,
               contextSize: budget.contextSize,
               onToken(token) {
@@ -272,6 +276,7 @@ class AIChatController {
             debugLog('[Stream] AI failed:', error.message);
             aiFailed = true;
             replaceStreamedDraft = draftWasStreamed;
+            throw error;
           }
         } else if (!assistantText) {
           aiFailed = true;

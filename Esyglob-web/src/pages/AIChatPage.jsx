@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, Bot, Camera, Copy, File, FileText, History, Image, Menu, Mic, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Bot, Camera, Copy, File, FileText, History, Home, Image, LayoutDashboard, Menu, MessageSquare, Mic, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Paperclip, Pencil, Plus, RefreshCw, Send, Share2, Sparkles, Store, Trash2, Upload, X } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { deleteAIChat, fetchAIChat, fetchAIChats, streamAIMessage, updateAIChat } from '../api/account'
@@ -163,6 +163,11 @@ export default function AIChatPage() {
     })
   }, [chats, historySearch])
   const prompts = role === 'seller' ? sellerPrompts : buyerPrompts
+  const planName = creditState.plan?.name || (creditState.loading ? 'Loading plan' : 'Free')
+  const premiumPlan = Number(creditState.plan?.prices?.monthly?.amount ?? creditState.plan?.price ?? 0) > 0
+    && creditState.plan?.tier !== 'starter'
+    && creditState.plan?.aiTier !== 'esyai_lite'
+  const assistantTier = premiumPlan ? 'Premium' : 'Free'
 
   async function attach(event) {
     const files = Array.from(event.target.files || [])
@@ -277,7 +282,7 @@ export default function AIChatPage() {
       } else {
         setMessages((current) => current.filter((item) => item._id !== streamMessageId))
         if (next.code === 'AI_CREDITS_EXHAUSTED' || next.status === 402) setCreditDialogOpen(true)
-        else { setError(next.message); setFailed(content) }
+        else { setError('Something went wrong while generating the response. Please try again.'); setFailed(content) }
       }
     } finally {
       window.cancelAnimationFrame(streamTokenFrameRef.current)
@@ -371,6 +376,14 @@ export default function AIChatPage() {
     {sidebarOpen && <button className="ai-sidebar-backdrop" aria-label="Close conversation history" onClick={() => setSidebarOpen(false)} />}
     <aside className={sidebarOpen ? 'open' : ''} aria-label="Recent AI chats" aria-modal={sidebarOpen ? 'true' : undefined}>
       <div className="ai-sidebar-brand"><span><Sparkles /></span><div><b>EsyGlob AI</b><small>Business assistant</small></div><button className="ai-sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"><X /></button></div>
+      <div className="ai-sidebar-plan">
+        <span><small>{planName}</small><b>EsyGlob AI · {assistantTier}</b></span>
+        <AICreditMeter state={creditState} role={role} compact />
+      </div>
+      <nav className="ai-sidebar-nav" aria-label="EsyGlob navigation">
+        <Link to="/home"><Home /> Marketplace</Link><Link to="/products"><Store /> Products</Link>
+        <Link to="/messages"><MessageSquare /> Messages</Link><Link to="/account"><LayoutDashboard /> Account</Link>
+      </nav>
       <button className="ai-new-chat" onClick={newConversation} title="New conversation"><Plus /><span>New conversation</span></button>
       <div className="ai-history-tools"><UnifiedSearchInput compact suggestions={false} value={historySearch} onChange={setHistorySearch} onSubmit={setHistorySearch} placeholder="Search conversations" /></div>
       <div className="ai-sidebar-head"><b>Recent</b><small>{visibleChats.length}</small></div>
@@ -389,7 +402,7 @@ export default function AIChatPage() {
           <button className="ai-desktop-sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? 'Expand conversation sidebar' : 'Collapse conversation sidebar'} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}</button>
           <button className="ai-mobile-back" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeft /></button>
           <button className="ai-mobile-menu" onClick={() => setSidebarOpen(true)} aria-label="Open recent chats"><Menu /><span>Chats</span></button>
-          <span><small>EsyGlob AI</small><h1>{active?.title || 'New conversation'}</h1></span>
+          <span><small>EsyGlob AI · {assistantTier}</small><h1>{active?.title || 'New conversation'}</h1></span>
         </div>
         <div className="ai-header-actions">
           <AICreditMeter state={creditState} role={role} compact />
@@ -415,7 +428,7 @@ export default function AIChatPage() {
           const element = event.currentTarget
           stickToBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 120
         }}
-      >{conversationLoading ? <div className="ai-loading"><div className="typing-dots"><span /><span /><span /></div><p>Opening conversation</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><h2>How can I help?</h2><p>Find products and suppliers, prepare business documents, or get practical guidance for global trade.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => promptFromMessage(text)}><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={promptFromMessage} onRegenerate={regenerateMessage} regenerateIndex={item.role === 'assistant' && !item.streaming ? index : null} />)}<div ref={endRef} /></div>
+      >{conversationLoading ? <div className="ai-loading"><div className="typing-dots"><span /><span /><span /></div><p>Opening conversation</p></div> : !messages.length ? <div className="ai-welcome"><i><Sparkles /></i><h2>What can I help you find?</h2><p>Your assistant for sourcing, suppliers, products and B2B trade on EsyGlob.</p><div className="ai-welcome-prompts">{prompts.map((text) => <button key={text} onClick={() => promptFromMessage(text)}><span>{text}</span></button>)}</div></div> : messages.map((item, index) => <AIMessage key={item._id || index} item={item} user={user} onPrompt={promptFromMessage} onRegenerate={regenerateMessage} regenerateIndex={item.role === 'assistant' && !item.streaming ? index : null} />)}<div ref={endRef} /></div>
       <div className="ai-composer-dock">
         {attachments.length > 0 && <div className="ai-attachments">{attachments.map((item, index) => <span key={`${item.url}-${index}`}>{item.mimeType?.startsWith('image/') ? <Image /> : <FileText />}<b>{item.name}</b><button type="button" aria-label={`Remove ${item.name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X /></button></span>)}</div>}
         {error && <div className="ai-error"><span>{error}</span>{failed && <button onClick={() => send(failed)}><RefreshCw /> Retry</button>}</div>}
@@ -452,7 +465,7 @@ const AIMessage = memo(function AIMessage({ item, user, onPrompt, onRegenerate, 
   const suggestions = (Array.isArray(rawSuggestions) ? rawSuggestions : []).map((value) => typeof value === 'string' ? value : value?.prompt || value?.label || value?.title).filter(Boolean)
   const sources = (Array.isArray(metadata.sources) ? metadata.sources : []).filter((source) => source?.url && source?.title).slice(0, 3)
   const attachmentUrls = metadata.attachmentUrls || metadata.pluginPayload?.attachmentUrls || []
-  const content = String(item.content || item.message || (item.streaming ? item.statusText || 'Preparing your answer...' : ''))
+  const content = String(item.content || item.message || (item.streaming ? item.statusText || 'EsyGlob AI is responding…' : ''))
   return <article className={item.role === 'user' ? 'user' : 'assistant'}><i>{item.role === 'user' ? String(user?.name || user?.fullName || 'U').slice(0, 1) : <Bot />}</i><div><RichMessage content={content} streaming={item.streaming} />{attachmentUrls.length > 0 && <div className="ai-message-files">{attachmentUrls.map((value, index) => <a href={resolveApiResourceUrl(typeof value === 'string' ? value : value.url)} target="_blank" rel="noreferrer" key={index}><Paperclip /> Attachment {index + 1}</a>)}</div>}{products.length > 0 && <div className="ai-result-cards">{products.map((product, index) => { const id = resolveId(product); const image = product.image || product.images?.[0]; return <Link to={product.link || (id ? `/products/${id}` : '/products')} key={id || index}>{image && <img src={resolveApiResourceUrl(image)} alt="" loading="lazy" decoding="async" />}<span><b>{product.name || product.title || 'Marketplace product'}</b><small><Money value={product.price} currency={product.currency} /> · MOQ {product.moq || product.minimumOrderQuantity || 1}</small></span></Link> })}</div>}{suppliers.length > 0 && <div className="ai-supplier-links">{suppliers.map((supplier, index) => { const id = resolveId(supplier); return <Link to={id ? `/sellers/${id}` : '/sellers'} key={id || index}><Store /><span><b>{supplier.companyName || supplier.name || 'Marketplace supplier'}</b><small>{supplier.verified || supplier.isVerified ? 'Verified · ' : ''}{supplier.country || 'Global supplier'}</small></span></Link> })}</div>}{sources.length > 0 && <div className="ai-message-files" aria-label="Sources">{sources.map((source, index) => <a href={source.url} target="_blank" rel="noreferrer" key={source.url}><FileText /> Source {index + 1}: {source.title}</a>)}</div>}{suggestions.length > 0 && <div className="ai-suggestions">{suggestions.map((value) => <button key={value} onClick={() => onPrompt(value)}>{value}</button>)}</div>}<footer><small>{item.createdAt || item.timestamp ? new Date(item.createdAt || item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small>{content && !item.streaming && <button type="button" onClick={() => navigator.clipboard?.writeText(content)}><Copy /> Copy</button>}{regenerateIndex !== null && <button onClick={() => onRegenerate(regenerateIndex)}><RefreshCw /> Regenerate</button>}</footer></div></article>
 })
 

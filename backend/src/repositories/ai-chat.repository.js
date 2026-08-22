@@ -30,7 +30,7 @@ class AIChatRepository {
    * The full conversation remains available to the history endpoint, but is not
    * transferred from MongoDB on every streamed message.
    */
-  static async findForStreaming(chatId, userId, messageLimit = 10) {
+  static async findForStreaming(chatId, userId, messageLimit = 6) {
     return AIChat.findOne({ _id: chatId, userId })
       .select('_id title roleContext conversationType context messages')
       .slice('messages', -Math.max(1, Number(messageLimit) || 10))

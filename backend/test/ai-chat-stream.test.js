@@ -27,7 +27,7 @@ test('chat streaming emits immediate final-answer events and persists once', asy
   const chatId = new mongoose.Types.ObjectId();
   let persisted = 0;
   AIChatRepository.findForStreaming = async (_chatId, _userId, limit) => {
-    assert.equal(limit, 10);
+    assert.equal(limit, 6);
     return { _id: chatId, userId, messages: [], context: {} };
   };
   AIChatRepository.updateChatAfterResponse = async () => { persisted += 1; return {}; };
@@ -48,7 +48,7 @@ test('chat streaming emits immediate final-answer events and persists once', asy
     assert.equal(res.status, 200);
     assert.match(res.headers['Content-Type'], /text\/event-stream/);
     assert.deepEqual(events.slice(0, 2).map(event => event.type), ['start', 'typing']);
-    assert.ok(events.some(event => event.type === 'token' && /Hello/.test(event.content)));
+    assert.ok(events.some(event => event.type === 'token' && /Hi/.test(event.content)));
     assert.ok(events.some(event => event.type === 'generation_complete'));
     const done = events.find(event => event.type === 'done');
     assert.equal(done.chatId, String(chatId));

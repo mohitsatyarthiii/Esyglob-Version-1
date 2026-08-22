@@ -34,7 +34,7 @@ const aiChatSchema = new mongoose.Schema(
       type: String,
       default: 'ollama',
     },
-    model: { type: String, default: 'gemma3:4b' },
+    model: { type: String, default: () => process.env.OLLAMA_MODEL },
     messages: [
       {
         role: {

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import Subscription from '../models/Subscription.js';
 import AIUsage from '../models/AIUsage.js';
 import { getPlan } from './subscription-plans.js';
+import { OLLAMA_MODEL } from '../services/ollama-runtime.service.js';
 
 const RESERVATION_TTL_MS = Math.max(60_000, Number(process.env.AI_CREDIT_RESERVATION_TTL_MS || 10 * 60_000));
 
@@ -118,7 +119,7 @@ export async function reserveAIUsage(user, feature, amount = 1, options = {}) {
   try {
     usageRecord = await AIUsage.create({
       userId: userIdOf(user), subscriptionId: context.subscription._id,
-      feature: options.aiFeature || 'chat', modelUsed: context.plan.aiTier || context.plan.aiProvider || 'gemma3:4b',
+      feature: options.aiFeature || 'chat', modelUsed: context.plan.aiTier || context.plan.aiProvider || OLLAMA_MODEL,
       status: 'pending', requestId, creditAmount: amount,
     });
   } catch (error) {
@@ -210,6 +211,16 @@ export function requireSubscriptionFeature(feature, options = {}) {
   };
 }
 
-export function modelForSubscription() {
-  return { provider: 'ollama', model: 'gemma3:4b' };
+export function modelForSubscription(context = {}) {
+  const plan = context.plan || {};
+  const freePlan = Number(plan.prices?.monthly?.amount ?? plan.price ?? 0) <= 0 || plan.tier === 'starter' || plan.aiTier === 'esyai_lite';
+  if (freePlan) return { provider: 'ollama', model: OLLAMA_MODEL, plan: plan.name || 'Free' };
+  const enterprise = plan.tier === 'enterprise' || plan.aiTier === 'esyai_enterprise';
+  const advanced = enterprise || plan.aiTier === 'esyai_advanced' || ['business', 'gold'].includes(plan.tier);
+  const model = enterprise
+    ? process.env.DEEPSEEK_ENTERPRISE_MODEL || process.env.DEEPSEEK_PRO_MODEL || process.env.DEEPSEEK_MODEL
+    : advanced
+      ? process.env.DEEPSEEK_PRO_MODEL || process.env.DEEPSEEK_MODEL
+      : process.env.DEEPSEEK_MODEL;
+  return { provider: 'deepseek', model: String(model || '').trim() || null, plan: plan.name || 'Premium' };
 }

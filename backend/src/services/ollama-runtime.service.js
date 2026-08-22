@@ -1,6 +1,8 @@
 import { assertSafeAIOutput, FinalAnswerStreamFilter } from '../lib/ai-output-sanitizer.js';
 
-const MODEL = 'gemma3:4b';
+// Free chat is intentionally pinned to Gemma 1B. An operator may set the exact
+// tag returned by `/api/tags`; we never silently fall back to a larger model.
+const MODEL = String(process.env.OLLAMA_MODEL || 'gemma3:1b').trim();
 const BASE_URL = String(process.env.OLLAMA_BASE_URL || 'https://ai.esyglob.in').replace(/\/$/, '');
 const ENABLED = process.env.OLLAMA_ENABLED !== 'false';
 const KEEP_ALIVE_SETTING = process.env.OLLAMA_KEEP_ALIVE || '-1';
@@ -72,7 +74,7 @@ async function readStream(response, onSafeToken) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = ''; let content = ''; let tokens = 0; let firstTokenAt = 0; let firstProviderTokenAt = 0;
-  let sanitized = false;
+  let sanitized = false; let providerDone = false; let doneReason = null;
   const filter = new FinalAnswerStreamFilter({
     onAnomaly(event) {
       sanitized = true;
@@ -100,6 +102,10 @@ async function readStream(response, onSafeToken) {
       if (!firstProviderTokenAt) firstProviderTokenAt = Date.now();
       emitSafe(filter.process(token));
     }
+    if (data.done === true) {
+      providerDone = true;
+      doneReason = data.done_reason || data.message?.done_reason || null;
+    }
     if (data.eval_count) tokens = data.eval_count;
   };
   while (true) {
@@ -112,13 +118,15 @@ async function readStream(response, onSafeToken) {
   }
   if (buffer.trim()) processLine(buffer);
   emitSafe(filter.finish());
-  return { content, tokens, firstTokenAt, firstProviderTokenAt, sanitized };
+  if (!providerDone) throw runtimeError('AI provider stream ended before its completion marker', 503, 'AI_STREAM_INCOMPLETE');
+  if (doneReason === 'length') throw runtimeError('AI provider reached its response limit', 503, 'AI_RESPONSE_TRUNCATED');
+  return { content, tokens, firstTokenAt, firstProviderTokenAt, sanitized, doneReason };
 }
 
 class OllamaRuntimeService {
   static model = MODEL;
 
-  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.22, topP = 0.9, topK = 40, repeatPenalty = 1.1, maxTokens = 520, contextSize, jsonMode = false, retry = true } = {}) {
+  static async complete({ messages, stream = false, onToken, signal, timeoutMs, temperature = 0.18, topP = 0.9, topK = 20, repeatPenalty = 1.1, maxTokens = 520, contextSize, jsonMode = false, retry = true } = {}) {
     const queuedAt = Date.now();
     return enqueue(async () => {
       counters.requests += 1;
@@ -142,7 +150,7 @@ class OllamaRuntimeService {
                 top_p: topP,
                 top_k: topK,
                 repeat_penalty: repeatPenalty,
-                num_ctx: Math.max(2_048, Number(contextSize || process.env.OLLAMA_CONTEXT_SIZE || 8_192)),
+                num_ctx: Math.max(2_048, Number(contextSize || process.env.OLLAMA_CONTEXT_SIZE || 4_096)),
                 num_predict: maxTokens,
               },
             }),

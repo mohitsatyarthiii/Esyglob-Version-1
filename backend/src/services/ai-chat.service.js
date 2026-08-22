@@ -122,14 +122,18 @@ class AIChatService {
     const derivedFilters = AIService.deriveSearchFilters(message);
     const marketplaceFilters = {
       ...derivedFilters,
+      ...(memory.entities?.productId ? { productId: memory.entities.productId } : {}),
+      ...(memory.entities?.manufacturerId ? { sellerId: memory.entities.manufacturerId } : {}),
       ...(memory.preferences?.verifiedSuppliers ? { requireVerified: true } : {}),
       ...(memory.preferences?.lowMoq ? { lowMoq: true } : {}),
       ...(memory.entities?.country && !(derivedFilters.countries || []).length
         ? { countries: [memory.entities.country] }
         : {}),
     };
-    const marketplacePromise = retrievalAllowed && this.needsMarketplaceContext(message)
-      ? getAISearchResults({ query: searchQuery, filters: marketplaceFilters, userId })
+    const unresolvedReference = /\b(?:this|that)\s+(?:product|seller|supplier|manufacturer)\b/i.test(message)
+      && !memory.entities?.productId && !memory.entities?.manufacturerId && !memory.entities?.product && !memory.entities?.manufacturer;
+    const marketplacePromise = retrievalAllowed && !unresolvedReference && this.needsMarketplaceContext(message)
+      ? getAISearchResults({ query: searchQuery, filters: marketplaceFilters, userId: intelligence.requiresPrivateData ? userId : null })
       : Promise.resolve(emptyResults);
     const results = await marketplacePromise;
     const knowledge = await AIPlatformContextService.enrich({ message, role, results, userId });
@@ -157,13 +161,13 @@ class AIChatService {
           link: `/products/${p._id}`,
           supplier: p.sellerId?.companyName,
           supplierVerified: p.sellerId?.isVerified,
-          supplierLink: p.sellerId?._id ? `/manufacturers/${p.sellerId._id}` : null,
+          supplierLink: p.sellerId?._id ? `/sellers/${p.sellerId._id}` : null,
         })),
         topSuppliers: results.suppliers.slice(0, 4).map(s => ({
           id: s._id, companyName: s.companyName, companyType: s.companyType,
           verified: s.isVerified, country: s.address?.country, trustScore: s.trustScore,
           rating: s.rating,
-          link: `/manufacturers/${s._id}`,
+          link: `/sellers/${s._id}`,
         })),
         topOrders: results.orders.slice(0, 3).map(o => ({
           id: o._id, orderNumber: o.orderNumber, status: o.status, paymentStatus: o.paymentStatus,
@@ -316,7 +320,7 @@ class AIChatService {
   /**
    * Send message in AI chat (non-streaming)
    */
-  static async sendMessage(userId, body, session = {}) {
+  static async sendMessage(userId, body, session = {}, providerRoute = null) {
     const message = body.message?.trim();
     const displayMessage = body.displayMessage?.trim() || message;
 
@@ -411,6 +415,9 @@ class AIChatService {
       });
 
     // Build system prompt
+    if (!cached && requestRoute.handling !== 'direct' && providerRoute?.provider && providerRoute.provider !== 'ollama') {
+      throw Object.assign(new Error('Premium AI is not configured'), { statusCode: 503, code: 'AI_PROVIDER_NOT_CONFIGURED' });
+    }
     const systemPrompt = AIService.buildMarketplaceSystemPrompt(
       roleContext,
       `${platformContext.text}${this.formatSupportContext(body.context)}`,
@@ -421,7 +428,7 @@ class AIChatService {
       ? { success: true, message: requestRoute.response, tokensUsed: 0, provider: 'marketplace', model: null, fallback: false }
       : cached
         ? { success: true, message: cached.response, tokensUsed: 0, provider: 'semantic_cache', model: null, fallback: false }
-        : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-10), systemPrompt);
+        : await this.callOllama(message, platformContext.internal?.memory?.selectedMessages || chat.messages.slice(-6), systemPrompt);
 
     const intelligence = platformContext.snapshot.intelligence || {};
     let finalResponse = String(aiResult.message || '').trim();
